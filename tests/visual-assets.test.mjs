@@ -1,0 +1,131 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const ASSETS = path.join(ROOT, 'public', 'assets');
+const DASH = path.join(ROOT, 'public', 'dashboard.html');
+const MAIN = path.join(ROOT, 'desktop', 'main.cjs');
+const SHELL_CSS = path.join(ROOT, 'public', 'css', 'mpo-shell.css');
+
+function pngInfo(file) {
+  const buf = fs.readFileSync(file);
+  assert.equal(buf.subarray(0, 8).toString('hex'), '89504e470d0a1a0a', `${file} is not a PNG`);
+  return {
+    width: buf.readUInt32BE(16),
+    height: buf.readUInt32BE(20),
+    bit: buf[24],
+    color: buf[25],
+    bytes: buf.length,
+  };
+}
+
+function jpegSize(file) {
+  const buf = fs.readFileSync(file);
+  assert.equal(buf[0], 0xff);
+  assert.equal(buf[1], 0xd8);
+  let i = 2;
+  while (i < buf.length - 8) {
+    if (buf[i] !== 0xff) { i += 1; continue; }
+    const marker = buf[i + 1];
+    if (marker === 0xc0 || marker === 0xc1 || marker === 0xc2) {
+      return { height: buf.readUInt16BE(i + 5), width: buf.readUInt16BE(i + 7) };
+    }
+    if (marker === 0xda || marker === 0xd9) break;
+    const len = buf.readUInt16BE(i + 2);
+    i += 2 + len;
+  }
+  throw new Error(`no JPEG SOF in ${file}`);
+}
+
+function py(script) {
+  return execFileSync('python3', ['-c', script], { encoding: 'utf8' }).trim();
+}
+
+test('required visual assets ship with usable geometry', () => {
+  const icons = ['money', 'network', 'settings', 'sportsbook', 'trade'];
+  for (const name of icons) {
+    const info = pngInfo(path.join(ASSETS, 'icons', `${name}.png`));
+    assert.equal(info.width, 96, `${name} width`);
+    assert.equal(info.height, 96, `${name} height`);
+    assert.equal(info.color, 6, `${name} must be RGBA`);
+  }
+  const logo = pngInfo(path.join(ASSETS, 'money-printer-logo.png'));
+  assert.equal(logo.color, 6);
+  assert.ok(logo.width >= 512 && logo.height >= 512, 'logo too small');
+  const bill = pngInfo(path.join(ASSETS, 'bill.png'));
+  assert.equal(bill.color, 6);
+  assert.ok(bill.width >= 56 && bill.height >= 24, 'bill sprite too small');
+  for (const name of ['money-bill.webp','fire-low.webp','fire-high.webp','smoke-medium.webp']) {
+    const file = path.join(ASSETS, name);
+    assert.ok(fs.existsSync(file), `${name} missing`);
+    assert.ok(fs.statSync(file).size > 100000, `${name} is unexpectedly tiny`);
+  }
+  const appIcon = pngInfo(path.join(ASSETS, 'app-icon.png'));
+  assert.equal(appIcon.color, 6);
+  assert.equal(appIcon.width, 256);
+  const bliss = jpegSize(path.join(ASSETS, 'bliss-4k.jpg'));
+  assert.equal(bliss.width, 3840);
+  assert.equal(bliss.height, 2160);
+});
+
+test('desktop icons are shaded artwork, not 10-color placeholders', () => {
+  const floors = { money: 4000, network: 2000, settings: 4000, sportsbook: 2000, trade: 2000 };
+  for (const [name, minBytes] of Object.entries(floors)) {
+    const file = path.join(ASSETS, 'icons', `${name}.png`);
+    const info = pngInfo(file);
+    assert.ok(info.bytes >= minBytes, `${name} is ${info.bytes} bytes; placeholder icons are <1KB`);
+    const unique = Number(py(`
+from PIL import Image
+im = Image.open(${JSON.stringify(file)}).convert('RGBA')
+print(len(im.getcolors(maxcolors=200000) or []))
+`));
+    assert.ok(unique >= 200, `${name} has ${unique} colors; restored icons have hundreds`);
+  }
+});
+
+test('wallpaper corner is grass, not a stock-site plate', () => {
+  const file = path.join(ASSETS, 'bliss-4k.jpg');
+  const script = `
+from PIL import Image
+im = Image.open(${JSON.stringify(file)})
+r,g,b = im.getpixel((3760, 2140))
+print(r, g, b)
+print(im.info.get('comment') or '')
+`;
+  const lines = py(script).split('\n');
+  const [r, g, b] = lines[0].split(/\s+/).map(Number);
+  assert.ok(g > r && g > b, `expected green grass, got ${r},${g},${b}`);
+  assert.ok(r < 110 && g < 140, `watermark plate is gray-bright, got ${r},${g},${b}`);
+  const comment = (lines[1] || '').toLowerCase();
+  assert.doesNotMatch(comment, /wallpaper|stock|wide\.com/);
+  const raw = fs.readFileSync(file);
+  assert.doesNotMatch(raw.toString('latin1'), /WALLPAPERSWIDE/i);
+});
+
+test('desktop chrome uses cohesive assets and has no fire leftover', () => {
+  const html = fs.readFileSync(DASH, 'utf8');
+  const main = fs.readFileSync(MAIN, 'utf8');
+  const shellCss = fs.readFileSync(SHELL_CSS, 'utf8');
+  assert.match(html, /class="bootmark"/);
+  assert.match(html, /class="tico" src="\/assets\/icons\/money\.png"/);
+  assert.match(shellCss, /\/assets\/money-bill\.webp/);
+  assert.match(html, /brand-mark/);
+  assert.doesNotMatch(html, /makeFireSprites|fire-low\.webp|fire-high\.webp|smoke-medium\.webp/);
+  assert.doesNotMatch(html, /WALLPAPERSWIDE/);
+  assert.doesNotMatch(html, /🔄|🧬|🌐/);
+  assert.doesNotMatch(html, /id="horizonFire"|id="bottomFire"/);
+  assert.match(html, /id="moneyRain"/);
+  assert.match(html, /id="moneyPile"/);
+  assert.match(main, /app-icon\.png/);
+  assert.equal((shellCss.match(/bliss-4k\.jpg/g) || []).length, 2, 'wallpaper + clipped hill foreground must each reference the same source once');
+  assert.match(html, /ahead=known&&pnlSol>1e-6&&pnlPct>0/);
+  assert.match(html, /trackComboProfitBurst/);
+  assert.match(html, /triggerMoneyBurst/);
+  assert.doesNotMatch(html, /else\{rain\.innerHTML=makeBills/);
+  assert.match(shellCss, /\.ico img,\s*\.task \.tico/);
+  assert.match(shellCss, /image-rendering:\s*auto/);
+});

@@ -1,0 +1,53 @@
+{
+  "name": "money-printer-os",
+  "version": "0.5.0-alpha.52",
+  "description": "Money Printer OS — native retro trading workstation with continuous research, monitoring, and desktop supervision.",
+  "type": "module",
+  "dependencies": {
+    "@solana/web3.js": "^1.98.4",
+    "bs58": "^6.0.0",
+    "dotenv": "^17.2.1",
+    "polymarket-us": "^0.1.1",
+    "ws": "^8.18.3",
+    "@noble/ed25519": "^2.3.0"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "productName": "Money Printer OS",
+  "main": "desktop/main.cjs",
+  "scripts": {
+    "selftest": "node src/selftest.js",
+    "doctor": "node src/doctor.js",
+    "backtest": "node src/backtest.js",
+    "test:recovery": "node --test tests/store-recovery.test.mjs",
+    "test:turnover": "node --test tests/sports-turnover.test.mjs tests/update-auth.test.cjs",
+    "test:settlement": "node --test tests/polymarket-settlement.test.mjs",
+    "test:polymarket-us": "node --test tests/polymarket-us-safety.test.mjs",
+    "test:combos": "node --test tests/polymarket-us-combos.test.mjs",
+    "replay": "node src/replayLab.js",
+    "forensics": "node src/tradeForensics.js",
+    "alpha-validate": "node src/alphaValidate.js",
+    "research-report": "node src/researchReport.js",
+    "poly-research-eval": "node src/polymarketResearchEval.js",
+    "test:execution": "node --test tests/execution-turnover.test.mjs",
+    "test:edge-robustness": "node --test tests/edge-robustness.test.mjs",
+    "test:accounting": "node --test tests/accounting-integrity.test.mjs",
+    "test:replay": "node --test tests/replay-lab.test.mjs",
+    "test:experiments": "node --test tests/experiment-lane.test.mjs",
+    "test:executable-replay": "node --test tests/executable-replay-evaluator.test.mjs",
+    "test:research": "node --test tests/hypothesis-miner.test.mjs tests/trade-forensics.test.mjs tests/alpha-validate.test.mjs tests/research-report.test.mjs tests/executable-replay-evaluator.test.mjs",
+    "test:poly-research-eval": "node --test tests/polymarket-research-eval.test.mjs",
+    "test:evolution": "node --test tests/evolution-parity.test.mjs tests/evolution-sync.test.mjs tests/evolution-global-sealed.test.mjs tests/evolution-pool.test.mjs tests/beast-furnace.test.mjs tests/beast-compare.test.mjs tests/beast-baseline-benchmark.test.mjs tests/evolution-paper-policy.test.mjs",
+    "bench:evolution": "node src/evolutionBench.js",
+    "beast-baseline": "node scripts/beast-baseline-benchmark.mjs",
+    "bench:beast": "node scripts/beast-compare-benchmark.mjs",
+    "test:beast": "node --test tests/beast-furnace.test.mjs",
+    "test:release-gate": "node --test tests/release-gate.test.cjs",
+    "test:all": "npm run test:recovery && npm run test:turnover && npm run test:execution && npm run test:settlement && npm run test:polymarket-us && npm run test:combos && npm run test:edge-robustness && npm run test:accounting && npm run test:replay && npm run test:experiments && npm run test:research && npm run test:evidence && npm run test:poly-research-eval && npm run test:evolution && npm run test:beast && npm run test:release-gate && npm run test:latency",
+    "test:latency": "node --test tests/latency-diagnosis.test.mjs tests/latency-db.test.mjs",
+    "test:evidence": "node --test tests/research-evidence-gate.test.mjs tests/research-evidence-store.test.mjs tests/evolution-evidence.test.mjs tests/research-collector.test.mjs tests/research-audit.test.mjs tests/research-supervision.test.cjs tests/research-control-plane.test.mjs tests/research-lifecycle.test.mjs tests/project-journal.test.mjs",
+    "evidence-canary": "node scripts/research-evidence-canary.mjs",
+    "bench:beast-corpus": "node scripts/beast-same-corpus.mjs"
+  }
+}

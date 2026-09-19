@@ -1,0 +1,860 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Money Printer OS</title>
+<style>html,body{margin:0;background:#008080}</style>
+<link rel="stylesheet" href="/css/mpo-shell.css">
+<link rel="stylesheet" href="/css/mpo-workstation.css">
+</head>
+<body>
+<div class="desktop" id="desktop">
+  <div class="wallpaper"></div>
+  <div class="hill-foreground"></div>
+  <div class="money-layer market-fx" id="moneyRain"></div>
+  <div class="money-layer market-fx money-pile" id="moneyPile"></div>
+  <div class="brand">MONEY<br>PRINTER OS<small id="runningVersion"></small></div>
+  <div class="icons" id="icons"></div>
+  <div id="windows"></div>
+  <div class="startmenu" id="startMenu"><div class="rail">MONEY PRINTER OS</div><div class="menuitems" id="startItems"></div></div>
+  <div class="taskbar"><button class="start" id="startBtn"><img class="tico" src="/assets/icons/money.png" alt=""> Start</button><div class="tasks" id="tasks"></div><div class="tray"><span class="led" id="feedLed"></span><span class="mpo-badge mpo-badge--paper" id="trayMode">PAPER</span><span id="clock"></span></div></div>
+  <div class="dialog-layer" id="dialogLayer"><div class="dialog hidden" id="dialog"><div class="titlebar"><div class="title" id="dialogTitle">Money Printer OS</div><div class="win-buttons"><button type="button" id="dialogX">×</button></div></div><div class="msg"><div class="mpo-dialog-ico" aria-hidden="true">!</div><div><b id="dialogHead"></b><p id="dialogText"></p><button class="btn" id="dialogOk">OK</button></div></div></div></div>
+  <div class="boot" id="boot"><div class="bootbox"><div class="titlebar"><div class="title">Money Printer OS</div></div><div class="bootbody dark terminal"><img class="bootmark" src="/assets/money-printer-logo.png" alt="" width="64" height="64"><div class="bootlogo">MONEY <span>PRINTER</span> OS</div><div class="bootline" id="bootText">Starting system services...</div><div class="progress bootprog"><i id="bootBar"></i></div></div></div></div>
+</div>
+<script>
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const fmt=(n,d=2)=>Number.isFinite(Number(n))?Number(n).toFixed(d):'—';
+const money=n=>Number.isFinite(Number(n))?'$'+Number(n).toLocaleString(undefined,{maximumFractionDigits:2}):'—';
+const age=ts=>!ts?'—':Math.max(0,Math.round((Date.now()-ts)/1000))+'s';
+const fmtSol=v=>Number.isFinite(Number(v))?Number(v).toFixed(3)+' SOL':'—';
+let state=null,journal=[],projectJournal={rows:[]},networkState={peers:[],messages:[]},polyState={candidates:[],paper:{}},polyUSState={opportunities:[],readiness:{}},polyUSComboState={},updateState={status:'IDLE'},researchMonitor={status:'idle',running:[],leaderboard:[],rejections:{}},journalFilter='all',journalQuery='',z=20,selectedIcon=null;
+let chartView={range:'session',zoom:1,pan:0,dragging:false,lastX:0,hoverX:null};let fxSig='',fxBurstTimer=null,fxBurstUntil=0,fxLastRealizedSol=null,fxComboPrimed=false;const fxSeenComboSettlements=new Set();
+const renderSig=new Map();
+const perf={stateKB:0,renderMs:0,refreshMs:0,lastStateAt:0};
+// [id,name,glyph,style,host?] — a host entry means this app is a TAB inside host's window.
+const APPS=[
+['money','Money Printer OS','$','about'],
+['trade','Trading Terminal','↗','dark'],
+['evolution','Evolution Lab','DNA','dark','trade'],
+['wallet','Wallet Intel','W','light','trade'],
+['risk','Risk Radar','!','dark','trade'],
+['archive','Archive','DB','light','trade'],
+['control','Control Bay','CTL','light','trade'],
+['sportsbook','Polymarket Suite','PM','dark'],
+['researchmon','Experiment Monitor','LAB','dark'],
+['journal','Journal','JRN','dark'],
+['system','System','SYS','dark'],
+['network','Network','NET','light','system'],
+['log','Live Log','TXT','dark','system'],
+['updater','Updater','UP','light','system'],
+['settings','Settings','⚙','light','system']
+];
+const ICON_PNG={money:'money.png',trade:'trade.png',sportsbook:'sportsbook.png',system:'settings.png',network:'network.png',settings:'settings.png'};
+const TAB_LABEL={trade:'Terminal',evolution:'Evolution',wallet:'Wallets',risk:'Risk',archive:'Archive',control:'Controls',system:'Monitor',network:'Network',log:'Log',updater:'Updater',settings:'Settings'};
+const DESKTOP_ICONS=['money','trade','sportsbook','researchmon','journal','system'];
+const appMeta=id=>APPS.find(a=>a[0]===id);
+const hostOf=id=>appMeta(id)?.[4]||id;
+const HOSTS=APPS.filter(a=>!a[4]).map(a=>a[0]);
+const tabsOf=host=>[host,...APPS.filter(a=>a[4]===host).map(a=>a[0])];
+const hasTabs=host=>tabsOf(host).length>1;
+const defaultLayout={
+trade:{x:120,y:70,w:790,h:520},sportsbook:{x:250,y:140,w:880,h:600},
+system:{x:660,y:80,w:520,h:470},researchmon:{x:640,y:120,w:720,h:500},journal:{x:90,y:56,w:740,h:540},money:{x:320,y:120,w:620,h:520}
+};
+const DEFAULT_OPEN=['trade','sportsbook','system'];
+const LAYOUT_VERSION='2026-09-14-alpha40-consolidated';
+let saved=JSON.parse(localStorage.getItem('mpo-layout')||'{}');
+let openSet=new Set(JSON.parse(localStorage.getItem('mpo-open')||JSON.stringify(DEFAULT_OPEN)));
+if(localStorage.getItem('mpo-layout-version')!==LAYOUT_VERSION){localStorage.removeItem('mpo-layout');localStorage.setItem('mpo-open',JSON.stringify(DEFAULT_OPEN));localStorage.setItem('mpo-layout-version',LAYOUT_VERSION);saved={};openSet=new Set(DEFAULT_OPEN)}
+// Windows only exist for hosts now; drop anything left over from a pre-consolidation layout.
+saved=Object.fromEntries(Object.entries(saved||{}).filter(([k])=>HOSTS.includes(k)));
+openSet=new Set([...openSet].filter(id=>HOSTS.includes(id)));
+if(!openSet.size)openSet=new Set(DEFAULT_OPEN);
+let activeTab=(()=>{try{const t=JSON.parse(localStorage.getItem('mpo-tabs')||'{}');return t&&typeof t==='object'?t:{}}catch{return {}}})();
+for(const h of HOSTS)if(!tabsOf(h).includes(activeTab[h]))activeTab[h]=h;
+function persist(){
+ // Never persist a transient layout (boot overlay, pane still opening) and never record a hidden
+ // window as 0x0 — reuse its styled size (or the last saved one) so it reopens at a real size.
+ const d=$('#desktop');if(d&&(d.clientWidth<480||d.clientHeight<320))return;
+ const o={}; $$('.window').forEach(w=>{const id=w.dataset.app,prev=saved[id]||defaultLayout[id]||{},hidden=w.classList.contains('hidden');
+  const ww=hidden?(parseInt(w.style.width)||prev.w||480):w.offsetWidth,hh=hidden?(parseInt(w.style.height)||prev.h||350):w.offsetHeight;
+  o[id]={x:parseInt(w.style.left)||0,y:parseInt(w.style.top)||0,w:Math.max(260,ww||260),h:Math.max(150,hh||150),min:hidden,max:w.classList.contains('max')}});
+ saved=o;
+ localStorage.setItem('mpo-layout',JSON.stringify(o)); localStorage.setItem('mpo-open',JSON.stringify([...openSet])); localStorage.setItem('mpo-tabs',JSON.stringify(activeTab));
+}
+// Scroll preservation: every innerHTML render path goes through setBody/renderPolyModule so a
+// 1.5s refresh never throws the operator back to the top of a table, log or feed.
+function captureScroll(root){const list=[];if(!root)return list;const cands=[root,...root.querySelectorAll('*')].filter(e=>e.scrollHeight>e.clientHeight+1||e.scrollWidth>e.clientWidth+1);cands.forEach((e,i)=>{if(e.scrollTop||e.scrollLeft)list.push({key:e.dataset?.scroll||null,i,top:e.scrollTop,left:e.scrollLeft,pinned:e.scrollHeight-e.scrollTop-e.clientHeight<24})});return list}
+function restoreScroll(root,list){if(!root||!list||!list.length)return;const cands=[root,...root.querySelectorAll('*')].filter(e=>e.scrollHeight>e.clientHeight+1||e.scrollWidth>e.clientWidth+1);for(const s of list){const el=(s.key&&(root.matches&&root.matches(`[data-scroll="${s.key}"]`)?root:root.querySelector(`[data-scroll="${s.key}"]`)))||cands[s.i];if(!el)continue;if(el.dataset?.pin==='bottom'&&s.pinned)el.scrollTop=el.scrollHeight;else{el.scrollTop=s.top;el.scrollLeft=s.left}}}
+function setBody(id,html){const el=document.getElementById('body-'+id);if(!el)return null;const saved=captureScroll(el);el.innerHTML=html;restoreScroll(el,saved);return el}
+function iconFallback(img){const s=img?.parentNode;if(!s)return;s.classList.remove('png');if(img.dataset.cls)s.classList.add(img.dataset.cls);s.innerHTML=`<b class="pixel-glyph">${img.dataset.glyph||'?'}</b>`}
+function iconHtml(id,glyph,cls=''){const png=ICON_PNG[id];return png?`<span class="ico png"><img src="/assets/icons/${png}" alt="" draggable="false" data-glyph="${glyph}" data-cls="${cls}" onerror="iconFallback(this)"></span>`:`<span class="ico ${cls}"><b class="pixel-glyph">${glyph}</b></span>`}
+const taskIcon=id=>ICON_PNG[id]?`<img class="tico" src="/assets/icons/${ICON_PNG[id]}" alt="">`:`<b>${appMeta(id)?.[2]||''}</b>`;
+function buildIcons(){
+ $('#icons').innerHTML=DESKTOP_ICONS.map(id=>{const a=appMeta(id);return a?`<div class="icon" data-app="${id}" title="${a[1]}">${iconHtml(id,a[2],id==='money'?'money':'dark')}<div>${a[1]}</div></div>`:''}).join('');
+ $$('.icon').forEach(el=>{el.onclick=()=>{ $$('.icon').forEach(x=>x.classList.remove('sel'));el.classList.add('sel');selectedIcon=el.dataset.app};el.ondblclick=()=>openApp(el.dataset.app)});
+}
+function appShell(id,title,menus='File View Tools Help'){
+ const L=saved[id]||defaultLayout[id]||{x:200,y:150,w:480,h:350};
+ const tabs=tabsOf(id),tabbed=tabs.length>1,act=activeTab[id]||id;
+ const strip=tabbed?`<div class="tabs win-tabs" data-host="${id}">${tabs.map(t=>`<button class="tab98 ${t===act?'on':''}" data-host="${id}" data-tab="${t}">${TAB_LABEL[t]||appMeta(t)?.[1]||t}</button>`).join('')}</div>`:'';
+ const body=tabbed?`<div class="body tabbed">${tabs.map(t=>`<div class="tabpane ${t===act?'on':''}" id="body-${t}" data-scroll="pane-${t}"></div>`).join('')}</div>`:`<div class="body" id="body-${id}" data-scroll="body-${id}"></div>`;
+ return `<section class="window ${L.max?'max':''} ${L.min||!openSet.has(id)?'hidden':''}" data-app="${id}" style="left:${L.x}px;top:${L.y}px;width:${L.w}px;height:${L.h}px">
+ <div class="titlebar"><div class="title">${title}</div><div class="win-buttons"><button data-act="min">_</button><button data-act="max">□</button><button data-act="close">×</button></div></div>
+ <div class="menu" title="Menus are not wired">${menus.split(' ').map(x=>`<span>${x}</span>`).join('')}</div>${strip}${body}<div class="resize"></div></section>`;
+}
+function buildWindows(){
+ $('#windows').innerHTML=HOSTS.map(id=>appShell(id,appMeta(id)[1],id==='trade'?'File Run Simulate Tools Help':id==='sportsbook'?'File View Simulate Tools Help':'File View Tools Help')).join('');
+ $$('.window').forEach(initWindow);
+ $$('.win-tabs .tab98').forEach(b=>b.onclick=e=>{e.stopPropagation();setTab(b.dataset.host,b.dataset.tab)});
+ clampAll(); renderTasks();
+}
+function setTab(host,id){
+ if(!host||!id||!tabsOf(host).includes(id))return;
+ const w=$(`.window[data-app="${host}"]`);if(!w)return;
+ activeTab[host]=id;
+ w.querySelectorAll('.win-tabs .tab98').forEach(b=>b.classList.toggle('on',b.dataset.tab===id));
+ w.querySelectorAll('.tabpane').forEach(p=>p.classList.toggle('on',p.id==='body-'+id));
+ persist(); renderSig.delete(id); renderAll();
+}
+// Windows must never end up unreachable: keep at least 60px of the title bar on the desktop.
+function clampWin(w){
+ if(!w||w.classList.contains('max')||w.classList.contains('hidden'))return;
+ const d=$('#desktop');if(!d)return;
+ // A desktop smaller than this is a transient layout state (boot overlay, pane opening, minimized
+ // browser); clamping against it would shrink every window to a sliver and persist that.
+ if(d.clientWidth<480||d.clientHeight<320)return;
+ const maxW=d.clientWidth,maxH=Math.max(160,d.clientHeight-36);
+ const ww=Math.min(w.offsetWidth,Math.max(260,maxW-8)),wh=Math.min(w.offsetHeight,Math.max(150,maxH-8));
+ if(ww!==w.offsetWidth)w.style.width=ww+'px';
+ if(wh!==w.offsetHeight)w.style.height=wh+'px';
+ let x=parseInt(w.style.left),y=parseInt(w.style.top);
+ if(!Number.isFinite(x))x=40;if(!Number.isFinite(y))y=40;
+ x=Math.min(Math.max(x,60-ww),Math.max(0,maxW-60));
+ y=Math.min(Math.max(y,0),Math.max(0,maxH-24));
+ w.style.left=Math.round(x)+'px';w.style.top=Math.round(y)+'px';
+}
+function clampAll(){$$('.window').forEach(clampWin)}
+function initWindow(w){
+ const bar=w.querySelector('.titlebar'),resize=w.querySelector('.resize'); let sx,sy,ox,oy,ow,oh,mode;
+ const EDGE=10;
+ const begin=(e,m)=>{if(w.classList.contains('max'))return;focus(w);mode=m;sx=e.clientX;sy=e.clientY;ox=parseInt(w.style.left);oy=parseInt(w.style.top);ow=w.offsetWidth;oh=w.offsetHeight;w.setPointerCapture?.(e.pointerId);document.onpointermove=move;document.onpointerup=end;e.preventDefault()};
+ const move=e=>{const dx=e.clientX-sx,dy=e.clientY-sy;if(mode==='drag'){w.style.left=(ox+dx)+'px';w.style.top=Math.max(0,oy+dy)+'px';clampWin(w);return}let x=ox,y=oy,nw=ow,nh=oh;if(mode.includes('e'))nw=Math.max(260,ow+dx);if(mode.includes('s'))nh=Math.max(150,oh+dy);if(mode.includes('w')){nw=Math.max(260,ow-dx);x=ox+(ow-nw)}if(mode.includes('n')){nh=Math.max(150,oh-dy);y=oy+(oh-nh)}w.style.left=Math.max(0,x)+'px';w.style.top=Math.max(0,y)+'px';w.style.width=nw+'px';w.style.height=nh+'px';clampWin(w)};
+ const end=()=>{document.onpointermove=null;document.onpointerup=null;mode=null;clampWin(w);persist()};
+ bar.onpointerdown=e=>{if(e.target.tagName!=='BUTTON')begin(e,'drag')};resize.onpointerdown=e=>begin(e,'se');
+ bar.ondblclick=e=>{if(e.target.tagName==='BUTTON')return;w.classList.toggle('max');if(!w.classList.contains('max'))clampWin(w);persist()};
+ w.addEventListener('pointermove',e=>{if(mode||e.target.closest('.titlebar,.resize,.win-buttons,.win-tabs'))return;const r=w.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;let m='';if(y<EDGE)m+='n';else if(r.height-y<EDGE)m+='s';if(x<EDGE)m+='w';else if(r.width-x<EDGE)m+='e';w.style.cursor=m?(m==='n'||m==='s'?'ns-resize':m==='e'||m==='w'?'ew-resize':m==='ne'||m==='sw'?'nesw-resize':'nwse-resize'):''});
+ w.addEventListener('pointerdown',e=>{if(e.target.closest('.titlebar,.resize,.win-buttons,.win-tabs,button,input,select,textarea'))return;const r=w.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;let m='';if(y<EDGE)m+='n';else if(r.height-y<EDGE)m+='s';if(x<EDGE)m+='w';else if(r.width-x<EDGE)m+='e';if(m)begin(e,m)});
+ w.onpointerdown=()=>focus(w);
+ w.querySelector('[data-act=min]').onclick=e=>{e.stopPropagation();w.classList.add('hidden');persist();renderTasks()};
+ w.querySelector('[data-act=close]').onclick=e=>{e.stopPropagation();w.classList.add('hidden');openSet.delete(w.dataset.app);persist();renderTasks()};
+ w.querySelector('[data-act=max]').onclick=e=>{e.stopPropagation();w.classList.toggle('max');if(!w.classList.contains('max'))clampWin(w);persist()};
+}
+function focus(w){$$('.window').forEach(x=>x.classList.add('inactive'));w.classList.remove('inactive');w.style.zIndex=++z;renderTasks()}
+function openApp(id){
+ const host=hostOf(id),w=$(`.window[data-app="${host}"]`);if(!w)return;
+ w.classList.remove('hidden');openSet.add(host);clampWin(w);focus(w);
+ if(hasTabs(host)&&id!==host){setTab(host,id);return}
+ if(hasTabs(host))setTab(host,activeTab[host]||host);
+ persist();renderTasks();renderSig.delete(host);renderAll();
+ if(host==='journal')refreshProjectJournal();
+}
+function renderTasks(){
+ $('#tasks').innerHTML=[...openSet].filter(id=>HOSTS.includes(id)).map(id=>{const a=appMeta(id);return a?`<button class="task" data-app="${id}" title="${a[1]}">${taskIcon(id)}<span>${a[1]}</span></button>`:''}).join('');
+ $$('.task').forEach(b=>{const w=$(`.window[data-app="${b.dataset.app}"]`);b.classList.toggle('on',!!w&&!w.classList.contains('hidden'));
+  b.onclick=()=>{const t=$(`.window[data-app="${b.dataset.app}"]`);if(!t)return;if(t.classList.contains('hidden')){t.classList.remove('hidden');clampWin(t);focus(t)}else if(Number(t.style.zIndex)===z)t.classList.add('hidden');else focus(t);persist();renderTasks()}});
+}
+function buildStart(){
+ $('#startItems').innerHTML=HOSTS.map(h=>{
+  const a=appMeta(h),subs=APPS.filter(x=>x[4]===h);
+  const head=`<div class="menuitem" data-app="${h}">${taskIcon(h)}<span>${a[1]}</span></div>`;
+  return head+(subs.length?tabsOf(h).map(t=>`<div class="menuitem sub" data-app="${t}" data-sub="1">${TAB_LABEL[t]||appMeta(t)?.[1]||t}</div>`).join(''):'');
+ }).join('')+'<hr><div class="menuitem" id="restartUI"><b class="pixel-glyph">RST</b><span>Restart UI</span></div>';
+ $$('.menuitem[data-app]').forEach(x=>{x.tabIndex=0;x.onclick=()=>{openApp(x.dataset.app);if(x.dataset.sub)setTab(hostOf(x.dataset.app),x.dataset.app);$('#startMenu').classList.remove('open')};x.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();x.click()}}});
+ $('#restartUI').onclick=()=>location.reload();
+}
+function clamp01(n){return Math.max(0,Math.min(1,Number(n)||0))}
+function sessionFxMetrics(){
+ const p=state?.portfolio||{},base=Number(state?.paperStartSol),eq=Number(p.equitySol);
+ const known=Number.isFinite(base)&&base>0&&Number.isFinite(eq);
+ const pnlSol=known?eq-base:NaN,pnlPct=known?(eq-base)/base*100:0,ahead=known&&pnlSol>1e-6&&pnlPct>0;
+ const series=state?.portfolioSeries||[],now=Date.now(),recent=series.filter(q=>now-Number(q.ts||0)<=60000),old=recent[0];
+ const velocity=ahead&&old&&Number(old.equitySol)>0?(eq-Number(old.equitySol))/Number(old.equitySol)*100/Math.max(.05,(now-Number(old.ts))/60000):0;
+ return {known,ahead,pnlSol,pnlPct,velocity,intensity:ahead?clamp01(pnlPct/80+Math.max(0,velocity)/25):0};
+}
+function makeBurstBills(n,intensity,source='profit'){return Array.from({length:n},(_,i)=>{const left=(i*37+Math.random()*31)%100,d=Math.max(2.4,6.4-intensity*2.1)+Math.random()*1.8,delay=Math.random()*.65,drift=(Math.random()*260-130)+'px',rot=(Math.random()*540-270)+'deg',scale=(.55+Math.random()*.8).toFixed(2);return `<div class="bill burst" data-market="${source}" style="left:${left}%;animation-duration:${d}s,${.7+Math.random()*.7}s;animation-delay:${delay}s,${delay}s;--drift:${drift};--rot:${rot};--scale:${scale}"></div>`}).join('')}
+function makeRainBills(n,intensity){return Array.from({length:n},(_,i)=>{const left=(i*37+Math.random()*31)%100,d=Math.max(3.4,8.4-intensity*2.6)+Math.random()*2.4,delay=-Math.random()*d,drift=(Math.random()*220-110)+'px',rot=(Math.random()*420-210)+'deg',scale=(.5+Math.random()*.7).toFixed(2);return `<div class="bill rain" data-market="paper-equity" style="left:${left}%;animation-duration:${d}s,${1.1+Math.random()*.6}s;animation-delay:${delay}s,${delay}s;--drift:${drift};--rot:${rot};--scale:${scale}"></div>`}).join('')}
+function makePileBills(n,intensity){return Array.from({length:n},(_,i)=>{const left=Math.max(2,Math.min(94,(i+.25)*100/Math.max(1,n)+Math.random()*8-4)),bottom=Math.max(0,Math.round(Math.random()*20+intensity*12)),rot=(Math.random()*30-15).toFixed(1),scale=(.62+Math.random()*.42).toFixed(2);return `<div class="bill pile" data-market="paper-equity" style="left:${left}%;bottom:${bottom}px;--rot:${rot}deg;--scale:${scale};animation-delay:${(-Math.random()*2).toFixed(2)}s"></div>`}).join('')}
+function triggerMoneyBurst(amountUsd=1,source='profit'){
+ const rain=$('#moneyRain');if(!rain||matchMedia('(prefers-reduced-motion: reduce)').matches)return;const amount=Math.max(0,Number(amountUsd)||0);if(!(amount>0))return;const intensity=clamp01(Math.log10(1+amount)/2.2),n=Math.max(7,Math.min(72,Math.round(8+amount*2.4+intensity*18)));
+ rain.innerHTML=makeBurstBills(n,intensity,source);rain.style.opacity=String(.62+intensity*.36);fxBurstUntil=Date.now()+7200;if(fxBurstTimer)clearTimeout(fxBurstTimer);fxBurstTimer=setTimeout(()=>{if(Date.now()>=fxBurstUntil){fxSig='';updateDesktopEffects(true)}},7400);
+}
+function trackRealizedProfitBurst(){const v=Number(state?.portfolio?.realizedDayPnlSol);if(!Number.isFinite(v))return;if(fxLastRealizedSol!=null&&v>fxLastRealizedSol+1e-9){const solUsd=Number(state?.market?.solUsd)||0;triggerMoneyBurst(Math.max(.25,(v-fxLastRealizedSol)*(solUsd||100)),'solana-win')}fxLastRealizedSol=v}
+function trackComboProfitBurst(next){const hist=Array.isArray(next?.journal?.history)?next.journal.history:[],keys=hist.map(x=>String(x?.id||`${x?.symbol||'combo'}:${x?.settledAt||x?.at||''}`));if(!fxComboPrimed){keys.forEach(k=>fxSeenComboSettlements.add(k));fxComboPrimed=true;return}let won=0;hist.forEach((x,i)=>{const k=keys[i];if(fxSeenComboSettlements.has(k))return;fxSeenComboSettlements.add(k);if(String(x?.status).toUpperCase()==='WON'&&Number(x?.pnlUsd)>0)won+=Number(x.pnlUsd)});if(won>0)triggerMoneyBurst(won,'combo-win')}
+function updateDesktopEffects(force=false){
+ if(!state)return;const m=sessionFxMetrics(),bursting=Date.now()<fxBurstUntil,key=[m.known?1:0,m.ahead?1:0,Math.round((m.pnlPct||0)*2),Math.round(m.velocity||0),Math.round(m.intensity*10),bursting?1:0].join(':');if(!force&&key===fxSig)return;fxSig=key;
+ const rain=$('#moneyRain'),pile=$('#moneyPile');if(!rain||!pile)return;
+ if(matchMedia('(prefers-reduced-motion: reduce)').matches){rain.innerHTML='';pile.innerHTML='';rain.style.opacity='0';pile.style.opacity='0';return}
+ if(!m.ahead){if(!bursting){rain.innerHTML='';rain.style.opacity='0'}pile.innerHTML='';pile.style.opacity='0';return}
+ const pn=Math.max(3,Math.round(4+m.intensity*14));pile.innerHTML=makePileBills(pn,m.intensity);pile.style.opacity=String(.38+m.intensity*.5);
+ if(bursting)return;
+ const rn=Math.max(6,Math.round(8+m.intensity*22));rain.innerHTML=makeRainBills(rn,m.intensity);rain.style.opacity=String(.42+m.intensity*.5);
+}
+function showDialog(title,head,text){$('#dialogTitle').textContent=title;$('#dialogHead').textContent=head;$('#dialogText').textContent=text;$('#dialog').classList.remove('hidden')}
+$('#dialogOk').onclick=$('#dialogX').onclick=()=>$('#dialog').classList.add('hidden');
+
+function chartSeries(){
+ const all=(state?.portfolioSeries||[]).filter(q=>Number.isFinite(Number(q.ts))&&Number.isFinite(Number(q.equitySol))).sort((a,b)=>a.ts-b.ts);if(!all.length&&state?.portfolio)return [{ts:Date.now(),equitySol:Number(state.portfolio.equitySol||0)}];
+ const now=Date.now(),ranges={m1:60000,m5:300000,m15:900000,h1:3600000,session:Infinity},span=ranges[chartView.range]??Infinity,base=span===Infinity?all:all.filter(q=>now-q.ts<=span);return base.length?base:all.slice(-2)
+}
+function bindChartControls(){
+ $$('.range-btn').forEach(b=>b.onclick=()=>{chartView.range=b.dataset.range;chartView.zoom=1;chartView.pan=0;renderSig.delete('trade');renderTrade()});
+ const c=$('#priceChart');if(!c)return;$('#chartZoomIn').onclick=()=>{chartView.zoom=Math.min(32,chartView.zoom*1.5);drawChart()};$('#chartZoomOut').onclick=()=>{chartView.zoom=Math.max(1,chartView.zoom/1.5);chartView.pan=Math.min(chartView.pan,1-1/chartView.zoom);drawChart()};$('#chartFit').onclick=()=>{chartView.range='session';chartView.zoom=1;chartView.pan=0;renderSig.delete('trade');renderTrade()};
+ c.onwheel=e=>{e.preventDefault();const old=chartView.zoom;chartView.zoom=Math.max(1,Math.min(32,old*(e.deltaY<0?1.25:.8)));if(chartView.zoom===1)chartView.pan=0;drawChart()};
+ c.onpointerdown=e=>{chartView.dragging=true;chartView.lastX=e.clientX;c.setPointerCapture?.(e.pointerId)};c.onpointerup=()=>chartView.dragging=false;c.onpointercancel=()=>chartView.dragging=false;
+ c.onpointermove=e=>{const r=c.getBoundingClientRect();chartView.hoverX=(e.clientX-r.left)/r.width;if(chartView.dragging){const dx=(e.clientX-chartView.lastX)/r.width;chartView.lastX=e.clientX;chartView.pan=Math.max(0,Math.min(1-1/chartView.zoom,chartView.pan-dx/chartView.zoom));}drawChart()};c.onpointerleave=()=>{chartView.hoverX=null;drawChart()};c.ondblclick=()=>{chartView.zoom=1;chartView.pan=0;drawChart()};
+}
+function renderTrade(){
+ const s=state||{},p=s.portfolio||{},sol=s.market?.solUsd;
+ const health=s.system?.health||'—',healthBad=health==='DEGRADED',watch=(s.watchlist||[]).slice(0,7);
+ setBody('trade',`<div class="dark terminal mpo-surface-dark" style="height:100%;padding:7px"><div class="mpo-status"><span class="cyan">SOL/USD</span> <span class="heroPrice">${money(sol)}</span> <span class="${s.dailyPnlSol>=0?'green':'red'}">${s.dailyPnlSol>=0?'+':''}${fmt(s.dailyPnlSol,4)} SOL session</span><b class="mpo-badge ${healthBad?'mpo-badge--degraded':'mpo-badge--live'}">${polyEscape(health)}</b></div><div class="mpo-metrics"><div class="mpo-metric"><label>EQUITY</label><b>${fmt(p.equitySol,4)} SOL</b></div><div class="mpo-metric"><label>CASH</label><b>${fmt(p.cashSol,4)}</b></div><div class="mpo-metric"><label>OPEN</label><b class="${(s.positions||[]).length?'cyan':''}">${(s.positions||[]).length}</b></div><div class="mpo-metric"><label>FEED</label><b class="${healthBad?'amber':'green'}">${polyEscape(health)}</b></div></div><div class="chart" title="wheel zoom · drag pan · dbl-click reset"><div class="chart-grid"></div><canvas id="priceChart"></canvas><div class="chart-tip" id="chartTip"></div></div><div class="toolbar" style="margin-top:6px"><button class="btn range-btn ${chartView.range==='m1'?'on':''}" data-range="m1">1m</button><button class="btn range-btn ${chartView.range==='m5'?'on':''}" data-range="m5">5m</button><button class="btn range-btn ${chartView.range==='m15'?'on':''}" data-range="m15">15m</button><button class="btn range-btn ${chartView.range==='h1'?'on':''}" data-range="h1">1h</button><button class="btn range-btn ${chartView.range==='session'?'on':''}" data-range="session">Session</button><button class="btn" id="chartZoomOut">−</button><button class="btn" id="chartZoomIn">+</button><button class="btn" id="chartFit">Fit</button><span class="chart-readout" id="chartReadout">● REAL EQUITY DATA</span></div><div class="mpo-table-wrap"><table class="table mpo-table terminal"><thead><tr><th>Symbol</th><th>Edge</th><th>5m</th><th>Liq</th><th>Stage</th></tr></thead><tbody>${watch.length?watch.map(x=>`<tr><td>${polyEscape(x.symbol||'?')}</td><td>${fmt(x.fastEdgeScore??x.edgeScore,0)}</td><td class="${Number(x.pc5)>=0?'green':'red'}">${fmt(x.pc5,1)}%</td><td>${money(x.liq)}</td><td>${polyEscape(x.stage||'')}</td></tr>`).join(''):'<tr><td colspan="5"><div class="mpo-empty">No watchlist names yet.</div></td></tr>'}</tbody></table></div></div>`);bindChartControls();drawChart();
+}
+function drawChart(){
+ const c=$('#priceChart');if(!c)return;const rect=c.getBoundingClientRect(),dpr=Math.min(2,window.devicePixelRatio||1),W=Math.max(300,Math.round(rect.width*dpr)),H=Math.max(150,Math.round(rect.height*dpr));if(c.width!==W)c.width=W;if(c.height!==H)c.height=H;const x=c.getContext('2d');x.clearRect(0,0,W,H);const raw=chartSeries();if(raw.length<1)return;const frac=1/chartView.zoom,maxStart=Math.max(0,1-frac),start=Math.min(maxStart,chartView.pan),a=Math.floor(start*Math.max(0,raw.length-1)),count=Math.max(2,Math.ceil(raw.length*frac)),pts=raw.slice(a,a+count);if(!pts.length)return;let lo=Math.min(...pts.map(q=>q.equitySol)),hi=Math.max(...pts.map(q=>q.equitySol));const pad=Math.max(.001,(hi-lo)*.12);lo-=pad;hi+=pad;const px=(i)=>pts.length===1?W/2:i*W/(pts.length-1),py=v=>H-((v-lo)/(hi-lo||1))*H;
+ x.beginPath();pts.forEach((q,i)=>i?x.lineTo(px(i),py(q.equitySol)):x.moveTo(px(i),py(q.equitySol)));
+ x.lineTo(px(pts.length-1),H);x.lineTo(px(0),H);x.closePath();x.fillStyle='rgba(57,255,104,.14)';x.fill();
+ x.beginPath();pts.forEach((q,i)=>i?x.lineTo(px(i),py(q.equitySol)):x.moveTo(px(i),py(q.equitySol)));x.strokeStyle='#39ff68';x.lineWidth=2*dpr;x.stroke();
+ x.fillStyle='#b8d8c0';x.font=`${10*dpr}px monospace`;x.fillText(`${hi.toFixed(3)} SOL`,5*dpr,12*dpr);x.fillText(`${lo.toFixed(3)} SOL`,5*dpr,H-5*dpr);
+ const first=pts[0],last=pts.at(-1),delta=last.equitySol-first.equitySol,read=$('#chartReadout');if(read){read.textContent=`${pts.length} pts · ${delta>=0?'+':''}${delta.toFixed(3)} SOL · ${new Date(first.ts).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})}–${new Date(last.ts).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})}`;read.style.color=delta>=0?'#3cff68':'#ff5b70'}
+ if(chartView.hoverX!=null){const i=Math.max(0,Math.min(pts.length-1,Math.round(chartView.hoverX*(pts.length-1)))),q=pts[i],cx=px(i),cy=py(q.equitySol);x.strokeStyle='#d7ffd7aa';x.lineWidth=dpr;x.beginPath();x.moveTo(cx,0);x.lineTo(cx,H);x.stroke();x.beginPath();x.arc(cx,cy,3*dpr,0,Math.PI*2);x.fillStyle='#fff';x.fill();const tip=$('#chartTip');if(tip){tip.style.display='block';tip.style.left=Math.min(rect.width-145,cx/dpr+8)+'px';tip.style.top=Math.max(2,cy/dpr-38)+'px';tip.textContent=`${new Date(q.ts).toLocaleTimeString()}  ${q.equitySol.toFixed(4)} SOL`}}
+ else{const tip=$('#chartTip');if(tip)tip.style.display='none'}
+}
+function renderEvolution(){
+ const e=state?.evolutionLoop||{},c=e.champion||{},m=c.metrics||{};
+ setBody('evolution',`<div class="dark terminal mpo-surface-dark" style="height:100%;padding:8px"><div class="mpo-status" title="STRATEGIES EVOLVE. PROFITS SURVIVE."><span class="ico" style="width:18px;height:18px"><b class="pixel-glyph">DNA</b></span><b>EVOLUTION LAB</b><b class="mpo-badge ${e.status==='RUNNING'?'mpo-badge--live':'mpo-badge--degraded'}">${polyEscape(e.status||'COLLECTING')}</b><span class="muted">${e.cluster?.enabled?'DISTRIBUTED':'LOCAL'} · ${e.workerCount??0} workers</span></div>
+ <div class="mpo-metrics"><div class="mpo-metric"><label>GENERATION</label><b>${e.generation??0}</b></div><div class="mpo-metric"><label>VARIANTS</label><b>${e.variantsTested??0}</b></div><div class="mpo-metric"><label>SURVIVORS</label><b>${e.survivors??0}</b></div><div class="mpo-metric" title="Compound ${fmt(m.compoundedMultiple,2)}× · activity ${fmt(m.activityPct,1)}%"><label>CHAMPION</label><b>${polyEscape(c.id||'BASE')}</b></div><div class="mpo-metric"><label>HELD-OUT AVG</label><b>${fmt(m.heldOutAvgPct,2)}%</b></div><div class="mpo-metric"><label>GEO GROWTH</label><b class="green">${fmt(m.geometricMeanPct,2)}%</b></div><div class="mpo-metric"><label>MAX DD</label><b class="${Number(m.maxDrawdownPct||0)>0?'red':''}">${fmt(m.maxDrawdownPct,2)}%</b></div><div class="mpo-metric"><label>MONTE CARLO</label><b class="${Number(m.monteCarloPassPct||0)<80?'amber':'green'}">${fmt(m.monteCarloPassPct,1)}%</b></div></div>
+ <div class="muted">Dataset ${e.datasetSamples??0} · velocity ${fmt(m.profitVelocityPctPerMin,3)}%/min · next generation</div>
+ <div class="progress"><i style="width:${Math.max(2,e.nextGenerationProgress||0)}%"></i></div>
+ <div class="inset terminal" data-scroll="evo-events" style="height:145px;overflow:auto;margin-top:8px;padding:5px">${(e.events||[]).slice(0,25).map(x=>`[${new Date(x.ts).toLocaleTimeString()}] <span class="${x.type==='ERROR'?'red':x.type==='PROMOTE'?'green':'cyan'}">${polyEscape(x.type||'INFO')}</span> ${polyEscape(x.message)}`).join('<br>')||'<div class="mpo-empty">Collecting real labeled outcomes…</div>'}</div></div>`);
+}
+function renderSystem(){
+ const s=state||{},m=s.system?.metrics||{},r=s.system?.resources||{},e=s.evolutionLoop||{};
+ const cpu=Number(m.cpuPct||0),mem=Number(m.memoryPct||0);
+ const mode=r.autoCoordinate?'HIVE COORDINATED':'LOCAL CUSTOM';
+ const barTone=v=>v>=90?'hot':v>=70?'warn':'';
+ const telemetry=`<div class="mpo-status"><b>SYSTEM MONITOR</b><b class="mpo-badge ${r.autoCoordinate?'mpo-badge--live':'mpo-badge--degraded'}">${mode}</b><span class="muted">test lane ${polyEscape(r.testLane||'—')}</span></div>${[['CPU',cpu],['Memory',mem],['Scanner',Math.min(100,Number(m.cycleMs||0)/40)],['Evolution',e.status==='RUNNING'?72:e.status==='COLLECTING'?30:8]].map(([n,v])=>`<div class="mpo-sysrow"><b>${n}</b><div class="sysbar ${barTone(v)}"><i style="width:${Math.max(2,v)}%"></i></div><span>${fmt(v,0)}%</span></div>`).join('')}
+ <div class="kv"><span>RAM used:</span><b>${fmt(m.memoryUsedGB,1)} / ${fmt(m.memoryTotalGB,1)} GB</b><span>Worker slots:</span><b>${r.maxWorkerSlots||1}</b></div>`;
+ // Telemetry changes every second; the allocation form must survive those refreshes or the
+ // user's slider/number edits get wiped before they can click "Use My Limits".
+ const policySig=JSON.stringify([r.cpuPercent,r.memoryGB,r.diskGB,r.source,r.updatedAt]);
+ const controls=$('#sysControls');
+ if(controls&&controls.dataset.sig===policySig){$('#sysTelemetry').innerHTML=telemetry;return}
+ if(controls&&document.activeElement&&controls.contains(document.activeElement)){$('#sysTelemetry').innerHTML=telemetry;return}
+ setBody('system',`<div class="dark terminal mpo-surface-dark" style="height:100%;padding:10px"><div id="sysTelemetry">${telemetry}</div>
+ <hr style="border-color:#145a27">
+ <div id="sysControls" data-sig='${policySig.replaceAll("'","&#39;")}'>
+ <div class="formrow"><label>CPU contribution:</label><input id="resCpu" type="range" min="10" max="95" value="${r.cpuPercent||65}"><b id="resCpuV">${fmt(r.cpuPercent||65,0)}%</b></div>
+ <div class="formrow"><label>RAM allocation (GB):</label><input class="field" id="resMem" type="number" min="0.25" step="0.25" value="${r.memoryGB||2}"></div>
+ <div class="formrow"><label>Research disk (GB):</label><input class="field" id="resDisk" type="number" min="0.5" step="0.5" value="${r.diskGB||5}"></div>
+ <div class="toolbar"><button class="btn" id="applyResources">Use My Limits</button><button class="btn" id="syncResources">Sync to Hive Plan</button></div>
+ <div class="muted">Hive sync is on by default. Changing limits switches this machine to local custom mode until you sync again.</div></div></div>`);
+ $('#resCpu')?.addEventListener('input',x=>$('#resCpuV').textContent=x.target.value+'%');
+ $('#applyResources')?.addEventListener('click',async()=>{const r=await post('/api/resources',{cpuPercent:Number($('#resCpu').value),memoryGB:Number($('#resMem').value),diskGB:Number($('#resDisk').value)});if(!r?.ok)return showDialog('System Monitor','Limits not applied',r?.error||'The trading service did not accept the new limits.');$('#sysControls')?.remove();renderSig.delete('system');await refreshState()});
+ $('#syncResources')?.addEventListener('click',async()=>{const r=await post('/api/resources/sync',{});if(!r?.ok)return showDialog('System Monitor','Hive sync failed',r?.error||'The trading service did not accept the sync request.');$('#sysControls')?.remove();renderSig.delete('system');await refreshState()});
+}
+function renderLog(){
+ const rows=journal.slice(-180).reverse();
+ const errN=rows.filter(x=>x.type==='error').length,evoN=rows.filter(x=>x.type==='evolution').length;
+ const badge=errN?'mpo-badge--down':rows.length?'mpo-badge--live':'mpo-badge--degraded';
+ setBody('log',`<div class="dark terminal mpo-surface-dark mpo-log-pane"><div class="mpo-status"><b>LIVE LOG</b><b class="mpo-badge ${badge}">${rows.length} lines</b><span class="muted"><span class="mpo-dot err"></span>${errN} err · <span class="mpo-dot evo"></span>${evoN} evo</span></div><div class="log" data-scroll="log" data-pin="bottom">${rows.map(x=>`[${new Date(x.ts||Date.now()).toLocaleTimeString()}] <span class="${x.type==='error'?'red':x.type==='evolution'?'green':'cyan'}">[${polyEscape(String(x.type||'SYSTEM').toUpperCase())}]</span> ${polyEscape(x.message||x.symbol||x.error||'')}`).join('<br>')||'<div class="mpo-empty">No log lines yet.</div>'}</div></div>`);
+}
+function renderWallet(){
+ const w=state?.walletIntel?.wallets||[];
+ setBody('wallet',`<div class="mpo-surface-light" style="height:100%;display:flex;flex-direction:column;min-height:0;padding:8px;color:#111"><div class="mpo-status"><b>WALLET INTEL</b><span class="muted">${w.length} tracked</span>${w.length?`<b class="mpo-badge ${(w[0].recurrenceScore||0)>60?'mpo-badge--armed':'mpo-badge--degraded'}">${(w[0].recurrenceScore||0)>60?'HOT':'WARM'}</b>`:''}</div><div class="mpo-table-wrap" data-scroll="wallet-table"><table class="table mpo-table"><thead><tr><th>Wallet</th><th>Seen</th><th>Score</th><th>Status</th></tr></thead><tbody>${w.length?w.slice(0,16).map(x=>`<tr><td>${polyEscape(String(x.address||'').slice(0,6))}...${polyEscape(String(x.address||'').slice(-4))}</td><td>${x.seen||0}</td><td>${fmt(x.recurrenceScore,1)}<div class="mpo-spark ${(x.recurrenceScore||0)>60?'hot':''}"><i style="width:${Math.max(2,Math.min(100,Number(x.recurrenceScore)||0))}%"></i></div></td><td class="${(x.recurrenceScore||0)>60?'red':'amber'}">${(x.recurrenceScore||0)>60?'Hot':'Warm'}</td></tr>`).join(''):'<tr><td colspan="4"><div class="mpo-empty">No wallet intelligence collected yet.</div></td></tr>'}</tbody></table></div></div>`);
+}
+function renderControl(){
+ const s=state||{},r=s.runtime||{},cfg=s.config||{};
+ const bodyEl=$('#body-control');
+ if(bodyEl&&document.activeElement&&bodyEl.contains(document.activeElement))return;
+ const mode=String(s.mode||'paper').toUpperCase();
+ setBody('control',`<div class="mpo-surface-light" style="padding:8px;color:#111;min-height:100%"><div class="mpo-status"><b>CONTROL BAY</b><b class="mpo-badge ${mode==='LIVE'?'mpo-badge--armed':'mpo-badge--paper'}">${polyEscape(mode)}</b>${r.profile?`<span class="muted">${polyEscape(r.profile)}</span>`:''}${s.evolutionLoop?.status?`<span class="muted">Evolution ${polyEscape(s.evolutionLoop.status)}</span>`:''}</div>
+ <div class="controls-grid"><div>
+ <div class="formrow"><label>Profile:</label><select class="field" id="profile">${['CALM','FAST','DEGEN','MAX','SPRINT','RESEARCH'].map(v=>`<option value="${v}" ${String(r.profile)===v?'selected':''}>${v}</option>`).join('')}</select></div>
+ <div class="formrow"><label>Aggression:</label><select class="field" id="aggr">${[55,72,86,96,100].map(v=>`<option value="${v}" ${Number(r.aggression)===v?'selected':''}>${v}</option>`).join('')}</select></div>
+ <div class="formrow"><label>Max Open Positions:</label><input class="field" value="${cfg.maxOpenPositions??3}" readonly></div>
+ <div class="formrow"><label>Max Exposure SOL:</label><input class="field" value="${cfg.maxTotalExposureSol??.45}" readonly></div>
+ <div class="formrow"><label>Stop Loss (%):</label><input class="field" value="${cfg.stopLossPct??8}" readonly></div>
+ </div><div><fieldset class="mpo-fieldset"><legend>Testing controls</legend><div class="toolbar"><button class="btn test-reset" data-sol="1">Reset 1 SOL</button><button class="btn test-reset" data-sol="5">5 SOL</button><button class="btn test-reset" data-sol="10">10 SOL</button><button class="btn test-reset" data-sol="50">50 SOL</button></div><div class="toolbar" style="margin-top:6px"><button class="btn" id="testPause">Pause / Resume</button><button class="btn" id="testKill">Kill Switch</button></div></fieldset><fieldset class="mpo-fieldset"><legend>Safety boundary</legend><b>${polyEscape(mode)}</b><p>Evolution may promote Research → Paper → Shadow only. Real-wallet activation remains explicit.</p></fieldset><button class="btn" id="applyCtl">Apply Runtime</button></div></div></div>`);
+ $$('.test-reset').forEach(b=>b.onclick=async()=>{await post('/api/reset',{amountSol:Number(b.dataset.sol)});showDialog('Money Printer OS','Paper wallet reset',`Testing bankroll queued at ${b.dataset.sol} SOL.`)}); $('#testPause')?.addEventListener('click',()=>post('/api/pause',{})); $('#testKill')?.addEventListener('click',()=>post('/api/kill',{})); $('#applyCtl')?.addEventListener('click',async()=>{await post('/api/profile',{profile:$('#profile').value});await post('/api/runtime',{aggression:Number($('#aggr').value)});showDialog('Money Printer OS','Settings queued','Profile and runtime settings were sent to the trading engine.')});
+}
+
+let polyStakeValue='2.5',polySelected=new Set(),polyRefreshBusy=false,polySubmitting=false,polyAutoSeedKey='',polyApDraft={};
+// Fast Combos (Polymarket US real execution) — mirrors the polySelected/polyAutoSeedKey pattern with separate state.
+let usComboSelected=new Set(),usComboAutoSeedKey='',usComboStakeValue='',usComboModeValue='rfq',usComboSubmitting=false,usComboBuildState=null,usComboBuildTimer=null,usComboApDraft={},usComboCountdownTimer=null,usComboRefreshBusy=false;
+const polyEscape=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function researchParamLine(p={}){const keys=[['aggression','agg'],['tp','tp'],['stop','stop'],['trail','trail'],['maxHold','hold'],['cooldown','cool'],['filter','filter'],['entry','in'],['exit','out']];return keys.filter(([k])=>p[k]!=null).map(([k,l])=>`${l} ${p[k]}`).join(' · ')||'default profile'}
+function monNum(v){const n=Number(v);return Number.isFinite(n)?n:null}
+function monFmt(v,d=4){const n=monNum(v);return n==null?'—':`${n>0?'+':''}${fmt(n,d)}`}
+function monPct(v){const n=monNum(v);return n==null?'—':fmt(n,1)+'%'}
+function leaderShadow(m={}){return monNum(m.shadowPnl??m.validationPnl??m.heldOutAvgPct??m.geometricMeanPct??m.realizedPnl)}
+function leaderTrades(m={}){return monNum(m.n??m.trades??m.tradeCount??m.samples)}
+function leaderConf(m={}){return monNum(m.confidence??m.monteCarloPassPct??m.winRatePct)}
+function leaderStatus(x={}){return x.status||x.decision||x.gate?.nextMode||x.gate?.reason||'—'}
+function renderResearchMonitor(){
+ const r=researchMonitor||{},running=Array.isArray(r.running)?r.running:[],recent=Array.isArray(r.recent)?r.recent:[],rejections=r.rejections||{};
+ const leaders=(Array.isArray(r.leaderboard)&&r.leaderboard.length?r.leaderboard:Array.isArray(r.experiments)?r.experiments:[]);
+ const total=Math.max(0,Number(r.total||0)),done=Math.max(0,Number(r.completed||0)),queued=Math.max(0,Number(r.queueRemaining||0)),pct=total?Math.max(2,Math.min(100,done/total*100)):2,lifetime=Math.max(done,Number(r.lifetimeTested||0));
+ const status=String(r.status||'idle').toUpperCase(),live=status==='RUNNING',bad=status==='ERROR';
+ const policy=r.activeEvolutionPolicy||state?.system?.activeEvolutionPolicy||{},champ=r.champion||state?.evolutionLoop?.champion||{},promo=r.promotion||{};
+ const policyId=policy.id||champ.id||'BASE',policyStage=policy.stage||champ.stage||promo.stage||'BASE',promoLabel=promo.automaticLivePromotionAllowed?'LIVE BLOCKED':promo.paperCanary||String(policyStage).toUpperCase()==='PAPER_CANARY'?'PAPER CANARY':String(policyStage).toUpperCase()==='SHADOW'?'SHADOW':String(policyStage||'BASE');
+ const rejectRows=Object.entries(rejections).sort((a,b)=>b[1]-a[1]).slice(0,5);
+ const current=running.slice(0,4).map(x=>`<div class="inset" style="padding:5px;margin-bottom:4px"><b class="cyan">${polyEscape(x.config||'?')}</b><div class="muted" style="font-size:10px">${polyEscape(researchParamLine(x.params||{}))}</div></div>`).join('')||`<div class="mpo-empty">${status==='COMPLETE'?'Campaign complete.':r.source==='evolution-fallback'?'Between mutation batches · next generation scheduled':'Waiting for active replay shards…'}</div>`;
+ const leadRows=leaders.map((x,i)=>{const m=x.metrics||{},shadow=leaderShadow(m),dd=monNum(m.maxDrawdownPct),trades=leaderTrades(m),conf=leaderConf(m),rowAge=x.startedAt||x.ts||x.createdAt||r.updatedAt;return `<tr><td>${i+1}</td><td><b>${polyEscape(x.config||x.candidateId||'?')}</b></td><td>${polyEscape(age(rowAge))}</td><td>${polyEscape(leaderStatus(x))}</td><td class="${shadow>0?'green':shadow<0?'red':''}">${monFmt(shadow,shadow!=null&&Math.abs(shadow)<10?3:2)}</td><td>${monPct(dd)}</td><td>${trades==null?'—':trades}</td><td>${conf==null?'—':fmt(conf,1)+'%'}</td></tr>`}).join('');
+ const barVals=leaders.map(x=>leaderShadow(x.metrics||{})).filter(v=>v!=null),maxAbs=Math.max(.0001,...barVals.map(v=>Math.abs(v)));
+ const bars=leaders.slice(0,5).map(x=>{const v=leaderShadow(x.metrics||{}),w=v==null?3:Math.max(3,Math.abs(v)/maxAbs*100);return `<div style="display:grid;grid-template-columns:88px 1fr 62px;gap:6px;align-items:center;margin:4px 0"><span>${polyEscape(x.config||'?')}</span><div class="sysbar ${v<0?'hot':''}"><i style="width:${w}%"></i></div><b class="${v>0?'green':v<0?'red':''}" style="text-align:right">${monFmt(v,3)}</b></div>`}).join('')||'<div class="mpo-empty">No completed challengers yet.</div>';
+ const ev=Array.isArray(r.evidence?.modules)?r.evidence.modules:[];
+ const evidenceHtml=ev.map(x=>{const ci=x.improvementInterval||{},blocked=(x.reasons||[]).slice(0,3).map(q=>polyEscape(q.message||q.code)).join(' · ');return `<div class="inset" style="padding:6px"><div><b class="cyan">${polyEscape(String(x.module||'module').toUpperCase())}</b> <b>${polyEscape(x.stage||'RESEARCH_ONLY')}</b></div><div class="muted" style="font-size:10px">challenger ${polyEscape(x.candidateId||'not frozen')} · groups ${Number(x.independentGroups||0)} · trials ${Number(x.trials||0)}</div><div style="font-size:10px">Δ net ${x.netImprovementPct==null?'—':fmt(x.netImprovementPct,2)+'%'} · DD ${x.maxDrawdownPct==null?'—':fmt(x.maxDrawdownPct,2)+'%'} · CI ${ci.lowerPct==null?'—':fmt(ci.lowerPct,2)+'…'+fmt(ci.upperPct,2)+'%'}</div>${blocked?`<div class="amber" style="font-size:10px">Blocked: ${blocked}</div>`:''}</div>`}).join('')||'<div class="mpo-empty">Evidence pipeline has no frozen challengers yet.</div>';
+ setBody('researchmon',`<div class="dark terminal mpo-surface-dark" style="height:100%;padding:8px;overflow:auto"><div class="mpo-status"><span class="ico" style="width:18px;height:18px"><b class="pixel-glyph">LAB</b></span><b>EXPERIMENT MONITOR</b><b class="mpo-badge ${bad?'mpo-badge--down':live?'mpo-badge--live':'mpo-badge--degraded'}">${polyEscape(status)}</b><span class="muted">${polyEscape(r.machine||'local')} · ${Number(r.workers||0)} workers</span></div><div class="mpo-metrics"><div class="mpo-metric"><label>POLICY</label><b>${polyEscape(policyId)}</b></div><div class="mpo-metric"><label>CHAMPION</label><b class="cyan">${polyEscape(champ.id||policy.championId||promo.championId||'BASE')}</b></div><div class="mpo-metric"><label>STAGE</label><b>${polyEscape(policyStage)}</b></div><div class="mpo-metric"><label>PROMOTION</label><b class="${promo.automaticLivePromotionAllowed?'red':'amber'}">${polyEscape(promoLabel)}</b></div><div class="mpo-metric"><label>BATCH</label><b>${done}/${total||'—'}</b></div><div class="mpo-metric"><label>WORKERS</label><b class="${Number(r.workers||0)?'cyan':''}">${Number(r.workers||0)}</b></div><div class="mpo-metric"><label>LIFETIME</label><b>${lifetime.toLocaleString()}</b></div><div class="mpo-metric"><label>${r.source==='evolution-fallback'?'GENERATION':'QUEUED'}</label><b>${r.source==='evolution-fallback'?Number(r.generation||0):queued}</b></div></div><div class="progress" style="margin:6px 0 8px"><i style="width:${pct}%"></i></div><div class="muted" style="margin-bottom:6px">${polyEscape(r.current||r.error||r.note||'Waiting for research telemetry.')}${r.updatedAt?` · ${age(r.updatedAt)} ago`:''}</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:7px"><fieldset class="mpo-fieldset"><legend>Testing now</legend>${current}${recent.length?`<div class="muted" style="font-size:10px;margin-top:5px">Last: ${recent.slice(0,3).map(x=>`${polyEscape(x.config)} ${x.pnl==null?'—':`${Number(x.pnl)>=0?'+':''}${fmt(x.pnl,3)}`} · ${polyEscape(x.gate||'')}`).join('<br>')}</div>`:''}</fieldset><fieldset class="mpo-fieldset"><legend>Candidate signal</legend>${bars}</fieldset></div><fieldset class="mpo-fieldset" style="margin-top:6px"><legend>Evidence gates</legend><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:6px">${evidenceHtml}</div></fieldset><fieldset class="mpo-fieldset" style="margin-top:6px"><legend>Leaderboard</legend><div class="mpo-table-wrap" style="max-height:180px"><table class="table mpo-table terminal"><thead><tr><th>#</th><th>Config</th><th>Age</th><th>Status</th><th>Shadow P/L</th><th>DD</th><th>Trades</th><th>Conf</th></tr></thead><tbody>${leadRows||'<tr><td colspan="8"><div class="mpo-empty">Results will appear as shards finish.</div></td></tr>'}</tbody></table></div></fieldset><div class="inset" style="padding:5px;margin-top:6px"><b>Rejected</b> ${rejectRows.length?rejectRows.map(([k,v])=>`<span class="muted" style="margin-left:7px">${polyEscape(k)} <b>${v}</b></span>`).join(''):'<span class="muted">none yet</span>'}</div><div class="muted" style="font-size:10px;margin-top:5px">Backtest / shadow / paper-canary research only. This monitor cannot promote a challenger into live trading.</div></div>`);
+}
+const JOURNAL_CATS=[['all','All'],['releases','Releases'],['research','Research'],['trading','Trading'],['polymarket','Polymarket'],['hive','Hive'],['ui','UI'],['bugs','Bugs']];
+function journalWhen(ts){const d=new Date(Number(ts));return Number.isFinite(d.getTime())&&Number(ts)>0?d.toLocaleString([],{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'}):'—'}
+function journalDomId(id){return 'jrn-'+String(id||'').replace(/[^a-zA-Z0-9_-]+/g,'-')}
+function journalCategory(x={}){
+ const c=String(x.category||'').toLowerCase();
+ if(['releases','research','trading','polymarket','hive','ui','bugs'].includes(c))return c;
+ if(c==='release')return 'releases';
+ if(c==='reliability')return 'bugs';
+ if(c==='product')return 'ui';
+ if(c==='infrastructure')return 'hive';
+ if(c==='development')return 'trading';
+ const blob=`${x.kind||''} ${x.module||''} ${x.title||''} ${x.type||''}`.toLowerCase();
+ if(/poly|sports|combo/.test(blob))return 'polymarket';
+ if(/research|evidence|furnace|beast|evolution|lifecycle/.test(blob))return 'research';
+ if(/release|deploy|canary|package/.test(blob))return 'releases';
+ if(/mesh|hive|network/.test(blob))return 'hive';
+ if(/ui|visual|journal|monitor/.test(blob))return 'ui';
+ if(/fix|bug|error/.test(blob))return 'bugs';
+ return 'trading';
+}
+function journalEntriesFromState(){
+ const miles=Array.isArray(projectJournal?.rows)?projectJournal.rows:[];
+ if(miles.length)return miles.map(x=>({id:x.id||`pj-${x.at}`,ts:x.at||x.ts,title:x.title||'Project milestone',narrative:x.detail||'',category:journalCategory(x),kind:x.kind||'milestone',commit:x.commit,milestone:x.kind==='research-lifecycle'||x.category==='release'||(x.kind==='git-milestone'&&/release|deploy/.test(String(x.title||'').toLowerCase())),modules:[x.module].filter(Boolean),evidence:[x.from,x.to].filter(Boolean)}));
+ return (journal||[]).slice(-80).reverse().map(x=>({id:'rt-'+(x.ts||'')+'-'+(x.type||''),ts:x.ts,title:x.message||x.symbol||x.error||'Runtime event',narrative:x.error||'',category:journalCategory({kind:x.type,title:x.message}),kind:x.type||'runtime',milestone:x.type==='evolution'||x.type==='strategy-upgrade'}));
+}
+function journalMatches(e){
+ if(!e)return false;
+ if(journalFilter!=='all'&&e.category!==journalFilter)return false;
+ const q=journalQuery.trim().toLowerCase();
+ if(!q)return true;
+ return [e.title,e.narrative,e.category,e.kind,e.commit,...(e.evidence||[]),...(e.modules||[])].join(' ').toLowerCase().includes(q);
+}
+function journalCatBadge(cat){
+ const c=String(cat||'').toLowerCase();
+ const tone=c==='bugs'?'mpo-badge--down':c==='releases'?'mpo-badge--live':c==='research'?'mpo-badge--safe':'mpo-badge--paper';
+ return `<b class="mpo-badge ${tone}">${polyEscape(c.toUpperCase())}</b>`;
+}
+function journalEntryHtml(e){
+ const tags=[e.kind,e.commit&&String(e.commit).slice(0,8),...(e.modules||[])].filter(Boolean);
+ const evid=(e.evidence||[]).length?`<div class="mpo-journal-tags">${e.evidence.map(x=>`<span>${polyEscape(x)}</span>`).join('')}</div>`:'';
+ return `<article class="mpo-journal-entry ${e.milestone?'is-milestone':''}" id="${journalDomId(e.id)}" data-id="${polyEscape(e.id)}"><header><time class="mpo-journal-when" datetime="${polyEscape(new Date(Number(e.ts)||0).toISOString())}">${journalWhen(e.ts)}</time>${e.milestone?'<b class="mpo-badge mpo-badge--safe">MILESTONE</b>':''}${journalCatBadge(e.category)}<h3>${polyEscape(e.title)}</h3></header>${e.narrative?`<p>${polyEscape(e.narrative)}</p>`:''}<div class="mpo-journal-tags">${tags.map(t=>`<span>${polyEscape(t)}</span>`).join('')}</div>${evid}</article>`;
+}
+function renderJournal(){
+ const all=journalEntriesFromState(),rows=all.filter(journalMatches);
+ const start=new Date();start.setHours(0,0,0,0);const day0=start.getTime(),week=Date.now()-7*86400000;
+ const today=rows.filter(e=>Number(e.ts)>=day0),recent=rows.filter(e=>Number(e.ts)>=week);
+ const counts={all:all.length,milestones:all.filter(e=>e.milestone).length};
+ for(const e of all)counts[e.category]=(counts[e.category]||0)+1;
+ const err=projectJournal?.error,shown=rows.length,miles=rows.filter(e=>e.milestone).length;
+ const qEl=$('#journalQ'),caret=qEl&&document.activeElement===qEl?qEl.selectionStart:null,hadFocus=caret!=null;
+ const emptyMsg='No matching entries.';
+ const compact=list=>list.length?`<div class="mpo-journal-compact">${list.slice(0,6).map(e=>`<button type="button" class="linkish journalJump" data-id="${polyEscape(e.id)}">${e.milestone?'<b>*</b> ':''}<span class="cyan">${journalWhen(e.ts)}</span> ${polyEscape(e.title)}</button>`).join('')}</div>`:`<div class="mpo-empty">${emptyMsg}</div>`;
+ const catBtns=JOURNAL_CATS.map(([id,label])=>{const n=id==='all'?Number(counts.all||0):Number(counts[id]||0);return `<button type="button" class="btn journalCat ${journalFilter===id?'on':''}" data-cat="${id}" aria-pressed="${journalFilter===id?'true':'false'}">${label}${n?` · ${n}`:''}</button>`}).join('');
+ setBody('journal',`<div class="dark terminal mpo-surface-dark mpo-journal"><div class="mpo-status"><span class="ico" style="width:18px;height:18px"><b class="pixel-glyph">JRN</b></span><b>JOURNAL</b><b class="mpo-badge ${err?'mpo-badge--down':shown?'mpo-badge--live':'mpo-badge--degraded'}">${err?'ERROR':shown+' shown'}</b><span class="muted">project + research lifecycle · not a P/L feed</span></div>
+ ${err?`<div class="mpo-error"><b>Journal unavailable</b> — ${polyEscape(err)}</div>`:''}
+ <div class="mpo-metrics"><div class="mpo-metric"><label>ENTRIES</label><b>${Number(counts.all||all.length)}</b></div><div class="mpo-metric"><label>MILESTONES</label><b class="amber">${Number(counts.milestones||0)}</b></div><div class="mpo-metric"><label>TODAY</label><b class="${today.length?'cyan':''}">${today.length}</b></div><div class="mpo-metric"><label>RECENT</label><b>${recent.length}</b></div></div>
+ <div class="mpo-journal-bar" role="toolbar" aria-label="Journal filters"><span class="mpo-journal-bar-label">FILTERS</span>${catBtns}<input class="field mpo-journal-search" id="journalQ" type="search" placeholder="Search title, commit, module…" value="${polyEscape(journalQuery)}" aria-label="Search journal"></div>
+ <div class="mpo-journal-pane" data-scroll="journal-pane"><div class="mpo-journal-glance"><fieldset class="mpo-fieldset"><legend>Today</legend>${compact(today)}</fieldset><fieldset class="mpo-fieldset"><legend>Recent</legend>${compact(recent)}</fieldset></div>
+ <div class="muted" style="margin-bottom:5px">${miles?miles+' milestone'+(miles===1?'':'s')+' in view · ':''}Verified repository and research-lifecycle history. No invented profit claims.</div>
+ <div class="mpo-journal-timeline" role="feed" aria-label="Journal timeline">${rows.length?rows.map(journalEntryHtml).join(''):'<div class="mpo-empty">No journal entries match this filter.</div>'}</div></div></div>`);
+ $$('.journalCat').forEach(b=>b.onclick=()=>{journalFilter=b.dataset.cat||'all';renderSig.delete('journal');renderJournal();const pane=$('.mpo-journal-pane');if(pane)pane.scrollTop=0});
+ const search=$('#journalQ');
+ if(search){if(hadFocus){search.focus();try{search.setSelectionRange(caret,caret)}catch{}}search.oninput=()=>{journalQuery=search.value;const pos=search.selectionStart;renderSig.delete('journal');renderJournal();const again=$('#journalQ');if(again){again.focus();try{again.setSelectionRange(pos,pos)}catch{}}}}
+ $$('.journalJump').forEach(b=>b.onclick=()=>{const t=document.getElementById(journalDomId(b.dataset.id));if(!t)return;t.scrollIntoView({block:'nearest'});t.classList.add('is-focus');setTimeout(()=>t.classList.remove('is-focus'),1400)});
+}
+// alpha.21 snapshot contract helpers — every one returns a placeholder instead of throwing when a field is absent,
+// so an older backend (no fee/book/autopilot fields) still renders.
+const polyNum=v=>{if(v===null||v===undefined||v==='')return null;const n=Number(v);return Number.isFinite(n)?n:null};
+const polyPct=(v,d=1)=>polyNum(v)==null?'—':fmt(Number(v)*100,d)+'%';
+const polyCents=(v,d=1)=>polyNum(v)==null?'—':fmt(Number(v)*100,d)+'¢';
+const polyUsd=(v,d=2)=>polyNum(v)==null?'—':'$'+fmt(v,d);
+const polyAgeS=ms=>polyNum(ms)==null?'—':Math.max(0,Math.round(Number(ms)/1000))+'s';
+const polyTime=t=>{const n=Number(t),d=new Date(n);return Number.isFinite(n)&&n>0&&!Number.isNaN(d.getTime())?d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}):'—'};
+const POLY_SRC={clob:['green','CLOB','Live CLOB order book: fillable bid/ask with measured depth.'],gamma:['amber','GAMMA','Gamma best bid/ask: fillable price, depth unknown.'],mid:['red','MID','Midpoint only — no order book. Autopilot will not place this row.']};
+const polySrcBadge=s=>{const d=POLY_SRC[String(s||'').toLowerCase()]||['muted','—','Price source unknown.'];return `<b class="${d[0]}" title="${polyEscape(d[2])}">${d[1]}</b>`};
+// Any input/select the operator can be typing into must suppress the 5s re-render.
+const POLY_FOCUS_IDS=['polyStake','polyApMode','polyApStakeSingle','polyApStakeCombo','polyApMaxOpen','usKeyId','usSecret','usSlug','usIntent','usPrice','usQty','usConfirm','usComboStake','usComboMode','usComboConfirm','usComboAutoConfirm','usComboApStake','usComboApMaxLegs','usComboApMaxOpen','usComboApLossCap'];
+// ---- Polymarket Suite: three independent modules (combos / us / paper) ------------------
+let polyModules=(()=>{const d={combos:{visible:true,open:true},us:{visible:true,open:true},paper:{visible:true,open:true}};try{const s=JSON.parse(localStorage.getItem('mpo-poly-modules')||'null');if(s&&typeof s==='object')for(const k of Object.keys(d))if(s[k]&&typeof s[k]==='object')d[k]={visible:s[k].visible!==false,open:s[k].open!==false}}catch{}return d})();
+const polyModuleSig=new Map();
+const POLY_MODS=['combos','us','paper'];
+const POLY_MOD_TITLE={combos:'FAST COMBOS · POLYMARKET US · REAL',us:'POLYMARKET US · FULL SUITE',paper:'FAST SPORTS STRATEGY LAB · PAPER'};
+const POLY_MOD_SHORT={combos:'Fast Combos',us:'US Suite',paper:'Paper Lab'};
+function persistPolyModules(){try{localStorage.setItem('mpo-poly-modules',JSON.stringify(polyModules))}catch{}}
+function polyShellHtml(){
+ return `<div class="poly-strip" id="polyStatus"></div><div class="poly-bar">MODULES:${POLY_MODS.map(m=>`<label><input type="checkbox" class="polyModShow" data-mod="${m}" ${polyModules[m].visible?'checked':''}> ${POLY_MOD_SHORT[m]}</label>`).join('')}</div>`
+  +POLY_MODS.map(m=>`<section class="poly-mod" data-mod="${m}"><header><span>${POLY_MOD_TITLE[m]}</span><button class="btn polyModCollapse" data-mod="${m}" title="Collapse or expand this module">–</button></header><div class="poly-body" id="poly-${m}" data-scroll="poly-${m}"></div></section>`).join('');
+}
+function applyPolyModuleState(){
+ for(const m of POLY_MODS){
+  const sec=$(`.poly-mod[data-mod="${m}"]`);if(!sec)continue;
+  sec.hidden=!polyModules[m].visible;
+  sec.classList.toggle('closed',!polyModules[m].open);
+  const btn=sec.querySelector('.polyModCollapse');if(btn)btn.textContent=polyModules[m].open?'–':'+';
+  const cb=$(`.polyModShow[data-mod="${m}"]`);if(cb&&cb.checked!==polyModules[m].visible)cb.checked=polyModules[m].visible;
+ }
+}
+function bindPolyBar(){
+ $$('.polyModShow').forEach(cb=>cb.onchange=()=>{const m=cb.dataset.mod;polyModules[m].visible=cb.checked;persistPolyModules();polyModuleSig.delete(m);applyPolyModuleState();renderSportsbook()});
+ $$('.polyModCollapse').forEach(b=>b.onclick=()=>{const m=b.dataset.mod;polyModules[m].open=!polyModules[m].open;persistPolyModules();polyModuleSig.delete(m);applyPolyModuleState();renderSportsbook()});
+}
+// Same guarantees as the old whole-window guard, but scoped to one module: typing in the US
+// suite no longer freezes the combos module and vice versa.
+function renderPolyModule(mod,sig,fn){
+ const m=polyModules[mod];if(!m||!m.visible||!m.open)return;
+ const box=document.getElementById('poly-'+mod);if(!box)return;
+ const ae=document.activeElement;
+ if(ae&&box.contains(ae)&&POLY_FOCUS_IDS.includes(ae.id))return;
+ if(mod==='combos'&&usComboSubmitting)return;
+ if(mod==='paper'&&polySubmitting)return;
+ const key=JSON.stringify(sig);if(polyModuleSig.get(mod)===key)return;
+ polyModuleSig.set(mod,key);
+ // Anchor the whole suite body too: a module changing height must not shift the outer scroll.
+ const outer=document.getElementById('body-sportsbook')||box;
+ const keep=captureScroll(outer);
+ try{fn(box)}catch(err){box.innerHTML=`<div class="mpo-error"><b>Module render error</b> — ${polyEscape(err&&err.message||String(err))}</div>`}
+ restoreScroll(outer,keep);
+}
+function renderSportsbook(){
+ const body=$('#body-sportsbook');if(!body)return;
+ if(body.dataset.shell!=='1'){const keep=captureScroll(body);body.innerHTML=polyShellHtml();body.dataset.shell='1';bindPolyBar();restoreScroll(body,keep)}
+ applyPolyModuleState();
+ const x=polyState||{},st=x.strategy||{},sf=st.liveSportsFeed||{},feed=x.feed||{},srcs=feed.sources||{},gl=srcs.gammaLive||{},cb=srcs.clob||{},ws=srcs.sportsWs||{};
+ const strip=$('#polyStatus');
+ if(strip)strip.innerHTML=`<div style="display:flex;justify-content:space-between;gap:8px"><div><div class="green" style="font-size:22px">POLYMARKET SUITE · US + RESEARCH LAB</div><div class="muted">US market scanner + incentive/maker lab + fast sports strategy research</div></div><div style="text-align:right"><b>${feed.degraded?'DEGRADED · CACHED':feed.ok?'LIVE FEED':'FEED DOWN'}</b><br><span class="${feed.degraded?'amber':feed.ok?'green':'red'}">${feed.ok?`${feed.count||0} markets${feed.degraded?` · last good ${polyAgeS(feed.ageMs)} ago`:''}`:polyEscape(feed.error||feed.lastError||'offline')}</span><br><span class="muted" style="font-size:10px">GAMMA LIVE ${Number(gl.games||0)} games / ${Number(gl.events||0)} ev · ${polyAgeS(gl.ageMs)}${gl.pages?` · ${gl.pages}p`:''}</span><br><span class="muted" style="font-size:10px">CLOB books ${Number(cb.tokens||0)} tok · ${polyAgeS(cb.ageMs)}${cb.batch?' · batch':''}${cb.error?' · '+polyEscape(cb.error):''}</span><br><span class="${(ws.connected??sf.connected)?'green':'amber'}">${(ws.connected??sf.connected)?'● LIVE SCORE STREAM':'○ SCORE STREAM RECONNECTING'}</span></div></div>`;
+ renderPolyModule('combos',[polyUSComboState,[...usComboSelected],usComboBuildState],renderPolyCombos);
+ renderPolyModule('us',[polyUSState],renderPolyUS);
+ renderPolyModule('paper',[polyState,[...polySelected]],renderPolyPaper);
+}
+function renderPolyCombos(box){
+ // Fast Combos · Polymarket US · REAL — snapshot contract per .workflow/scratch/SPEC-fast-combos.md. Every field is optional so an
+ // undefined/empty/error snapshot still renders (no throws) while the backend worker builds src/polymarketUSCombos.js in parallel.
+ const ucs=polyUSComboState||{},ucReady=ucs.readiness||{},ucFeed=ucs.feed||{},ucCandidates=Array.isArray(ucs.candidates)?ucs.candidates:[],ucSuggested=ucs.suggested||{},ucQuote=ucs.quote||null,ucJournal=ucs.journal||{},ucOpen=Array.isArray(ucJournal.open)?ucJournal.open:[],ucHistory=Array.isArray(ucJournal.history)?ucJournal.history:[],ucStats=ucJournal.stats||{},ucAutopilot=ucs.autopilot||{},ucBeta=ucs.betaAccess||'unknown',ucErr=ucs.error||ucs.lastError||null;
+ const ucSuggestedLegs=Array.isArray(ucSuggested.legs)?ucSuggested.legs.map(String):[],ucSeedKey=ucSuggestedLegs.join('|');
+ if(ucSeedKey&&!usComboSelected.size&&usComboAutoSeedKey!==ucSeedKey){ucSuggestedLegs.forEach(k=>usComboSelected.add(k));usComboAutoSeedKey=ucSeedKey;scheduleUSComboBuild()}
+ const ucChosenKeys=[...usComboSelected];
+ // A quote is only placeable for exactly the legs it was requested for (server enforces this too).
+ const ucQuoteKeys=ucQuote&&Array.isArray(ucQuote.legs)?ucQuote.legs.map(l=>String((l&&l.key)||((l&&l.symbol)+'|'+(l&&l.side)))).sort().join('|'):'';
+ const ucQuoteMatches=!!ucQuote&&ucQuoteKeys===ucChosenKeys.slice().sort().join('|');
+ const ucRows=ucCandidates.slice(0,12).map(m=>{
+  const ls=m.liveState||{},key=String(m.key||''),clock=[ls.period,ls.elapsed,ls.score].filter(Boolean).join(' · ')||'—';
+  return `<tr><td><input type="checkbox" class="usComboLeg" data-key="${polyEscape(key)}" ${usComboSelected.has(key)?'checked':''}></td>`
+   +`<td style="white-space:normal;min-width:170px"><b>${polyEscape(m.event||'—')}</b><br><span class="muted" style="font-size:10px">${polyEscape(String(m.league||'').toUpperCase())} · ${polyEscape(m.marketType||'')}</span></td>`
+   +`<td style="font-size:10px;white-space:normal">${polyEscape(clock)}</td>`
+   +`<td>${polyEscape(m.side||'—')}<br><span class="muted" style="font-size:10px;white-space:normal">${polyEscape(m.outcome||'')}</span></td>`
+   +`<td>${polyPct(m.price)}<br><span class="muted" style="font-size:10px">net ${polyPct(m.netPrice)}</span></td>`
+   +`<td>${polyNum(m.etaMinutes)==null?'—':'~'+Math.round(Number(m.etaMinutes))+'m'}<br><span class="muted" style="font-size:10px;white-space:normal">${polyEscape(m.lateReason||'')}</span></td>`
+   +`<td>${polyCents(m.spread)}</td></tr>`;
+ }).join('');
+ const ucBuild=usComboBuildState&&!usComboBuildState.error?usComboBuildState:null,ucBuildErr=usComboBuildState&&usComboBuildState.error?usComboBuildState.error:null;
+ const ucLegCount=Array.isArray(ucBuild&&ucBuild.legs)?ucBuild.legs.length:ucChosenKeys.length;
+ const ucEstLine=ucBuild?`${ucLegCount} leg${ucLegCount===1?'':'s'} · est. price ${polyCents(ucBuild.price)} · ${fmt(ucBuild.decimalOdds,2)}× · qty ${fmt(ucBuild.quantity,2)} · fee ${polyUsd(ucBuild.feeUsd)} · pays ${polyUsd(ucBuild.payoutUsd)}`:(ucChosenKeys.length?'Pricing this combo…':'Check 2+ candidates to build a real combo.');
+ const ucRow=(e,isOpen=false)=>{
+  const legs=Array.isArray(e.legs)?e.legs:[],legsSummary=legs.slice(0,2).map(l=>polyEscape((l&&l.outcome)||(l&&l.event)||(l&&l.symbol)||'leg')).join(' + ')+(legs.length>2?' +'+(legs.length-2):'');
+  const sym=String(e.symbol||'—'),symShort=sym.length>18?sym.slice(0,18)+'…':sym,pnl=polyNum(e.pnlUsd),status=String(e.status||'—'),statusCls=status==='WON'?'green':status==='LOST'?'red':status==='CANCELLED'?'muted':'amber';
+  return `<tr><td title="${polyEscape(sym)}">${polyEscape(symShort)}</td><td style="white-space:normal;min-width:130px">${legsSummary||'—'}</td><td>${polyNum(e.fillPrice??e.estPrice)==null?'—':polyCents(e.fillPrice??e.estPrice)} × ${fmt(e.quantity,2)}</td><td>${polyUsd(e.stakeUsd)}</td><td><b class="${statusCls}">${polyEscape(status)}</b>${isOpen?`${e.fillVerified?'':'<br><span class="muted" style="font-size:10px">unverified fill</span>'}<br><button class="btn usComboForget" data-id="${polyEscape(String(e.id||''))}" style="font-size:10px">Forget…</button>`:''}</td><td class="${pnl==null?'':pnl>=0?'green':'red'}">${pnl==null?'—':(pnl>=0?'+':'')+'$'+fmt(pnl,2)}</td></tr>`;
+ };
+ const ucOpenRows=ucOpen.slice(0,12).map(e=>ucRow(e,true)).join('')||'<tr><td colspan=6>No open real combos.</td></tr>';
+ const ucHistRows=ucHistory.slice(0,8).map(ucRow).join('')||'<tr><td colspan=6>No settled real combos yet.</td></tr>';
+ const ucKeyBadClass=ucReady.authCode==='keyNotFound'?'red':ucReady.credentialsReady?'green':'amber';
+ const ucKeyText=ucReady.authCode==='keyNotFound'?'KEY REJECTED — regenerate at polymarket.us/developer':(ucReady.credentialsReady?'CONNECTED':'KEYS NEEDED');
+ const ucBetaLabel=ucBeta==='enabled'?'COMBO API: ENABLED':(ucBeta==='denied'?'COMBO API: DENIED → MANUAL COPY MODE':'COMBO API: UNKNOWN');
+ const ucAutoMaxLegs=Number(usComboApDraft.maxLegs??ucAutopilot.maxLegs??2);
+ const ucSkippedText=(Array.isArray(ucAutopilot.skipped)?ucAutopilot.skipped:[]).slice(0,4).map(s=>polyEscape(typeof s==='string'?s:((s&&s.reason)||JSON.stringify(s)))).join(' · ')||'—';
+ const usComboPanel=`<fieldset style="border-color:#ff7a3d;background:#1a0e06;margin-top:6px"><legend style="color:#ffb37a">FAST COMBOS · POLYMARKET US · REAL</legend>
+  <div class="metric-grid"><div class="metric"><label>FEED</label><b class="${ucFeed.ok?'green':'red'}">${Number(ucFeed.eventsLive||0)} live</b><label>${Number(ucFeed.candidates??ucCandidates.length)} candidates · age ${polyAgeS(ucFeed.ageMs)}${Number(ucStats.unverified||0)?` · <span class="amber">${Number(ucStats.unverified)} unverified</span>`:''}</label></div><div class="metric"><label>KEY</label><b class="${ucKeyBadClass}">${polyEscape(ucKeyText)}</b></div><div class="metric"><label>BETA</label><b class="${ucBeta==='enabled'?'green':(ucBeta==='denied'?'amber':'muted')}">${ucBetaLabel}</b></div><div class="metric"><label>EXECUTION</label><b class="${ucReady.sessionArmed?'red':'amber'}">${ucReady.sessionArmed?'ARMED':'SAFE'}</b><label>manual confirm only</label></div></div>
+  ${ucErr?`<div class="mpo-error"><b>Fast combos error</b> — ${polyEscape(ucErr)}</div>`:''}
+  <div data-scroll="combo-cands" style="overflow:auto;max-height:200px"><table class="table terminal"><thead><tr><th></th><th>Event / League / Type</th><th>Clock</th><th>Side / Outcome</th><th>Ask (net)</th><th>ETA / reason</th><th>Spread</th></tr></thead><tbody>${ucRows||'<tr><td colspan=7>No near-settlement real candidates right now.</td></tr>'}</tbody></table></div>
+  <div class="inset" style="padding:6px;margin-top:6px"><b>Real combo builder</b><div class="formrow" style="grid-template-columns:90px 1fr 150px"><label>Stake $</label><input class="field" id="usComboStake" type="number" min="1" step="0.5" value="${polyEscape(usComboStakeValue||ucAutopilot.stakeUsd||5)}"><select class="field" id="usComboMode"><option value="rfq" ${usComboModeValue==='rfq'?'selected':''}>RFQ</option><option value="limit" ${usComboModeValue==='limit'?'selected':''}>Limit @ est. price</option></select></div>
+  <div class="muted" style="font-size:11px;margin:4px 0">${ucBuildErr?`<span class="red">${polyEscape(ucBuildErr)}</span>`:polyEscape(ucEstLine)}</div>
+  <div class="toolbar"><button class="btn" id="usComboGetQuote" ${ucChosenKeys.length<2?'disabled':''}>Get quote</button>${ucQuote?`<span>Quote ${polyCents(ucQuote.buyPrice)} × ${fmt(ucQuote.buyQtyDecimal,2)} · expires in <b id="usComboQuoteCountdown">—</b>${ucQuoteMatches?'':' · <b class="red">legs changed — re-quote</b>'}</span>`:'<span class="muted">No active quote.</span>'}<button class="btn" id="usComboCancelQuote" ${ucQuote&&ucQuote.rfqId?'':'disabled'}>Cancel quote</button><button class="btn" id="usComboCopyLegs" ${ucChosenKeys.length?'':'disabled'}>Copy legs</button></div>
+  <div class="toolbar"><input class="field" id="usComboConfirm" placeholder="Type PLACE REAL COMBO" style="width:200px"><button class="btn" id="usComboPlace" ${ucReady.sessionArmed?'':'disabled'}>Place combo</button></div></div>
+  <div class="grid2" style="margin-top:6px"><fieldset><legend>Open real combos · ${ucOpen.length}</legend><div class="toolbar" style="margin-bottom:4px"><button class="btn" id="usComboSettle">Check settlement</button></div><div data-scroll="combo-open" style="overflow:auto;max-height:160px"><table class="table terminal"><thead><tr><th>Symbol</th><th>Legs</th><th>Price × Qty</th><th>Stake</th><th>Status</th><th>P/L</th></tr></thead><tbody>${ucOpenRows}</tbody></table></div></fieldset><fieldset><legend>Last 8 combos journal</legend><div data-scroll="combo-hist" style="overflow:auto;max-height:160px"><table class="table terminal"><thead><tr><th>Symbol</th><th>Legs</th><th>Price × Qty</th><th>Stake</th><th>Status</th><th>P/L</th></tr></thead><tbody>${ucHistRows}</tbody></table></div><div class="muted" style="font-size:10px;margin-top:3px">${Number(ucStats.placed||0)} placed · ${Number(ucStats.won||0)} won · ${Number(ucStats.lost||0)} lost · P/L ${polyUsd(ucStats.pnlUsd)} · hit rate ${ucStats.hitRate==null?'—':polyPct(ucStats.hitRate)}</div></fieldset></div>
+  <fieldset style="margin-top:6px"><legend>Autopilot · REAL money (double opt-in)</legend><div class="toolbar"><b class="${ucAutopilot.enabled?'green':'amber'}">${ucAutopilot.enabled?'ON':'OFF'}</b><button class="btn" id="usComboApToggle">${ucAutopilot.enabled?'Turn OFF':'Turn ON'}</button></div><div class="formrow" style="grid-template-columns:1fr 100px"><label>Stake $</label><input class="field" id="usComboApStake" type="number" min="1" step="0.5" value="${polyEscape(usComboApDraft.stakeUsd??ucAutopilot.stakeUsd??5)}"></div><div class="formrow" style="grid-template-columns:1fr 100px"><label>Max legs</label><select class="field" id="usComboApMaxLegs">${[2,3].map(v=>`<option value="${v}" ${ucAutoMaxLegs===v?'selected':''}>${v}</option>`).join('')}</select></div><div class="formrow" style="grid-template-columns:1fr 100px"><label>Max open</label><input class="field" id="usComboApMaxOpen" type="number" min="1" step="1" value="${polyEscape(usComboApDraft.maxOpen??ucAutopilot.maxOpen??3)}"></div><div class="formrow" style="grid-template-columns:1fr 100px"><label>Daily loss cap $</label><input class="field" id="usComboApLossCap" type="number" min="1" step="1" value="${polyEscape(usComboApDraft.dailyLossCapUsd??ucAutopilot.dailyLossCapUsd??50)}"></div><input class="field" id="usComboAutoConfirm" placeholder="Type ENABLE REAL AUTOPILOT to turn on" style="width:100%;margin:4px 0"><div class="toolbar"><button class="btn" id="usComboApApply">Apply settings</button></div><div class="muted" style="font-size:10px">Last action: ${polyEscape((a=>!a?'—':typeof a==='string'?a:a.disabled?('autopilot disabled: '+(a.reason||'')):(String(a.symbol||'').slice(0,18)+' @ '+polyCents(a.price)+' × '+fmt(a.quantity,2)))(ucAutopilot.lastAction))} · last run ${polyTime(ucAutopilot.lastRunAt)}<br>Skipped: ${ucSkippedText}</div></fieldset>
+ </fieldset>`;
+ box.innerHTML=`<div class="dark terminal" style="padding:8px">`+usComboPanel+`</div>`;
+ // Fast Combos · Polymarket US · REAL — wiring for the fieldset injected above.
+ const updateUsComboPlaceGate=()=>{
+  const btn=$('#usComboPlace');if(!btn)return;
+  const mode=$('#usComboMode')?.value||usComboModeValue;
+  const confirmed=($('#usComboConfirm')?.value||'')==='PLACE REAL COMBO';
+  btn.disabled=!(ucReady.sessionArmed&&((!!ucQuote&&ucQuoteMatches)||mode==='limit')&&confirmed);
+ };
+ updateUsComboPlaceGate();
+ $$('.usComboLeg').forEach(el=>el.onchange=()=>{const key=el.dataset.key;if(!key)return;if(el.checked)usComboSelected.add(key);else usComboSelected.delete(key);scheduleUSComboBuild();polyModuleSig.delete('combos');renderSportsbook()});
+ $('#usComboStake')?.addEventListener('input',e=>{usComboStakeValue=e.target.value;scheduleUSComboBuild()});
+ $('#usComboMode')?.addEventListener('change',e=>{usComboModeValue=e.target.value;updateUsComboPlaceGate()});
+ $('#usComboConfirm')?.addEventListener('input',updateUsComboPlaceGate);
+ $('#usComboApStake')?.addEventListener('input',e=>{usComboApDraft.stakeUsd=e.target.value});
+ $('#usComboApMaxLegs')?.addEventListener('change',e=>{usComboApDraft.maxLegs=e.target.value});
+ $('#usComboApMaxOpen')?.addEventListener('input',e=>{usComboApDraft.maxOpen=e.target.value});
+ $('#usComboApLossCap')?.addEventListener('input',e=>{usComboApDraft.dailyLossCapUsd=e.target.value});
+ if(usComboCountdownTimer){clearInterval(usComboCountdownTimer);usComboCountdownTimer=null}
+ if(ucQuote?.expiresAt){
+  const tickUsComboCountdown=()=>{const el=$('#usComboQuoteCountdown');if(!el){if(usComboCountdownTimer){clearInterval(usComboCountdownTimer);usComboCountdownTimer=null}return}const ms=Number(ucQuote.expiresAt)-Date.now();el.textContent=ms>0?Math.ceil(ms/1000)+'s':'expired';if(ms<=0&&usComboCountdownTimer){clearInterval(usComboCountdownTimer);usComboCountdownTimer=null}};
+  tickUsComboCountdown();usComboCountdownTimer=setInterval(tickUsComboCountdown,1000);
+ }
+ $('#usComboGetQuote')?.addEventListener('click',async()=>{
+  if(usComboSubmitting)return;
+  const legKeys=ucChosenKeys.slice();
+  if(legKeys.length<2)return showDialog('Fast Combos','Select at least 2 legs','Check two or more candidate rows before requesting a quote.');
+  usComboSubmitting=true;
+  try{const r=await post('/api/polymarket-us/combos/quote',{legKeys,stakeUsd:Number(usComboStakeValue)||Number(ucAutopilot.stakeUsd)||5});
+   if(!r?.ok)showDialog('Fast Combos','Quote failed',r?.error||'Polymarket US rejected the quote request.');
+  }catch(e){showDialog('Fast Combos','Quote failed',e.message||'Unknown error')}
+  finally{usComboSubmitting=false;await refreshUSComboSnapshot()}
+ });
+ $('#usComboCancelQuote')?.addEventListener('click',async()=>{
+  const rfqId=ucQuote?.rfqId;if(!rfqId)return;
+  try{const r=await post('/api/polymarket-us/combos/cancel-rfq',{rfqId});if(!r?.ok)showDialog('Fast Combos','Cancel failed',r?.error||'Could not cancel the RFQ.');}
+  catch(e){showDialog('Fast Combos','Cancel failed',e.message||'Unknown error')}
+  finally{await refreshUSComboSnapshot()}
+ });
+ $('#usComboCopyLegs')?.addEventListener('click',async()=>{
+  const legs=ucCandidates.filter(m=>usComboSelected.has(String(m.key)));
+  if(!legs.length)return showDialog('Fast Combos','Nothing to copy','Select at least one candidate leg first.');
+  const text=legs.map(m=>`${m.symbol||''} · ${m.side||''} · ${m.outcome||''} · ${m.event||''} · ${polyNum(m.price)==null?'':fmt(m.price,3)}`).join('\n');
+  try{await navigator.clipboard.writeText(text);showDialog('Fast Combos','Legs copied',`${legs.length} leg${legs.length===1?'':'s'} copied — paste into polymarket.us to place manually while beta access is pending.`);}
+  catch(e){showDialog('Fast Combos','Copy failed','Could not access the clipboard. '+(e.message||''))}
+ });
+ $('#usComboPlace')?.addEventListener('click',async()=>{
+  if(usComboSubmitting)return;
+  const legKeys=ucChosenKeys.slice(),mode=$('#usComboMode')?.value||usComboModeValue,confirmation=$('#usComboConfirm')?.value||'';
+  if(confirmation!=='PLACE REAL COMBO')return showDialog('Fast Combos','Confirmation required','Type PLACE REAL COMBO exactly to place a real combo.');
+  if(!ucReady.sessionArmed)return showDialog('Fast Combos','Session not armed','Arm the Polymarket US session before placing a real combo.');
+  if(mode==='rfq'&&!ucQuote)return showDialog('Fast Combos','No active quote','Get a quote first, or switch to Limit mode.');
+  if(mode==='rfq'&&!ucQuoteMatches)return showDialog('Fast Combos','Quote is for different legs','The selected legs changed after the quote was requested. Get a new quote.');
+  usComboSubmitting=true;
+  try{
+   const body={legKeys,stakeUsd:Number(usComboStakeValue)||Number(ucAutopilot.stakeUsd)||5,mode,confirmation};
+   if(mode==='rfq'){body.rfqId=ucQuote?.rfqId;body.quoteId=ucQuote?.quoteId}
+   else{body.limitPrice=polyNum(ucBuild?.price)??polyNum(ucSuggested.price)}
+   const r=await post('/api/polymarket-us/combos/place',body);
+   if(!r?.ok)return showDialog('Fast Combos','Combo not placed',r?.error||'Polymarket US rejected the order.');
+   showDialog('Fast Combos','Real combo placed',`${legKeys.length} legs · ${polyUsd(r.entry?.stakeUsd)} stake · status ${polyEscape(r.entry?.status||'SUBMITTED')}`);
+   usComboSelected.clear();usComboAutoSeedKey='';usComboBuildState=null;const cf=$('#usComboConfirm');if(cf)cf.value='';
+  }catch(e){showDialog('Fast Combos','Combo not placed',e.message||'Unknown error')}
+  finally{usComboSubmitting=false;await refreshUSComboSnapshot()}
+ });
+ $$('.usComboForget').forEach(b=>b.onclick=async()=>{
+  const id=b.dataset.id;if(!id)return;
+  const confirmation=window.prompt('Type FORGET to drop this entry from the local open book. This does NOT cancel or close anything on Polymarket US — check your real positions there first.','');
+  if(confirmation!=='FORGET')return;
+  try{const r=await post('/api/polymarket-us/combos/forget',{id,confirmation});if(!r?.ok)showDialog('Fast Combos','Entry not dropped',r?.error||'Server refused.');}
+  catch(e){showDialog('Fast Combos','Entry not dropped',e.message||'Unknown error')}
+  finally{await refreshUSComboSnapshot()}
+ });
+ $('#usComboSettle')?.addEventListener('click',async()=>{
+  try{const r=await post('/api/polymarket-us/combos/settle',{});if(!r?.ok)showDialog('Fast Combos','Settlement check failed',r?.error||'Could not check settlement.');}
+  catch(e){showDialog('Fast Combos','Settlement check failed',e.message||'Unknown error')}
+  finally{await refreshUSComboSnapshot()}
+ });
+ $('#usComboApToggle')?.addEventListener('click',async()=>{
+  const turningOn=!ucAutopilot.enabled;let confirmation='';
+  if(turningOn){confirmation=$('#usComboAutoConfirm')?.value||'';if(confirmation!=='ENABLE REAL AUTOPILOT')return showDialog('Fast Combos Autopilot','Confirmation required','Type ENABLE REAL AUTOPILOT exactly to turn on real-money autopilot.')}
+  try{
+   const patch={enabled:turningOn,stakeUsd:Number($('#usComboApStake')?.value)||undefined,maxLegs:Number($('#usComboApMaxLegs')?.value)||undefined,maxOpen:Number($('#usComboApMaxOpen')?.value)||undefined,dailyLossCapUsd:Number($('#usComboApLossCap')?.value)||undefined};
+   if(turningOn)patch.confirmation=confirmation;
+   const r=await post('/api/polymarket-us/combos/autopilot',patch);
+   if(!r?.ok)return showDialog('Fast Combos Autopilot','Not updated',r?.error||'The server rejected the autopilot change.');
+   usComboApDraft={};const ac=$('#usComboAutoConfirm');if(ac)ac.value='';
+  }catch(e){showDialog('Fast Combos Autopilot','Not updated',e.message||'Unknown error')}
+  finally{await refreshUSComboSnapshot()}
+ });
+ $('#usComboApApply')?.addEventListener('click',async()=>{
+  try{
+   const r=await post('/api/polymarket-us/combos/autopilot',{stakeUsd:Number($('#usComboApStake')?.value),maxLegs:Number($('#usComboApMaxLegs')?.value),maxOpen:Number($('#usComboApMaxOpen')?.value),dailyLossCapUsd:Number($('#usComboApLossCap')?.value)});
+   if(!r?.ok)return showDialog('Fast Combos Autopilot','Settings not saved',r?.error||'The server rejected the settings change.');
+   usComboApDraft={};
+  }catch(e){showDialog('Fast Combos Autopilot','Settings not saved',e.message||'Unknown error')}
+  finally{await refreshUSComboSnapshot()}
+ });
+}
+function renderPolyUS(box){
+ const us=polyUSState||{},ur=us.readiness||{},ua=us.auth||{},uops=Array.isArray(us.opportunities)?us.opportunities:[];
+ const ubals=ua.balances?.balances||[],ubal=ubals[0]||{},upos=ua.positions?.positions||[],uorders=ua.orders?.orders||[];
+ const upRows=upos.slice(0,8).map((p,i)=>`<tr><td>${polyEscape(p.marketSlug||p.market?.slug||p.slug||'—')}</td><td>${polyEscape(p.side||p.positionSide||p.intent||'—')}</td><td>${fmt(p.quantity||p.qty||p.size,0)}</td><td>${polyUsd(p.marketValue||p.value||p.currentValue)}</td><td><button class="btn usClosePos" data-i="${i}">Close…</button></td></tr>`).join('');
+ const uorderRows=uorders.slice(0,8).map((o,i)=>`<tr><td>${polyEscape(o.marketSlug||o.market?.slug||o.slug||'—')}</td><td>${polyEscape(o.intent||o.side||'—')}</td><td>${polyUsd(o.price?.value??o.price)} × ${fmt(o.quantity||o.qty,0)}</td><td>${polyEscape(o.status||o.state||'OPEN')}</td><td><button class="btn usCancelOrder" data-i="${i}">Cancel…</button></td></tr>`).join('');
+ const urows=uops.slice(0,12).map((m,i)=>`<tr><td><button class="btn usStage" data-i="${i}">Stage</button></td><td style="white-space:normal;min-width:180px"><b>${polyEscape(m.title||m.question||m.slug)}</b><br><span class="muted">${polyEscape(m.opportunityType||'WATCH')} · score ${fmt(m.opportunityScore,0)}</span></td><td>${m.bid?fmt(m.bid*100,1)+'¢':'—'} / ${m.ask?fmt(m.ask*100,1)+'¢':'—'}</td><td>${m.spread?fmt(m.spread*100,1)+'¢':'—'}</td><td>${m.makerEdgePerContract?fmt(m.makerEdgePerContract*100,2)+'¢':'—'}</td><td>${fmt(m.executionScore,0)}</td><td>${fmt(m.openInterest||m.liquidity,0)}</td><td>${m.rewardPool?'$'+fmt(m.rewardPool,0):'—'}</td></tr>`).join('');
+ const usPanel=`<fieldset style="border-color:#2f70ff;background:#06101f"><legend style="color:#7fb0ff">POLYMARKET US · FULL SUITE</legend><div class="metric-grid"><div class="metric"><label>API</label><b class="${ur.credentialsReady?'green':'amber'}">${ur.credentialsReady?'CONNECTED':'KEYS NEEDED'}</b></div><div class="metric"><label>BALANCE</label><b>${ur.credentialsReady?polyUsd(ubal.currentBalance?.value??ubal.currentBalance):'—'}</b><label>Buying power ${ur.credentialsReady?polyUsd(ubal.buyingPower?.value??ubal.buyingPower):'—'}</label></div><div class="metric"><label>POSITIONS / ORDERS</label><b>${upos.length} / ${uorders.length}</b></div><div class="metric"><label>MARKETS SCANNED</label><b>${Number(us.counts?.total||0)}</b><label>${Number(us.counts?.incentive||0)} incentive · ${Number(us.counts?.spreadMaker||0)} maker</label></div><div class="metric"><label>REAL EXECUTION</label><b class="${ur.sessionArmed?'red':'amber'}">${ur.sessionArmed?'ARMED':'SAFE'}</b><label>manual confirm only</label></div></div>
+ ${ur.credentialsReady?'':`<div class="inset" style="padding:6px;margin:6px 0"><b>Connect your Polymarket US account</b><div class="formrow"><input class="field" id="usKeyId" autocomplete="off" spellcheck="false" placeholder="Polymarket US Key ID"><button class="btn usPaste" data-target="usKeyId">Paste</button><input class="field" id="usSecret" type="password" autocomplete="off" spellcheck="false" placeholder="Secret Key (stored locally)"><button class="btn usPaste" data-target="usSecret">Paste</button><button class="btn" id="usSaveKeys">Connect</button></div><span class="muted">Generate these at polymarket.us/developer. The secret is never rendered back into the UI.</span></div>`}
+ <div data-scroll="us-ops" style="overflow:auto;max-height:230px"><table class="table terminal"><thead><tr><th></th><th>Opportunity</th><th>Bid / Ask</th><th>Spread</th><th>Maker edge</th><th>Exec</th><th>OI</th><th>Program pool*</th></tr></thead><tbody>${urows||'<tr><td colspan=8>Scanning Polymarket US…</td></tr>'}</tbody></table></div>
+ ${ur.credentialsReady?`<div class="grid2" style="margin-top:6px"><fieldset><legend>Real positions</legend><table class="table terminal"><thead><tr><th>Market</th><th>Side</th><th>Qty</th><th>Value</th><th></th></tr></thead><tbody>${upRows||'<tr><td colspan=5>No open positions.</td></tr>'}</tbody></table></fieldset><fieldset><legend>Open real orders</legend><table class="table terminal"><thead><tr><th>Market</th><th>Intent</th><th>Price × Qty</th><th>Status</th><th></th></tr></thead><tbody>${uorderRows||'<tr><td colspan=5>No open orders.</td></tr>'}</tbody></table><button class="btn" id="usCancelAll" ${uorders.length?'':'disabled'}>Cancel all…</button></fieldset></div>`:''}
+ <div class="inset" style="padding:6px;margin-top:6px"><b>Order staging</b><div class="formrow" style="grid-template-columns:2fr 1fr 80px 70px"><input class="field" id="usSlug" placeholder="market slug"><select class="field" id="usIntent"><option>ORDER_INTENT_BUY_LONG</option><option>ORDER_INTENT_BUY_SHORT</option><option>ORDER_INTENT_SELL_LONG</option><option>ORDER_INTENT_SELL_SHORT</option></select><input class="field" id="usPrice" type="number" min=.001 max=.999 step=.001 placeholder="price"><input class="field" id="usQty" type="number" min=1 step=1 value=1></div><div class="toolbar"><label><input type="checkbox" id="usMaker" checked> maker-only</label><button class="btn" id="usPreview">Preview</button>${ur.credentialsReady?`<button class="btn" id="usArm">${ur.sessionArmed?'Disarm real':'Arm real this session'}</button>`:''}<input class="field" id="usConfirm" placeholder="Type PLACE REAL ORDER" style="width:155px"><button class="btn" id="usPlace" ${ur.sessionArmed?'':'disabled'}>Place real order</button></div><div id="usPreviewOut" class="muted" style="font-size:10px">Preview validates the order with Polymarket US before anything can be submitted. *Reward pool is shared across a program's qualifying markets; it is not a per-market payout.</div></div></fieldset>`;
+ box.innerHTML=`<div class="dark terminal" style="padding:8px">`+usPanel+`</div>`;
+ $$('.usStage').forEach(b=>b.onclick=()=>{const m=uops[Number(b.dataset.i)];if(!m)return;$('#usSlug').value=m.slug||'';$('#usPrice').value=(m.ask||m.mid||.5).toFixed(3);$('#usQty').value=1;$('#usPreviewOut').textContent=`Staged ${m.title||m.question||m.slug} · ${m.opportunityType||'WATCH'} · spread ${fmt((m.spread||0)*100,2)}¢`;});
+ $$('.usPaste').forEach(b=>b.onclick=async()=>{const el=$('#'+b.dataset.target);if(!el)return;try{const text=await navigator.clipboard.readText();if(!text)throw new Error('Clipboard is empty');el.value=text.trim();el.focus();}catch(e){el.focus();showDialog('Paste','Clipboard button could not read automatically','The field is focused now. Press ⌘V, or right-click the field and choose Paste.');}});
+ $('#usSaveKeys')?.addEventListener('click',async()=>{const r=await post('/api/polymarket-us/config',{keyId:$('#usKeyId')?.value,secretKey:$('#usSecret')?.value,realEnabled:true}).catch(e=>({ok:false,error:e.message}));if(!r?.ok)return showDialog('Polymarket US','Connection failed',r?.error||'Could not save credentials.');showDialog('Polymarket US','API connected','Credentials were stored locally with restricted file permissions. Real orders still require a session arm and explicit confirmation.');await refreshPolymarketUS();});
+ $('#usArm')?.addEventListener('click',async()=>{const r=await post('/api/polymarket-us/arm',{armed:!ur.sessionArmed}).catch(e=>({ok:false,error:e.message}));if(!r?.ok)return showDialog('Polymarket US','Arm failed',r?.error||'Could not change session state.');await refreshPolymarketUS();});
+ const usOrder=()=>({marketSlug:$('#usSlug')?.value,intent:$('#usIntent')?.value,price:Number($('#usPrice')?.value),quantity:Number($('#usQty')?.value),makerOnly:$('#usMaker')?.checked!==false});
+ $('#usPreview')?.addEventListener('click',async()=>{const out=$('#usPreviewOut');if(out)out.textContent='Validating with Polymarket US…';const r=await post('/api/polymarket-us/preview',usOrder()).catch(e=>({ok:false,error:e.message}));if(!r?.ok){if(out)out.textContent='Preview failed: '+(r?.error||'unknown error');return}if(out)out.textContent='VALID PREVIEW · '+JSON.stringify(r.preview).slice(0,420);});
+ $('#usPlace')?.addEventListener('click',async()=>{const req={...usOrder(),confirmation:$('#usConfirm')?.value};const r=await post('/api/polymarket-us/order',req).catch(e=>({ok:false,error:e.message}));if(!r?.ok)return showDialog('Polymarket US','Real order not placed',r?.error||'Exchange rejected the order.');showDialog('Polymarket US','Real order submitted',JSON.stringify(r.order).slice(0,700));$('#usConfirm').value='';await refreshPolymarketUS();});
+ $$('.usClosePos').forEach(b=>b.onclick=async()=>{const p=upos[Number(b.dataset.i)]||{},slug=p.marketSlug||p.market?.slug||p.slug;if(!slug)return showDialog('Polymarket US','Cannot close position','No market slug was returned for this position.');const confirmation=window.prompt('Type CLOSE REAL POSITION to close the entire position:','');if(confirmation!=='CLOSE REAL POSITION')return;const r=await post('/api/polymarket-us/close',{marketSlug:slug,confirmation}).catch(e=>({ok:false,error:e.message}));if(!r?.ok)return showDialog('Polymarket US','Close failed',r?.error||'Exchange rejected the close.');showDialog('Polymarket US','Position close submitted',JSON.stringify(r.result).slice(0,650));await refreshPolymarketUS();});
+ $$('.usCancelOrder').forEach(b=>b.onclick=async()=>{const o=uorders[Number(b.dataset.i)]||{},orderId=o.id||o.orderId,marketSlug=o.marketSlug||o.market?.slug||o.slug;const confirmation=window.prompt('Type CANCEL REAL ORDER to cancel this order:','');if(confirmation!=='CANCEL REAL ORDER')return;const r=await post('/api/polymarket-us/cancel',{orderId,marketSlug,confirmation}).catch(e=>({ok:false,error:e.message}));if(!r?.ok)return showDialog('Polymarket US','Cancel failed',r?.error||'Exchange rejected the cancellation.');await refreshPolymarketUS();});
+ $('#usCancelAll')?.addEventListener('click',async()=>{const confirmation=window.prompt('Type CANCEL REAL ORDERS to cancel all open orders:','');if(confirmation!=='CANCEL REAL ORDERS')return;const r=await post('/api/polymarket-us/cancel-all',{confirmation}).catch(e=>({ok:false,error:e.message}));if(!r?.ok)return showDialog('Polymarket US','Cancel all failed',r?.error||'Exchange rejected the cancellation.');await refreshPolymarketUS();});
+}
+function renderPolyPaper(box){
+ const x=polyState||{},p=x.paper||{},r=x.research||{},rp=x.replay||{},st=x.strategy||{},sf=st.liveSportsFeed||{},q=x.quote||{};
+ const c=Array.isArray(x.candidates)?x.candidates:[],sel=Array.isArray(x.suggested)?x.suggested:[],seedKey=sel.map(m=>String(m.marketId)).join('|');
+ const feed=x.feed||{},srcs=feed.sources||{},gl=srcs.gammaLive||{},cb=srcs.clob||{},ws=srcs.sportsWs||{};
+ const ap={...(p.autopilot||{}),...(x.autopilot||{})},posList=Array.isArray(p.positions)?p.positions:[];
+ const rs=r.singles||{},rc=r.combos||{};
+ if(seedKey&&!polySelected.size&&polyAutoSeedKey!==seedKey){sel.forEach(m=>polySelected.add(String(m.marketId)));polyAutoSeedKey=seedKey}
+ const chosen=c.filter(m=>polySelected.has(String(m.marketId)));
+ const rows=c.slice(0,18).map((m,i)=>{
+  const ls=m.liveState||{},fee=m.fee||{},bk=m.bucket||null;
+  const clock=[ls.period,ls.elapsed].filter(Boolean).join(' · ')||'LIVE';
+  const eta=polyNum(m.etaMinutes)==null?'—':'~'+Math.round(Number(m.etaMinutes))+'m';
+  const fill=polyNum(m.fillPrice)??polyNum(m.price)??polyNum(m.ask);
+  const net=polyNum(m.netPrice)??(fill!=null&&polyNum(fee.perShare)!=null?fill+Number(fee.perShare):null);
+  const sub=[polyNum(m.freshnessSec)==null?'':'fresh '+fmt(m.freshnessSec,0)+'s',bk&&polyNum(bk.n)?`bucket ${fmt(Number(bk.lo)*100,0)}–${fmt(Number(bk.hi)*100,0)} n=${bk.n} ${polyPct(bk.hitRate)}`:'',polyNum(m.suggestedStakeUsd)==null?'':'sug '+polyUsd(m.suggestedStakeUsd)].filter(Boolean).join(' · ');
+  return `<tr><td><input type="checkbox" class="polyLeg" data-i="${i}" ${polySelected.has(String(m.marketId))?'checked':''}></td>`
+   +`<td style="white-space:normal;min-width:150px">${polyEscape(m.question||m.event||'—')}<br><span style="font-size:10px;white-space:normal" class="muted">${polyEscape(sub)}</span></td>`
+   +`<td><b>${polyEscape(ls.score||'—')}</b><br><span style="font-size:10px">${polyEscape(clock)}</span></td>`
+   +`<td><b>${polyEscape(m.outcome||'—')}</b></td>`
+   +`<td><b>${fill==null?'—':fmt(fill*100,1)+'%'}</b><br><span style="font-size:10px">net ${net==null?'—':fmt(net*100,1)+'%'}${polyNum(fee.perShare)==null?'':' · fee '+fmt(Number(fee.perShare)*100,2)+'¢'}</span></td>`
+   +`<td>${polyNum(m.bid)==null?'—':fmt(Number(m.bid)*100,1)} / ${polyNum(m.ask)==null?'—':fmt(Number(m.ask)*100,1)}<br><span style="font-size:10px">mk ${polyCents(m.makerQuote)} · sprd ${polyCents(m.spread)}</span></td>`
+   +`<td>${fmt(m.liquidity,0)}<br><span style="font-size:10px">dep ${polyNum(m.askDepthUsd)==null?'—':'$'+fmt(m.askDepthUsd,0)}</span></td>`
+   +`<td>${eta}<br><span style="font-size:10px;white-space:normal">${polyEscape(m.lateReason||'')}</span></td>`
+   +`<td>${polySrcBadge(m.priceSource)}<br><span style="font-size:10px">${polyEscape(m.comboStatus||'')}</span></td></tr>`;
+ }).join('');
+ const sims=(x.simulations||[]).map(z=>`<tr><td>${polyEscape(z.legs)}</td><td>${fmt(z.jointProbability*100,1)}%</td><td>${fmt(z.hitRate*100,1)}%</td><td>$${fmt(z.pnl,0)}</td><td>$${fmt(z.maxDrawdown,0)}</td></tr>`).join('');
+ const buckets=(r.buckets||[]).map(b=>{const n=Number(b.n||0),ref=polyNum(b.avgQuoted)??polyNum(b.mid);return `<tr><td>${fmt(Number(b.lo)*100,0)}–${fmt(Number(b.hi)*100,0)}%</td><td>${n}</td><td>${n?polyPct(b.hitRate):'—'}</td><td>${n&&ref!=null&&polyNum(b.hitRate)!=null?`<span class="${Number(b.hitRate)-ref>=0?'green':'red'}">${fmt((Number(b.hitRate)-ref)*100,1)} pts</span>`:'—'}</td><td>${n?polyPct(b.roi):'—'}</td></tr>`}).join('');
+ const events=(x.recentEvents||[]).slice(0,8).map(ev=>{
+  const t=String(ev.type||'event').toLowerCase(),pnl=polyNum(ev.pnlUsd);
+  const cls=t==='settled'?((pnl??0)>=0?'green':'red'):t==='early-exit'?'cyan':t==='void'?'muted':'amber';
+  return `<span class="${cls}">[${polyTime(ev.at)}] ${polyEscape(t.toUpperCase())}${ev.kind?' '+polyEscape(String(ev.kind).toUpperCase()):''} ${polyEscape(ev.detail||'')}${pnl==null?'':` ${pnl>=0?'+':''}$${fmt(pnl,2)}`}</span>`;
+ }).join(' &nbsp;|&nbsp; ');
+ const skipped=(ap.skipped||[]).slice(0,6).map(s=>`${polyEscape(s.marketId||'?')}: ${polyEscape(s.reason||'—')}`).join(' · ');
+ const diag=st.candidateDiagnostics||{},rejects=Object.entries(diag.rejections||{}).sort((a,b)=>Number(b[1])-Number(a[1])).slice(0,5).map(([k,v])=>`${polyEscape(k)} ${Number(v)}`).join(' · ');
+ const apOn=ap.enabled===true,apMode=String(polyApDraft.mode??ap.mode??'both');
+ const activityText=!feed.ok?'FEED ISSUE':posList.length?`ACTIVE · ${posList.length} OPEN`:c.length?`SCANNING · ${c.length} READY`:'WAITING · NO ≤15M SETUP';
+ const activityClass=!feed.ok?'red':posList.length?'green':c.length?'cyan':'amber';
+ const positions=posList.slice(0,8).map(pos=>{
+  const kind=String(pos.kind||'combo').toLowerCase(),legs=Array.isArray(pos.legs)?pos.legs:[];
+  const bid=polyNum(pos.exitBid)??polyNum(pos.cashableBid)??polyNum(pos.bid)??polyNum((legs[0]||{}).bid);
+  const cash=kind==='single'&&bid!=null&&bid>=.99?` · <span class="green" title="Held token bid is at or above 99¢ — early exit is available.">cashable @${polyPct(bid)}</span>`:'';
+  const names=legs.slice(0,3).map(l=>polyEscape((l||{}).outcome||(l||{}).question||(l||{}).event||'leg')).join(' + ')||'—';
+  const fill=polyNum(pos.fillPrice)??polyNum((legs[0]||{}).fillPrice)??polyNum((legs[0]||{}).price);
+  const ageMin=polyNum(pos.ageMinutes);const ageNote=pos.overdue?` · <span class="red">OVERDUE ${fmt(ageMin??0,0)}m</span>`:ageMin==null?'':` · age ${fmt(ageMin,0)}m`;
+  return `<p><b class="${kind==='single'?'cyan':'amber'}">${polyEscape(kind.toUpperCase())}</b> ${legs.length} leg${legs.length===1?'':'s'} · ${polyUsd(pos.stakeUsd)} stake · fill ${fill==null?'—':fmt(fill*100,1)+'%'}${ageNote}<br><span class="muted">${names}${legs.length>3?' +'+(legs.length-3):''}</span><br><span class="muted">Potential payout ${polyUsd(pos.potentialPayoutUsd)}${polyNum(pos.feeUsd)==null?'':' · fees '+polyUsd(pos.feeUsd)}${cash}</span></p>`;
+ }).join('')||'<p>No open paper positions.</p>';
+ const quoteLine=polyNum(q.decimalOdds)==null?'':`<div class="muted" style="font-size:10px;margin-top:4px">Suggested combo ${Number(q.legs?.length||q.legs||0)||chosen.length} legs · net ${fmt(q.decimalOdds,2)}× → ${polyUsd(q.payout)}${polyNum(q.gross?.decimalOdds)==null?'':` · gross ${fmt(q.gross.decimalOdds,2)}×`}${polyNum(q.feeUsd)==null?'':` · fees ${polyUsd(q.feeUsd)}`}</div>`;
+ box.innerHTML=`<div class="dark terminal" style="padding:8px">
+ <div class="metric-grid"><div class="metric"><label>PAPER EQUITY</label><b>${fmt(r.exposureAdjustedEquityUsd??r.equityUsd??p.cashUsd,2)}</b><label>at cost ${fmt(r.equityUsd??p.cashUsd,2)}</label></div><div class="metric"><label>CLOSED TESTS</label><b>${r.closed||0}</b></div><div class="metric"><label>HIT RATE</label><b>${polyPct(r.conservativeHitRate??r.hitRate)}</b><label>realized ${polyPct(r.hitRate)}</label></div><div class="metric"><label>RESEARCH ROI</label><b class="${Number(r.conservativeRoi??r.roi??0)>=0?'green':'red'}">${polyPct(r.conservativeRoi??r.roi)}</b><label>realized ${polyPct(r.roi)} · ${polyEscape(r.verdict||'')}</label></div><div class="metric"><label>SINGLES HIT / ROI</label><b>${polyPct(rs.hitRate)} <span class="${Number(rs.roi||0)>=0?'green':'red'}">${polyPct(rs.roi)}</span></b><label>${Number(rs.closed||0)} closed · ${Number(rs.open||0)} open</label></div><div class="metric"><label>COMBOS HIT / ROI</label><b>${polyPct(rc.hitRate)} <span class="${Number(rc.roi||0)>=0?'green':'red'}">${polyPct(rc.roi)}</span></b><label>${Number(rc.closed||0)} closed · ${Number(rc.open||0)} open</label></div><div class="metric"><label>FEES PAID</label><b>${polyUsd(r.feesPaidUsd)}</b></div><div class="metric"><label>AUTOPILOT ACTIVITY</label><b class="${activityClass}">${activityText}</b><label>${Number(ap.placedCount||0)} placed · last run ${polyTime(ap.lastRunAt)}</label></div></div>
+ <div class="inset" style="padding:6px;margin:6px 0;background:#07150b"><b class="${st.keep?'green':'amber'}">SETTLEMENT AUDIT</b> · verdict ${polyEscape(r.verdict||st.verdict||'COLLECTING')} · keep ${st.keep?'YES':'NO'} · overdue ${Number(r.settlement?.overdueCount||0)} · conservative ROI ${polyPct(r.conservativeRoi)} · gamma-resolved ${Number(r.settlement?.gammaResolved||0)} · early-exits ${Number(r.settlement?.earlyExits||0)}<div style="font-size:10px;margin-top:3px" class="muted">Open marks overdue past ETA+2h as zero. Conservative ROI treats open and stale-timeout voids as lost. Closed Gamma markets are fetched so resolved losers book; a lost combo leg settles immediately. High-turnover autopilot pauses while the book is overdue or the verdict is DROP.</div></div>
+ <div class="inset" style="padding:6px;margin:6px 0;background:#07150b"><b class="amber">LONGITUDINAL REPLAY</b> · ${rp.samples||0} settled samples · ending replay equity $${fmt(rp.endingEquityUsd??p.startUsd,2)} · max drawdown ${fmt((rp.maxDrawdown||0)*100,1)}%<div style="font-size:10px;margin-top:3px">${(rp.points||[]).slice(-8).map(pt=>`#${pt.i} ${polyEscape(pt.status||'—')} ${pt.pnlUsd>=0?'+':''}$${fmt(pt.pnlUsd,2)} → $${fmt(pt.equityUsd,2)}`).join(' &nbsp; | &nbsp; ')||'Waiting for settled paper samples…'}</div></div>
+ <div class="inset" style="padding:6px;margin:6px 0;background:#07150b"><b class="cyan">RECENT EVENTS</b><div style="font-size:10px;margin-top:3px">${events||'<span class="muted">No paper placements or settlements recorded yet.</span>'}</div></div>
+ <div class="grid2" style="grid-template-columns:1.6fr .4fr"><div data-scroll="paper-cands" style="overflow:auto;max-height:260px"><table class="table terminal"><thead><tr><th>Pick</th><th>Event</th><th>Live</th><th>Side</th><th>Fill (net)</th><th>Book</th><th>Liq/Depth</th><th>ETA</th><th>Src</th></tr></thead><tbody>${rows||'<tr><td colspan=9>No live near-settlement candidates right now. Scanner is waiting instead of filling the combo with long-duration games.</td></tr>'}</tbody></table><fieldset><legend>90% leg Monte Carlo · 5,000 trials each</legend><table class="table terminal"><thead><tr><th>Legs</th><th>Expected hit</th><th>Sim hit</th><th>P/L</th><th>Max DD</th></tr></thead><tbody>${sims}</tbody></table><p class="muted">Fair-odds simulation is a sanity check, not a prediction. Six independent 90% legs only have about 53% joint probability before execution friction or correlation.</p></fieldset><fieldset><legend>Calibration ledger</legend><table class="table terminal"><thead><tr><th>Quoted bucket</th><th>Legs</th><th>Actual hit</th><th>Calibration</th><th>ROI</th></tr></thead><tbody>${buckets||'<tr><td colspan=5>No resolved samples yet.</td></tr>'}</tbody></table></fieldset></div><div><fieldset><legend>Autopilot · paper only</legend><div class="toolbar"><button class="btn" id="polyApToggle">${apOn?'Turn OFF':'Turn ON'}</button><b class="${apOn?'green':'amber'}">${apOn?'RUNNING':'PAUSED'}</b></div><label>Mode</label><select class="field" id="polyApMode" style="width:100%">${['both','singles','combos'].map(v=>`<option value="${v}" ${apMode===v?'selected':''}>${v.toUpperCase()}</option>`).join('')}</select><div class="formrow" style="grid-template-columns:1fr 90px"><label>Single stake $</label><input class="field" id="polyApStakeSingle" type="number" min="0.25" step="0.25" value="${polyEscape(polyApDraft.stakeSingleUsd??ap.stakeSingleUsd??1)}"></div><div class="formrow" style="grid-template-columns:1fr 90px"><label>Combo stake $</label><input class="field" id="polyApStakeCombo" type="number" min="0.25" step="0.25" value="${polyEscape(polyApDraft.stakeComboUsd??ap.stakeComboUsd??2.5)}"></div><div class="formrow" style="grid-template-columns:1fr 90px"><label>Max open %</label><input class="field" id="polyApMaxOpen" type="number" min="1" max="100" step="1" value="${polyEscape(polyApDraft.maxOpenPct??ap.maxOpenPct??65)}"></div><div class="toolbar"><button class="btn" id="polyApApply">Apply autopilot</button><button class="btn" id="polyApRun">Run now</button></div><div style="font-size:10px">Combos ${Number(ap.openCombos||0)} / ${Number(ap.comboLimit||1)} · settled profit ${polyUsd(ap.settledProfitUsd)}<br>Next slot bankroll: ${ap.nextComboEquityUsd?polyUsd(ap.nextComboEquityUsd):"max slots"} with settled winnings<br>Exposure ${polyUsd(ap.openExposureUsd)} / cap ${polyUsd(ap.exposureCapUsd)} · last run ${polyTime(ap.lastRunAt)}<br>Last action: ${polyEscape(ap.lastAction||'—')}<br><span class="muted">Skipped: ${skipped||'—'}</span></div></fieldset><fieldset><legend>Fast-turnover filter</legend><p>${polyEscape(st.rule||'Live only · late stage · fresh score stream · high-probability paper candidates · liquid markets.')}</p><p class="muted">Scanner funnel: ${Number(diag.accepted||0)} accepted / ${Number(diag.total||0)} markets${rejects?' · '+rejects:''}</p><p class="muted">Paper bankroll auto-refills to $25 after a full bust once all open positions are settled. Auto refills: ${Number(p.autoResets||0)}</p><label>Paper stake USD</label><input class="field" id="polyStake" type="number" min="0.25" step="0.25" value="${polyEscape(polyStakeValue)}" style="width:100%"><div class="toolbar" style="margin-top:6px"><button class="btn" id="polyPaperBet" ${chosen.length<2?'disabled':''}>Record Paper Combo</button><button class="btn" id="polyPaperSingle" ${chosen.length===1?'':'disabled'}>Record Single</button></div><div class="muted" style="font-size:10px">${chosen.length} row${chosen.length===1?'':'s'} checked · combo needs 2+, single needs exactly 1.</div>${quoteLine}<div class="toolbar"><button class="btn polyReset" data-v="25">Reset $25</button><button class="btn polyReset" data-v="100">$100</button></div></fieldset><fieldset><legend>Open paper positions · ${posList.length}</legend>${positions}</fieldset><fieldset><legend>Legacy sports research connector</legend><b class="green">PAPER / SHADOW</b><p>This lower section remains the fast sports research lab. Real U.S. account connectivity and manual-confirm execution live in the Polymarket US suite above.</p></fieldset></div></div></div>`;
+ $('#polyStake')?.addEventListener('input',e=>{polyStakeValue=e.target.value});
+ $('#polyApMode')?.addEventListener('change',e=>{polyApDraft.mode=e.target.value});
+ $('#polyApStakeSingle')?.addEventListener('input',e=>{polyApDraft.stakeSingleUsd=e.target.value});
+ $('#polyApStakeCombo')?.addEventListener('input',e=>{polyApDraft.stakeComboUsd=e.target.value});
+ $('#polyApMaxOpen')?.addEventListener('input',e=>{polyApDraft.maxOpenPct=e.target.value});
+ $$('.polyLeg').forEach(el=>el.onchange=()=>{const m=c[Number(el.dataset.i)];if(!m)return;const id=String(m.marketId);if(el.checked)polySelected.add(id);else polySelected.delete(id);polyModuleSig.delete('paper');renderSportsbook()});
+ const autopilotPost=async patch=>{
+  try{const res=await post('/api/polymarket/autopilot',patch);
+   if(!res?.ok)return showDialog('Sportsbook Paper Lab','Autopilot not updated',res?.error||'The trading service rejected the autopilot change.');
+   polyApDraft={};
+  }catch(e){showDialog('Sportsbook Paper Lab','Autopilot not updated',e.message)}
+  finally{await refreshPolymarket()}
+ };
+ $('#polyApToggle')?.addEventListener('click',()=>autopilotPost({enabled:!apOn}));
+ $('#polyApApply')?.addEventListener('click',()=>autopilotPost({mode:$('#polyApMode')?.value||apMode,stakeSingleUsd:Number($('#polyApStakeSingle')?.value),stakeComboUsd:Number($('#polyApStakeCombo')?.value),maxOpenPct:Number($('#polyApMaxOpen')?.value)}));
+ $('#polyApRun')?.addEventListener('click',async()=>{const r=await post('/api/polymarket/autopilot/run',{}).catch(e=>({ok:false,error:e.message}));if(!r?.ok)showDialog('Sportsbook Paper Lab','Autopilot run failed',r?.error||'Unknown error');await refreshPolymarket()});
+ $('#polyPaperBet')?.addEventListener('click',async()=>{
+  if(polySubmitting)return;polySubmitting=true;$('#polyPaperBet').disabled=true;
+  try{const legs=[...$$('.polyLeg:checked')].map(el=>c[Number(el.dataset.i)]).filter(Boolean);const result=await post('/api/polymarket/paper-combo',{legs,stakeUsd:Number(polyStakeValue)});
+   if(!result?.ok){showDialog('Sportsbook Paper Lab','Paper combo rejected',result?.error||'Unknown error');return}
+   const pos=result.position||{};polySelected.clear();polyAutoSeedKey=seedKey;showDialog('Sportsbook Paper Lab','Paper combo placed',`${legs.length} live legs · $${fmt(pos.stakeUsd,2)} paper stake · ${fmt(pos.decimalOdds,2)}× modeled net odds`);
+  }catch(e){showDialog('Sportsbook Paper Lab','Could not record combo',e.message)}finally{polySubmitting=false;await refreshPolymarket()}
+ });
+ $('#polyPaperSingle')?.addEventListener('click',async()=>{
+  if(polySubmitting)return;const leg=[...$$('.polyLeg:checked')].map(el=>c[Number(el.dataset.i)]).filter(Boolean)[0];
+  if(!leg)return showDialog('Sportsbook Paper Lab','No leg selected','Check exactly one candidate row to record a single.');
+  polySubmitting=true;$('#polyPaperSingle').disabled=true;
+  try{const result=await post('/api/polymarket/paper-single',{leg,stakeUsd:Number(polyStakeValue)});
+   if(!result?.ok){showDialog('Sportsbook Paper Lab','Paper single rejected',result?.error||'Unknown error');return}
+   const pos=result.position||{};polySelected.clear();polyAutoSeedKey=seedKey;showDialog('Sportsbook Paper Lab','Paper single placed',`${leg.outcome||leg.question||'leg'} · $${fmt(pos.stakeUsd??Number(polyStakeValue),2)} paper stake · fill ${fmt(Number(pos.fillPrice??leg.fillPrice??leg.price)*100,1)}%`);
+  }catch(e){showDialog('Sportsbook Paper Lab','Could not record single',e.message)}finally{polySubmitting=false;await refreshPolymarket()}
+ });
+ $$('.polyReset').forEach(b=>b.onclick=async()=>{polySelected.clear();polyAutoSeedKey=seedKey;await post('/api/polymarket/reset',{amountUsd:Number(b.dataset.v)});await refreshPolymarket()});
+}
+
+function renderNetwork(){
+ const n=networkState||{},self=n.self||{},peers=n.peers||[],online=peers.filter(p=>p.online),msgs=n.messages||[],events=n.events||[];
+ const esc=v=>String(v??'—').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
+ const fmtSol=v=>Number.isFinite(Number(v))?Number(v).toFixed(3)+' SOL':'—';
+ const contribution=p=>{const c=p.contribution||{};return `${Number(c.trades||0)} trades · ${Number(c.signals||0)} signals · ${Number(c.jobs||0)} jobs`};
+ // Presence pings re-render this window every few seconds; keep the operator's draft, focus and scroll.
+ const draftEl=$('#networkMsg'),draft=draftEl?.value||'',hadFocus=draftEl&&document.activeElement===draftEl;
+ const offline=n.error?`<div class="mpo-error"><b>Network service offline</b> — ${esc(n.error)}${n.detail?` (${esc(n.detail)})`:''}. Reconnecting automatically…</div>`:'';
+ const cards=peers.map(p=>{const pnl=Number(p.situation?.sessionPnlSol||0);return `<div class="mpo-peer"><div><b><span style="color:${p.online?'var(--mpo-led-ok)':'var(--mpo-chrome-dark)'}">${p.online?'●':'○'}</span> ${esc(p.name||p.id)}</b> <span class="muted" style="float:right">${esc(p.version||'')}</span></div><div class="muted mpo-peer-meta">${p.transport==='sync'?'Synced · '+age(p.ts)+' ago · ':''}${esc(p.platform)} ${esc(p.arch)} · ${p.cpus||'?'}T · ${p.memoryGB||'?'} GB</div><div class="muted"><b>${fmtSol(p.situation?.equitySol)}</b> · P/L <b class="${pnl>=0?'green':'red'}">${fmtSol(p.situation?.sessionPnlSol)}</b> · ${p.situation?.openPositions||0} open</div><div class="muted">Contribution: ${contribution(p)}</div></div>`}).join('')||(n.error?'':'<div class="mpo-loading">Looking for other computers on this network…</div>');
+ const feed=events.slice(-80).reverse().map(e=>`<div style="padding:4px 2px;border-bottom:1px dotted #355"><span class="cyan">${new Date(e.ts).toLocaleTimeString([], {hour:'numeric',minute:'2-digit',second:'2-digit'})}</span> <b class="green">${esc(e.name||e.nodeId)}</b> ${esc(e.text)}</div>`).join('')||'<span class="muted">Waiting for network activity…</span>';
+ setBody('network',`<div class="mpo-surface-dark dark terminal" style="display:grid;grid-template-columns:.9fr 1.1fr;gap:7px;height:100%;min-height:0;padding:7px"><div style="display:flex;flex-direction:column;min-height:0">${offline}<div class="mpo-status"><img class="tico" src="/assets/icons/network.png" alt=""><b>${esc(n.room||'Money Printer Network')}</b><b class="mpo-badge ${online.length?'mpo-badge--live':'mpo-badge--degraded'}">${online.length}/${peers.length} online</b></div><div class="mpo-metrics"><div class="mpo-metric"><label>HIVE EQUITY</label><b>${fmtSol(n.totals?.equitySol)}</b></div><div class="mpo-metric"><label>SESSION P/L</label><b class="${Number(n.totals?.sessionPnlSol||0)>=0?'green':'red'}">${fmtSol(n.totals?.sessionPnlSol)}</b></div><div class="mpo-metric"><label>TRADES</label><b>${Number(n.totals?.trades||0)}</b></div><div class="mpo-metric"><label>JOBS</label><b>${Number(n.totals?.jobs||0)}</b></div></div><div data-scroll="net-peers" style="overflow:auto;margin-top:6px;flex:1">${cards}</div></div><div style="display:grid;grid-template-rows:1fr .85fr auto;gap:6px;min-height:0"><div class="dark terminal" id="networkFeed" data-scroll="net-feed" style="overflow:auto;padding:6px"><b class="amber">LIVE NETWORK FEED</b><div style="margin-top:5px">${feed}</div></div><div class="dark terminal" id="networkChat" data-scroll="net-chat" data-pin="bottom" style="overflow:auto;padding:6px">${msgs.map(m=>`<div style="margin-bottom:4px"><span class="cyan">[${new Date(m.ts).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})}]</span> <b class="green">${esc(m.name||m.nodeId)}:</b> ${esc(m.text)}</div>`).join('')||'<span class="muted">No messages yet. Say hi to the hive.</span>'}</div><div class="toolbar"><input class="field" id="networkMsg" maxlength="500" placeholder="${n.error?'Network service offline…':'Message everyone on the network...'}" style="flex:1" ${n.error?'disabled':''}><button class="btn" id="networkSend" ${n.error?'disabled':''}>Send</button></div></div></div>`);
+ const input=$('#networkMsg');if(input){input.value=draft;if(hadFocus)input.focus()}
+ const send=async()=>{const el=$('#networkMsg'),text=el?.value.trim();if(!text)return;el.value='';const r=await post('/api/network/chat',{text}).catch(()=>({ok:false,error:'trading service unreachable'}));if(!r?.ok){el.value=text;return showDialog('Network','Message not sent',r?.error||'The network service did not accept the message.')}await refreshNetwork()};
+ $('#networkSend')?.addEventListener('click',send);$('#networkMsg')?.addEventListener('keydown',e=>{if(e.key==='Enter')send()});
+}
+
+function windowVisible(id){
+ const host=hostOf(id),w=$(`.window[data-app="${host}"]`);
+ if(!w||w.classList.contains('hidden'))return false;
+ if(!hasTabs(host))return true;
+ return (activeTab[host]||host)===id;
+}
+function renderRisk(){
+ const s=state||{},p=s.portfolio||{},el=$('#body-risk');if(!el)return;
+ const health=s.system?.health||'Starting';
+ const limit=Number(s.config?.dailyLossLimitSol)||0,daily=Number(s.dailyPnlSol||0);
+ const used=limit>0?Math.min(100,Math.max(0,(-daily)/limit*100)):0;
+ const consec=Number(s.consecutiveLosses||0);
+ setBody('risk',`<div class="dark terminal mpo-surface-dark" style="padding:8px;min-height:100%"><div class="mpo-status"><b>RISK RADAR</b><b class="mpo-badge ${health==='DEGRADED'?'mpo-badge--degraded':consec>=3?'mpo-badge--down':'mpo-badge--live'}">${polyEscape(health)}</b>${consec?`<span class="muted">${consec} consecutive losses</span>`:''}</div>
+ <div class="mpo-metrics"><div class="mpo-metric"><label>OPEN</label><b class="${s.positions?.length?'cyan':''}">${s.positions?.length||0}</b></div><div class="mpo-metric"><label>POSITION VALUE</label><b>${fmtSol(p.positionsValueSol)}</b></div><div class="mpo-metric"><label>UNREALIZED</label><b class="${Number(p.unrealizedPnlSol||0)>=0?'green':'red'}">${fmtSol(p.unrealizedPnlSol)}</b></div><div class="mpo-metric"><label>DAILY P/L</label><b class="${daily>=0?'green':'red'}">${fmtSol(s.dailyPnlSol)}</b></div><div class="mpo-metric"><label>CONSEC. LOSSES</label><b class="${consec>=3?'red':consec?'amber':''}">${consec}</b></div><div class="mpo-metric"><label>DAILY LOSS LIMIT</label><b>${fmtSol(s.config?.dailyLossLimitSol)}</b></div></div>
+ ${limit?`<div class="mpo-gauge"><label><span>Daily loss budget</span><span>${fmt(used,0)}%</span></label><div class="sysbar ${used>=90?'hot':used>=70?'warn':''}"><i style="width:${Math.max(2,used)}%"></i></div></div>`:''}
+ ${(s.system?.diagnostics||[]).length?(s.system.diagnostics).map(d=>`<div class="mpo-error">${polyEscape(d.message||d.code)}</div>`).join(''):'<div class="mpo-empty">No diagnostics. Gates quiet.</div>'}</div>`);
+}
+function renderArchive(){
+ const el=$('#body-archive');if(!el)return;
+ const rows=journal.slice(-80);
+ const errN=rows.filter(x=>x.type==='error').length;
+ setBody('archive',`<div class="dark terminal mpo-surface-dark mpo-log-pane"><div class="mpo-status"><b>DATA ARCHIVE</b><b class="mpo-badge ${errN?'mpo-badge--down':rows.length?'mpo-badge--live':'mpo-badge--degraded'}">${rows.length} entries</b>${errN?`<span class="muted"><span class="mpo-dot err"></span>${errN} err</span>`:''}<span class="muted">runtime log · open Journal for milestones</span></div><div class="log" data-scroll="archive-log">${rows.length?rows.slice().reverse().map(x=>{const msg=polyEscape(x.message||x.symbol||x.error||''),typ=polyEscape(String(x.type||'SYSTEM').toUpperCase());return `[${new Date(x.ts||Date.now()).toLocaleTimeString()}] <span class="${x.type==='error'?'red':x.type==='evolution'?'green':'cyan'}">[${typ}]</span> ${msg}`}).join('<br>'):'<div class="mpo-empty">No archive lines yet.</div>'}</div></div>`);
+}
+function renderUpdater(){
+ const el=$('#body-updater');if(!el)return;const u=updateState||{},status=String(u.status||'IDLE').toUpperCase();
+ const good=['CURRENT','READY'].includes(status),busy=['CHECKING','INSTALLING'].includes(status);
+ setBody('updater',`<div class="mpo-surface-light" style="padding:12px;color:#111;min-height:100%"><div style="display:flex;align-items:center;gap:12px"><img class="brand-mark" src="/assets/money-printer-logo.png" alt="" style="width:72px;height:72px;object-fit:contain"><div><div style="font:bold italic 22px Impact,'Arial Black',sans-serif">MONEY PRINTER OS UPDATER</div><b class="mpo-badge ${good?'mpo-badge--live':busy?'mpo-badge--degraded':'mpo-badge--down'}">${polyEscape(status)}</b></div></div>${busy?`<div class="mpo-loading">${status==='INSTALLING'?'Installing verified update…':'Checking for signed updates…'}</div>`:''}<div class="mpo-metrics" style="margin-top:10px"><div class="mpo-metric"><label>INSTALLED</label><b>${polyEscape(u.current||state?.build?.version||'—')}</b></div><div class="mpo-metric"><label>AVAILABLE</label><b>${polyEscape(u.available||'—')}</b></div><div class="mpo-metric"><label>CHANNEL</label><b title="${polyEscape(u.channel||u.source||'bangbowbing.net')}">${polyEscape(u.channel||u.source||'bangbowbing.net')}</b></div><div class="mpo-metric"><label>LAST CHECK</label><b>${u.ts?new Date(u.ts).toLocaleTimeString():'—'}</b></div></div><p>${polyEscape(u.error||u.note||'Money Printer OS checks for signed updates shortly after startup and every 10 minutes.')}</p><div class="toolbar"><button class="btn" id="updateCheck" ${busy?'disabled':''}>Check now</button><button class="btn" id="updateInstall" ${status==='READY'?'':'disabled'}>Install downloaded update</button></div><p class="muted">Internet releases are verified with the Money Printer OS release public key and SHA-256 before installation.</p></div>`);
+ $('#updateCheck')?.addEventListener('click',async()=>{updateState={...updateState,status:'CHECKING'};renderUpdater();await post('/api/update/check',{}).catch(()=>null);setTimeout(refreshUpdater,1400)});
+ $('#updateInstall')?.addEventListener('click',async()=>{await post('/api/update/install',{}).catch(()=>null);updateState={...updateState,status:'INSTALLING',note:'Restarting into the verified update…'};renderUpdater()});
+}
+function renderSimple(id){
+ const el=$('#body-'+id);if(!el)return;const s=state||{};
+ if(id==='money'){
+  const health=s.system?.health||'Starting',mode=String(s.mode||'paper').toUpperCase(),peers=(networkState?.peers||[]).filter(x=>x.online).length;
+  const daily=Number(s.dailyPnlSol||0);
+  setBody('money',`<div class="mpo-surface-light" style="padding:13px;color:#111;min-height:100%"><div style="display:grid;grid-template-columns:112px 1fr;gap:14px;align-items:center"><img class="brand-mark" src="/assets/money-printer-logo.png" alt="Money Printer OS" style="width:108px;height:108px;object-fit:contain"><div><div style="font:bold italic 22px/1 Impact,'Arial Black',sans-serif">MONEY PRINTER OS</div><div class="mpo-status"><b>v${polyEscape(s.build?.version||'—')}</b><b class="mpo-badge ${mode==='LIVE'?'mpo-badge--armed':'mpo-badge--paper'}">${polyEscape(mode)}</b><b class="mpo-badge ${health==='DEGRADED'?'mpo-badge--degraded':'mpo-badge--live'}">${polyEscape(health)}</b></div></div></div><div class="mpo-metrics" style="margin-top:10px"><div class="mpo-metric"><label>CRYPTO EQUITY</label><b>${fmtSol(s.portfolio?.equitySol)}</b></div><div class="mpo-metric"><label>SESSION P/L</label><b class="${daily>=0?'green':'red'}">${daily>=0?'+':''}${fmtSol(s.dailyPnlSol)}</b></div><div class="mpo-metric"><label>HIVE PEERS</label><b>${peers}</b></div><div class="mpo-metric"><label>POLYMARKET US</label><b>arm + confirm</b></div></div><div class="inset" style="padding:7px;background:#fff;margin-top:8px"><b>Right now</b><br>System: ${polyEscape(health)}<br>Crypto equity: ${fmtSol(s.portfolio?.equitySol)}<br>Session P/L: <b class="${daily>=0?'green':'red'}">${daily>=0?'+':''}${fmtSol(s.dailyPnlSol)}</b><br>Hive peers online: ${peers}</div><fieldset class="mpo-fieldset" style="margin-top:8px"><legend>What it does</legend><p>Trading Terminal, Polymarket Suite, Experiment Monitor, Journal, and System sit on the desktop. Money rain only moves when paper equity is actually ahead.</p><p class="muted">Continuous discovery, paper entries, sports settlement, evolution cycles, hive, health, updates. Demo-safe in paper mode.</p></fieldset></div>`);
+  return;
+ }
+ if(id==='settings'){
+  const mode=String(s.mode||'paper').toUpperCase(),health=s.system?.health||'Starting';
+  setBody('settings',`<div class="mpo-surface-light" style="padding:12px;color:#111;min-height:100%"><div class="mpo-status"><b>SETTINGS</b><b class="mpo-badge ${mode==='LIVE'?'mpo-badge--armed':'mpo-badge--paper'}">${polyEscape(mode)}</b><b class="mpo-badge ${health==='DEGRADED'?'mpo-badge--degraded':'mpo-badge--live'}">${polyEscape(health)}</b></div><fieldset class="mpo-fieldset"><legend>Machine</legend><p>CPU / RAM / disk limits live in System → Monitor.</p><button class="btn" id="setGoMonitor">Open Monitor</button></fieldset><fieldset class="mpo-fieldset"><legend>Trading runtime</legend><p>Profile, aggression and paper testing live in Trading Terminal → Controls.</p><button class="btn" id="setGoControls">Open Controls</button></fieldset><fieldset class="mpo-fieldset"><legend>Desktop</legend><button class="btn" id="setResetLayout">Reset window layout</button><p class="muted" title="Reset restores the default desktop layout and tabs, then reloads the interface.">Restores default layout, then reloads.</p></fieldset></div>`);
+  $('#setGoMonitor')?.addEventListener('click',()=>{openApp('system');setTab('system','system')});
+  $('#setGoControls')?.addEventListener('click',()=>openApp('control'));
+  $('#setResetLayout')?.addEventListener('click',()=>{localStorage.removeItem('mpo-layout');localStorage.removeItem('mpo-tabs');localStorage.setItem('mpo-open',JSON.stringify(DEFAULT_OPEN));location.reload()});
+  return;
+ }
+ setBody(id,`<div style="padding:12px;color:#111">Money Printer OS ${polyEscape(s.build?.version||'')}</div>`);
+}
+function renderChanged(id,sig,fn){if(!windowVisible(id))return;const key=JSON.stringify(sig);if(renderSig.get(id)===key)return;renderSig.set(id,key);fn()}
+function renderAll(force=false){
+ if(force)renderSig.clear(); const s=state||{},m=s.system?.metrics||{},e=s.evolutionLoop||{},p=s.portfolio||{}; const t0=performance.now();
+ renderChanged('trade',[p.equitySol,p.cashSol,s.dailyPnlSol,s.system?.health,s.watchlist,s.positions],renderTrade);
+ renderChanged('sportsbook',polyState,renderSportsbook);
+ renderChanged('researchmon',researchMonitor,renderResearchMonitor);
+ renderChanged('journal',[projectJournal,journal,journalFilter,journalQuery],renderJournal);
+ renderChanged('evolution',e,renderEvolution);
+ renderChanged('system',[m,e.status,e.workerCount,e.datasetSamples,s.system?.lastCycle,perf.stateKB,Math.round(perf.refreshMs)],renderSystem);
+ renderChanged('log',journal.slice(-180),renderLog);
+ renderChanged('wallet',s.walletIntel?.wallets,renderWallet);
+ renderChanged('control',[s.mode,s.runtime,s.config,e.status],renderControl);
+ renderChanged('network',[networkState.room,networkState.peers,networkState.messages,networkState.events,networkState.totals,networkState.error],renderNetwork);
+ renderChanged('updater',updateState,renderUpdater);
+ renderChanged('risk',[p.positionsValueSol,p.unrealizedPnlSol,s.dailyPnlSol,s.consecutiveLosses,s.system?.health,s.config?.dailyLossLimitSol,s.positions?.length],renderRisk);
+ renderChanged('archive',journal.slice(-35),renderArchive);
+ renderChanged('money',[s.build?.version,s.system?.health,s.mode,p.equitySol,s.dailyPnlSol,(networkState?.peers||[]).map(x=>[x.id,x.online,x.version])],()=>renderSimple('money'));
+ renderChanged('settings',[s.system?.health,s.mode],()=>renderSimple('settings'));
+ const mode=String(s.mode||'paper').toUpperCase();
+ $('#trayMode').textContent=mode;
+ $('#trayMode').className='mpo-badge '+(mode==='LIVE'?'mpo-badge--armed':mode==='PAPER'?'mpo-badge--paper':'mpo-badge--degraded');
+ const led=$('#feedLed');if(led){const bad=s.system?.health==='DEGRADED';led.classList.toggle('bad',bad);led.style.background=bad?'var(--mpo-led-bad)':'var(--mpo-led-ok)';}
+ perf.renderMs=performance.now()-t0;
+}
+async function post(url,obj){return fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(obj||{})}).then(r=>r.json())}
+async function refreshState(){
+ const t0=performance.now();
+ try{
+   const sr=await fetch('/api/state',{cache:'no-store'});
+   if(sr.status!==304){state=await sr.json();$('#runningVersion').textContent=state?.build?.version?'v'+state.build.version:'';perf.stateKB=Number(sr.headers.get('x-payload-bytes')||0)/1024;perf.lastStateAt=Date.now()}
+   perf.refreshMs=performance.now()-t0;trackRealizedProfitBurst();updateDesktopEffects();renderAll();
+ }catch(e){const led=$('#feedLed');if(led){led.classList.add('bad');led.style.background='var(--mpo-led-bad)'}if(!state)showDialog('Money Printer OS','Backend connection lost','The desktop is running, but the local trading service is unavailable. Money Printer OS will keep retrying automatically.')}
+}
+async function refreshPolymarket(){if(polyRefreshBusy)return;polyRefreshBusy=true;try{const r=await fetch('/api/polymarket',{cache:'no-store',signal:AbortSignal.timeout(25000)});if(!r.ok)throw new Error('Sportsbook HTTP '+r.status);const next=await r.json();if(!next.feed||!next.paper)throw new Error('Invalid sportsbook response');polyState=next}catch(e){polyState={...polyState,feed:{...(polyState.feed||{}),ok:false,error:e.message||'Polymarket feed unavailable'}}}finally{polyRefreshBusy=false;renderSig.delete('sportsbook');renderAll()}}
+async function refreshPolymarketUS(){try{const r=await fetch('/api/polymarket-us',{cache:'no-store',signal:AbortSignal.timeout(30000)});if(r.ok)polyUSState=await r.json();else polyUSState={...polyUSState,error:'US API '+r.status}}catch(e){polyUSState={...polyUSState,error:e.message||'Polymarket US unavailable'}}renderSig.delete('sportsbook');renderAll()}
+function scheduleUSComboBuild(){
+ if(usComboBuildTimer)clearTimeout(usComboBuildTimer);
+ usComboBuildTimer=setTimeout(async()=>{
+  const legKeys=[...usComboSelected];
+  if(legKeys.length<2){usComboBuildState=null;renderSig.delete('sportsbook');renderSportsbook();return}
+  try{const r=await post('/api/polymarket-us/combos/build',{legKeys,stakeUsd:Number(usComboStakeValue)||5});
+   usComboBuildState=r?.ok?r.combo:{error:r?.error||'Could not price this combo.'};
+  }catch(e){usComboBuildState={error:e.message||'Could not price this combo.'}}
+  renderSig.delete('sportsbook');renderSportsbook();
+ },300);
+}
+async function refreshUSComboSnapshot(){
+ if(usComboRefreshBusy)return;usComboRefreshBusy=true;
+ try{
+  const r=await fetch('/api/polymarket-us/combos',{cache:'no-store',signal:AbortSignal.timeout(20000)});
+  const j=await r.json().catch(()=>null);
+  if(r.ok&&j)trackComboProfitBurst(j);
+  polyUSComboState=(r.ok&&j)?j:{...(polyUSComboState||{}),error:(j&&j.error)||('Fast combos HTTP '+r.status)};
+ }catch(e){polyUSComboState={...(polyUSComboState||{}),error:e.message||'Fast combos unavailable'}}
+ finally{usComboRefreshBusy=false;renderSig.delete('sportsbook');renderAll()}
+}
+async function refreshNetwork(){try{const r=await fetch('/api/network',{cache:'no-store'});const j=await r.json();networkState=r.ok&&j&&Array.isArray(j.peers)?j:{peers:[],messages:[],events:[],error:j?.error||`network service returned ${r.status}`,detail:j?.detail};}catch{networkState={peers:[],messages:[],events:[],error:'trading service unreachable'}}renderSig.delete('network');renderAll()}
+async function refreshJournal(){
+ try{const jr=await fetch('/api/journal?limit=180',{cache:'no-store'});journal=await jr.json();renderSig.delete('log');renderSig.delete('archive');renderAll()}catch{}
+}
+async function refreshProjectJournal(){
+ try{const r=await fetch('/api/project-journal',{cache:'no-store'});projectJournal=await r.json();renderSig.delete('journal');renderSig.delete('archive');renderAll()}catch{}
+}
+async function refreshUpdater(){
+ try{const r=await fetch('/api/update',{cache:'no-store'});if(r.ok)updateState=await r.json()}catch{}renderSig.delete('updater');renderAll()
+}
+async function refreshResearchMonitor(){
+ try{const r=await fetch('/api/research-monitor',{cache:'no-store',signal:AbortSignal.timeout(4000)});if(r.ok)researchMonitor=await r.json();else researchMonitor={...researchMonitor,status:'error',error:'monitor HTTP '+r.status}}catch(e){researchMonitor={...researchMonitor,status:'error',error:e.message||'research monitor unavailable'}}renderSig.delete('researchmon');renderAll()
+}
+function boot(){
+ const steps=[['Checking database...',20],['Starting market scanner...',42],['Starting Evolution service...',65],['Restoring desktop...',86],['Ready.',100]];
+ if(matchMedia('(prefers-reduced-motion: reduce)').matches){$('#bootText').textContent='Ready.';$('#bootBar').style.width='100%';$('#boot').classList.add('hide');return;}
+ let i=0;
+ const tick=()=>{if(i>=steps.length){setTimeout(()=>$('#boot').classList.add('hide'),250);return}$('#bootText').textContent=steps[i][0];$('#bootBar').style.width=steps[i][1]+'%';i++;setTimeout(tick,180)};tick();
+}
+buildIcons();buildWindows();buildStart();boot();refreshJournal();refreshProjectJournal();refreshNetwork();refreshPolymarket();refreshPolymarketUS();refreshUSComboSnapshot();refreshUpdater();refreshResearchMonitor();refreshState();
+setInterval(()=>{if(!document.hidden)refreshState()},1500);
+setInterval(()=>{if(!document.hidden)refreshNetwork()},5000);
+setInterval(()=>{if(!document.hidden)refreshPolymarket()},5000);
+setInterval(()=>{if(!document.hidden&&windowVisible('sportsbook')&&polyModules.us.visible&&polyModules.us.open)refreshPolymarketUS()},15000);
+setInterval(()=>{if(!document.hidden&&windowVisible('sportsbook')&&polyModules.combos.visible&&polyModules.combos.open)refreshUSComboSnapshot()},5000);
+setInterval(()=>{if(!document.hidden)refreshUpdater()},15000);
+setInterval(()=>{if(!document.hidden&&windowVisible('researchmon'))refreshResearchMonitor()},3000);
+setInterval(()=>{if(!document.hidden)refreshJournal()},15000);
+setInterval(()=>{if(!document.hidden&&windowVisible('journal'))refreshProjectJournal()},15000);
+window.addEventListener('resize',()=>{clampAll()});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')$('#startMenu').classList.remove('open')});
+$('#startBtn').onclick=e=>{e.stopPropagation();$('#startMenu').classList.toggle('open')};document.addEventListener('pointerdown',e=>{if(!e.target.closest('.startmenu')&&!e.target.closest('#startBtn'))$('#startMenu').classList.remove('open')});
+setInterval(()=>$('#clock').textContent=new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}),1000);
+document.addEventListener('keydown',e=>{if(e.target.matches?.('input,select,textarea'))return;if(!$('#priceChart'))return;if(e.key==='+'||e.key==='='){chartView.zoom=Math.min(32,chartView.zoom*1.5);drawChart()}else if(e.key==='-'){chartView.zoom=Math.max(1,chartView.zoom/1.5);drawChart()}else if(e.key==='0'){chartView.zoom=1;chartView.pan=0;drawChart()}else if(e.key.toLowerCase()==='s'){chartView.range='session';chartView.zoom=1;chartView.pan=0;renderSig.delete('trade');renderTrade()}});
+window.addEventListener('beforeunload',persist);
+</script>
+</body></html>

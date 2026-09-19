@@ -1,0 +1,181 @@
+{
+  "schema": 1,
+  "kind": "beast-compare-benchmark",
+  "researchOnly": true,
+  "liveAppTouched": false,
+  "sourceCommit": "419ab0b19cd24110a5500a4b3481fba6ba42a6ad",
+  "generatedAt": "2026-09-16T23:06:47.162Z",
+  "seed": 45,
+  "corpusHash": "2c41fe928de377c85b5c038476668ab7355e53bd75cf9c9f8e0d387569b87d93",
+  "candidateCount": 513,
+  "datasetRows": 250,
+  "hardware": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.18.0",
+    "cpuThreads": 6,
+    "memoryTotalBytes": 8589934592,
+    "hostname": "bangbowbings-MacBook-Neo.local"
+  },
+  "promotionGates": {
+    "robustScoreMargin": 1,
+    "minHeldOutAvgPct": 0,
+    "minHeldOutN": 12,
+    "minSamples": 40,
+    "minActivityPct": 8,
+    "minStressAvgPct": -2,
+    "minMonteCarloPassPct": 70,
+    "minConsistencyPct": 50
+  },
+  "numericalTolerance": 0.000001,
+  "beastDefault": {
+    "enabled": false,
+    "gpu": false,
+    "workers": 2,
+    "batchSize": 4096,
+    "ramTargetGB": 4,
+    "cpuPercent": 80,
+    "gpuVramMb": 2048,
+    "cpuFallback": true
+  },
+  "furnace": {
+    "enabled": false,
+    "batchSize": 4096,
+    "throughputVerifiedBatchSize": 4096,
+    "sealedFraction": 0.15
+  },
+  "searchCoverage": {
+    "dimensions": 13,
+    "cells": 506,
+    "uniqueExact": 513,
+    "duplicates": 0,
+    "duplicateRate": 0,
+    "trials": 513,
+    "selectionPressure": {
+      "familyWiseAlpha": 0.05,
+      "bonferroniAlpha": 0.00009746588693957116,
+      "log10Trials": 2.7101173651118162
+    }
+  },
+  "sealed": {
+    "available": true,
+    "ranking": 213,
+    "sealed": 37,
+    "selectionUse": false,
+    "intactUnderMutation": true
+  },
+  "modes": {
+    "baseline": {
+      "wallMs": 70.9,
+      "variantsPerSec": 7240.389,
+      "workers": 1,
+      "rssPeakMB": 79.69,
+      "cpuProxyPct": 124.5,
+      "rankingFingerprint": "82a330a852f3f91cb56729bcdd6c425e5c22063ae56ba53c6fd8f3acd24f0b59",
+      "rankingOrderHash": "8d5c0989d377ce5f2f0b4b046f658a4fe72913de12813dbb58776686b39034f0",
+      "promotionGate": "RETAIN",
+      "promoted": false,
+      "winnerId": "BEAST-0070",
+      "startupMs": null
+    },
+    "cpuFast1": {
+      "wallMs": 53.5,
+      "variantsPerSec": 9586.366,
+      "workers": 1,
+      "rssPeakMB": 80.42,
+      "cpuProxyPct": 145,
+      "rankingFingerprint": "82a330a852f3f91cb56729bcdd6c425e5c22063ae56ba53c6fd8f3acd24f0b59",
+      "rankingOrderHash": "8d5c0989d377ce5f2f0b4b046f658a4fe72913de12813dbb58776686b39034f0",
+      "promotionGate": "RETAIN",
+      "promoted": false,
+      "winnerId": "BEAST-0070",
+      "duplicateRate": 0,
+      "recomputeRate": 0
+    },
+    "cpuFastN": {
+      "wallMs": 79,
+      "variantsPerSec": 6494.397,
+      "workers": 4,
+      "rssPeakMB": 118.23,
+      "cpuProxyPct": 325.1,
+      "rankingFingerprint": "82a330a852f3f91cb56729bcdd6c425e5c22063ae56ba53c6fd8f3acd24f0b59",
+      "rankingOrderHash": "8d5c0989d377ce5f2f0b4b046f658a4fe72913de12813dbb58776686b39034f0",
+      "promotionGate": "RETAIN",
+      "promoted": false,
+      "winnerId": "BEAST-0070"
+    },
+    "gpu": {
+      "ok": false,
+      "reason": "torch-unavailable",
+      "fallback": "cpu",
+      "wallMs": 0.2,
+      "probeMs": 73,
+      "sidecarMs": null,
+      "variantsPerSec": null,
+      "rssPeakMB": 111.27,
+      "peakMemoryMb": null,
+      "device": null,
+      "deviceName": null,
+      "vramBudgetMb": null,
+      "recomputeRate": null,
+      "rankingFingerprint": null,
+      "promotionGate": null,
+      "winnerId": null,
+      "parityMaxAbs": null
+    }
+  },
+  "parity": {
+    "locked": {
+      "corpusHashMatch": true,
+      "rankingFingerprintMatch": true,
+      "rankingOrderMatch": true,
+      "promotionMatch": true
+    },
+    "cpuPackedVsPool": {
+      "rankingFingerprintMatch": true,
+      "rankingOrderMatch": true,
+      "promotionMatch": true
+    },
+    "promotionGatesUnchanged": true,
+    "gpuAccepted": false
+  },
+  "speedup": {
+    "cpuFast1VsBaseline": 1.32,
+    "cpuFastNVsBaseline": 0.9
+  },
+  "recommendations": {
+    "acceptCpuRamFastPath": true,
+    "acceptGpuDefault": false,
+    "acceptGpuOptIn": false,
+    "reason": "GPU not accepted as default (torch-unavailable). BEAST uses the packed CPU/RAM fast path; extra workers are only recommended when they beat 1-worker wall time.",
+    "workers": 1,
+    "batchSize": 4096,
+    "ramTargetGB": 0.8,
+    "cpuPercent": 80,
+    "gpuBatch": 4096,
+    "gpuVramMb": 2048,
+    "gpuFinalists": "deterministic-floor (robustScore MC ≤ +10) plus at least 12",
+    "observedSpeedupX": 1.32
+  },
+  "witchdoctorGpu": {
+    "source": "research/gpu-furnace/BENCHMARK_WITCHDOCTOR_20260916.md",
+    "device": "WITCHDOCTOR NVIDIA GeForce RTX 5070",
+    "variants": 4097,
+    "rows": 3000,
+    "rounds": 90,
+    "dtype": "float64",
+    "wallMs": 657.87,
+    "variantsPerSec": 6227.7,
+    "peakVramMb": 1188.423,
+    "deterministicMaxAbs": 4.263256414560601e-14
+  },
+  "priorCpuThroughput": {
+    "source": "task 20260916-175609-f1e6e / npm run bench:evolution",
+    "variants": 2048,
+    "rows": 3000,
+    "generations": 3,
+    "legacyVariantsPerSec": 2134.5,
+    "fastVariantsPerSec": 2558,
+    "speedupX": 1.2
+  }
+}

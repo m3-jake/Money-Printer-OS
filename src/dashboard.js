@@ -1,0 +1,488 @@
+import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { loadState, loadStateCached, stateStamp, readJournal, enqueueAction } from './store.js';
+import { cfg } from './config.js';
+import { readEvidenceMonitor } from './researchEvidenceStore.js';
+import { readResearchControlPlane, attachControlPlaneToMonitor, leaderboardRows, championPublicationView } from './researchControlPlane.js';
+import { saveResourcePolicy, resourceSnapshot, systemTelemetry } from './resourcePolicy.js';
+import { polymarketSnapshot, placePaperCombo, placePaperSingle, setAutopilot, runAutopilotOnce, resetPolymarketPaper, realPolymarketReadiness, simulateComboSamples } from './polymarket.js';
+import { polymarketUSSnapshot, usReadiness, configurePolymarketUS, armPolymarketUS, previewPolymarketUSOrder, submitPolymarketUSOrder, closePolymarketUSPosition, cancelPolymarketUSOrder, cancelAllPolymarketUS } from './polymarketUS.js';
+import { usComboSnapshot, buildUSCombo, quoteUSCombo, placeUSCombo, cancelUSRfq, setUSComboAutopilot, settleUSCombos, forgetUSCombo, startUSComboLoops } from './polymarketUSCombos.js';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const html = fs.readFileSync(path.join(ROOT, 'public', 'dashboard.html'), 'utf8');
+const packageMeta = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')); 
+const MAX_BODY = 32 * 1024;
+const DATA_DIR = path.resolve(process.env.MONEY_PRINTER_DATA_DIR || path.join(ROOT,'data'));
+const UPDATE_STATUS_FILE = path.join(DATA_DIR,'update-status.json');
+const UPDATE_REQUEST_FILE = path.join(DATA_DIR,'update-request.json');
+const RESEARCH_MONITOR_FILE = path.join(DATA_DIR,'research-monitor.json');
+const RESEARCH_EVIDENCE_MONITOR_FILE = path.join(DATA_DIR,'research-evidence-monitor.json');
+const RESEARCH_CAPTURE_STATUS_FILE = path.join(DATA_DIR,'research-capture-status.json');
+function json(res, obj, status = 200, extraHeaders = {}) {
+  const payload = JSON.stringify(obj);
+  res.writeHead(status, {
+    'content-type': 'application/json; charset=utf-8',
+    'cache-control': 'no-store',
+    'x-content-type-options': 'nosniff',
+    'x-payload-bytes': String(Buffer.byteLength(payload)),
+    ...extraHeaders,
+  });
+  res.end(payload);
+}
+
+function queue(type, data = {}) {
+  return enqueueAction({ type, ...data });
+}
+function updaterState(){
+  try { return {...JSON.parse(fs.readFileSync(UPDATE_STATUS_FILE,'utf8')),current:packageMeta.version,channel:'https://bangbowbing.net/downloads/money-printer-os/stable'}; }
+  catch { return {status:'IDLE',current:packageMeta.version,available:null,channel:'https://bangbowbing.net/downloads/money-printer-os/stable'}; }
+}
+function requestUpdater(action){
+  fs.mkdirSync(DATA_DIR,{recursive:true});
+  const tmp=UPDATE_REQUEST_FILE+'.tmp';fs.writeFileSync(tmp,JSON.stringify({action,ts:Date.now()}));fs.renameSync(tmp,UPDATE_REQUEST_FILE);
+  return {ok:true,action};
+}
+
+function researchCaptureStatus(){try{return JSON.parse(fs.readFileSync(RESEARCH_CAPTURE_STATUS_FILE,'utf8'))}catch{return {schema:'mpo.research-capture-status.v1',updatedAt:null}}}
+function researchPlane(s = loadStateCached(), opts = {}){
+  return readResearchControlPlane({dataDir:DATA_DIR,journalLimit:300,state:s,mode:cfg.mode,...opts});
+}
+function finiteOrNull(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+function enrichLeaderRow(row = {}, extra = {}) {
+  const m = row.metrics || extra.metrics || {};
+  const startedAt = finiteOrNull(row.startedAt || row.ts || row.createdAt || extra.startedAt);
+  const realized = finiteOrNull(m.realizedPnl);
+  const shadow = finiteOrNull(m.shadowPnl ?? m.validationPnl ?? m.heldOutAvgPct ?? m.geometricMeanPct);
+  const dd = finiteOrNull(m.maxDrawdownPct);
+  const trades = finiteOrNull(m.n ?? m.trades ?? m.tradeCount ?? m.samples ?? m.heldOutN);
+  const confidence = finiteOrNull(m.confidence ?? m.monteCarloPassPct ?? m.winRatePct);
+  const status = row.status || row.decision || extra.status || row.gate?.nextMode || row.gate?.reason || extra.reason || null;
+  return {
+    ...row,
+    config: row.config || extra.config || '?',
+    startedAt,
+    status,
+    decision: row.decision || row.gate?.reason || extra.reason || status,
+    metrics: {
+      ...m,
+      n: trades,
+      realizedPnl: realized,
+      shadowPnl: shadow,
+      maxDrawdownPct: dd,
+      confidence,
+    },
+    gate: row.gate || { reason: extra.reason || 'unknown', eligible: false, nextMode: extra.nextMode || null, live: false },
+  };
+}
+function experimentLeaderRow(x = {}) {
+  const gate = x.evidence?.gate || {};
+  const metrics = x.evidence?.metrics || x.metrics || {};
+  return enrichLeaderRow({
+    config: x.candidateId || x.id,
+    startedAt: x.createdAt || x.observedAt,
+    status: x.lifecycle?.stage || x.evidenceStage || 'RESEARCH',
+    decision: x.lifecycle?.stage || x.evidenceStage || null,
+    metrics: {
+      n: metrics.n ?? metrics.trials ?? gate.trials,
+      shadowPnl: metrics.shadowPnl ?? metrics.heldOutAvgPct ?? gate.netImprovementPct,
+      validationPnl: metrics.validationPnl ?? metrics.geometricMeanPct,
+      maxDrawdownPct: metrics.maxDrawdownPct ?? gate.maxDrawdownPct,
+      confidence: metrics.confidence ?? metrics.monteCarloPassPct,
+    },
+    gate: { reason: x.lifecycle?.stage || x.evidenceStage || 'research-only', eligible: false, nextMode: x.paperEligible ? 'shadow' : null, live: false },
+  });
+}
+function decorateResearchMonitor(raw = {}, s = {}) {
+  const e = evolutionLoopView(s.evolutionLoop || s.evolution?.loop || {});
+  const policy = s.system?.activeEvolutionPolicy || raw.activeEvolutionPolicy || null;
+  const champ = e.champion || {};
+  const plane = readResearchControlPlane({ dataDir: DATA_DIR, journalLimit: 1 });
+  const experiments = (plane.experiments || []).slice(0, 12).map(experimentLeaderRow);
+  const champRow = champ.id && champ.id !== 'BASE'
+    ? [enrichLeaderRow({ config: champ.id, metrics: champ.metrics || {}, startedAt: champ.promotedAt, status: champ.stage || policy?.stage || 'SHADOW', gate: { reason: 'evolution-champion', eligible: false, nextMode: 'shadow', live: false } })]
+    : [];
+  const incoming = Array.isArray(raw.leaderboard) ? raw.leaderboard.map(row => enrichLeaderRow(row)) : [];
+  const seen = new Set();
+  const leaderboard = [];
+  for (const row of [...incoming, ...champRow, ...experiments]) {
+    const key = String(row.config || '');
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    leaderboard.push(row);
+    if (leaderboard.length >= 12) break;
+  }
+  const stage = policy?.stage || champ.stage || 'BASE';
+  return {
+    ...raw,
+    evidence: raw.evidence || readEvidenceMonitor(RESEARCH_EVIDENCE_MONITOR_FILE),
+    capture: raw.capture || researchCaptureStatus(),
+    activeEvolutionPolicy: policy
+      ? { id: policy.id || champ.id || 'BASE', stage: policy.stage || stage, hotReload: !!policy.hotReload }
+      : { id: champ.id || 'BASE', stage, hotReload: false },
+    champion: {
+      id: champ.id || 'BASE',
+      stage: champ.stage || policy?.stage || 'BASE',
+      promotedAt: champ.promotedAt || null,
+      metrics: champ.metrics || {},
+    },
+    promotion: {
+      automaticLivePromotionAllowed: false,
+      paperCanary: String(stage).toUpperCase() === 'PAPER_CANARY',
+      stage,
+      championId: s.runtime?.activeEvolutionChampionId || champ.id || 'BASE',
+    },
+    experiments,
+    leaderboard,
+  };
+}
+function evolutionFallbackMonitor(s) {
+  const e = evolutionLoopView(s.evolutionLoop || s.evolution?.loop || {});
+  return {
+    schema: 1,
+    source: 'evolution-fallback',
+    status: String(e.status || 'COLLECTING').toLowerCase(),
+    phase: 'evolution',
+    updatedAt: s.system?.lastCycle || Date.now(),
+    machine: process.env.COMPUTERNAME || process.env.HOSTNAME || 'local',
+    workers: Number(e.workerCount || 0),
+    researchMode: e.researchMode || 'NORMAL',
+    researchProfile: e.researchProfile || null,
+    generation: Number(e.activeGeneration || e.generation || 0),
+    lifetimeTested: Number(e.variantsTested || 0),
+    total: Number(e.currentBatchSize || 0),
+    completed: Number(e.currentBatchCompleted || 0),
+    queueRemaining: Math.max(0, Number(e.currentBatchSize || 0) - Number(e.currentBatchCompleted || 0)),
+    running: String(e.currentBatchStatus || '').toUpperCase() === 'SCORING' ? [{ config: `GEN ${e.activeGeneration || Number(e.generation || 0) + 1}`, params: { workers: Number(e.workerCount || 0), batch: Number(e.currentBatchSize || 0) } }] : [],
+    recent: (e.events || []).slice(0, 5).map(x => ({ ts: x.ts, config: x.type || 'EVOLUTION', pnl: null, gate: x.message || '' })),
+    leaderboard: [],
+    rejections: {},
+    current: String(e.currentBatchStatus || '').toUpperCase() === 'SCORING' ? `${e.researchMode === 'BEAST' || e.researchMode === 'FURNACE' ? `${e.researchMode} · ` : ''}Generation ${e.activeGeneration || Number(e.generation || 0) + 1} scoring ${Number(e.currentBatchCompleted || 0)}/${Number(e.currentBatchSize || 0)} variants` : `${e.researchMode === 'BEAST' || e.researchMode === 'FURNACE' ? `${e.researchMode} · ` : ''}Generation ${e.generation || 0} complete · next batch scheduled`,
+    note: `Evolution ${e.researchMode === 'BEAST' ? 'beast furnace' : e.researchMode === 'FURNACE' ? 'furnace' : 'engine'} active · ${Number(e.variantsTested || 0).toLocaleString()} lifetime variants tested.`,
+  };
+}
+function researchMonitorState() {
+  const s = loadStateCached();
+  const plane = researchPlane(s);
+  const evidence = readEvidenceMonitor(RESEARCH_EVIDENCE_MONITOR_FILE);
+  const capture = researchCaptureStatus();
+  let raw;
+  try {
+    raw = JSON.parse(fs.readFileSync(RESEARCH_MONITOR_FILE, 'utf8'));
+    raw = { ...raw, source: raw.source || 'replay-lab', evidence, capture };
+  } catch {
+    raw = { ...evolutionFallbackMonitor(s), evidence, capture };
+  }
+  return decorateResearchMonitor(attachControlPlaneToMonitor(raw, plane), s);
+}
+
+function meshRequest(method, pathname, payload) {
+  return new Promise(resolve => {
+    const data = payload ? JSON.stringify(payload) : '';
+    const req = http.request({ host:'127.0.0.1', port:Number(process.env.MONEY_PRINTER_MESH_HTTP_PORT||18800), path:pathname, method, headers:data?{'content-type':'application/json','content-length':Buffer.byteLength(data)}:{} }, res => {
+      let raw=''; res.on('data',c=>raw+=c); res.on('end',()=>{ try{resolve({status:res.statusCode||200,body:JSON.parse(raw||'{}')})}catch{resolve({status:502,body:{error:'mesh response invalid'}})} });
+    });
+    req.on('error',e=>resolve({status:503,body:{error:'network mesh unavailable',detail:e.message}}));
+    req.setTimeout(1200,()=>req.destroy(new Error('mesh timeout'))); if(data)req.write(data); req.end();
+  });
+}
+
+async function body(req) {
+  return new Promise(resolve => {
+    let raw = '';
+    let tooLarge = false;
+    req.on('data', d => {
+      if (tooLarge) return;
+      raw += d;
+      if (Buffer.byteLength(raw) > MAX_BODY) tooLarge = true;
+    });
+    req.on('end', () => {
+      if (tooLarge) return resolve({ __error: 'body too large' });
+      try {
+        const parsed = JSON.parse(raw || '{}');
+        resolve(parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : { __error: 'JSON body must be an object' });
+      } catch { resolve({ __error: 'invalid JSON' }); }
+    });
+  });
+}
+
+
+function candidateView(a = {}) {
+  return {
+    mint: a.mint, symbol: a.symbol, name: a.name, stage: a.stage,
+    score: a.score, edgeScore: a.edgeScore, fastEdgeScore: a.fastEdgeScore,
+    explosionScore: a.explosionScore, moonScore: a.moonScore,
+    executionScore: a.executionScore, rugScore: a.rugScore,
+    pc5: a.pc5, liq: a.liq, ageMin: a.ageMin,
+    dominantSignal: a.dominantSignal,
+    priceUsd: a.priceUsd, volumeH1: a.volumeH1, volumeH24: a.volumeH24,
+    txnsH1: a.txnsH1, fdv: a.fdv, marketCap: a.marketCap,
+    warnings: Array.isArray(a.warnings) ? a.warnings.slice(0, 6) : [],
+  };
+}
+
+function positionView(p = {}) {
+  return {
+    id: p.id, mint: p.mint, symbol: p.symbol,
+    sizeSol: p.sizeSol, remainingSol: p.remainingSol,
+    entryPrice: p.entryPrice, lastPrice: p.lastPrice,
+    openedAt: p.openedAt, score: p.score, fastEdgeScore: p.fastEdgeScore,
+    executionScore: p.executionScore,
+  };
+}
+
+function historyView(h = {}) {
+  return { symbol: h.symbol, mint: h.mint, pnlSol: h.pnlSol, returnPct: h.returnPct, reason: h.reason, closedAt: h.closedAt };
+}
+
+function journalView(x = {}) {
+  return { ts: x.ts, type: x.type, message: x.message, symbol: x.symbol, error: x.error, mint: x.mint };
+}
+
+function proposalView(p = {}) {
+  return { id: p.id, status: p.status, type: p.type, title: p.title, reason: p.reason, createdAt: p.createdAt };
+}
+
+function systemView(s = {}, policy = null) {
+  return {
+    paused: !!s.paused, killSwitch: !!s.killSwitch, health: s.health, lastCycle: s.lastCycle,
+    lastError: s.lastError, startedAt: s.startedAt, streamEvents: s.streamEvents, learner: s.learner || null,
+    metrics: { ...(s.metrics || {}), ...systemTelemetry() }, resources: resourceSnapshot(), opportunityFunnel: s.opportunityFunnel || null, diagnostics: (s.diagnostics || []).slice(-20),
+    activeEvolutionPolicy: policy || s.activeEvolutionPolicy || null,
+  };
+}
+
+function compactSeries(xs,max=1600,recent=600){
+  const a=Array.isArray(xs)?xs:[];if(a.length<=max)return a;
+  const tail=a.slice(-Math.min(recent,max-2)),head=a.slice(0,a.length-tail.length),slots=max-tail.length;
+  const sampled=[];if(slots>1&&head.length){const step=(head.length-1)/(slots-1);for(let i=0;i<slots;i++)sampled.push(head[Math.round(i*step)])}
+  return [...sampled,...tail];
+}
+function evolutionLoopView(e={}, {now=Date.now()}={}){
+  const c=e?.champion||{},m=c.metrics||{},pub=championPublicationView(c,{now});
+  return {generation:e.generation||0,variantsTested:e.variantsTested||0,survivors:e.survivors||0,status:e.status||'COLLECTING',workerCount:e.workerCount||0,
+    activeGeneration:e.activeGeneration??null,currentBatchSize:e.currentBatchSize||0,currentBatchCompleted:e.currentBatchCompleted||0,currentBatchStatus:e.currentBatchStatus||null,
+    researchMode:e.researchMode||'NORMAL',researchProfile:e.researchProfile||null,
+    lastGenerationMs:e.lastGenerationMs||0,lastGenerationCompletedAt:e.lastGenerationCompletedAt||null,
+    cluster:{enabled:!!e.cluster?.enabled},datasetSamples:e.datasetSamples||0,nextGenerationProgress:e.nextGenerationProgress||0,
+    champion:{id:pub.id,stage:pub.stage,previousId:pub.previousId,promotedAt:pub.promotedAt,ageMs:pub.ageMs,metrics:{heldOutAvgPct:m.heldOutAvgPct,geometricMeanPct:m.geometricMeanPct,compoundedMultiple:m.compoundedMultiple,activityPct:m.activityPct,profitVelocityPctPerMin:m.profitVelocityPctPerMin,maxDrawdownPct:m.maxDrawdownPct,monteCarloPassPct:m.monteCarloPassPct}},
+    challengers:leaderboardRows(e,{now}),
+    events:(e.events||[]).slice(0,25).map(x=>({ts:x.ts,type:x.type,message:x.message}))};
+}
+
+function snapshot() {
+  const s = loadStateCached();
+  const plane = researchPlane(s, {includeJournal:false,includeExperiments:false,journalLimit:1});
+  const now = Number(plane.updatedAt || Date.now());
+  return {
+    paperStartSol: s.paperStartSol,
+    cashSol: s.cashSol,
+    positions: (s.positions || []).map(positionView),
+    proposals: (s.proposals || []).filter(x => x.status === 'PENDING').slice(0, 20).map(proposalView),
+    history: (s.history || []).slice(-40).map(historyView),
+    watchlist: (s.watchlist || []).slice(0, 48).map(candidateView),
+    market: s.market || {},
+    memeIndex: s.memeIndex || {},
+    runtime: s.runtime || {},
+    system: systemView(s.system, plane.activeEvolutionPolicy),
+    stats: s.stats || {},
+    portfolio: s.portfolio || null,
+    portfolioSeries: compactSeries(s.portfolioSeries,1600,600),
+    dailyPnlSol: s.dailyPnlSol || 0,
+    hourlyPnlSol: s.hourlyPnlSol || 0,
+    consecutiveLosses: s.consecutiveLosses || 0,
+    evolutionLoop: evolutionLoopView(s.evolutionLoop || s.evolution?.loop || {}, {now}),
+    furnaceActivity: plane.furnaceActivity,
+    activeEvolutionPolicy: plane.activeEvolutionPolicy,
+    latestChampion: plane.latestChampion,
+    paperCanary: plane.paperCanary,
+    liveActivationAllowed: false,
+    automaticLivePromotionAllowed: false,
+    liveExecution: 'manual',
+    walletIntel: {
+      wallets: Object.values(s.research?.walletProfiles || {}).sort((a,b)=>(b.recurrenceScore||0)-(a.recurrenceScore||0)).slice(0,24),
+    },
+    researchSummary: {
+      universeCount: Object.keys(s.research?.universe || {}).length,
+      postmortemCount: (s.research?.postmortems || []).length,
+      lessonsCount: (s.research?.lessons || []).length,
+      experimentCount: (s.research?.experiments || []).length,
+      modelHealth: s.research?.modelHealth || { status: 'COLLECTING' },
+      learner: s.system?.learner || null,
+    },
+    mode: cfg.mode,
+    build: { version: packageMeta.version, productName: packageMeta.productName || 'Money Printer OS' },
+    config: {
+      scanIntervalSec: cfg.scanIntervalSec,
+      maxOpenPositions: cfg.maxOpenPositions,
+      maxTotalExposureSol: cfg.maxTotalExposureSol,
+      dailyLossLimitSol: cfg.dailyLossLimitSol,
+      stopLossPct: cfg.stopLossPct,
+      jitoEnabled: cfg.jitoEnabled,
+      directStreamEnabled: cfg.directStreamEnabled,
+      socialConfigured: !!cfg.socialFeedUrl,
+    },
+  };
+}
+
+export function startDashboard() {
+  const server = http.createServer(async (req, res) => {
+    try {
+      const u = new URL(req.url, 'http://127.0.0.1');
+      if (req.method === 'GET' && u.pathname === '/') {
+        res.writeHead(200, {
+          'content-type': 'text/html; charset=utf-8',
+          'cache-control': 'no-store',
+          'x-content-type-options': 'nosniff',
+          'x-frame-options': 'DENY',
+        });
+        return res.end(html);
+      }
+      if (req.method === 'GET' && u.pathname.startsWith('/assets/')) {
+        const rel = decodeURIComponent(u.pathname.slice('/assets/'.length));
+        const base = path.join(ROOT, 'public', 'assets');
+        const file = path.resolve(base, rel);
+        if (!file.startsWith(path.resolve(base) + path.sep) || !fs.existsSync(file) || !fs.statSync(file).isFile()) {
+          res.writeHead(404); return res.end('not found');
+        }
+        const ext = path.extname(file).toLowerCase();
+        const types = {'.jpg':'image/jpeg','.jpeg':'image/jpeg','.png':'image/png','.webp':'image/webp','.gif':'image/gif','.svg':'image/svg+xml'};
+        res.writeHead(200, {'content-type': types[ext] || 'application/octet-stream','cache-control':'public, max-age=3600','x-content-type-options':'nosniff'});
+        return fs.createReadStream(file).pipe(res);
+      }
+      if (req.method === 'GET' && u.pathname.startsWith('/css/')) {
+        const rel = decodeURIComponent(u.pathname.slice('/css/'.length));
+        const base = path.join(ROOT, 'public', 'css');
+        const file = path.resolve(base, rel);
+        if (!file.startsWith(path.resolve(base) + path.sep) || !fs.existsSync(file) || !fs.statSync(file).isFile()) {
+          res.writeHead(404); return res.end('not found');
+        }
+        if (path.extname(file).toLowerCase() !== '.css') { res.writeHead(404); return res.end('not found'); }
+        const cssType = 'text/css';
+        res.writeHead(200, {
+          'content-type': cssType + '; charset=utf-8',
+          'cache-control': 'no-store',
+          'x-content-type-options': 'nosniff',
+        });
+        return fs.createReadStream(file).pipe(res);
+      }
+      if (req.method === 'GET' && u.pathname === '/api/state') {
+        // This response contains live CPU/RAM telemetry. A persisted-state-only
+        // ETag can pin an idle UI to the first CPU sample (which is intentionally 0).
+        const tag = `\"${stateStamp()}-${Math.floor(Date.now() / 1000)}\"`;
+        res.setHeader('etag', tag);
+        return json(res, snapshot(), 200, { etag: tag });
+      }
+      if (req.method === 'GET' && u.pathname === '/api/health') {
+        const s = loadState();
+        return json(res, {
+          ok: s.system?.health !== 'DEGRADED',
+          health: s.system?.health || 'UNKNOWN',
+          lastCycle: s.system?.lastCycle || null,
+          metrics: { ...(s.system?.metrics || {}), ...systemTelemetry() },
+          diagnostics: s.system?.diagnostics || [],
+        });
+      }
+      if (req.method === 'GET' && u.pathname === '/api/journal') {
+        const requested = Number(u.searchParams.get('limit') || 220);
+        const limit = Math.max(20, Math.min(500, Number.isFinite(requested) ? Math.trunc(requested) : 220));
+        return json(res, readJournal(limit).map(journalView));
+      }
+      if (req.method === 'GET' && u.pathname === '/api/evolution') return json(res, loadState().evolution || {});
+      if (req.method === 'GET' && u.pathname === '/api/network') { const r=await meshRequest('GET','/state'); return json(res,r.body,r.status); }
+      if (req.method === 'GET' && u.pathname === '/api/resources') return json(res, resourceSnapshot());
+      if (req.method === 'GET' && u.pathname === '/api/polymarket') return json(res, await polymarketSnapshot());
+      if (req.method === 'GET' && u.pathname === '/api/polymarket/readiness') return json(res, realPolymarketReadiness());
+      if (req.method === 'GET' && u.pathname === '/api/polymarket-us') return json(res, await polymarketUSSnapshot());
+      if (req.method === 'GET' && u.pathname === '/api/polymarket-us/readiness') return json(res, usReadiness());
+      if (req.method === 'GET' && u.pathname === '/api/polymarket-us/combos') return json(res, await usComboSnapshot());
+      if (req.method === 'GET' && u.pathname === '/api/update') return json(res, updaterState());
+      if (req.method === 'GET' && u.pathname === '/api/research-monitor') return json(res, researchMonitorState());
+      if (req.method === 'GET' && u.pathname === '/api/research-control-plane') return json(res, researchPlane());
+      if (req.method === 'GET' && u.pathname === '/api/project-journal') return json(res, researchPlane().journal);
+      if (req.method === 'GET' && u.pathname === '/api/polymarket/simulate') return json(res, simulateComboSamples({legProbability:u.searchParams.get('p'),legs:u.searchParams.get('legs'),trials:u.searchParams.get('trials'),stakeUsd:u.searchParams.get('stake'),seed:u.searchParams.get('seed')}));
+
+      if (req.method !== 'POST') {
+        res.writeHead(404);
+        return res.end('not found');
+      }
+
+      if (u.pathname === '/api/pause') { const a = queue('toggle-pause'); return json(res, { ok: true, queued: true, actionId: a.id }); }
+      if (u.pathname === '/api/kill') { const a = queue('toggle-kill'); return json(res, { ok: true, queued: true, actionId: a.id }); }
+      if (u.pathname === '/api/reset') {
+        const b = await body(req);
+        if (b.__error) return json(res, { ok: false, error: b.__error }, 400);
+        const amount = Number(b.amountSol);
+        if (!Number.isFinite(amount) || amount <= 0 || amount > 1_000_000) return json(res, { ok: false, error: 'amountSol must be between 0 and 1,000,000' }, 400);
+        const a = queue('reset-paper', { amountSol: amount });
+        return json(res, { ok: true, queued: true, actionId: a.id, amountSol: amount });
+      }
+      if (u.pathname === '/api/clear-error') { queue('clear-error'); return json(res, { ok: true }); }
+      if (u.pathname === '/api/resources') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); return json(res,{ok:true,policy:saveResourcePolicy({cpuPercent:b.cpuPercent,memoryGB:b.memoryGB,diskGB:b.diskGB},'manual')}); }
+      if (u.pathname === '/api/resources/sync') return json(res,{ok:true,policy:saveResourcePolicy({},'hive')});
+      if (u.pathname === '/api/polymarket/reset') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); return json(res,{ok:true,paper:resetPolymarketPaper(b.amountUsd)}); }
+      if (u.pathname === '/api/polymarket/paper-combo') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); try{return json(res,placePaperCombo(b))}catch(e){return json(res,{ok:false,error:String(e.message||e)},400)} }
+      if (u.pathname === '/api/polymarket/paper-single') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); try{return json(res,placePaperSingle(b))}catch(e){return json(res,{ok:false,error:String(e.message||e)},400)} }
+      if (u.pathname === '/api/polymarket/autopilot') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); try{return json(res,{ok:true,autopilot:setAutopilot(b)})}catch(e){return json(res,{ok:false,error:String(e.message||e)},400)} }
+      if (u.pathname === '/api/polymarket/autopilot/run') { try{return json(res,{ok:true,...await runAutopilotOnce()})}catch(e){return json(res,{ok:false,error:String(e.message||e)},500)} }
+      if (u.pathname === '/api/polymarket-us/config') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); try{return json(res,{ok:true,readiness:configurePolymarketUS(b)})}catch(e){return json(res,{ok:false,error:String(e.message||e)},400)} }
+      if (u.pathname === '/api/polymarket-us/arm') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); try{return json(res,{ok:true,readiness:armPolymarketUS(!!b.armed)})}catch(e){return json(res,{ok:false,error:String(e.message||e)},400)} }
+      if (u.pathname === '/api/polymarket-us/preview') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); try{return json(res,{ok:true,preview:await previewPolymarketUSOrder(b)})}catch(e){return json(res,{ok:false,error:String(e.message||e)},400)} }
+      if (u.pathname === '/api/polymarket-us/order') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); try{return json(res,{ok:true,order:await submitPolymarketUSOrder(b)})}catch(e){return json(res,{ok:false,error:String(e.message||e)},400)} }
+      if (u.pathname === '/api/polymarket-us/close') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); try{return json(res,{ok:true,result:await closePolymarketUSPosition(b)})}catch(e){return json(res,{ok:false,error:String(e.message||e)},400)} }
+      if (u.pathname === '/api/polymarket-us/cancel') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); try{return json(res,{ok:true,result:await cancelPolymarketUSOrder(b)})}catch(e){return json(res,{ok:false,error:String(e.message||e)},400)} }
+      if (u.pathname === '/api/polymarket-us/cancel-all') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); try{return json(res,{ok:true,result:await cancelAllPolymarketUS(b)})}catch(e){return json(res,{ok:false,error:String(e.message||e)},400)} }
+      if (u.pathname.startsWith('/api/polymarket-us/combos/')) {
+        const b = await body(req); if (b.__error) return json(res, { ok:false, error:b.__error }, 400);
+        const comboFail = e => json(res, { ok:false, error:String(e.message||e), code:e.code||'unknown' }, 400);
+        if (u.pathname === '/api/polymarket-us/combos/build') { try{return json(res,{ok:true,combo:buildUSCombo({legKeys:b.legKeys,stakeUsd:b.stakeUsd})})}catch(e){return comboFail(e)} }
+        if (u.pathname === '/api/polymarket-us/combos/quote') { try{return json(res,{ok:true,quote:await quoteUSCombo({legKeys:b.legKeys,stakeUsd:b.stakeUsd})})}catch(e){return comboFail(e)} }
+        if (u.pathname === '/api/polymarket-us/combos/place') { try{return json(res,await placeUSCombo({legKeys:b.legKeys,stakeUsd:b.stakeUsd,mode:b.mode,rfqId:b.rfqId,quoteId:b.quoteId,limitPrice:b.limitPrice,confirmation:b.confirmation,placedBy:'manual'}))}catch(e){return comboFail(e)} }
+        if (u.pathname === '/api/polymarket-us/combos/cancel-rfq') { try{return json(res,{ok:true,...await cancelUSRfq({rfqId:b.rfqId})})}catch(e){return comboFail(e)} }
+        if (u.pathname === '/api/polymarket-us/combos/autopilot') { try{return json(res,{ok:true,autopilot:setUSComboAutopilot(b)})}catch(e){return comboFail(e)} }
+        if (u.pathname === '/api/polymarket-us/combos/settle') { try{return json(res,{ok:true,...await settleUSCombos({force:true})})}catch(e){return comboFail(e)} }
+        if (u.pathname === '/api/polymarket-us/combos/forget') { try{return json(res,forgetUSCombo({id:b.id,confirmation:b.confirmation}))}catch(e){return comboFail(e)} }
+        res.writeHead(404); return res.end('not found');
+      }
+      if (u.pathname === '/api/update/check') return json(res, requestUpdater('check'));
+      if (u.pathname === '/api/update/install') return json(res, requestUpdater('install')); 
+      if (u.pathname === '/api/network/chat') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); const r=await meshRequest('POST','/chat',{text:b.text}); return json(res,r.body,r.status); }
+
+      const mint = u.searchParams.get('mint');
+      if (u.pathname === '/api/exit') {
+        if (!mint) return json(res, { ok: false, error: 'missing mint' }, 400);
+        const a = queue('exit', { mint });
+        return json(res, { ok: true, queued: true, actionId: a.id });
+      }
+      if (u.pathname === '/api/enter') {
+        if (!mint) return json(res, { ok: false, error: 'missing mint' }, 400);
+        const a = queue('enter', { mint });
+        return json(res, { ok: true, queued: true, actionId: a.id });
+      }
+
+      const b = await body(req);
+      if (b.__error) return json(res, { ok: false, error: b.__error }, 400);
+      let action;
+      if (u.pathname === '/api/favorite') action = queue('favorite', { mint: b.mint, kind: b.kind || 'favorite' });
+      else if (u.pathname === '/api/runtime') action = queue('runtime', { patch: b });
+      else if (u.pathname === '/api/profile') action = queue('profile', { profile: b.profile });
+      else if (u.pathname === '/api/autonomy') action = queue('autonomy', { level: b.level });
+      else if (u.pathname === '/api/proposal') action = queue(b.action === 'approve' ? 'approve-proposal' : 'reject-proposal', { proposalId: b.id });
+      else { res.writeHead(404); return res.end('not found'); }
+      return json(res, { ok: true, queued: true, actionId: action.id });
+    } catch (error) {
+      return json(res, { ok: false, error: String(error.message || error) }, 500);
+    }
+  });
+
+  server.on('clientError', (_, socket) => socket.end('HTTP/1.1 400 Bad Request\r\n\r\n'));
+  // Combo loops are inert unless autopilot is enabled AND the session is armed.
+  try { startUSComboLoops(); } catch { /* combo loops are optional */ }
+  server.listen(cfg.dashboardPort, cfg.dashboardHost, () => console.log(`Dashboard: http://${cfg.dashboardHost}:${cfg.dashboardPort}`));
+  return server;
+}

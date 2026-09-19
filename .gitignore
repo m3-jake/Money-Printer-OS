@@ -1,0 +1,4 @@
+.workflow/
+data/
+node_modules/
+.env

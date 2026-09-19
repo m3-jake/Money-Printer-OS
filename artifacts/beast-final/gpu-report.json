@@ -1,0 +1,50 @@
+{
+  "schema": "mpo.beast.same-corpus.gpu.v1",
+  "env": {
+    "torch": "2.14.0+cu130",
+    "cudaAvailable": true,
+    "cudaVersion": "13.0",
+    "mpsAvailable": false,
+    "deviceName": "NVIDIA GeForce RTX 5070",
+    "capability": "sm_120",
+    "totalVramMb": 12226.4,
+    "threads": 16
+  },
+  "rows": 3000,
+  "variants": 2048,
+  "rounds": 90,
+  "wallMs": 8997.59380001342,
+  "variantsPerSec": 227.6164100669832,
+  "computeMs": 1465.641399991,
+  "peakMemoryMb": 1027.625,
+  "chunkVariants": 2048,
+  "roundsChunk": 9,
+  "maxDeterministicAbsError": 1.4551915228366852e-11,
+  "deterministicMismatchCount": 0,
+  "rankingExact": true,
+  "top10Exact": true,
+  "top10Cpu": [
+    "MPO-Gmu4prkfb-e47a",
+    "MPO-Gmu4prkf9-41c2",
+    "MPO-Gmu4prkf9-6eca",
+    "MPO-Gmu4prkf7-d543",
+    "MPO-Gmu4prkey-2330",
+    "MPO-Gmu4prkfd-4723",
+    "MPO-Gmu4prkfb-3970",
+    "MPO-Gmu4prkfa-d2fe",
+    "MPO-Gmu4prkfa-5889",
+    "MPO-Gmu4prkf0-d23e"
+  ],
+  "top10Gpu": [
+    "MPO-Gmu4prkfb-e47a",
+    "MPO-Gmu4prkf9-41c2",
+    "MPO-Gmu4prkf9-6eca",
+    "MPO-Gmu4prkf7-d543",
+    "MPO-Gmu4prkey-2330",
+    "MPO-Gmu4prkfd-4723",
+    "MPO-Gmu4prkfb-3970",
+    "MPO-Gmu4prkfa-d2fe",
+    "MPO-Gmu4prkfa-5889",
+    "MPO-Gmu4prkf0-d23e"
+  ]
+}

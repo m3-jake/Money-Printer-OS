@@ -1,0 +1,215 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import http from 'node:http';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import vm from 'node:vm';
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const read = p => fs.readFileSync(path.join(root, p), 'utf8');
+const html = read('public/dashboard.html');
+const dashJs = read('src/dashboard.js');
+const us = read('src/polymarketUS.js');
+const combos = read('src/polymarketUSCombos.js');
+const css = read('public/css/mpo-shell.css') + '\n' + read('public/css/mpo-workstation.css');
+const all = html + '\n' + css;
+const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+
+
+test('embedded dashboard script parses as JavaScript', () => {
+  const start = html.indexOf('<script>') + '<script>'.length;
+  const end = html.lastIndexOf('</script>');
+  assert.ok(start >= '<script>'.length && end > start);
+  assert.doesNotThrow(() => new vm.Script(html.slice(start, end), { filename: 'dashboard-inline.js' }));
+});
+
+test('confirmation phrases remain exact in UI and backends', () => {
+  const phrases = [
+    'PLACE REAL COMBO', 'PLACE REAL ORDER', 'CLOSE REAL POSITION',
+    'CANCEL REAL ORDER', 'CANCEL REAL ORDERS', 'ENABLE REAL AUTOPILOT',
+  ];
+  for (const p of phrases) assert.match(html, rx(p));
+  assert.match(us, /PLACE REAL ORDER/);
+  assert.match(us, /CLOSE REAL POSITION/);
+  assert.match(us, /CANCEL REAL ORDER/);
+  assert.match(us, /CANCEL REAL ORDERS/);
+  assert.match(combos, /CONFIRM_PLACE='PLACE REAL COMBO'|PLACE REAL COMBO/);
+  assert.match(combos, /CONFIRM_AUTOPILOT='ENABLE REAL AUTOPILOT'|ENABLE REAL AUTOPILOT/);
+  assert.match(html, /confirmation!=='FORGET'|phrase:\s*'FORGET'/);
+  assert.match(combos, /confirmation!=='FORGET'/);
+});
+
+test('GET /css/ handler exists next to /assets/', () => {
+  assert.match(dashJs, /pathname\.startsWith\('\/css\/'\)/);
+  assert.match(dashJs, /'text\/css'/);
+  const assetsAt = dashJs.indexOf("pathname.startsWith('/assets/')");
+  const cssAt = dashJs.indexOf("pathname.startsWith('/css/')");
+  assert.ok(assetsAt >= 0 && cssAt > assetsAt, '/css/ must be registered immediately after /assets/');
+});
+
+test('benchmark poly classes and frozen 4-col grid remain', () => {
+  for (const c of ['poly-strip', 'poly-bar', 'poly-mod', 'metric-grid', 'heroPrice']) {
+    assert.match(all, rx(c));
+  }
+  assert.match(css, /metric-grid\{[^}]*repeat\(4,\s*1fr\)/);
+});
+
+test('PR0 tokens are current computed values', () => {
+  assert.match(css, /--mpo-term-label:\s*#7da987/);
+  assert.match(css, /--mpo-fs-micro:\s*10px/);
+  assert.match(css, /--mpo-fs-metric:\s*18px/);
+  assert.match(css, /--mpo-fs-cell:\s*12px/);
+});
+
+test('identity: no Inter / Google Fonts', () => {
+  assert.doesNotMatch(all, /fonts\.googleapis|font-family:\s*Inter/i);
+});
+
+test('dashboard.html still hosts behavior (no login screen)', () => {
+  assert.match(html, /id="boot"/);
+  assert.doesNotMatch(html, /id="login"|password.*unlock/i);
+  assert.match(html, /href="\/css\/mpo-shell\.css"/);
+  assert.match(html, /href="\/css\/mpo-workstation\.css"/);
+});
+
+test('GET /css/ serves stylesheets and rejects traversal', async () => {
+  const server = http.createServer((req, res) => {
+    const u = new URL(req.url, 'http://127.0.0.1');
+    if (req.method === 'GET' && u.pathname.startsWith('/css/')) {
+      const rel = decodeURIComponent(u.pathname.slice('/css/'.length));
+      const base = path.join(root, 'public', 'css');
+      const file = path.resolve(base, rel);
+      if (!file.startsWith(path.resolve(base) + path.sep) || !fs.existsSync(file) || !fs.statSync(file).isFile()) {
+        res.writeHead(404); return res.end('not found');
+      }
+      if (path.extname(file).toLowerCase() !== '.css') { res.writeHead(404); return res.end('not found'); }
+      res.writeHead(200, {
+        'content-type': 'text/css; charset=utf-8',
+        'cache-control': 'no-store',
+        'x-content-type-options': 'nosniff',
+      });
+      return fs.createReadStream(file).pipe(res);
+    }
+    res.writeHead(404); res.end('not found');
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const port = server.address().port;
+  try {
+    const ok = await fetch(`http://127.0.0.1:${port}/css/mpo-shell.css`);
+    assert.equal(ok.status, 200);
+    assert.match(ok.headers.get('content-type') || '', /text\/css/);
+    assert.equal(ok.headers.get('x-content-type-options'), 'nosniff');
+    assert.match(await ok.text(), /--mpo-chrome:\s*#c0c0c0/);
+    const trav = await fetch(`http://127.0.0.1:${port}/css/../dashboard.html`);
+    assert.equal(trav.status, 404);
+    const html404 = await fetch(`http://127.0.0.1:${port}/css/mpo-shell.css/../../dashboard.html`);
+    assert.equal(html404.status, 404);
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+  }
+});
+
+test('shared workstation recipes ship on laggard panes', () => {
+  for (const c of ['mpo-metric', 'mpo-badge', 'mpo-empty', 'mpo-error', 'mpo-surface-dark', 'mpo-surface-light']) {
+    assert.match(html, rx(c));
+    assert.match(css, rx(c));
+  }
+  assert.match(html, /mpo-fieldset/);
+  assert.match(html, /mpo-table/);
+  assert.doesNotMatch(html, /Enable Unified Edge/);
+  assert.match(html, /dailyLossLimitSol/);
+  assert.match(html, /RISK RADAR/);
+  assert.match(html, /CONTROL BAY/);
+  assert.match(html, /WALLET INTEL/);
+  assert.match(html, /SYSTEM MONITOR/);
+  assert.match(html, /HIVE EQUITY/);
+});
+
+test('chrome stays opaque; glass is opt-in; layout version unchanged', () => {
+  assert.match(css, /\.titlebar\s*\{[^}]*background:\s*var\(--mpo-navy\)/);
+  assert.match(css, /\.taskbar\s*\{[^}]*z-index:\s*100/);
+  assert.match(css, /\.brand\s*\{[^}]*z-index:\s*6/);
+  assert.match(css, /\.boot\s*\{[^}]*background:\s*#008080/);
+  assert.match(html, /LAYOUT_VERSION='2026-09-14-alpha40-consolidated'/);
+  assert.doesNotMatch(html, /mpo-surface-(dark|light)[\s\S]{0,80}poly-strip|poly-strip[\s\S]{0,80}mpo-surface/);
+});
+
+test('laggard panes opt into surfaces; sportsbook host does not', () => {
+  assert.match(html, /function renderTrade\(\)[\s\S]*mpo-surface-dark/);
+  assert.match(html, /function renderEvolution\(\)[\s\S]*mpo-surface-dark/);
+  assert.match(html, /function renderRisk\(\)[\s\S]*mpo-surface-dark/);
+  assert.match(html, /function renderNetwork\(\)[\s\S]*mpo-surface-dark/);
+  assert.match(html, /function renderJournal\(\)[\s\S]*mpo-surface-dark/);
+  assert.match(html, /function renderWallet\(\)[\s\S]*mpo-surface-light/);
+  assert.match(html, /function renderControl\(\)[\s\S]*mpo-surface-light/);
+  assert.match(html, /function renderUpdater\(\)[\s\S]*mpo-surface-light/);
+  assert.match(html, /setBody\('money',`[\s\S]*mpo-surface-light/);
+  assert.match(html, /setBody\('settings',`[\s\S]*mpo-surface-light/);
+  assert.doesNotMatch(html, /function renderSportsbook\(\)[\s\S]{0,400}mpo-surface/);
+});
+
+test('integrated FX is profit-only money rain/pile with no fire', () => {
+  assert.match(html, /function updateDesktopEffects/);
+  assert.match(html, /ahead=known&&pnlSol>1e-6&&pnlPct>0/);
+  assert.match(html, /if\(!m\.ahead\)/);
+  assert.match(html, /makeRainBills/);
+  assert.match(html, /makePileBills/);
+  assert.match(html, /id="moneyPile"/);
+  assert.match(html, /trackRealizedProfitBurst/);
+  assert.match(html, /trackComboProfitBurst/);
+  assert.doesNotMatch(html, /makeFireSprites|horizonFire|bottomFire|fire-low\.webp|fire-high\.webp/);
+  assert.doesNotMatch(css, /\.fire-sprite|\.horizon-fire|\.bottom-fire/);
+  assert.match(css, /url\('\/assets\/money-bill\.webp'\)/);
+  assert.match(css, /\.money-pile/);
+  assert.match(css, /prefers-reduced-motion/);
+});
+
+test('Journal is a first-class desktop surface', () => {
+  assert.match(html, /\['journal','Journal','JRN','dark'\]/);
+  assert.match(html, /DESKTOP_ICONS=\[[^\]]*['"]journal['"]/);
+  assert.match(html, /journal:\{x:\d+,y:\d+,w:\d+,h:\d+\}/);
+  assert.match(html, /function renderJournal\(\)/);
+  assert.match(html, /<legend>Today<\/legend>/);
+  assert.match(html, /<legend>Recent<\/legend>/);
+  assert.match(html, /id="journalQ"/);
+  assert.match(css, /\.mpo-journal-entry\.is-milestone/);
+  assert.match(css, /\.mpo-journal-glance/);
+});
+
+test('Experiment Monitor leaderboard exposes live research fields', () => {
+  assert.match(html, /function renderResearchMonitor\(\)/);
+  assert.match(html, /<th>Age<\/th>/);
+  assert.match(html, /<th>Status<\/th>/);
+  assert.match(html, /<th>Shadow P\/L<\/th>/);
+  assert.match(html, /<th>DD<\/th>/);
+  assert.match(html, /<th>Trades<\/th>/);
+  assert.match(html, /<th>Conf<\/th>/);
+  assert.match(html, /POLICY/);
+  assert.match(html, /CHAMPION/);
+  assert.match(html, /PROMOTION/);
+  assert.match(html, /PAPER CANARY/);
+  assert.match(dashJs, /activeEvolutionPolicy/);
+  assert.match(dashJs, /paperCanary/);
+  assert.match(dashJs, /shadowPnl/);
+  assert.match(dashJs, /automaticLivePromotionAllowed:\s*false/);
+});
+
+test('glance telemetry recipes land on laggard panes without restyling Suite', () => {
+  assert.match(css, /\.mpo-sysrow/);
+  assert.match(css, /\.sysbar\.warn/);
+  assert.match(css, /\.mpo-peer/);
+  assert.match(css, /\.mpo-log-pane/);
+  assert.match(css, /\.mpo-spark/);
+  assert.match(css, /\.mpo-gauge/);
+  assert.match(html, /function renderLog\(\)[\s\S]*LIVE LOG/);
+  assert.match(html, /function renderRisk\(\)[\s\S]*Daily loss budget/);
+  assert.match(html, /function renderNetwork\(\)[\s\S]*mpo-peer/);
+  assert.match(html, /function renderSystem\(\)[\s\S]*mpo-sysrow/);
+  assert.match(html, /function renderUpdater\(\)[\s\S]*mpo-loading/);
+  assert.match(html, /function renderTrade\(\)[\s\S]*Symbol[\s\S]*Edge[\s\S]*5m[\s\S]*Liq[\s\S]*Stage/);
+  assert.match(html, /strokeStyle='#39ff68'/);
+  assert.match(html, /rgba\(57,255,104,\.14\)/);
+  assert.doesNotMatch(html, /function renderSportsbook\(\)[\s\S]{0,400}mpo-surface/);
+  assert.match(html, /window\.prompt/);
+});

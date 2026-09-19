@@ -1,0 +1,276 @@
+import fs from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import path from 'node:path';
+import { cfg } from './config.js';
+import { strategyNames, defaults as runtimeDefaults } from './runtime.js';
+import { ensureResearch } from './research.js';
+import { ensurePnlLedger } from './accounting.js';
+
+const dir = path.resolve(process.env.MONEY_PRINTER_DATA_DIR || 'data');
+const stateFile = path.join(dir, 'state.json');
+const backupFile = path.join(dir, 'state.backup.json');
+const journalFile = path.join(dir, 'market.ndjson');
+const actionFile = path.join(dir, 'actions.ndjson');
+const JOURNAL_MAX_BYTES = 128 * 1024 * 1024;
+let lastSaveMs = 0;
+let lastBackupAt = 0;
+let readCache = { stamp: '', value: null };
+
+export function stateStamp() {
+  try { const st = fs.statSync(stateFile); return `${Math.trunc(st.mtimeMs)}:${st.size}`; } catch { return 'missing'; }
+}
+
+export function loadStateCached() {
+  const stamp = stateStamp();
+  if (readCache.value && readCache.stamp === stamp) return readCache.value;
+  const value = loadState();
+  readCache = { stamp, value };
+  return value;
+}
+
+const strategyStats = () => Object.fromEntries(strategyNames.map(k => [k, {
+  signals: 0, trades: 0, wins: 0, losses: 0, pnlSol: 0, avgReturnPct: 0, shadowScore: 0,
+}]));
+
+const fresh = (startSol = cfg.paperStartSol) => ({
+  paperStartSol: Number.isFinite(Number(startSol)) && Number(startSol) > 0 ? Number(startSol) : cfg.paperStartSol,
+  cashSol: Number.isFinite(Number(startSol)) && Number(startSol) > 0 ? Number(startSol) : cfg.paperStartSol,
+  positions: [], history: [], pnlLedger: [], realizedLifetimePnlSol: 0, cooldowns: {}, watchlist: [], snapshots: {}, tickHistory: {}, candles: {},
+  strategies: strategyStats(), pendingActions: [],
+  market: { regime: 'UNKNOWN', score: 50, updatedAt: null }, rpcHealth: [],
+  runtime: runtimeDefaults(),
+  system: {
+    paused: false, killSwitch: false, lastCycle: null, lastError: null, startedAt: Date.now(), streamEvents: 0,
+    health: 'STARTING', diagnostics: [], metrics: { cycleMs: 0, discoveryMs: 0, riskMs: 0, analysisMs: 0, saveMs: 0 },
+  },
+  stats: { cycles: 0, signals: 0, skipped: 0, errors: 0, manualEntries: 0 },
+});
+
+function merge(s) {
+  const f = fresh();
+  const out = {
+    ...f, ...s,
+    system: { ...f.system, ...s?.system, metrics: { ...f.system.metrics, ...s?.system?.metrics } },
+    stats: { ...f.stats, ...s?.stats },
+    strategies: { ...f.strategies, ...s?.strategies },
+    market: { ...f.market, ...s?.market },
+    runtime: { ...f.runtime, ...s?.runtime, strategies: { ...f.runtime.strategies, ...s?.runtime?.strategies } },
+  };
+  ensureResearch(out);
+  ensurePnlLedger(out);
+  return out;
+}
+
+function validateAccount(s) {
+  if (!s || typeof s !== 'object' || Array.isArray(s)
+      || typeof s.cashSol !== 'number' || !Number.isFinite(s.cashSol) || s.cashSol < 0
+      || !Array.isArray(s.positions) || !Array.isArray(s.history)) {
+    throw new Error('Invalid account state: expected finite nonnegative cash and position/history arrays');
+  }
+  if (s.paperStartSol !== undefined
+      && (typeof s.paperStartSol !== 'number' || !Number.isFinite(s.paperStartSol) || s.paperStartSol <= 0)) {
+    throw new Error('Invalid account state: starting balance must be finite and positive');
+  }
+  return s;
+}
+
+function parseState(file) {
+  return merge(validateAccount(JSON.parse(fs.readFileSync(file, 'utf8'))));
+}
+
+export function loadState() {
+  try {
+    return parseState(stateFile);
+  } catch (primaryError) {
+    try {
+      const recovered = parseState(backupFile);
+      recovered.system.lastError = `Recovered state from backup; entries paused for account review: ${primaryError.message}`;
+      recovered.system.paused = true;
+      recovered.system.killSwitch = true;
+      recovered.system.recovery = { status: 'BACKUP_RECOVERED', observedAt: Date.now(), reviewRequired: true };
+      return recovered;
+    } catch (backupError) {
+      // Only an actually new installation may initialize a bankroll.
+      if (primaryError.code === 'ENOENT' && backupError.code === 'ENOENT') return merge(fresh());
+      const error = new Error(`Account state unavailable; existing files preserved. Primary: ${primaryError.message}; backup: ${backupError.message}`);
+      error.code = 'STATE_RECOVERY_REQUIRED';
+      throw error;
+    }
+  }
+}
+
+function pruneState(s) {
+  const now = Date.now();
+  s.history = (s.history || []).slice(-1500);
+  s.pnlLedger = (s.pnlLedger || []).slice(-100000);
+  s.watchlist = (s.watchlist || []).slice(0, 180);
+  s.proposals = (s.proposals || []).slice(0, 100);
+  s.pendingActions = (s.pendingActions || []).slice(-200);
+
+  const active = new Set([
+    ...(s.watchlist || []).map(x => x.mint),
+    ...(s.positions || []).map(x => x.mint),
+    ...(s.runtime?.pinned || []),
+    ...(s.runtime?.favorites || []),
+  ].filter(Boolean));
+
+  for (const [mint, xs] of Object.entries(s.tickHistory || {})) {
+    if (!active.has(mint) && (!xs.length || now - (xs.at(-1)?.ts || 0) > 30 * 60_000)) delete s.tickHistory[mint];
+    else if (!active.has(mint) && xs.length > 60) s.tickHistory[mint] = xs.slice(-60);
+    else if (xs.length > 240) s.tickHistory[mint] = xs.slice(-240);
+  }
+  for (const [mint, snap] of Object.entries(s.snapshots || {})) {
+    if (!active.has(mint) && now - (snap?.ts || 0) > 30 * 60_000) delete s.snapshots[mint];
+  }
+  for (const [mint, until] of Object.entries(s.cooldowns || {})) if (until < now - 3600_000) delete s.cooldowns[mint];
+
+  if (s.research) {
+    if (s.research.feedStats?.unknown) delete s.research.feedStats.unknown;
+    s.research.postmortems = (s.research.postmortems || []).slice(0, 500);
+    s.research.lessons = (s.research.lessons || []).slice(0, 400);
+    s.research.experiments = (s.research.experiments || []).slice(0, 400);
+    s.research.daily = (s.research.daily || []).slice(0, 180);
+    s.research.challengers = (s.research.challengers || []).slice(-128);
+    if (s.research.learner) {
+      s.research.learner.pending = (s.research.learner.pending || []).slice(-1800);
+      s.research.learner.outcomes = (s.research.learner.outcomes || []).slice(0, 3000);
+    }
+    const walletEntries = Object.entries(s.research.walletProfiles || {});
+    if (walletEntries.length > 10000) {
+      walletEntries.sort((a,b)=>Number(b[1]?.lastSeen||0)-Number(a[1]?.lastSeen||0));
+      s.research.walletProfiles = Object.fromEntries(walletEntries.slice(0,10000));
+    }
+    const deployerEntries = Object.entries(s.research.deployerProfiles || {});
+    if (deployerEntries.length > 3000) {
+      deployerEntries.sort((a,b)=>Number(b[1]?.lastSeen||0)-Number(a[1]?.lastSeen||0));
+      s.research.deployerProfiles = Object.fromEntries(deployerEntries.slice(0,3000));
+    }
+    if (s.research.alpha) {
+      const a=s.research.alpha;
+      const tokenEntries=Object.entries(a.tokens||{}).sort((x,y)=>Number(y[1]?.lastSeen||0)-Number(x[1]?.lastSeen||0));
+      if(tokenEntries.length>6000)a.tokens=Object.fromEntries(tokenEntries.slice(0,6000));
+      const walletEntriesA=Object.entries(a.wallets||{}).sort((x,y)=>Number(y[1]?.lastSeen||0)-Number(x[1]?.lastSeen||0));
+      if(walletEntriesA.length>15000)a.wallets=Object.fromEntries(walletEntriesA.slice(0,15000));
+      a.counterfactuals=(a.counterfactuals||[]).slice(-500);a.evidence=(a.evidence||[]).slice(0,20);
+    }
+    const universeEntries = Object.entries(s.research.universe || {});
+    if (universeEntries.length > 5000) {
+      universeEntries.sort((a, b) => Number(b[1]?.lastSeen || 0) - Number(a[1]?.lastSeen || 0));
+      s.research.universe = Object.fromEntries(universeEntries.slice(0, 5000));
+    }
+  }
+  return s;
+}
+
+export function saveState(state) {
+  const started = performance.now();
+  fs.mkdirSync(dir, { recursive: true });
+  const s = pruneState(validateAccount(state));
+  s.system ||= {};
+  s.system.metrics ||= {};
+  // Persist the previous measured save duration; the current duration is returned to the caller.
+  s.system.metrics.saveMs = lastSaveMs;
+  const temp = `${stateFile}.${process.pid}.tmp`;
+  const json = JSON.stringify(s);
+  fs.writeFileSync(temp, json, { flush: true });
+  if (fs.existsSync(stateFile) && Date.now() - lastBackupAt > 120_000) {
+    const backupTemp = `${backupFile}.${process.pid}.tmp`;
+    try {
+      // Validate the same bytes we publish, never copy a damaged primary over good recovery data.
+      const previous = fs.readFileSync(stateFile, 'utf8');
+      validateAccount(JSON.parse(previous));
+      fs.writeFileSync(backupTemp, previous, { flush: true });
+      fs.renameSync(backupTemp, backupFile);
+      lastBackupAt = Date.now();
+    } catch {
+      // The prior backup remains intact if validation or publication fails.
+    } finally {
+      try { fs.rmSync(backupTemp, { force: true }); } catch {}
+    }
+  }
+  try { fs.renameSync(temp, stateFile); }
+  finally { try { fs.rmSync(temp, { force: true }); } catch {} }
+  readCache = { stamp: stateStamp(), value: s };
+  lastSaveMs = Math.round(performance.now() - started);
+  return lastSaveMs;
+}
+
+function rotateJournalIfNeeded() {
+  try {
+    if (!fs.existsSync(journalFile) || fs.statSync(journalFile).size < JOURNAL_MAX_BYTES) return;
+    const old2 = `${journalFile}.2`;
+    const old1 = `${journalFile}.1`;
+    try { fs.rmSync(old2, { force: true }); } catch {}
+    try { if (fs.existsSync(old1)) fs.renameSync(old1, old2); } catch {}
+    fs.renameSync(journalFile, old1);
+  } catch {}
+}
+
+export function appendJournal(row) {
+  fs.mkdirSync(dir, { recursive: true });
+  rotateJournalIfNeeded();
+  fs.appendFileSync(journalFile, `${JSON.stringify({ ...row, ts: row.ts || Date.now() })}\n`);
+}
+
+export function appendJournalBatch(rows = []) {
+  if (!rows.length) return;
+  fs.mkdirSync(dir, { recursive: true });
+  rotateJournalIfNeeded();
+  const text = rows.map(row => JSON.stringify({ ...row, ts: row.ts || Date.now() })).join('\n') + '\n';
+  fs.appendFileSync(journalFile, text);
+}
+
+export function readJournal(limit = 5000) {
+  const readTail = file => {
+    try {
+      const stat = fs.statSync(file);
+      const targetBytes = Math.min(stat.size, Math.max(1024 * 1024, Math.min(48 * 1024 * 1024, limit * 900)));
+      const fd = fs.openSync(file, 'r');
+      const buf = Buffer.alloc(targetBytes);
+      fs.readSync(fd, buf, 0, targetBytes, stat.size - targetBytes);
+      fs.closeSync(fd);
+      let text = buf.toString('utf8');
+      if (stat.size > targetBytes) text = text.slice(text.indexOf('\n') + 1);
+      return text.trim().split('\n').filter(Boolean).map(line => { try { return JSON.parse(line); } catch { return null; } }).filter(Boolean);
+    } catch { return []; }
+  };
+  // Oldest → newest so rotated history remains usable by reports/backtests.
+  const rows = [`${journalFile}.2`, `${journalFile}.1`, journalFile].flatMap(readTail);
+  return rows.slice(-limit);
+}
+
+// Dashboard actions use their own append-only queue to avoid overwriting scanner state mid-cycle.
+export function enqueueAction(action) {
+  fs.mkdirSync(dir, { recursive: true });
+  const queued = { id: action.id || randomUUID(), ...action, ts: action.ts || Date.now() };
+  fs.appendFileSync(actionFile, `${JSON.stringify(queued)}\n`);
+  return queued;
+}
+
+export function drainActions(limit = 1000) {
+  fs.mkdirSync(dir, { recursive: true });
+  if (!fs.existsSync(actionFile)) return [];
+  const drainFile = `${actionFile}.${process.pid}.${Date.now()}.drain`;
+  try {
+    // Atomic rename: dashboard appends after this point create/use a new actions.ndjson.
+    fs.renameSync(actionFile, drainFile);
+  } catch {
+    return [];
+  }
+  try {
+    const lines = fs.readFileSync(drainFile, 'utf8').split('\n').filter(Boolean);
+    const take = lines.slice(0, limit);
+    const remain = lines.slice(limit);
+    if (remain.length) fs.appendFileSync(actionFile, `${remain.join('\n')}\n`);
+    return take.map(x => { try { return JSON.parse(x); } catch { return null; } }).filter(Boolean);
+  } finally {
+    try { fs.rmSync(drainFile, { force: true }); } catch {}
+  }
+}
+
+export function resetPaper(startSol = cfg.paperStartSol, persist = true) {
+  const amount = Number(startSol);
+  const s = merge(fresh(Number.isFinite(amount) && amount > 0 ? amount : cfg.paperStartSol));
+  if (persist) saveState(s);
+  return s;
+}
