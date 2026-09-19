@@ -145,11 +145,12 @@ function evolutionFallbackMonitor(s) {
   const e = evolutionLoopView(s.evolutionLoop || s.evolution?.loop || {});
   return {
     schema: 1,
-    source: 'evolution-fallback',
-    status: String(e.status || 'COLLECTING').toLowerCase(),
+    source: s.labLink?.connected ? 'evolution-lab' : 'evolution-fallback',
+    labLink: labLinkView(s),
+    status: String(s.labLink && !s.labLink.connected && s.labLink.source !== 'none' ? 'stale' : e.status || 'COLLECTING').toLowerCase(),
     phase: 'evolution',
     updatedAt: s.system?.lastCycle || Date.now(),
-    machine: process.env.COMPUTERNAME || process.env.HOSTNAME || 'local',
+    machine: s.labLink?.labName || process.env.COMPUTERNAME || process.env.HOSTNAME || 'local',
     workers: Number(e.workerCount || 0),
     researchMode: e.researchMode || 'NORMAL',
     researchProfile: e.researchProfile || null,
@@ -263,6 +264,14 @@ function compactSeries(xs,max=1600,recent=600){
   const sampled=[];if(slots>1&&head.length){const step=(head.length-1)/(slots-1);for(let i=0;i<slots;i++)sampled.push(head[Math.round(i*step)])}
   return [...sampled,...tail];
 }
+// alpha.53: what the trader knows about the (external) Evolution Lab. Always present, so the
+// HUD can say 'not connected' instead of showing a stale in-process loop as if it were alive.
+function labLinkView(s={}){
+  const l=s.labLink||{};
+  return {connected:!!l.connected,source:l.source||'none',ageMs:l.ageMs??null,labNodeId:l.labNodeId||null,labName:l.labName||null,labVersion:l.labVersion||null,
+    generation:Number(l.generation||0),status:l.status||null,championId:l.championId||null,championPublishedAt:l.championPublishedAt||null,checkedAt:l.checkedAt||null,error:l.error||null,
+    bridgeConfigured:!!(process.env.MONEY_PRINTER_BRIDGE_DIR&&process.env.MONEY_PRINTER_BRIDGE_KEY)};
+}
 function evolutionLoopView(e={}, {now=Date.now()}={}){
   const c=e?.champion||{},m=c.metrics||{},pub=championPublicationView(c,{now});
   return {generation:e.generation||0,variantsTested:e.variantsTested||0,survivors:e.survivors||0,status:e.status||'COLLECTING',workerCount:e.workerCount||0,
@@ -297,6 +306,7 @@ function snapshot() {
     hourlyPnlSol: s.hourlyPnlSol || 0,
     consecutiveLosses: s.consecutiveLosses || 0,
     evolutionLoop: evolutionLoopView(s.evolutionLoop || s.evolution?.loop || {}, {now}),
+    labLink: labLinkView(s),
     furnaceActivity: plane.furnaceActivity,
     activeEvolutionPolicy: plane.activeEvolutionPolicy,
     latestChampion: plane.latestChampion,
@@ -393,7 +403,7 @@ export function startDashboard() {
         const limit = Math.max(20, Math.min(500, Number.isFinite(requested) ? Math.trunc(requested) : 220));
         return json(res, readJournal(limit).map(journalView));
       }
-      if (req.method === 'GET' && u.pathname === '/api/evolution') return json(res, loadState().evolution || {});
+      if (req.method === 'GET' && u.pathname === '/api/evolution') { const st = loadStateCached(); return json(res, { ...(st.evolution || {}), loop: evolutionLoopView(st.evolutionLoop || st.evolution?.loop || {}), labLink: labLinkView(st) }); }
       if (req.method === 'GET' && u.pathname === '/api/network') { const r=await meshRequest('GET','/state'); return json(res,r.body,r.status); }
       if (req.method === 'GET' && u.pathname === '/api/resources') return json(res, resourceSnapshot());
       if (req.method === 'GET' && u.pathname === '/api/polymarket') return json(res, await polymarketSnapshot());

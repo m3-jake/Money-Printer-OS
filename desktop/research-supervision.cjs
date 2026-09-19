@@ -11,13 +11,16 @@ function flag(env,name,fallback=false){
   if(FALSE.has(v))return false;
   return fallback;
 }
+// alpha.53: BEAST/furnace/GPU research and the robustness audit live in the Money Printer
+// Evolution Lab. A research-beast.json left behind by an older build is reported but ignored;
+// the trader only decides whether to run the lightweight evidence collector.
 function beastEnabled(dataDir){
   try{return JSON.parse(fs.readFileSync(path.join(dataDir,'research-beast.json'),'utf8'))?.enabled===true}
   catch{return false}
 }
 function researchServicePolicy({env=process.env,dataDir}={}){
-  const beast=flag(env,'MPO_RESEARCH_BEAST',beastEnabled(dataDir||'.'));
-  return {collector:flag(env,'MPO_RESEARCH_COLLECTOR',true),audit:flag(env,'MPO_RESEARCH_AUDIT',beast),beast,
-    auditEnv:{MPO_AUDIT_WORKERS:String(env.MPO_AUDIT_WORKERS||4),MPO_AUDIT_EVERY_GENERATIONS:String(env.MPO_AUDIT_EVERY_GENERATIONS||25),MPO_AUDIT_SEEDS:String(env.MPO_AUDIT_SEEDS||6),MPO_AUDIT_ROUNDS:String(env.MPO_AUDIT_ROUNDS||500)}};
+  const legacyBeast=flag(env,'MPO_RESEARCH_BEAST',beastEnabled(dataDir||'.'));
+  return {collector:flag(env,'MPO_RESEARCH_COLLECTOR',true),audit:false,beast:false,legacyBeastRequested:legacyBeast,
+    movedTo:'money-printer-evolution-lab',auditEnv:{}};
 }
 module.exports={flag,beastEnabled,researchServicePolicy};

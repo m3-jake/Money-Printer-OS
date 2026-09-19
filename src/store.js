@@ -240,16 +240,49 @@ export function readJournal(limit = 5000) {
 }
 
 // Dashboard actions use their own append-only queue to avoid overwriting scanner state mid-cycle.
+// The queue is for small dashboard actions. On 2026-09-18 an in-process evolution service pushed
+// ~290 KB 'evolution-sync' snapshots into it several times a second, actions.ndjson reached 23 GB,
+// drainActions() could no longer read it into memory, and the disk filled. Two rails now exist:
+// no single action above ACTION_MAX_BYTES, and no queue file above QUEUE_MAX_BYTES (quarantined,
+// never silently deleted). Evolution state arrives over the lab link (src/labLink.js) instead.
+export const ACTION_MAX_BYTES = 512 * 1024;
+export const QUEUE_MAX_BYTES = 64 * 1024 * 1024;
+export const DRAIN_ORPHAN_MS = 5 * 60_000;
 export function enqueueAction(action) {
   fs.mkdirSync(dir, { recursive: true });
   const queued = { id: action.id || randomUUID(), ...action, ts: action.ts || Date.now() };
-  fs.appendFileSync(actionFile, `${JSON.stringify(queued)}\n`);
+  const line = `${JSON.stringify(queued)}\n`;
+  if (Buffer.byteLength(line) > ACTION_MAX_BYTES) throw new Error(`action ${queued.type || '?'} is ${Buffer.byteLength(line)} bytes; the queue accepts at most ${ACTION_MAX_BYTES}`);
+  fs.appendFileSync(actionFile, line);
   return queued;
 }
+export function quarantineActionQueue(reason = 'oversized') {
+  const target = `${actionFile}.quarantined-${Date.now()}`;
+  try { fs.renameSync(actionFile, target); } catch { return null; }
+  try { appendJournal({ type: 'error', error: `actions.ndjson quarantined (${reason}) as ${path.basename(target)}; review or delete it` }); } catch {}
+  return target;
+}
+// A .drain file lives for milliseconds; one older than DRAIN_ORPHAN_MS belongs to a process that
+// died mid-drain (or hit ENOSPC) and would otherwise sit on disk forever.
+export function cleanupActionDrains(now = Date.now()) {
+  let removed = 0;
+  try {
+    for (const name of fs.readdirSync(dir)) {
+      if (!name.startsWith('actions.ndjson.') || !name.endsWith('.drain') || name.startsWith(`actions.ndjson.${process.pid}.`)) continue;
+      const file = path.join(dir, name);
+      try { if (now - fs.statSync(file).mtimeMs > DRAIN_ORPHAN_MS) { fs.rmSync(file, { force: true }); removed++; } } catch {}
+    }
+  } catch {}
+  return removed;
+}
 
+let lastDrainSweep = 0;
 export function drainActions(limit = 1000) {
   fs.mkdirSync(dir, { recursive: true });
+  const now = Date.now();
+  if (now - lastDrainSweep > 60_000) { lastDrainSweep = now; cleanupActionDrains(now); }
   if (!fs.existsSync(actionFile)) return [];
+  try { const size = fs.statSync(actionFile).size; if (size > QUEUE_MAX_BYTES) { quarantineActionQueue(`${size} bytes`); return []; } } catch {}
   const drainFile = `${actionFile}.${process.pid}.${Date.now()}.drain`;
   try {
     // Atomic rename: dashboard appends after this point create/use a new actions.ndjson.

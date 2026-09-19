@@ -18,6 +18,7 @@ import { memeIndex } from './indexer.js';
 import { mapLimit, sleep, compactError } from './utils.js';
 import { fastEdgeScore, queueOutcomeSamples, settleOutcomeSamples, dueOutcomeMints, learnerSnapshot, evolutionChampionPolicy, evolutionChampionScore } from './learner.js';
 import { recordChampionPublication } from './researchControlPlane.js';
+import { syncLabLink, publishLabFeed } from './labLink.js';
 import { estimatePaperExecution, deterministicFillAllowed, estimateRoundTripFrictionPct } from './executionSim.js';
 import { enqueueAlphaEvent } from './alphaQueue.js';
 import { dailyPnl, recentPnl, bookClosedPnl, unrealizedPnl, equity, updatePortfolio } from './accounting.js';
@@ -413,6 +414,9 @@ async function cycle() {
   s.system.lastError = null;
   s.stats.cycles++;
   await actions(s);
+  // The Evolution Lab is a separate app now: pull its latest status/champion over the lab link
+  // (local files, or the signed bridge for a lab on another machine). Gates are re-checked below.
+  try { syncLabLink(s); } catch (e) { s.labLink = { connected: false, source: 'error', error: compactError(e) }; }
   const hotPolicy=cfg.mode==='paper'?evolutionChampionPolicy(s):null;
   if(hotPolicy){
     if(s.runtime.activeEvolutionChampionId!==hotPolicy.id){
@@ -518,6 +522,8 @@ async function cycle() {
   queueOutcomeSamples(s, ranked);
   s.system.learner = learnerSnapshot(s);
   s.system.learner.settledThisCycle = settledOutcomes;
+  // Feed the lab: labeled outcomes + a status line, throttled, only when something changed.
+  try { publishLabFeed(s, { mode: cfg.mode, version: process.env.MONEY_PRINTER_VERSION || null }); } catch {}
 
   s.memeIndex = memeIndex(ranked);
   s.watchlist = ranked.slice(0, Math.min(150, max));

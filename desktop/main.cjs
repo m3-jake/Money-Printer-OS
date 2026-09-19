@@ -1,5 +1,5 @@
 // Money Printer OS — desktop supervisor.
-// Owns the two Node children (trading engine + Evolution daemon), keeps them alive,
+// Owns the Node children (trading engine, network mesh, evidence collector), keeps them alive,
 // adopts an engine that is already answering on the port, and never leaves orphans.
 const { app, BrowserWindow, Menu, shell } = require('electron');
 const { spawn } = require('node:child_process');
@@ -77,16 +77,16 @@ function tee(tag, chunk) {
 if (['1','true','yes','on'].includes(String(process.env.CLUSTER_HOST||'').toLowerCase()) && !process.env.CLUSTER_HUB_URL) {
   process.env.CLUSTER_HUB_URL = `http://127.0.0.1:${Number(process.env.CLUSTER_PORT||8798)}`;
 }
+// alpha.53: the Evolution daemon, research cluster hub/worker and robustness audit moved to the
+// Money Printer Evolution Lab (a separate app that runs on the research workhorse only). The
+// trader keeps the engine, the network mesh and the lightweight evidence collector, and talks to
+// the lab over the lab link (src/labLink.js). Nothing research-heavy runs on a laptop any more.
 const procs = {
-  engine:    { script: 'src/index.js',         env: { MONEY_PRINTER_DESKTOP: '1' }, child: null, restarts: 0, startedAt: 0, timer: null },
-  evolution: { script: 'src/evolutionLoop.js', env: { EVOLUTION_DAEMON: '1', MONEY_PRINTER_VERSION: APP_VERSION }, child: null, restarts: 0, startedAt: 0, timer: null },
+  engine:    { script: 'src/index.js',         env: { MONEY_PRINTER_DESKTOP: '1', MONEY_PRINTER_VERSION: APP_VERSION }, child: null, restarts: 0, startedAt: 0, timer: null },
   networkMesh:{ script: 'src/networkMesh.js', env: { MONEY_PRINTER_VERSION: APP_VERSION, MONEY_PRINTER_APP_ASAR: PACKAGED ? path.join(process.resourcesPath,'app.asar') : '' }, child: null, restarts: 0, startedAt: 0, timer: null },
 };
-if (['1','true','yes','on'].includes(String(process.env.CLUSTER_HOST||'').toLowerCase())) procs.clusterHub={script:'src/clusterHub.js',env:{},child:null,restarts:0,startedAt:0,timer:null};
-if (process.env.CLUSTER_HUB_URL) procs.clusterWorker={script:'src/clusterWorker.js',env:{},child:null,restarts:0,startedAt:0,timer:null};
 const researchServices=researchServicePolicy({env:process.env,dataDir:DATA});
 if (researchServices.collector) procs.researchCollector={script:'src/researchCollector.js',env:{POLYMARKET_AUTOSTART:'false'},child:null,restarts:0,startedAt:0,timer:null};
-if (researchServices.audit) procs.researchAudit={script:'src/researchAudit.js',env:researchServices.auditEnv,child:null,restarts:0,startedAt:0,timer:null};
 let quitting = false;
 let ownsEngine = false;   // false when we adopted an engine that was already on the port
 let win = null;
@@ -277,19 +277,15 @@ async function boot() {
   const existing = await health();
   if (existing) {
     ownsEngine = false;
-    log(`boot: adopting an engine already answering on ${BASE} (health=${existing.health || '?'}); not spawning a second engine or Evolution daemon`);
+    log(`boot: adopting an engine already answering on ${BASE} (health=${existing.health || '?'}); not spawning a second engine`);
   } else if (await portOccupied()) {
     log(`boot: port ${PORT} is held by a process that is not a Money Printer OS engine`);
     showRecovery(`Port ${PORT} is in use by another program.\nStop it, or set DASHBOARD_PORT in .env to a free port, then relaunch.`);
     return;
   } else {
     ownsEngine = true;
-    if (procs.clusterHub) { start('clusterHub'); await new Promise(r => setTimeout(r, 200)); }
-    if (procs.clusterWorker) start('clusterWorker');
     start('engine');
-    start('evolution');
     if (procs.researchCollector) start('researchCollector');
-    if (procs.researchAudit) start('researchAudit');
   }
   const ready = await waitForReady();
   if (ready) await showDashboard();
