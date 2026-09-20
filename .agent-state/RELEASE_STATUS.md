@@ -1,96 +1,176 @@
-# Release status — alpha.53 (packaged, NOT installed by an agent)
+# Release status — alpha.53 (INTEGRATED + PACKAGED, **not installed** by an agent)
 
-Version `0.5.0-alpha.53` (`package.json`, unchanged this pass). Packaging implemented and run
-by the `packaging` work package (ledger M7, M8 release/integration half), per
-`.workflow/scratch/PACKAGING.md` §6 and `.workflow/scratch/PLAN.md` §6, on top of this tree's
-HEAD at packaging time.
+Version `0.5.0-alpha.53` (`package.json`, unchanged all workflow). This section **replaces** the
+earlier packaging-package record, which packed `main` before three of the five work packages had
+landed and correctly labelled itself "a mechanism proof, not a final release artifact". That
+artifact (SHA-256 `be8f1f8a87b83b052cf8d53b827e4d81bf221e0ae6aaa8cc06842f88507c1f57`, commit
+`1813445`) is **superseded — do not ship it**. Everything below is the repack from the fully
+integrated tree.
 
-**Folded forward from the undotted `agent-state/RELEASE_STATUS.md` (now deleted — see
-`.agent-state/INTEGRATION_LEDGER.md` for the duplicate-directory decision), night finish-up
-notes prior to packaging:**
-- Tests: `npm run test:all` exit 0 after paper-identity + equity-jump guards (replay-lab
-  24/24; accounting integrity includes new identity/jump cases).
-- Selftest / doctor: PASS / OK (paper mode, live gate false, production learning LOCKED).
-- Accounting: live RO `state.json` identity hole = 0; historical `state.bad-70sol-*`
-  documented; save refuses single-save equity teleport; load flags absurd open realized.
-- Rollback: prior app.asar backups under Application Support remain untouched.
+## The artifact
 
-## Packaging results (this pass)
+| field | value |
+| --- | --- |
+| path | `/Users/bing/Desktop/Money Printer OS/Current/MPO-alpha53-release.asar` |
+| bytes | **34,148,685** |
+| SHA-256 | **`c4b937dc48388d47a3bd0f837ef3e9f885a39c667b8ee0c03192d16169810c3f`** |
+| packed from commit | `da0b73901c2a8f6e7e957729a4a5f5cee939c228` ("mpo: alpha53 integrated — state docs") |
+| packer | `node scripts/release-alpha53.mjs pack` → staged copy + `npx @electron/asar@4.3.0 pack --unpack '*.node'` |
+| gate stage | `main` (unadvanced) |
+| signed | **no** |
 
-- **HEAD packaged (final, recorded artifact):** `18134455e1cd7779e4d12fcf2404bf54031a2bbe`
-  ("mpo: packaging — promote refusal shows the full path to target"), the second of two
-  packaging commits on `main` — `eaee2652ab1aa1025314473dd9e23f11f0a3e171` ("mpo: packaging")
-  landed first, was packed once as an intermediate check
-  (SHA-256 `855bda34d1ec5a0a89056fd44cbad9fbec8b42b796a107225f5b51ae1fd58670`), then a small
-  driver fix (the `promote` verb's diagnostic, no gate-logic change) was committed and
-  `pack` re-run against the new HEAD — since `scripts/` is itself part of the packaged tree,
-  editing the script changes the packed bytes. The commit and SHA-256 below are this
-  **final** run and are what `release-record.json` / `sha256.txt` hold.
-- **Integration state at packaging time (IMPORTANT — read before treating this artifact as a
-  final ship candidate):** merge order per `PLAN.md` §7 is ship-fixes → accounting → product →
-  visual → packaging. At the time packaging ran, only **product** (`2420d77`) was merged onto
-  `main`; **ship-fixes** was committed on its own branch (`wf/ship-fixes` @ `971a168`) but not
-  yet merged; **accounting** and **visual** had uncommitted work-in-progress in their own
-  worktrees, not yet committed or merged. **This means the `.asar` packaged and recorded below
-  reflects `main` HEAD as of `product`, not the fully-integrated alpha53 tree** — it does not
-  yet contain ship-fixes' `test:visual` wiring/doctor `--offline` flag/doc fixes, accounting's
-  `REALIZED_WITHOUT_BASIS` guard and the other F1–F8 fixes, or visual's CSS/markup
-  consolidation. Per `PLAN.md` §7's own warning ("any merge after it invalidates the recorded
-  hash"), **this SHA-256 must be treated as a mechanism proof, not a final release artifact.**
-  Once ship-fixes/accounting/visual land on `main`, re-run `node scripts/release-alpha53.mjs
-  pack` to produce the real ship candidate and replace this record.
-- **Version:** `0.5.0-alpha.53` (asserted by `pack`; matches `package.json`).
-- **Tests re-run for this record:** `npm run test:release-gate` → 6/6 pass. `npm run selftest`
-  → `SELFTEST PASS`. `npm run test:all` → exit 0 (full chain, on the pre-packaging-commit
-  `main` HEAD described above). `node --test tests/renderer-alpha52.test.mjs
-  tests/visual-assets.test.mjs tests/visual-contract.test.mjs` → 25/25 (run by explicit path;
-  `test:visual` npm alias does not exist on `main` yet — ship-fixes owns adding it, contract
-  C2). `node src/doctor.js --offline` **was not run**: `main` does not yet have ship-fixes'
-  `--offline` flag (`src/doctor.js` still unconditionally calls `benchmarkRpcs()`), and running
-  it without that flag would make live RPC network calls, which the workflow's hard
-  constraints forbid. This is an honest gap, not a skipped requirement — re-run once
-  ship-fixes merges.
-- **Asar artifact:** `/Users/bing/Desktop/Money Printer OS/Current/MPO-alpha53-release.asar`,
-  34,114,521 bytes, SHA-256
-  `be8f1f8a87b83b052cf8d53b827e4d81bf221e0ae6aaa8cc06842f88507c1f57` — matches
-  `.workflow/scratch/packaging/release-record.json` and `.workflow/scratch/packaging/sha256.txt`
-  exactly (`shasum -a 256` cross-checked). Packed from commit
-  `18134455e1cd7779e4d12fcf2404bf54031a2bbe`.
-- **Gate stage:** `main` (unadvanced). `node scripts/release-alpha53.mjs promote tested`
-  refuses, printing
-  `missing: ["stageOrder","windowsArtifactHash","signed","testAll","selftest","macBoot","windowsBoot"]`
-  — no stage forced, no signature or Windows artifact fabricated
-  (`.workflow/scratch/packaging/gate-refusal.log`).
-- **Archive contents verified:** see `asar-manifest.txt` / the grep proof in `PACKAGING-RUN.md`
-  under `.workflow/scratch/packaging/` — zero `.env`, zero `.agent-state`/`agent-state`/
-  `research`/`artifacts`/`.workflow`/`.git`, zero non-empty `data/*`, exactly one
-  `build/icon.icns`; `.env.example`, `desktop/main.cjs`, `src/index.js`,
-  `public/dashboard.html`, `public/css/mpo-shell.css`, `package.json` all present.
-- **Rollback path:** app-level — `Contents/Resources/app.asar.previous`, written by both a
-  manual install and the app's own auto-updater on every asar swap
-  (`desktop/main.cjs:206-209,229`). Data-level — a timestamped
-  `~/Library/Application Support/Money Printer OS/backups/<label>-<ts>/` directory holding the
-  state/journal files from immediately before the swap. Neither was created or touched by this
-  packaging pass — no agent installs, and none of `~/Applications` or
-  `~/Library/Application Support/Money Printer OS` was written to.
-- **Install / restart — for bing, not an agent:**
-  ```
-  node "/Users/bing/Desktop/Money Printer OS/Current/MPO-alpha53-release-src/scripts/release-alpha53.mjs" install
-  node "/Users/bing/Desktop/Money Printer OS/Current/MPO-alpha53-release-src/scripts/release-alpha53.mjs" restart
-  ```
-  Both verbs hard-refuse under an agent session and print this same guidance; only bing, from
-  his own terminal, after confirming no real Solana/Polymarket-US session is armed, should run
-  them. (And, per the integration-state note above, only after re-packing the fully-merged
-  tree.)
-- **Honest status: packaged, NOT installed by an agent.** No promotion past `candidate` is
-  possible or attempted — see `docs/WINDOWS-RELEASE.md` for why (`tests.windowsBoot` and
-  `artifacts.windows.sha256` do not exist in this repo).
-- **`.build-version` / `.build-commit`:** restamped to `0.5.0-alpha.53` /
-  `2420d77c3e8b770375239f03f879a3e89f61851d`. **These two files are cosmetic** — read by no
-  code in this repository (`grep -r "build-version\|build-commit\|BUILD_VERSION\|BUILD_COMMIT"`
-  across the tree returns nothing outside the files themselves and this note). The
-  authoritative packaged commit is whatever `release-record.json.commit` says, not these files.
+`shasum -a 256` on disk, `.workflow/scratch/packaging/release-record.json` and this table all
+carry the same hash. **The commit named above is one commit behind this file's own commit** (which
+adds only this section to `.agent-state/RELEASE_STATUS.md`): `.agent-state/` is in the packer's
+`STAGE_EXCLUDES`, so that later doc commit cannot and does not change a single packed byte. The
+authoritative record of what was packed is `release-record.json`, not `.build-commit` /
+`.build-version` — those two files are cosmetic and read by no code in this repository.
 
+## What is inside (verified, not assumed)
+
+`.workflow/scratch/integration/asar-manifest.txt` — 2,721 entries. Zero `.env`, zero
+`.agent-state` / `agent-state` / `research` / `artifacts` / `.workflow` / `.git` entries. `data/`
+present but **empty** (the running app expects the directory; a user's app must never ship this
+dev tree's state or journal). Exactly one `build/icon.icns`. Present and confirmed by name:
+`package.json`, `.env.example`, `README.md`, `desktop/main.cjs`, `desktop/release-gate.cjs`,
+`src/index.js`, `src/store.js`, `src/accounting.js`, `src/positionExecution.js`, `src/doctor.js`,
+`public/dashboard.html`, `public/css/mpo-shell.css`, `public/css/mpo-workstation.css`,
+`scripts/release-alpha53.mjs`, plus 2,569 `node_modules` entries.
+
+## Verification — recorded only after actually running
+
+Source tree at the packed commit (`.workflow/scratch/integration/`):
+
+| check | result |
+| --- | --- |
+| `npm run test:all` | **302 tests / 302 pass / 0 fail / 0 skipped** |
+| `npm run test:visual` | **26 / 26** |
+| `node --test tests/release-gate.test.cjs` | **6 / 6** |
+| `node src/selftest.js` | `SELFTEST PASS` |
+| `node src/doctor.js --offline` | exit 0 — `PAPER IDENTITY … holeExact 0 okExact true` |
+| `release-alpha53.mjs test-record --testAll --selftest --macBoot` | `{testAll: true, selftest: true, macBoot: true}` — each re-run for real in that invocation, no flag taken at face value |
+
+**The packaged archive itself was then unpacked and exercised** (`asar extract` → a throwaway
+directory; `asar-release-gate.log`, `asar-boot.log`, `asar-doctor.log`):
+
+- `node --test tests/release-gate.test.cjs` **from inside the extracted archive** — 6/6 pass. This
+  is what "the asar boots the release gate" can honestly mean without installing: the gate module
+  that ships in the archive loads and satisfies its own suite.
+- `node src/index.js --dashboard-only` from the extracted archive, `MODE=paper`,
+  `ALPHA_WORKER_ENABLED=false`, `DIRECT_STREAM_ENABLED=false`, throwaway
+  `MONEY_PRINTER_DATA_DIR`, port 8794 — printed `Dashboard: http://127.0.0.1:8794` and served
+  until the 60 s alarm killed it (exit 142 = SIGALRM, i.e. a clean boot, not a crash).
+- `node src/doctor.js --offline` from the extracted archive — exit 0, live gate `false`,
+  production learning `LOCKED`, identity `okExact true`.
+
+`npm run doctor` was never run without `--offline`: the plain verb calls `benchmarkRpcs()` against
+live RPC providers, which this workflow's hard constraints forbid. Stated as a deliberate
+substitution, not a skipped step.
+
+## Promotion — refused, nothing forced
+
+```
+node scripts/release-alpha53.mjs promote tested
+missing: ["stageOrder","windowsArtifactHash","signed","windowsBoot"]
+```
+
+Exit 1, stage left at `main`. `testAll` / `selftest` / `macBoot` have dropped off the missing list
+because they were genuinely satisfied; what remains **cannot** be satisfied on this machine — see
+`docs/WINDOWS-RELEASE.md`. No stage was forced, no signature or Windows artifact fabricated, and
+`desktop/release-gate.cjs` was never modified (`git diff 93c8022..HEAD -- desktop/` is empty).
+
+## Install — bing only. An agent must not run this.
+
+> **Known defect in the hand-off, flagged rather than papered over:** `release-alpha53.mjs install`
+> and `restart` refuse *unconditionally*, not just for agents — running them yourself prints the
+> same refusal and the same command back at you. They are a design reference, not a working
+> installer. Use the explicit commands below instead. Fixing those two verbs is a follow-up, not
+> something this pass changed (the script is the packaging package's file and its refusal is
+> load-bearing for agent safety).
+
+Run these yourself, from your own terminal, **after confirming no real Solana or Polymarket-US
+session is armed** (`mode === 'paper'`, `sessionArmed === false`):
+
+```sh
+# 0. quit the running app
+osascript -e 'quit app "Money Printer OS"'
+
+# 1. rollback copies of what is installed right now (timestamped + the .previous the app expects)
+RES="$HOME/Applications/Money Printer OS.app/Contents/Resources"
+cp "$RES/app.asar" "$RES/app.asar.pre-alpha53-$(date +%Y%m%d-%H%M%S)"
+cp "$RES/app.asar" "$RES/app.asar.previous"
+
+# 2. snapshot the live data dir (state + journals) BEFORE swapping code
+SUP="$HOME/Library/Application Support/Money Printer OS"
+BK="$SUP/backups/pre-alpha53-$(date +%Y%m%d-%H%M%S)"
+mkdir -p "$BK" && cp "$SUP/data/"*.json "$BK/" 2>/dev/null; cp "$SUP/data/market.ndjson" "$BK/" 2>/dev/null; true
+
+# 3. install the archive
+cp "/Users/bing/Desktop/Money Printer OS/Current/MPO-alpha53-release.asar" "$RES/app.asar"
+
+# 3b. and its unpacked native sidecar (see the note below — harmless, and correct)
+rm -rf "$RES/app.asar.unpacked"
+cp -R "/Users/bing/Desktop/Money Printer OS/Current/MPO-alpha53-release.asar.unpacked" "$RES/app.asar.unpacked"
+
+# 4. verify the installed bytes are the ones recorded above
+shasum -a 256 "$RES/app.asar"
+# expect: c4b937dc48388d47a3bd0f837ef3e9f885a39c667b8ee0c03192d16169810c3f
+
+# 5. launch
+open -a "Money Printer OS"
+```
+
+### About `app.asar.unpacked`
+
+`pack` runs `@electron/asar ... --unpack '*.node'`, which writes a sibling
+`MPO-alpha53-release.asar.unpacked/` holding the prebuilt native addons (`bufferutil`,
+`utf-8-validate`). **The currently installed app has no `app.asar.unpacked` directory at all** —
+previous installs copied only the archive. That has been survivable because both addons are
+optional accelerators for `ws`, which falls back to pure JS when they are missing; it is not
+evidence that the sidecar is unnecessary. Step 3b installs it, which is strictly more correct and
+costs nothing. If you skip 3b, also delete any stale `$RES/app.asar.unpacked` so the app cannot
+load addons from a different build than the archive it is running.
+
+## Rollback
+
+```sh
+RES="$HOME/Applications/Money Printer OS.app/Contents/Resources"
+osascript -e 'quit app "Money Printer OS"'
+cp "$RES/app.asar.previous" "$RES/app.asar"
+rm -rf "$RES/app.asar.unpacked"   # the alpha53 sidecar does not belong to the previous build
+shasum -a 256 "$RES/app.asar"
+open -a "Money Printer OS"
+```
+
+Code-level rollback only. `app.asar.previous` is also written automatically by the app's own
+updater on every swap (`desktop/main.cjs:206-209,229`). Data-level rollback is the timestamped
+`~/Library/Application Support/Money Printer OS/backups/<label>-<ts>/` directory from step 2 —
+**restore account snapshots only if the data is actually damaged, never merely to roll code back.**
+As of this pass the installed `app.asar` is 34,204,023 bytes (2026-09-19 09:25) with
+`app.asar.previous` at 34,185,920 bytes (2026-09-19 08:25); neither was read for content, touched,
+or replaced by any agent in this workflow, and nothing under
+`~/Library/Application Support/Money Printer OS` was written to.
+
+## Still needs bing (no agent can close these)
+
+1. **The install/restart click above** — and, if the app is code-signed, re-signing or a Gatekeeper
+   prompt after the asar swap. Prior alphas were installed this way successfully.
+2. **Updater manifest signing.** `docs/UPDATER-MANIFEST.md` holds the Ed25519 recipe with the
+   private-key path left as a placeholder. No agent read, named or searched for key material; only
+   the public half (`desktop/update-public-key.pem`) was ever touched.
+3. **A Windows machine.** No Windows build, signing or CI exists in this repo, so `windowsBoot` and
+   `artifacts.windows.sha256` cannot be produced here and promotion caps below `tested`.
+4. **Polymarket US API key** regeneration at polymarket.us/developer (every signed call still
+   returns `401 API key not found`), and the Combos/RFQ **beta allow-list**, which is
+   polymarket.us's decision, not this repo's.
+5. **The first real trade**, to confirm the `/v1/order/{id}` and settlement payload shapes that were
+   implemented from docs. Deliberately not simulated or mocked closed.
+6. **`3.0.0` vs `0.5.0-alpha.NN`.** Unresolved since alpha.52. This pass kept `0.5.0-alpha.53`;
+   `pack` asserts that exact string and would refuse a `3.0.0` stamp.
+
+**Honest status: integrated, packaged, verified, NOT installed and NOT promoted.** Real-money
+execution stayed locked throughout (`liveExecution:'manual'`, `automaticLivePromotionAllowed:false`,
+`liveActivationAllowed:false`, `productionLearningUnlocked` still derived from `proven`).
 ---
 
 # Release status — alpha.52 (integration candidate, NOT deployed)
