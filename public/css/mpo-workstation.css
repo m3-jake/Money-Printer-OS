@@ -421,6 +421,83 @@ textarea:disabled {
 .poly-mod.closed .poly-body { display: none; }
 .poly-mod > header .btn:hover { background: var(--mpo-chrome-mid); }
 
+/* Shared multi-section module chrome — generalizes .poly-mod's gradient header +
+   outset panel + collapse affordance for other multi-section screens (System,
+   Research Monitor, Control Bay). .poly-mod itself is untouched above. */
+.mpo-module {
+  display: block;
+  border: var(--mpo-border-outset);
+  background: var(--mpo-chrome);
+  margin-bottom: 6px;
+}
+.mpo-module[hidden] { display: none; }
+.mpo-module > header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 5px;
+  background: linear-gradient(90deg, #000080, #1084d0);
+  color: #fff;
+  font-weight: bold;
+  font-size: 11px;
+}
+.mpo-module > header .btn {
+  margin-left: auto;
+  min-height: 18px;
+  padding: 0 8px;
+  line-height: 15px;
+}
+.mpo-module > header .btn:hover { background: var(--mpo-chrome-mid); }
+.mpo-module-body { min-height: 0; padding: var(--mpo-space-2); }
+.mpo-module.closed .mpo-module-body { display: none; }
+
+/* Shared labeled-bar meter — generalizes Wallet's inline .mpo-spark, Risk's
+   .mpo-gauge markup, and Research Monitor's inline leaderboard bars into one
+   component. Bar visuals are copied byte-for-byte from .sysbar/.mpo-spark so
+   swapping classes at each call site is a no-op for rendering. */
+.mpo-meter { margin: 8px 0 4px; }
+.mpo-meter > label {
+  display: flex;
+  justify-content: space-between;
+  font: var(--mpo-fs-micro-target) var(--mpo-font-chrome);
+  color: var(--mpo-term-label);
+  margin-bottom: 3px;
+}
+.mpo-meter-bar {
+  height: 18px;
+  border: 1px solid #135828;
+  background: #020503;
+  padding: 2px;
+}
+.mpo-meter-bar i { display: block; height: 100%; background: #25d95a; }
+.mpo-meter-bar.warn i { background: var(--mpo-amber); }
+.mpo-meter-bar.hot i { background: var(--mpo-red); }
+.mpo-meter-bar--sm {
+  height: 8px;
+  border: 1px solid var(--mpo-table-grid);
+  background: #eee;
+  padding: 1px;
+  width: 72px;
+}
+.mpo-meter-bar--sm i { display: block; height: 100%; background: var(--mpo-amber); }
+.mpo-meter-bar--sm.hot i { background: var(--mpo-red); }
+
+/* Shared brand title — the duplicated `font:bold italic 22px Impact,'Arial
+   Black',sans-serif` rule, sourced from tokens. */
+.mpo-brand-title {
+  font: bold italic var(--mpo-fs-head) var(--mpo-font-brand);
+  line-height: 1;
+}
+
+/* Shared danger/real-money fieldset accent, driven by --mpo-warn/--mpo-warn-bg.
+   Only sets color + background so a plain <fieldset> keeps its default border
+   style/width — identical rendering to the inline style it replaces. */
+.mpo-danger-fieldset {
+  border-color: var(--mpo-warn);
+  background: var(--mpo-warn-bg);
+}
+.mpo-danger-fieldset legend { color: #ffb37a; }
+
 .mpo-surface-light .inset {
   background: #fff;
   color: #111;
