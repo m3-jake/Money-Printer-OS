@@ -4,7 +4,7 @@ import path from 'node:path';
 import { cfg } from './config.js';
 import { strategyNames, defaults as runtimeDefaults } from './runtime.js';
 import { ensureResearch } from './research.js';
-import { ensurePnlLedger } from './accounting.js';
+import { ensurePnlLedger, paperIdentity, guardEquityJump } from './accounting.js';
 
 const dir = path.resolve(process.env.MONEY_PRINTER_DATA_DIR || 'data');
 const stateFile = path.join(dir, 'state.json');
@@ -58,6 +58,21 @@ function merge(s) {
   };
   ensureResearch(out);
   ensurePnlLedger(out);
+  out._accounting = paperIdentity(out);
+  const jump = guardEquityJump({ nextEquity: out._accounting.equity, startSol: out.paperStartSol });
+  const alerts = [];
+  if (!jump.ok) alerts.push({ code: 'EQUITY_JUMP', reasons: jump.reasons });
+  if (!out._accounting.ok && Math.abs(out._accounting.hole) > Math.max(0.5, Number(out.paperStartSol || 0) * 0.25)) {
+    alerts.push({ code: 'PAPER_IDENTITY', hole: out._accounting.hole });
+  }
+  if (Number(out._accounting.openRz || 0) > Math.max(3, Number(out.paperStartSol || 0) * 3)) {
+    alerts.push({ code: 'OPEN_REALIZED_ABSURD', openRz: out._accounting.openRz });
+  }
+  if (alerts.length) {
+    out.system = out.system || {};
+    out.system.accountingAlert = { code: alerts[0].code, alerts, at: Date.now(), identity: out._accounting };
+    out.system.health = out.system.health === 'HEALTHY' ? 'CAUTION' : out.system.health;
+  }
   return out;
 }
 
@@ -100,6 +115,7 @@ export function loadState() {
 }
 
 function pruneState(s) {
+  delete s._accounting;
   const now = Date.now();
   s.history = (s.history || []).slice(-1500);
   s.pnlLedger = (s.pnlLedger || []).slice(-100000);
@@ -166,6 +182,29 @@ export function saveState(state) {
   const started = performance.now();
   fs.mkdirSync(dir, { recursive: true });
   const s = pruneState(validateAccount(state));
+  ensurePnlLedger(s);
+  const id = paperIdentity(s);
+  const prevEq = readCache?.value ? paperIdentity(readCache.value).equity : null;
+  // Block only discontinuous single-save leaps vs the last loaded mark.
+  // Slow compounding past 20x start is allowed; load-time merge still flags multiples.
+  const jump = guardEquityJump({
+    prevEquity: prevEq,
+    nextEquity: id.equity,
+    startSol: s.paperStartSol,
+    maxMultiple: 1e9,
+    maxAbsJump: Math.max(Number(s.paperStartSol || 0) * 5, 5),
+  });
+  if (!jump.ok) {
+    s.system = s.system || {};
+    s.system.accountingAlert = { code: 'EQUITY_JUMP', reasons: jump.reasons, at: Date.now(), identity: id, prevEquity: prevEq };
+    const err = new Error(`refusing to save: ${jump.reasons.join(',')}`);
+    err.code = 'EQUITY_JUMP'; err.jump = jump; err.identity = id;
+    throw err;
+  }
+  if (!id.ok) {
+    s.system = s.system || {};
+    s.system.accountingAlert = { code: 'PAPER_IDENTITY', at: Date.now(), identity: id };
+  }
   s.system ||= {};
   s.system.metrics ||= {};
   // Persist the previous measured save duration; the current duration is returned to the caller.
@@ -307,3 +346,6 @@ export function resetPaper(startSol = cfg.paperStartSol, persist = true) {
   if (persist) saveState(s);
   return s;
 }
+
+export function getPaperIdentity(s){ return paperIdentity(s); }
+export function checkEquityJump(args){ return guardEquityJump(args); }

@@ -36,3 +36,35 @@ export function updatePortfolio(s,{now=Date.now()}={}){
   if(!last||now-Number(last.ts||0)>=4000){s.portfolioSeries.push({ts:now,equitySol:eq,cashSol:cash,realizedSol:day,unrealizedSol:unrealized});if(s.portfolioSeries.length>21600)s.portfolioSeries.splice(0,s.portfolioSeries.length-21600)}
   return s.portfolio;
 }
+
+export const openRealizedSol=s=>(s?.positions||[]).reduce((q,p)=>q+n(p?.realizedSol),0);
+export function paperIdentity(s={},eps=1e-3){
+  ensurePnlLedger(s);
+  const start=n(s.paperStartSol), life=n(s.realizedLifetimePnlSol), unreal=unrealizedPnl(s), openRz=openRealizedSol(s);
+  const eq=equity(s), expected=start+life+unreal, expectedExact=expected+openRz;
+  const hole=eq-expected, holeExact=eq-expectedExact;
+  return {
+    start, life, unreal, openRz, equity:eq, expected, expectedExact, hole, holeExact,
+    ok:Math.abs(hole)<=eps, okExact:Math.abs(holeExact)<=eps,
+  };
+}
+export function assertPaperIdentity(s,eps=1e-3){
+  const id=paperIdentity(s,eps);
+  if(!id.ok){
+    const err=new Error(`paper identity broken: equity ${id.equity} != start+life+unreal ${id.expected} (hole ${id.hole})`);
+    err.code='PAPER_IDENTITY'; err.identity=id; throw err;
+  }
+  return id;
+}
+/** Flag impossible equity leaps vs paper start / prior mark. Does not mutate balances. */
+export function guardEquityJump({prevEquity=null, nextEquity, startSol, maxMultiple=20, maxAbsJump=null}={}){
+  const start=Math.max(1e-9,n(startSol)), next=n(nextEquity), prev=prevEquity==null?null:n(prevEquity);
+  const multiple=next/start;
+  const absJump=prev==null?0:Math.abs(next-prev);
+  const jumpLimit=maxAbsJump==null?Math.max(start*maxMultiple, start*5):n(maxAbsJump);
+  const reasons=[];
+  if(!(next>=0) || !Number.isFinite(next)) reasons.push('nonfinite-or-negative-equity');
+  if(multiple>maxMultiple) reasons.push(`equity-multiple>${maxMultiple}x-start`);
+  if(prev!=null && absJump>jumpLimit) reasons.push(`equity-abs-jump>${jumpLimit}`);
+  return {ok:!reasons.length, reasons, start, prev, next, multiple, absJump, jumpLimit};
+}

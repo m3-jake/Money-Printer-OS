@@ -25,7 +25,7 @@ test('static import fence keeps replay lab away from live/authenticated modules'
 
 test('metric helper handles hand computed pnl',()=>{const m=metrics({trades:[{pnl:.1,returnPct:10},{pnl:-.05,returnPct:-5}],finalEquity:1.05,fees:.01,slippage:.02,turnover:2,censored:0,curve:[{ts:1,equity:1},{ts:2,equity:.95},{ts:3,equity:1.05}]},1);assert.equal(m.realizedPnl,.05);assert.equal(m.profitFactor,2);assert.equal(m.maxDrawdownPct,5)});
 
-test('main-module detection accepts platform path of this module only',()=>{assert.equal(isMainModule(new URL('../src/replayLab.js',import.meta.url).pathname),true);assert.equal(isMainModule('/definitely/not/replayLab.js'),false)});
+test('main-module detection accepts platform path of this module only',()=>{assert.equal(isMainModule(fileURLToPath(new URL('../src/replayLab.js',import.meta.url))),true);assert.equal(isMainModule('/definitely/not/replayLab.js'),false)});
 
 
 test('out-of-order extra sources cannot use a future price as quarantine baseline',async()=>{
