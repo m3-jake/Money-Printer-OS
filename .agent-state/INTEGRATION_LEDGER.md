@@ -134,3 +134,97 @@ added by `packaging` at all — it does not touch `package.json`). No live gate 
 Windows/signature/`signed:true` fabricated, no key material read beyond the public
 `desktop/update-public-key.pem`, no write under `~/Applications` or `~/Library/Application
 Support/Money Printer OS`.
+## alpha.53 — INTEGRATION PASS (integrator, 2026-09-20)
+
+Supersedes the "status at the time `packaging` ran" table above. All five work packages are now
+on `main`. Integration was done in a dedicated worktree
+(`/Users/bing/Desktop/Money Printer OS/Current/MPO-wt-integrate`, branch `wf/integrate`, based on
+`e611a75`), verified there, then fast-forwarded onto `main`.
+
+### Merges (plan order, `PLAN.md` §7)
+
+| # | package | branch @ sha | merge commit | conflicts |
+| --- | --- | --- | --- | --- |
+| 1 | ship-fixes | `wf/ship-fixes` @ `971a168` | `5ccf437` | **none** |
+| 2 | accounting | `wf/accounting` @ `52a6e74` | `2543c9a` | **none** |
+| 3 | product | already on `main` @ `2420d77` | — (landed before this pass) | — |
+| 4 | visual | `wf/visual` @ `11d676a` | `9054d10` | **none** |
+| 5 | packaging | already on `main` @ `eaee265` → `1813445` → `e611a75` | — (landed before this pass) | — |
+
+**Zero conflicts. The plan's exclusive-file-ownership model held exactly** — no path was touched
+by two packages. `product` and `packaging` had committed straight to `main` out of order rather
+than to package branches; because their files (`.agent-state/KNOWN_BUGS.md`;
+`scripts/release-alpha53.mjs`, `docs/WINDOWS-RELEASE.md`, `docs/UPDATER-MANIFEST.md`,
+`.gitignore`, `.build-*`, `.agent-state/RELEASE_STATUS.md`, this file) are disjoint from the three
+package branches', the three merges were clean anyway. Nothing had to be hand-resolved and no
+package's work was overridden.
+
+### Out-of-order packaging — corrected
+
+`packaging` ran and packed `main` when only `product` had landed, and said so honestly in its own
+`RELEASE_STATUS.md` ("mechanism proof, not a final release artifact", SHA-256 `be8f1f8a…` from
+commit `1813445`). That warning is now discharged: the integrator **re-ran
+`node scripts/release-alpha53.mjs pack` against the fully-merged tree**, and the artifact +
+SHA-256 recorded in `.agent-state/RELEASE_STATUS.md` are from the integrated HEAD. The earlier
+`be8f1f8a…` hash is superseded and must not be shipped.
+
+### Verification at integrated HEAD
+
+Logs: `.workflow/scratch/integration/`. Run in the integration worktree after `npm ci`, then
+re-run in full on `main` after the fast-forward.
+
+| check | result |
+| --- | --- |
+| `npm ci` | exit 0 (lockfile unchanged; no new dependencies anywhere in this workflow) |
+| `npm run test:all` | **302 tests, 302 pass, 0 fail, 0 skipped** (`final-test-all.log`) |
+| `npm run test:visual` | **26/26** (`final-test-visual.log`) |
+| `node --test tests/release-gate.test.cjs` | **6/6** (`final-release-gate.log`) |
+| `node src/selftest.js` | `SELFTEST PASS` (`final-selftest.log`) |
+| `node src/doctor.js --offline` | exit 0, `PAPER IDENTITY … holeExact 0 okExact true` (`final-doctor-offline.log`) |
+| M3 — identity through `loadState()` on all 5 read-only snapshots | **PASS**, `holeExact = 0.000000000`, `okExact = true` on every one (`recon-loadstate.log`) |
+| M4 — real PEG rewrite replayed against `saveState()` | **REFUSED** `REALIZED_WITHOUT_BASIS`; `state.json` byte-unchanged; `guardEquityJump` alone would have allowed it (`guards-proof.log`) |
+| raw-file reconciliation on every snapshot | `IDENTITY(hist)` hole `0.000000000` (`recon-all.log`) |
+| legacy pre-ledger merge repro | ledger reconstructed, `okExact true` (`merge-repro.log`) |
+
+`npm run doctor` was **only ever run as `node src/doctor.js --offline`**, with a throwaway
+`MONEY_PRINTER_DATA_DIR`. Running it without `--offline` would call `benchmarkRpcs()` against
+live RPC providers, which the workflow's hard constraints forbid. This is stated as a deliberate
+substitution, not a silently skipped step.
+
+### Integration breakage fixed
+
+**None.** No test, suite or script failed at any point after any of the three merges; no
+integration fix-up commit was needed and no feature was added. The only non-merge change in this
+pass is the truthful restatement of `.agent-state/PROJECT_STATE.md`, `CURRENT_TASKS.md`,
+`KNOWN_BUGS.md`, `RELEASE_STATUS.md` and this file, plus the repacked artifact.
+
+### Real-money / risk gates re-proven at integrated HEAD
+
+`liveExecution:'manual'` (`src/index.js:433-435`, `src/dashboard.js:316`),
+`automaticLivePromotionAllowed:false` (`src/index.js:433-435`, `src/experimentRegistry.js:47,66,86`,
+`src/researchControlPlane.js:9,75,141`, `src/dashboard.js:135,315`, `src/researchLifecycle.js:55`),
+`liveActivationAllowed:false` (`src/researchControlPlane.js:10,74,140`, `src/index.js:433-435`,
+`src/dashboard.js:314`) — all present, all unchanged. `productionLearningUnlocked` still derives
+from `proven` in `src/edgeProof.js` (no forcing). `MISSING_VOID_MS` unchanged
+(`src/polymarket.js:48`). The diff of `src/polymarket.js` against `93c8022` is **empty**; the diff
+of `desktop/` against `93c8022` is **empty**; the entire `package.json` diff vs `93c8022` is
+`test:visual`, its insertion into `test:all`, and the three `release:*` aliases — nothing else.
+`~/Library/Application Support/Money Printer OS` was never written to; the read-only copies under
+`.workflow/scratch/data-ro/` are byte-identical before and after every run
+(`state.pre-price-repair-*` sha256 `1288a8f6ae84c51baa35d4ec64f2555989b76f61472301bb3a6cc739aa493998`).
+
+### Still open after integration — needs bing, not an agent
+
+1. **Install / restart.** `scripts/release-alpha53.mjs install` and `restart` hard-refuse under an
+   agent by design. Exact commands in `.agent-state/RELEASE_STATUS.md`.
+2. **Updater manifest signing.** `docs/UPDATER-MANIFEST.md` carries the Ed25519 recipe with the
+   private-key path left as a placeholder. No agent read, named or looked for key material.
+3. **Windows.** No Windows build, signing or CI exists in this repo (`docs/WINDOWS-RELEASE.md`), so
+   `tests.windowsBoot` and `artifacts.windows.sha256` cannot be produced here. `promote tested`
+   refuses accordingly; the release stays at stage `main`. Needs a Windows machine.
+4. **Polymarket US API key** regeneration at polymarket.us/developer (`keyNotFound`), and the
+   Combos/RFQ beta allow-list (`betaNotEnabled`) which is polymarket.us's decision.
+5. **First real trade** to confirm the `/v1/order/{id}` and settlement payload shapes — deliberately
+   not simulated.
+6. **`3.0.0` vs `0.5.0-alpha.NN`** still unresolved; this pass kept `0.5.0-alpha.53`, and `pack`
+   asserts that exact string.
