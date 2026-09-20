@@ -1,0 +1,214 @@
+{
+  "schema": "mpo.research-evidence-canary.v1",
+  "generatedAt": 1789599127685,
+  "researchOnly": true,
+  "livePromotionAllowed": false,
+  "modules": [
+    {
+      "module": "solana",
+      "stage": "RESEARCH_ONLY",
+      "note": "Executable path evaluator exists; promotion evidence still requires frozen candidates and observed path coverage.",
+      "blocked": [
+        {
+          "code": "IDENTITY",
+          "message": "Frozen candidate and incumbent identities are required."
+        },
+        {
+          "code": "FREEZE",
+          "message": "Candidate must be frozen before evaluation."
+        },
+        {
+          "code": "SEARCH_LEDGER",
+          "message": "Record all search trials in an immutable ledger."
+        },
+        {
+          "code": "PROVENANCE",
+          "message": "Synthetic fixtures cannot establish promotion evidence."
+        },
+        {
+          "code": "COVERAGE_ASOFSIGNALS",
+          "message": "Missing verified asOfSignals coverage."
+        },
+        {
+          "code": "COVERAGE_COSTS",
+          "message": "Missing verified costs coverage."
+        },
+        {
+          "code": "COVERAGE_DEPTH",
+          "message": "Missing verified depth coverage."
+        },
+        {
+          "code": "COVERAGE_LATENCY",
+          "message": "Missing verified latency coverage."
+        },
+        {
+          "code": "COVERAGE_SHAREDCAPITAL",
+          "message": "Missing verified sharedCapital coverage."
+        },
+        {
+          "code": "COVERAGE_EVENTGROUPING",
+          "message": "Missing verified eventGrouping coverage."
+        },
+        {
+          "code": "RANKING_WINDOW",
+          "message": "Ranking data must end no later than candidate freeze."
+        },
+        {
+          "code": "SEALED_IDENTITY",
+          "message": "Evaluation must match the frozen candidate and incumbent."
+        },
+        {
+          "code": "SEALED_DATASET",
+          "message": "Record dataset and shared opportunity-set fingerprints."
+        },
+        {
+          "code": "SEALED_COMPARISON",
+          "message": "Compare candidate and incumbent on the same opportunities and starting capital."
+        },
+        {
+          "code": "SEALED_TIME",
+          "message": "Evaluation must use a complete period after candidate freeze."
+        },
+        {
+          "code": "SEALED_SELECTION",
+          "message": "Evaluation data must be excluded from tuning and ranking."
+        },
+        {
+          "code": "SEALED_SAMPLES",
+          "message": "Need at least 100 independent groups under the initial policy."
+        },
+        {
+          "code": "SEALED_NET_RETURN",
+          "message": "Candidate must be profitable after modeled costs."
+        },
+        {
+          "code": "SEALED_IMPROVEMENT",
+          "message": "Candidate must improve on the incumbent net of costs."
+        },
+        {
+          "code": "SEALED_DRAWDOWN",
+          "message": "Drawdown is missing or exceeds the initial policy limit."
+        },
+        {
+          "code": "SEALED_STRESS",
+          "message": "Candidate must remain net positive under documented execution stress."
+        },
+        {
+          "code": "SEALED_STRESS_MODEL",
+          "message": "Record the stress assumptions."
+        },
+        {
+          "code": "SEALED_UNCERTAINTY",
+          "message": "Need a positive grouped improvement interval accounting for the full recorded search."
+        },
+        {
+          "code": "SEALED_REUSE",
+          "message": "Final audit must be recorded once and its window retired from future final exams."
+        }
+      ]
+    },
+    {
+      "module": "polymarket",
+      "stage": "RESEARCH_ONLY",
+      "note": "Evaluator exists, but no historical as-of quote/depth/fee tape is available yet.",
+      "blocked": [
+        {
+          "code": "IDENTITY",
+          "message": "Frozen candidate and incumbent identities are required."
+        },
+        {
+          "code": "FREEZE",
+          "message": "Candidate must be frozen before evaluation."
+        },
+        {
+          "code": "SEARCH_LEDGER",
+          "message": "Record all search trials in an immutable ledger."
+        },
+        {
+          "code": "PROVENANCE",
+          "message": "Synthetic fixtures cannot establish promotion evidence."
+        },
+        {
+          "code": "COVERAGE_ASOFSIGNALS",
+          "message": "Missing verified asOfSignals coverage."
+        },
+        {
+          "code": "COVERAGE_COSTS",
+          "message": "Missing verified costs coverage."
+        },
+        {
+          "code": "COVERAGE_DEPTH",
+          "message": "Missing verified depth coverage."
+        },
+        {
+          "code": "COVERAGE_LATENCY",
+          "message": "Missing verified latency coverage."
+        },
+        {
+          "code": "COVERAGE_SHAREDCAPITAL",
+          "message": "Missing verified sharedCapital coverage."
+        },
+        {
+          "code": "COVERAGE_EVENTGROUPING",
+          "message": "Missing verified eventGrouping coverage."
+        },
+        {
+          "code": "RANKING_WINDOW",
+          "message": "Ranking data must end no later than candidate freeze."
+        },
+        {
+          "code": "SEALED_IDENTITY",
+          "message": "Evaluation must match the frozen candidate and incumbent."
+        },
+        {
+          "code": "SEALED_DATASET",
+          "message": "Record dataset and shared opportunity-set fingerprints."
+        },
+        {
+          "code": "SEALED_COMPARISON",
+          "message": "Compare candidate and incumbent on the same opportunities and starting capital."
+        },
+        {
+          "code": "SEALED_TIME",
+          "message": "Evaluation must use a complete period after candidate freeze."
+        },
+        {
+          "code": "SEALED_SELECTION",
+          "message": "Evaluation data must be excluded from tuning and ranking."
+        },
+        {
+          "code": "SEALED_SAMPLES",
+          "message": "Need at least 100 independent groups under the initial policy."
+        },
+        {
+          "code": "SEALED_NET_RETURN",
+          "message": "Candidate must be profitable after modeled costs."
+        },
+        {
+          "code": "SEALED_IMPROVEMENT",
+          "message": "Candidate must improve on the incumbent net of costs."
+        },
+        {
+          "code": "SEALED_DRAWDOWN",
+          "message": "Drawdown is missing or exceeds the initial policy limit."
+        },
+        {
+          "code": "SEALED_STRESS",
+          "message": "Candidate must remain net positive under documented execution stress."
+        },
+        {
+          "code": "SEALED_STRESS_MODEL",
+          "message": "Record the stress assumptions."
+        },
+        {
+          "code": "SEALED_UNCERTAINTY",
+          "message": "Need a positive grouped improvement interval accounting for the full recorded search."
+        },
+        {
+          "code": "SEALED_REUSE",
+          "message": "Final audit must be recorded once and its window retired from future final exams."
+        }
+      ]
+    }
+  ]
+}

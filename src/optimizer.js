@@ -1,0 +1,14 @@
+import { loadState, saveState } from './store.js';
+import { generateExperiment, strategyMutation, tournament, calibrate } from './research.js';
+const s = loadState();
+strategyMutation(s);
+for (let i = 0; i < 4; i++) generateExperiment(s);
+calibrate(s);
+const board = tournament(s);
+saveState(s);
+console.log('MONEY PRINTER OS V8 // CHAMPION-CHALLENGER LAB');
+console.table(board.slice(0, 20));
+console.log('Champion:', s.research.champion);
+console.log('Challengers:', s.research.challengers.length);
+console.log('Experiments:', s.research.experiments.length, 'running', s.research.experiments.filter(x => x.status === 'RUNNING').length);
+console.log('Live-money rules are never auto-promoted by this optimizer.');

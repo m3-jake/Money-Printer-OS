@@ -1,0 +1,872 @@
+// Fast combos on Polymarket US (REAL money).
+// Every place/accept path re-checks credentials, session arm, typed confirmation,
+// stake cap, open cap, daily loss cap, leg freshness, price tolerance and distinct
+// events server-side. Nothing here can be bypassed from the browser.
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import * as ed25519 from '@noble/ed25519';
+import { lateGameEstimate, TURNOVER_TARGET_MINUTES } from './sportsTiming.js';
+import { usReadiness, noteUSAuthResult } from './polymarketUS.js';
+import { mapLimit } from './utils.js';
+
+const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+const DATA_DIR=path.resolve(process.env.MONEY_PRINTER_DATA_DIR||path.join(ROOT,'data'));
+const STATE_FILE=path.join(DATA_DIR,'polymarket-us-combos.json');
+const GATEWAY=process.env.POLYMARKET_US_GATEWAY||'https://gateway.polymarket.us';
+const API=process.env.POLYMARKET_US_API||'https://api.polymarket.us';
+const UA=()=>process.env.POLYMARKET_US_UA||'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) MoneyPrinterOS/0.5';
+const AUTOSTART=()=>String(process.env.POLYMARKET_AUTOSTART??'true').toLowerCase()!=='false';
+const FETCH_TIMEOUT_MS=10000;
+const FEED_TTL_MS=5000;          // snapshot / feed cache
+const SNAPSHOT_TTL_MS=5000;
+const SETTLE_THROTTLE_MS=30000;  // baseline settlement polling
+const SETTLE_CACHE_PENDING_MS=60000;
+const SETTLE_CACHE_RESOLVED_MS=600000;
+const SETTLE_FETCH_CONCURRENCY=3;
+export const SETTLE_FAST={throttleMs:15000,pendingMs:15000,windowMs:90*60000};
+const QUOTE_POLL_MS=700;         // RFQ quote poll cadence
+const BBO_TTL_MS=10000;
+const FRESH_LIMIT_SEC=90;        // leg freshness gate
+const COOLDOWN_MS=180000;        // 3 min per event after settlement
+const TICK=0.001;                // combo tick size
+const MIN_QTY=0.01;
+const PRICE_MIN=0.80,PRICE_MAX=0.985,NEAR_END_MIN=65;
+// 11:59 PM ET Wed Sep 16 2026 == 03:59 UTC Thu Sep 17 2026 (EDT, UTC-4).
+const COMBO_CURVE_FROM=Date.parse('2026-09-17T03:59:00Z');
+const CONFIRM_PLACE='PLACE REAL COMBO';
+const CONFIRM_AUTOPILOT='ENABLE REAL AUTOPILOT';
+
+const num=v=>{const x=Number(v);return Number.isFinite(x)?x:0};
+const val=x=>num(x?.value??x);
+const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+const r2=x=>Math.round(num(x)*100)/100;
+const r3=x=>Math.round(num(x)*1000)/1000;
+const r4=x=>Math.round(num(x)*10000)/10000;
+const ceilTick=(x,tick=TICK)=>Math.ceil((num(x)-1e-9)/tick)*tick;
+const envNum=(k,d)=>{const v=Number(process.env[k]);return Number.isFinite(v)&&v>0?v:d};
+let settleClock=null;
+const nowMs=()=>settleClock?settleClock():Date.now();
+const creds=()=>({keyId:String(process.env.POLYMARKET_KEY_ID||'').trim(),secretKey:String(process.env.POLYMARKET_SECRET_KEY||'').trim()});
+
+export function usComboLimits(){
+ return {maxStakeUsd:envNum('POLYMARKET_US_COMBO_MAX_STAKE_USD',25),maxOpen:Math.round(envNum('POLYMARKET_US_COMBO_MAX_OPEN',5)),
+  dailyLossCapUsd:envNum('POLYMARKET_US_COMBO_DAILY_LOSS_CAP_USD',50),priceTolerance:envNum('POLYMARKET_US_COMBO_PRICE_TOLERANCE',0.02)};
+}
+
+// --------------------------------------------------------------------- errors
+export class ComboError extends Error{
+ constructor(code,message,status=0){super(message);this.name='ComboError';this.code=code;this.status=status}
+}
+const fail=(code,message,status=0)=>{throw new ComboError(code,message,status)};
+function classifyHttp(status,text=''){
+ const t=String(text||'');
+ if(status===401)return 'keyNotFound';
+ if(status===403)return 'betaNotEnabled';
+ if(status===429)return 'rateLimited';
+ if(/not enabled|beta|permission|not authorized|forbidden/i.test(t))return 'betaNotEnabled';
+ return 'http';
+}
+
+// ---------------------------------------------------------------- networking
+async function authHeaders(method,pathname){
+ const {keyId,secretKey}=creds();
+ if(!keyId||!secretKey)fail('noCredentials','Polymarket US API credentials are not configured');
+ let seed;
+ try{const raw=Buffer.from(secretKey,'base64');seed=new Uint8Array(raw.subarray(0,32))}catch{seed=null}
+ if(!seed||seed.length!==32)fail('keyNotFound','Polymarket US secret key is not a valid base64 ed25519 key');
+ const timestamp=String(Date.now());
+ const sig=await ed25519.signAsync(new TextEncoder().encode(`${timestamp}${method}${pathname}`),seed);
+ return {'X-PM-Access-Key':keyId,'X-PM-Timestamp':timestamp,'X-PM-Signature':Buffer.from(sig).toString('base64')};
+}
+
+// Single signed-fetch helper for every authenticated Retail API call.
+export async function signedFetch(method,pathname,{query=null,body=null,timeoutMs=FETCH_TIMEOUT_MS}={}){
+ const url=new URL(pathname,API);
+ if(query)for(const [k,v] of Object.entries(query)){if(v===undefined||v===null)continue;if(Array.isArray(v))for(const item of v)url.searchParams.append(k,String(item));else url.searchParams.set(k,String(v))}
+ const headers={'content-type':'application/json','accept':'application/json','user-agent':UA(),...await authHeaders(method,url.pathname)};
+ let res;
+ try{
+  res=await globalThis.fetch(url.toString(),{method,headers,body:body===null||body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(timeoutMs)});
+ }catch(e){
+  const message=String(e?.message||e);
+  noteUSAuthResult({code:'network',message});
+  throw new ComboError('network',`Polymarket US request failed: ${message}`,0);
+ }
+ const status=Number(res?.status||0);
+ const text=typeof res?.text==='function'?await res.text():'';
+ if(!res?.ok){
+  let message=text;
+  try{const j=JSON.parse(text);message=j.message||j.error||text}catch{}
+  const code=classifyHttp(status,message);
+  noteUSAuthResult({code,message:String(message||`HTTP ${status}`)});
+  if(code==='betaNotEnabled')betaAccess='denied';
+  throw new ComboError(code,String(message||`HTTP ${status}`),status);
+ }
+ noteUSAuthResult({code:'ok',message:null});
+ if(!text)return {};
+ try{return JSON.parse(text)}catch{return {}}
+}
+
+async function publicFetch(pathname,query=null,timeoutMs=FETCH_TIMEOUT_MS){
+ const url=new URL(pathname,GATEWAY);
+ if(query)for(const [k,v] of Object.entries(query)){if(v===undefined||v===null)continue;if(Array.isArray(v))for(const item of v)url.searchParams.append(k,String(item));else url.searchParams.set(k,String(v))}
+ let res;
+ try{res=await globalThis.fetch(url.toString(),{method:'GET',headers:{'accept':'application/json','user-agent':UA()},signal:AbortSignal.timeout(timeoutMs)})}
+ catch(e){throw new ComboError('network',`Polymarket US public request failed: ${String(e?.message||e)}`,0)}
+ if(!res?.ok){
+  const status=Number(res?.status||0);
+  const text=typeof res?.text==='function'?await res.text():'';
+  throw new ComboError(status===429?'rateLimited':'http',String(text||`HTTP ${status}`),status);
+ }
+ const text=typeof res?.text==='function'?await res.text():'';
+ if(!text)return {};
+ try{return JSON.parse(text)}catch{return {}}
+}
+
+// ------------------------------------------------------------- live US feed
+let feed={at:0,fetchedAt:0,ok:false,error:null,events:[],inPlay:0,live:0};
+let feedBusy=null;
+const bboCache=new Map();
+
+// Item 1: in-play scanner. The stale events.list({live:true}) call returns closed
+// games, so we always scan a date window and keep live===true && !closed.
+export async function usLiveEvents({force=false}={}){
+ const now=Date.now();
+ if(!force&&feed.fetchedAt&&now-feed.fetchedAt<FEED_TTL_MS)return feed;
+ if(feedBusy)return feedBusy;
+ feedBusy=(async()=>{
+  try{
+   const j=await publicFetch('/v1/events',{active:true,closed:false,categories:['sports'],
+    startDateMin:new Date(now-36*3600e3).toISOString(),startDateMax:new Date(now+12*3600e3).toISOString(),limit:300});
+   const all=Array.isArray(j?.events)?j.events:[];
+   const at=Date.now();
+   const live=all.filter(e=>e&&e.live===true&&!e.closed&&!e.ended).map(e=>({...e,__fetchedAt:at}));
+   feed={at,fetchedAt:at,ok:true,error:null,events:live,inPlay:all.length,live:live.length};
+  }catch(e){
+   feed={...feed,fetchedAt:Date.now(),ok:false,error:String(e?.message||e)};
+  }
+  return feed;
+ })().finally(()=>{feedBusy=null});
+ return feedBusy;
+}
+
+// -------------------------------------------------------- period/score adapter
+const GRAND_SLAM=/ausopen|australian-open|roland|french-open|wimbledon|usopen|us-open/;
+function tagSet(event={}){
+ const tags=(event.tags||[]).map(t=>String(t?.slug||t?.label||t||'').toLowerCase());
+ return new Set([...tags,String(event.seriesSlug||'').toLowerCase(),String(event.slug||'').toLowerCase()].filter(Boolean));
+}
+function sportOf(tags,slug=''){
+ const has=x=>[...tags].some(t=>t.includes(x));
+ if(has('table-tennis')||has('setka')||has('tt-cup')||has('ttcup')||/^(setka|tt)/.test(slug))return 'table-tennis';
+ if(has('tennis')||has('atp')||has('wta')||has('itf'))return 'tennis';
+ if(has('soccer'))return 'soccer';
+ if(has('baseball')||has('mlb'))return 'baseball';
+ if(has('football')||has('nfl')||has('ncaaf'))return 'football';
+ if(has('basketball')||has('nba')||has('wnba')||has('ncaab'))return 'basketball';
+ if(has('hockey')||has('nhl'))return 'hockey';
+ return 'other';
+}
+
+// Item 2: map US strings into the exact shapes lateGameEstimate already parses.
+export function normalizeUSLiveState(event={}){
+ const tags=tagSet(event);
+ const slug=String(event.slug||'').toLowerCase();
+ const sport=sportOf(tags,slug);
+ const rawPeriod=String(event.period??'').trim();
+ const rawScore=String(event.score??'').trim();
+ const up=rawPeriod.toUpperCase();
+ let period=rawPeriod,elapsed=event.elapsed==null?null:String(event.elapsed),score=rawScore,league=sport;
+ if(sport==='soccer'){
+  league='soccer';
+  const m=up.match(/^(\d{1,3})(?:\s*\+\s*(\d{1,2}))?['′]?$/);
+  if(m){
+   const base=Number(m[1]);
+   elapsed=m[2]?`${base}+${Number(m[2])}`:String(base);
+   period=base<=45?'1H':'2H';
+  }else if(/^HT\b|HALF.?TIME/.test(up))period='HT';
+  else if(/^FT\b|FULL.?TIME/.test(up))period='FT';
+  else if(/^(1H|H1|FIRST HALF)/.test(up))period='1H';
+  else if(/^(2H|H2|SECOND HALF)/.test(up))period='2H';
+ }else if(sport==='baseball'){
+  league='mlb baseball';
+  period=rawPeriod;           // Top/Bot/Mid/End Nth pass through untouched
+  elapsed=null;
+ }else if(sport==='tennis'||sport==='table-tennis'){
+  const table=sport==='table-tennis';
+  const tour=[...tags].find(t=>['atp','wta','itf','itfwo','itfmo'].includes(t))||'';
+  const bestOf=table?5:(tour.startsWith('atp')&&[...tags].some(t=>GRAND_SLAM.test(t))?5:3);
+  league=`${table?'table tennis':'tennis'} ${tour} BO${bestOf}`.trim();
+  const set=up.match(/^S(?:ET)?\s*(\d+)$/);
+  if(set)period=`SET ${Number(set[1])}`;
+  else if(/^SET\s*\d+/.test(up))period=up;
+  // "4-2:40-30" / "3-1:40-AD" carry live point scores; lateGameEstimate wants games only.
+  score=rawScore.split(':')[0].trim();
+  elapsed=null;
+ }else if(sport==='football'||sport==='basketball'||sport==='hockey'){
+  league=sport==='football'?'nfl football':sport==='basketball'?'nba basketball':'nhl hockey';
+  period=rawPeriod;           // "Q4" + countdown clock "02:30" pass straight through
+  elapsed=event.elapsed==null?null:String(event.elapsed);
+ }
+ return {period,elapsed,score,status:String(event.eventState||event.status||''),ended:!!event.ended,
+  leagueAbbreviation:league,sport,rawPeriod,rawScore,rawElapsed:event.elapsed==null?null:String(event.elapsed)};
+}
+
+// -------------------------------------------------------------- candidates
+const ALLOWED_TYPE=/^(?:[a-z]+_(?:team|game)_full_(?:game|time)_(?:winner|spread|total)|[a-z]+_(?:team|game)_(?:first|second)_half_(?:winner|spread|total)|[a-z]+_team_moneyline)$/;
+const BANNED_TYPE=/player|inning|quarter|first_five|prop|future|award|mvp|margin|exact|anytime/;
+function typeAllowed(market={}){
+ const t=String(market.sportsMarketType||'').toLowerCase();
+ if(!t)return String(market.sportsMarketTypeV2||'')==='SPORTS_MARKET_TYPE_MONEYLINE';
+ if(BANNED_TYPE.test(t))return false;
+ if(ALLOWED_TYPE.test(t))return true;
+ return String(market.sportsMarketTypeV2||'')==='SPORTS_MARKET_TYPE_MONEYLINE';
+}
+const spreadLimitFor=liq=>liq>=10000?.12:liq>=3000?.08:.05;
+function outcomeLabel(market,long){
+ const side=(market.marketSides||[]).find(s=>!!s?.long===long);
+ const team=side?.team?.abbreviation?String(side.team.abbreviation).toUpperCase():'';
+ const desc=String(side?.description||'').trim();
+ if(desc&&team&&!/^(yes|no)$/i.test(desc))return `${desc} (${team})`;
+ if(desc&&team)return `${desc} (${team})`;
+ if(desc)return desc;
+ try{const outs=JSON.parse(market.outcomes||'[]');return String(outs[long?0:1]||(long?'Yes':'No'))}catch{return long?'Yes':'No'}
+}
+
+// Item 3: candidate filter + ranking at parity with the paper lab.
+export function usCandidatesFromEvents(events=[],now=Date.now()){
+ const rejections={};
+ const reject=r=>{rejections[r]=(rejections[r]||0)+1;return null};
+ const rows=[];
+ for(const event of events||[]){
+  if(!event||event.live!==true||event.closed||event.ended){reject('not-live');continue}
+  const live=normalizeUSLiveState(event);
+  const freshnessSec=Math.max(0,(now-Number(event.__fetchedAt||now))/1000);
+  if(freshnessSec>FRESH_LIMIT_SEC){reject('stale-live');continue}
+  const eventSlug=String(event.slug||event.id||'');
+  const title=String(event.title||eventSlug);
+  for(const market of event.markets||[]){
+   if(!market)continue;
+   if(!typeAllowed(market)){reject('market-type');continue}
+   if(market.comboEnabled!==true){reject('combo-disabled');continue}
+   if(market.closed||(market.status&&market.status!=='MARKET_STATUS_OPEN')){reject('market-closed');continue}
+   const ask=val(market.bestAskQuote??market.bestAsk),bid=val(market.bestBidQuote??market.bestBid);
+   if(!(ask>0&&ask<1)){reject('no-quote');continue}
+   const sides=market.marketSides||[];
+   const longSide=sides.find(s=>s?.long===true),shortSide=sides.find(s=>s?.long===false);
+   const longOk=!sides.length||longSide?.tradable!==false,shortOk=(!sides.length||shortSide?.tradable!==false)&&bid>0;
+   const longAsk=ask,shortAsk=bid>0?r4(1-bid):null;
+   let side=null,price=null;
+   if(longOk&&(!shortOk||longAsk>=shortAsk)){side='SIDE_BUY';price=longAsk}
+   else if(shortOk){side='SIDE_SELL';price=shortAsk}
+   if(!side){reject('side-not-tradable');continue}
+   const type=String(market.sportsMarketType||'').toLowerCase();
+   const late=lateGameEstimate({event:title,slug:String(market.slug||''),type},live);
+   if(late.nearEndScore<NEAR_END_MIN){reject(late.reason||'not-near-settlement');continue}
+   if(late.etaMinutes==null||late.etaMinutes>TURNOVER_TARGET_MINUTES){reject('turnover-window');continue}
+   if(price<PRICE_MIN||price>PRICE_MAX){reject('price-band');continue}
+   const spread=bid>0?Math.max(0,r4(ask-bid)):null;
+   const liquidity=num(market.__openInterest??market.openInterest);
+   const liquidityKnown=liquidity>0;
+   const spreadLimit=liquidityKnown?spreadLimitFor(liquidity):spreadLimitFor(10000); // unknown OI: lenient pre-filter, BBO pass tightens
+   if(spread!=null&&spread>spreadLimit+1e-9){reject('spread');continue}
+   const feeCoefficient=num(market.feeCoefficient)||0.06;
+   const feePerContract=r4(standardFeePerContract(price,feeCoefficient));
+   const eta=late.etaMinutes;
+   const liqScore=liquidityKnown?Math.min(35,Math.log10(Math.max(1,liquidity))*8):20; // neutral until BBO supplies open interest
+   const rank=Math.round(late.nearEndScore*4+(100-Math.abs(price-.90)*260)+liqScore-eta*8+(late.priorityBonus||0)-(spread??.02)*500);
+   rows.push({key:`${market.slug}|${side}`,symbol:String(market.slug||''),side,
+    eventSlug,event:title,league:String(live.leagueAbbreviation||'').split(' ')[0]||live.sport,marketType:type,
+    question:String(market.question||''),outcome:outcomeLabel(market,side==='SIDE_BUY'),
+    price:r4(price),bid:r4(bid),ask:r4(ask),spread,spreadLimit,liquidity,liquidityKnown,
+    liveState:{period:live.rawPeriod,elapsed:live.rawElapsed,score:live.rawScore},
+    normalized:{period:live.period,elapsed:live.elapsed,score:live.score},
+    etaMinutes:eta,nearEndScore:late.nearEndScore,lateReason:late.reason,
+    feeCoefficient,feePerContract,netPrice:r4(clamp(price+feePerContract,0,1)),rank,
+    comboEnabled:true,minimumTradeQty:num(market.minimumTradeQty)||MIN_QTY,tickSize:num(market.orderPriceMinTickSize)||0.01,
+    freshnessSec:Math.round(freshnessSec),at:now});
+  }
+ }
+ // One leg per event (ledger item 3): keep the best-ranked market for each game.
+ const best=new Map();
+ for(const c of rows.sort((a,b)=>b.rank-a.rank))if(!best.has(c.eventSlug))best.set(c.eventSlug,c);
+ return {candidates:[...best.values()].sort((a,b)=>b.rank-a.rank),rejections};
+}
+
+export function chooseUSCombo(candidates,maxLegs=2,journal={open:[],cooldowns:{}},now=Date.now()){
+ const out=[],seen=new Set();
+ const busyEvents=new Set((journal.open||[]).flatMap(x=>(x.legs||[]).map(l=>l.eventSlug)));
+ const busySymbols=new Set((journal.open||[]).flatMap(x=>(x.legs||[]).map(l=>l.symbol)));
+ for(const c of [...candidates].sort((a,b)=>b.rank-a.rank)){
+  if(busyEvents.has(c.eventSlug)||busySymbols.has(c.symbol))continue;
+  const cooldown=num(journal.cooldowns?.[c.eventSlug]);
+  if(cooldown&&now-cooldown<COOLDOWN_MS)continue;
+  if(seen.has(c.eventSlug))continue;
+  seen.add(c.eventSlug);out.push(c);
+  if(out.length>=maxLegs)break;
+ }
+ return out;
+}
+
+// -------------------------------------------------------------- combo math
+export function standardFeePerContract(p,coefficient=0.06){const x=clamp(num(p),0,1);return coefficient*x*(1-x)}
+export function comboCurveFeePerContract(p){const x=clamp(num(p),0,1);return x*(0.0695*(1-x)+0.04*Math.pow(1-x,4))}
+// Item 4: per-contract combo taker fee. `auto` switches to the published combo
+// curve at 11:59 PM ET 2026-09-16; before that the standard curve applies.
+export function comboFeePerContract(p,at=Date.now(),coefficient=0.06){
+ const mode=String(process.env.POLYMARKET_US_COMBO_FEE_MODE||'auto').toLowerCase();
+ if(mode==='curve')return comboCurveFeePerContract(p);
+ if(mode==='standard')return standardFeePerContract(p,coefficient);
+ return at>=COMBO_CURVE_FROM?comboCurveFeePerContract(p):standardFeePerContract(p,coefficient);
+}
+
+// Stake is the complete cash budget, including rounded taker fees.
+export function comboBudget(price,stakeUsd,at=Date.now(),coefficient=0.06){
+ if(!Number.isFinite(price)||price<=0||price>=1||!Number.isFinite(Number(stakeUsd))||num(stakeUsd)<=0)fail('stakeInvalid','A finite price and positive total budget are required');
+ const feePerContract=comboFeePerContract(price,at,coefficient);
+ let quantity=r2(Math.floor((num(stakeUsd)/(price+feePerContract)+1e-9)/MIN_QTY)*MIN_QTY);
+ const cashCost=q=>q*price+r2(q*feePerContract);
+ while(quantity>0&&cashCost(quantity)>num(stakeUsd)+1e-9)quantity=r2(quantity-MIN_QTY);
+ return {quantity,feePerContract,feeUsd:r2(quantity*feePerContract),costUsd:r2(cashCost(quantity)),
+  notionalUsd:Math.floor((quantity*price+1e-9)*100)/100};
+}
+
+function resolveLegs(legKeys,candidates,now=Date.now()){
+ const keys=(Array.isArray(legKeys)?legKeys:[]).map(k=>String(k||'').trim()).filter(Boolean);
+ if(keys.length<2)fail('invalidLegs','A combo needs at least 2 legs');
+ if(keys.length>10)fail('invalidLegs','A combo accepts at most 10 legs');
+ const index=new Map((candidates||[]).map(c=>[c.key,c]));
+ const legs=[],symbols=new Set(),events=new Set();
+ for(const key of keys){
+  const c=index.get(key);
+  if(!c)fail('invalidLegs',`Leg is no longer a live candidate: ${key}`);
+  if(symbols.has(c.symbol))fail('invalidLegs',`Duplicate leg symbol: ${c.symbol}`);
+  if(events.has(c.eventSlug))fail('duplicateEvent',`Two legs share the same event: ${c.eventSlug}`);
+  const age=num(c.freshnessSec)+Math.max(0,(now-num(c.at||now))/1000);
+  if(age>FRESH_LIMIT_SEC)fail('staleLeg',`Leg data is ${Math.round(age)}s old (limit ${FRESH_LIMIT_SEC}s): ${c.symbol}`);
+  if(c.price<PRICE_MIN||c.price>PRICE_MAX)fail('priceBand',`Leg price ${c.price} is outside the ${PRICE_MIN}-${PRICE_MAX} band: ${c.symbol}`);
+  symbols.add(c.symbol);events.add(c.eventSlug);
+  legs.push({...c,freshnessSec:age});
+ }
+ return legs;
+}
+
+// Item 4: pure math, no network.
+export function buildUSCombo({legKeys,stakeUsd,candidates=null,at=Date.now()}={}){
+ const pool=candidates||lastCandidates;
+ const legs=resolveLegs(legKeys,pool,at);
+ const stake=num(stakeUsd);
+ if(!(stake>0))fail('stakeInvalid','stakeUsd must be greater than 0');
+ const rawPrice=legs.reduce((a,l)=>a*l.price,1);
+ const price=Math.min(0.999,Math.max(TICK,r3(ceilTick(rawPrice))));
+ const {quantity,feePerContract,feeUsd,costUsd,notionalUsd}=comboBudget(price,stake,at,legs.reduce((a,l)=>Math.max(a,num(l.feeCoefficient)),0.06));
+ if(!(quantity>=MIN_QTY))fail('stakeInvalid',`Stake $${stake} is too small for a combo priced at ${price}`);
+ const payoutUsd=r2(quantity);
+ return {legs:legs.map(l=>({symbol:l.symbol,side:l.side,event:l.event,eventSlug:l.eventSlug,outcome:l.outcome,price:l.price,
+   period:l.liveState.period,score:l.liveState.score,etaMinutes:l.etaMinutes,nearEndScore:l.nearEndScore,freshnessSec:l.freshnessSec})),
+  price,rawPrice:r4(rawPrice),decimalOdds:r3(1/price),quantity,feePerContract:r4(feePerContract),feeUsd,payoutUsd,costUsd,
+  profitUsd:r2(payoutUsd-costUsd),stakeUsd:r2(stake),notionalUsd};
+}
+
+// ---------------------------------------------------------------- journal
+function defaultAutopilot(){return {enabled:false,stakeUsd:5,maxLegs:2,maxOpen:3,dailyLossCapUsd:50,lastRunAt:0,lastAction:null,skipped:[]}}
+function defaultJournal(){return {version:1,combos:{},open:[],history:[],
+ stats:{placed:0,won:0,lost:0,pnlUsd:0,hitRate:null},autopilot:defaultAutopilot(),cooldowns:{}}}
+function normalizeJournal(s={}){
+ const out={...defaultJournal(),...s};
+ out.combos=s.combos&&typeof s.combos==='object'?s.combos:{};
+ out.open=Array.isArray(s.open)?s.open:[];
+ out.history=Array.isArray(s.history)?s.history:[];
+ out.cooldowns=s.cooldowns&&typeof s.cooldowns==='object'?s.cooldowns:{};
+ out.autopilot={...defaultAutopilot(),...(s.autopilot||{})};
+ out.autopilot.skipped=Array.isArray(out.autopilot.skipped)?out.autopilot.skipped.slice(-8):[];
+ return out;
+}
+let journalCache=null;
+function loadJournal(){
+ if(journalCache)return journalCache;
+ try{journalCache=normalizeJournal(JSON.parse(fs.readFileSync(STATE_FILE,'utf8')))}
+ catch(e){
+  if(e?.code==='ENOENT')journalCache=defaultJournal();
+  else journalCache={...defaultJournal(),recoveryRequired:true,recoveryError:`STATE RECOVERY REQUIRED: ${e?.message||e}`,autopilot:{...defaultAutopilot(),enabled:false}};
+ }
+ return journalCache;
+}
+function saveJournal(s){
+ journalCache=normalizeJournal(s);
+ const dir=path.dirname(STATE_FILE);
+ fs.mkdirSync(dir,{recursive:true});
+ const tmp=path.join(dir,`.polymarket-us-combos.${process.pid}.${Date.now().toString(36)}${Math.random().toString(36).slice(2,6)}.tmp`);
+ try{fs.writeFileSync(tmp,JSON.stringify(journalCache,null,2));fs.renameSync(tmp,STATE_FILE)}
+ catch(e){try{fs.rmSync(tmp,{force:true})}catch{}throw e}
+ return journalCache;
+}
+function recomputeStats(j){
+ const decided=j.history.filter(x=>x.status==='WON'||x.status==='LOST');
+ const won=decided.filter(x=>x.status==='WON').length;
+ j.stats={placed:num(j.stats?.placed),won,lost:decided.length-won,
+  pnlUsd:r2(j.history.reduce((a,x)=>a+num(x.pnlUsd),0)),hitRate:decided.length?won/decided.length:null};
+ return j;
+}
+function startOfDay(now=Date.now()){const d=new Date(now);d.setHours(0,0,0,0);return d.getTime()}
+function realizedTodayUsd(j=loadJournal(),now=Date.now()){
+ const from=startOfDay(now);
+ return r2(j.history.filter(x=>num(x.settledAt)>=from).reduce((a,x)=>a+num(x.pnlUsd),0));
+}
+
+// ------------------------------------------------------------------- gates
+function requireCredentials(){
+ const r=usReadiness();
+ if(!r.credentialsReady)fail('noCredentials','Polymarket US API credentials are not configured');
+ return r;
+}
+function requireArmed(){
+ const j=loadJournal();
+ if(j.recoveryRequired)fail('stateRecovery','Local combo journal is corrupt; refusing signed actions until recovered')
+ const r=requireCredentials();
+ if(r.realEnabled===false||!r.sessionArmed)fail('notArmed','Real Polymarket US trading is not armed for this session');
+ return r;
+}
+
+// --------------------------------------------------------------- RFQ / place
+let betaAccess='unknown';
+let lastQuote=null;
+let lastCandidates=[];
+let lastError=null;
+
+async function createCombo(legs){
+ const body={legs:legs.map(l=>({symbol:l.symbol,side:l.side}))};
+ const j=await signedFetch('POST','/v1/combos',{body});
+ const symbol=String(j?.combo?.id||j?.combo?.symbol||'');
+ if(!symbol)fail('http','Polymarket US did not return a combo symbol');
+ betaAccess='enabled';
+ const s=loadJournal();
+ s.combos[symbol]={symbol,legs:body.legs,detail:legs,at:Date.now()};
+ saveJournal(s);
+ return {symbol,combo:j.combo};
+}
+
+// Item 6: create combo -> RFQ -> poll quotes -> best ACTIVE buyPrice.
+export async function quoteUSCombo({legKeys,stakeUsd,waitMs=8000,candidates=null}={}){
+ requireArmed();
+ const limits=usComboLimits(),stakeReq=num(stakeUsd);
+ if(!(stakeReq>0))fail('stakeInvalid','stakeUsd must be greater than 0');
+ if(stakeReq>limits.maxStakeUsd+1e-9)fail('stakeCap',`Stake $${r2(stakeReq)} exceeds the $${limits.maxStakeUsd} per-combo cap`);
+ const pool=candidates||await refreshCandidates();
+ const combo=buildUSCombo({legKeys,stakeUsd,candidates:pool});
+ const {symbol}=await createCombo(combo.legs);
+ const rfq=await signedFetch('POST','/v1/rfqs',{body:{symbol,cashOrderQty:combo.notionalUsd.toFixed(2),restRemainder:false}});
+ const rfqId=String(rfq?.rfqId||'');
+ if(!rfqId)fail('http','Polymarket US did not return an rfqId');
+ const deadline=Date.now()+Math.max(QUOTE_POLL_MS,num(waitMs)||8000);
+ let best=null;
+ while(Date.now()<deadline){
+  const res=await signedFetch('GET','/v1/rfqs/quotes',{query:{rfqId}});
+  const quotes=Array.isArray(res?.quotes)?res.quotes:[];
+  const active=quotes.filter(q=>q?.status==='QUOTE_STATUS_ACTIVE'&&num(q.buyPrice)>0);
+  if(active.length){best=active.sort((a,b)=>num(a.buyPrice)-num(b.buyPrice))[0];break}
+  await new Promise(r=>setTimeout(r,QUOTE_POLL_MS));
+ }
+ if(!best){
+  try{await cancelUSRfq({rfqId})}catch{}
+  fail('noQuote',`No market maker quoted ${symbol} within ${Math.round(num(waitMs)||8000)/1000}s`);
+ }
+ lastQuote={symbol,rfqId,quoteId:String(best.id||''),buyPrice:r4(best.buyPrice),buyQtyDecimal:String(best.buyQtyDecimal||combo.quantity),
+  expiresAt:Date.parse(best.confirmationDeadline||best.executionDeadline||'')||Date.now()+8000,
+  status:String(best.status||''),legs:combo.legs,estPrice:combo.price,stakeUsd:combo.stakeUsd,at:Date.now()};
+ return lastQuote;
+}
+
+export async function cancelUSRfq({rfqId}={}){
+ requireCredentials();
+ const id=String(rfqId||'').trim();
+ if(!id)fail('invalidLegs','rfqId is required');
+ await signedFetch('DELETE',`/v1/rfqs/${encodeURIComponent(id)}`);
+ if(lastQuote?.rfqId===id)lastQuote=null;
+ return {ok:true,rfqId:id};
+}
+
+// Item 7: every gate is enforced here, server-side. One placement at a time (B3).
+let placeBusy=null;
+export async function placeUSCombo(args={}){
+ if(placeBusy)fail('busy','Another combo placement is already in flight');
+ placeBusy=placeUSComboLocked(args).finally(()=>{placeBusy=null});
+ return placeBusy;
+}
+async function placeUSComboLocked({legKeys,stakeUsd,mode='rfq',rfqId=null,quoteId=null,limitPrice=null,confirmation='',placedBy='manual'}={}){
+ requireArmed();
+ if(confirmation!==CONFIRM_PLACE)fail('confirmation',`Explicit ${CONFIRM_PLACE} confirmation required`);
+ const limits=usComboLimits();
+ const stake=num(stakeUsd);
+ if(!(stake>0))fail('stakeInvalid','stakeUsd must be greater than 0');
+ if(stake>limits.maxStakeUsd+1e-9)fail('stakeCap',`Stake $${r2(stake)} exceeds the $${limits.maxStakeUsd} per-combo cap`);
+ const j=loadJournal();
+ if(j.open.length>=limits.maxOpen)fail('openCap',`${j.open.length} combos already open (cap ${limits.maxOpen})`);
+ const realized=realizedTodayUsd(j);
+ if(realized<=-Math.abs(limits.dailyLossCapUsd))fail('dailyLossCap',`Daily realized loss $${r2(-realized)} has reached the $${limits.dailyLossCapUsd} cap`);
+ const pool=await refreshCandidates();
+ const combo=buildUSCombo({legKeys,stakeUsd:stake,candidates:pool});
+ const now=Date.now();
+ for(const leg of combo.legs){
+  if(num(leg.freshnessSec)>FRESH_LIMIT_SEC)fail('staleLeg',`Leg ${leg.symbol} data is stale`);
+  const cool=num(j.cooldowns[leg.eventSlug]);
+  if(cool&&now-cool<COOLDOWN_MS)fail('cooldown',`Event ${leg.eventSlug} is in the ${COOLDOWN_MS/60000}-minute post-settlement cooldown`);
+  for(const open of j.open){
+   if((open.legs||[]).some(x=>x.symbol===leg.symbol))fail('duplicate',`Leg ${leg.symbol} is already in open combo ${open.symbol}`);
+   if((open.legs||[]).some(x=>x.eventSlug===leg.eventSlug))fail('duplicate',`Event ${leg.eventSlug} already has an open combo`);
+  }
+ }
+ const tolerance=limits.priceTolerance;
+ let entry;
+ if(mode==='limit'){
+  const price=r3(Math.min(0.999,Math.max(TICK,ceilTick(limitPrice==null?combo.price:num(limitPrice)))));
+  if(price>combo.price+tolerance+1e-9)fail('priceTolerance',`Limit ${price} exceeds est. ${combo.price} + tolerance ${tolerance}`);
+  const limitQty=comboBudget(price,stake).quantity;
+  if(!(limitQty>=MIN_QTY))fail('stakeInvalid',`Stake $${r2(stake)} is too small at limit price ${price}`);
+  const {symbol}=await createCombo(combo.legs);
+  const order={marketSlug:symbol,intent:'ORDER_INTENT_BUY_LONG',type:'ORDER_TYPE_LIMIT',
+   price:{value:price.toFixed(3),currency:'USD'},quantity:limitQty,
+   tif:'TIME_IN_FORCE_IMMEDIATE_OR_CANCEL',participateDontInitiate:false,
+   manualOrderIndicator:placedBy==='autopilot'?'MANUAL_ORDER_INDICATOR_AUTOMATIC':'MANUAL_ORDER_INDICATOR_MANUAL'};
+  await signedFetch('POST','/v1/order/preview',{body:order});
+  const placed=await signedFetch('POST','/v1/orders',{body:order});
+  entry=journalEntry({combo,symbol,mode:'limit',price,quantity:limitQty,orderId:String(placed?.id||placed?.order?.id||placed?.orderId||''),placedBy});
+ }else{
+  const id=String(rfqId||lastQuote?.rfqId||'').trim(),qid=String(quoteId||lastQuote?.quoteId||'').trim();
+  if(!id||!qid)fail('noQuote','A live RFQ quote is required before placing (rfqId + quoteId)');
+  // Never trust a client-supplied price: re-read the quote before accepting.
+  const res=await signedFetch('GET','/v1/rfqs/quotes',{query:{rfqId:id}});
+  const quote=(Array.isArray(res?.quotes)?res.quotes:[]).find(q=>String(q?.id||'')===qid);
+  if(!quote)fail('noQuote','Quote is no longer available');
+  if(quote.status!=='QUOTE_STATUS_ACTIVE')fail('noQuote',`Quote is ${quote.status}, not active`);
+  const buyPrice=r4(quote.buyPrice);
+  if(!(buyPrice>0))fail('noQuote','Quote has no executable buy price');
+  if(buyPrice>combo.price+tolerance+1e-9)fail('priceTolerance',`Quote ${buyPrice} exceeds est. ${combo.price} + tolerance ${tolerance}`);
+  // B2: the quote must be for the canonical combo of exactly these legs (createCombo is idempotent).
+  const legSig=combo.legs.map(l=>`${l.symbol}|${l.side}`).sort().join(',');
+  const known=j.combos[String(quote.symbol||'')];
+  const knownSig=known?(known.legs||[]).map(l=>`${l.symbol}|${l.side}`).sort().join(','):null;
+  const boundSymbol=knownSig===legSig?String(quote.symbol):(await createCombo(combo.legs)).symbol;
+  if(String(quote.symbol||'')!==boundSymbol)fail('quoteMismatch',`Quote is for ${quote.symbol||'?'}, not for the selected legs (${boundSymbol}); request a new quote`);
+  // B1: the maker-derived quantity, not the request field, is what gets bought. Bind it to the capped stake.
+  const quoteQty=r2(num(quote.buyQtyDecimal));
+  if(!(quoteQty>=MIN_QTY))fail('noQuote','Quote has no executable buy quantity');
+  const allIn=quoteQty*buyPrice+r2(quoteQty*comboFeePerContract(buyPrice));
+  if(allIn>Math.min(stake,limits.maxStakeUsd)+1e-9)fail('stakeCap',`Quote notional plus fees $${r2(allIn)} exceeds the $${r2(Math.min(stake,limits.maxStakeUsd))} total budget`);
+  const expiresAt=Date.parse(quote.confirmationDeadline||quote.executionDeadline||'');
+  if(Number.isFinite(expiresAt)&&expiresAt<=Date.now())fail('noQuote','Quote expired before acceptance');
+  await signedFetch('PUT',`/v1/rfqs/${encodeURIComponent(id)}/quotes/${encodeURIComponent(qid)}/accept`,{body:{acceptedSide:'SIDE_BUY'}});
+  await signedFetch('PUT',`/v1/rfqs/${encodeURIComponent(id)}/quotes/${encodeURIComponent(qid)}/confirm`,{body:{}});
+  entry=journalEntry({combo,symbol:boundSymbol,mode:'rfq',price:buyPrice,quantity:quoteQty,
+   rfqId:id,quoteId:qid,orderId:String(quote.rfqCreatorOrderId||''),placedBy});
+  if(lastQuote?.rfqId===id)lastQuote=null;
+ }
+ const s=loadJournal();
+ s.open.push(entry);
+ s.stats.placed=num(s.stats.placed)+1;
+ saveJournal(recomputeStats(s));
+ return {ok:true,entry};
+}
+
+function journalEntry({combo,symbol,mode,price,quantity=null,rfqId=null,quoteId=null,orderId='',placedBy='manual'}){
+ const qty=quantity!=null?r2(quantity):combo.quantity;
+ return {id:`uc-${Date.now().toString(36)}${Math.random().toString(36).slice(2,6)}`,at:Date.now(),symbol,
+  legs:combo.legs,estPrice:combo.price,fillPrice:price,quantity:qty,requestedQuantity:combo.quantity,stakeUsd:combo.stakeUsd,
+  mode,rfqId,quoteId,orderId,status:'SUBMITTED',fillVerified:false,payoutUsd:null,pnlUsd:null,settledAt:null,
+  costUsd:r2(qty*price+qty*comboFeePerContract(price)),placedBy};
+}
+
+// Operator escape hatch: drop an open entry from the local book without touching the exchange.
+// It frees a slot and the legs' duplicate gate; it books no P/L and starts no cooldown.
+export function forgetUSCombo({id,confirmation}={}){
+ if(confirmation!=='FORGET')fail('confirmation','Type FORGET to drop an open combo entry from the local journal');
+ const j=loadJournal();
+ const idx=j.open.findIndex(x=>String(x.id)===String(id||''));
+ if(idx<0)fail('notFound','No open combo entry with that id');
+ const [entry]=j.open.splice(idx,1);
+ const gone={...entry,status:'FORGOTTEN',pnlUsd:0,payoutUsd:null,forgottenAt:Date.now()};
+ j.history=[gone,...j.history].slice(0,200);
+ saveJournal(recomputeStats(j));
+ return {ok:true,entry:gone};
+}
+
+// M2: reconcile journalled entries against real exchange orders before settling.
+// SUBMITTED -> OPEN (filled qty verified) | CANCELLED (nothing filled) ; unknown shapes stay SUBMITTED.
+const TERMINAL_UNFILLED=/CANCEL|REJECT|EXPIRE/i;
+export async function reconcileUSOrders(j=loadJournal()){
+ let changed=0,aborted=null;
+ const keep=[];
+ for(let i=0;i<j.open.length;i++){
+  const entry=j.open[i];
+  if(aborted){keep.push(entry);continue}
+  if(entry.fillVerified||entry.status==='CANCELLED'){keep.push(entry);continue}
+  try{
+   if(!entry.orderId&&entry.rfqId&&entry.quoteId){
+    const res=await signedFetch('GET','/v1/rfqs/quotes',{query:{rfqId:entry.rfqId}});
+    const q=(Array.isArray(res?.quotes)?res.quotes:[]).find(x=>String(x?.id||'')===String(entry.quoteId));
+    if(q?.rfqCreatorOrderId){entry.orderId=String(q.rfqCreatorOrderId);changed++}
+    // A quote that was never accepted and is now gone was never a trade. An accepted quote that vanished
+    // without an order id may still be a filled position: leave it open and unverified (never write it off).
+    else if(q&&/DELETED/.test(String(q.status||''))&&!q.acceptedTime&&!q.confirmedTime&&!q.executedTime){keep.push({...entry,status:'CANCELLED',fillVerified:true,pnlUsd:0,cancelledAt:Date.now()});changed++;continue}
+   }
+   if(entry.orderId){
+    const r=await signedFetch('GET',`/v1/order/${encodeURIComponent(entry.orderId)}`);
+    const o=r?.order||r||{};
+    const state=String(o.state||o.status||'');
+    const qty=num(o.quantity),leaves=num(o.leavesQuantity);
+    const quantitiesKnown=o.quantity!=null&&o.leavesQuantity!=null&&Number.isFinite(Number(o.quantity))&&Number.isFinite(Number(o.leavesQuantity))&&leaves>=0&&leaves<=qty;
+    const filled=quantitiesKnown&&qty>0?r2(qty-leaves):null;
+    if(filled!=null&&filled<=0&&TERMINAL_UNFILLED.test(state)){keep.push({...entry,status:'CANCELLED',fillVerified:true,pnlUsd:0,cancelledAt:Date.now()});changed++;continue}
+    if(filled!=null&&filled>0&&(leaves<=0||TERMINAL_UNFILLED.test(state)||/FILL/i.test(state))){
+     const price=num(entry.fillPrice);
+     keep.push({...entry,quantity:filled,costUsd:r2(filled*price+r2(filled*comboFeePerContract(price,num(entry.at)||Date.now()))),status:'OPEN',fillVerified:true,verifiedAt:Date.now()});changed++;continue;
+    }
+   }
+  }catch(e){if(e?.code==='keyNotFound'||e?.code==='betaNotEnabled')aborted=e.code}
+  keep.push(entry); // N1: an entry is never dropped, whatever the transport did
+ }
+ if(keep.length!==j.open.length)throw new Error('reconcile invariant: entry count changed');
+ if(changed){
+  // Cancelled entries leave the open book without touching P/L or cooldowns.
+  j.open=keep.filter(x=>x.status!=='CANCELLED');
+  j.history=[...keep.filter(x=>x.status==='CANCELLED'),...j.history].slice(0,200);
+  saveJournal(recomputeStats(j));
+ }
+ return {changed,aborted};
+}
+
+// ------------------------------------------------------------- settlement
+let settleAt=0,settleBusy=null;
+const settlementCache=new Map();
+export function comboDue(entry,now=nowMs()){
+ const etas=(entry?.legs||[]).filter(l=>l?.etaMinutes!==null&&l?.etaMinutes!==undefined&&l?.etaMinutes!=='').map(l=>Number(l.etaMinutes)).filter(Number.isFinite);
+ const at=Number(entry?.at);
+ if(!etas.length||!Number.isFinite(at)||at<=0)return false;
+ const dueAt=at+Math.max(...etas)*60000;
+ return now>=dueAt&&now<dueAt+SETTLE_FAST.windowMs;
+}
+function cachedSettlement(symbol,pendingTtlMs=SETTLE_CACHE_PENDING_MS){
+ const hit=settlementCache.get(String(symbol||''));
+ if(!hit)return undefined;
+ const ttl=hit.value===null?pendingTtlMs:SETTLE_CACHE_RESOLVED_MS;
+ if(nowMs()-hit.at>=ttl){settlementCache.delete(String(symbol||''));return undefined}
+ return hit.value;
+}
+async function fetchSettlement(symbol,{pendingTtlMs=SETTLE_CACHE_PENDING_MS}={}){
+ const key=String(symbol||'');if(!key)return null;
+ const hit=cachedSettlement(key,pendingTtlMs);if(hit!==undefined)return hit;
+ const r=await signedFetch('GET',`/v1/markets/${encodeURIComponent(key)}/settlement`);
+ const settledAt=r?.settledAt||r?.marketSettlement?.settledAt;
+ const px=val(r?.settlementPrice??r?.marketSettlement?.settlementPrice);
+ const value=settledAt?{px:clamp(px,0,1),settledAt}:null;
+ settlementCache.set(key,{at:nowMs(),value});
+ return value;
+}
+async function settlementValue(entry){
+ const legs=entry?.legs||[];
+ const pendingTtlMs=comboDue(entry)?SETTLE_FAST.pendingMs:SETTLE_CACHE_PENDING_MS;
+ let value=1;
+ for(let i=0;i<legs.length;i+=SETTLE_FETCH_CONCURRENCY){
+  const chunk=legs.slice(i,i+SETTLE_FETCH_CONCURRENCY);
+  const rows=await Promise.all(chunk.map(l=>fetchSettlement(l.symbol,{pendingTtlMs})));
+  if(rows.some(x=>x===null))return null;
+  for(let k=0;k<chunk.length;k++){const leg=chunk[k],px=rows[k].px;value*=leg.side==='SIDE_SELL'?clamp(1-px,0,1):clamp(px,0,1)}
+ }
+ return value;
+}
+export async function settleUSCombos({force=false}={}){
+ const preview=loadJournal();
+ const throttle=preview.open.some(e=>e.fillVerified===true&&comboDue(e))?SETTLE_FAST.throttleMs:SETTLE_THROTTLE_MS;
+ if(!force&&nowMs()-settleAt<throttle)return {ran:false,reason:'throttled'};
+ if(settleBusy)return settleBusy;
+ settleAt=nowMs();
+ settleBusy=(async()=>{
+  let j=loadJournal();
+  if(!j.open.length)return {ran:true,settled:0};
+  if(!usReadiness().credentialsReady)return {ran:false,reason:'noCredentials'};
+  try{await reconcileUSOrders(j);j=loadJournal()}catch{}
+  if(!j.open.length)return {ran:true,settled:0};
+  let settled=0;
+  const stillOpen=[];
+  for(const entry of j.open){
+   // N2: never settle (and never book P/L for) an order whose fill was not verified on the exchange.
+   if(entry.fillVerified!==true){stillOpen.push(entry);continue}
+   let value=null;
+   try{value=await settlementValue(entry)}catch(e){
+    if(e?.code==='keyNotFound'||e?.code==='betaNotEnabled'){entry.status='UNKNOWN';stillOpen.push(entry);continue}
+   }
+   if(value===null){stillOpen.push(entry);continue}
+   const payout=r2(num(entry.quantity)*value);
+   const pnl=r2(payout-num(entry.costUsd));
+   settled++;
+   const closed={...entry,status:pnl>0?'WON':'LOST',payoutUsd:payout,pnlUsd:pnl,settledAt:nowMs()};
+   j.history.unshift(closed);
+   for(const leg of closed.legs||[])j.cooldowns[leg.eventSlug]=nowMs();
+  }
+  j.open=stillOpen;
+  j.history=j.history.slice(0,200);
+  saveJournal(recomputeStats(j));
+  return {ran:true,settled};
+ })().finally(()=>{settleBusy=null});
+ return settleBusy;
+}
+
+// -------------------------------------------------------------- autopilot
+export function usComboAutopilot(){return {...loadJournal().autopilot}}
+// Item 9: default OFF, second explicit opt-in required to enable.
+export function setUSComboAutopilot(patch={}){
+ const j=loadJournal();
+ const limits=usComboLimits();
+ const next={...j.autopilot};
+ const turningOn=patch.enabled===true&&!j.autopilot.enabled;
+ if(turningOn){
+  if(patch.confirmation!==CONFIRM_AUTOPILOT)fail('confirmation',`Type ${CONFIRM_AUTOPILOT} to enable real autopilot`);
+  requireArmed();
+ }
+ if(patch.enabled!==undefined)next.enabled=!!patch.enabled;
+ if(patch.stakeUsd!==undefined)next.stakeUsd=r2(clamp(num(patch.stakeUsd),1,limits.maxStakeUsd));
+ if(patch.maxLegs!==undefined)next.maxLegs=Math.round(clamp(num(patch.maxLegs),2,3));
+ if(patch.maxOpen!==undefined)next.maxOpen=Math.round(clamp(num(patch.maxOpen),1,limits.maxOpen));
+ if(patch.dailyLossCapUsd!==undefined)next.dailyLossCapUsd=r2(clamp(num(patch.dailyLossCapUsd),1,limits.dailyLossCapUsd));
+ j.autopilot=next;
+ saveJournal(j);
+ return {...next};
+}
+function noteAutopilot(action,skip=null){
+ const j=loadJournal();
+ j.autopilot.lastRunAt=Date.now();
+ if(action)j.autopilot.lastAction=action;
+ if(skip)j.autopilot.skipped=[...j.autopilot.skipped,{at:Date.now(),reason:skip}].slice(-8);
+ saveJournal(j);
+ return j.autopilot;
+}
+let apBusy=false;
+export async function runUSComboAutopilotOnce(){
+ const j=loadJournal();
+ const ap=j.autopilot;
+ if(!ap.enabled)return {ran:false,reason:'disabled'};
+ if(apBusy)return {ran:false,reason:'busy'};
+ apBusy=true;
+ try{return await runUSComboAutopilotPass(j,ap)}finally{apBusy=false}
+}
+async function runUSComboAutopilotPass(j,ap){
+ const r=usReadiness();
+ if(!r.credentialsReady||!r.sessionArmed||r.realEnabled===false){noteAutopilot(null,'session not armed');return {ran:false,reason:'notArmed'}}
+ if(j.open.length>=ap.maxOpen){noteAutopilot(null,`max open (${ap.maxOpen})`);return {ran:false,reason:'openCap'}}
+ if(realizedTodayUsd(j)<=-Math.abs(ap.dailyLossCapUsd)){noteAutopilot(null,'daily loss cap');return {ran:false,reason:'dailyLossCap'}}
+ try{
+  const pool=await refreshCandidates();
+  const legs=chooseUSCombo(pool,clamp(ap.maxLegs,2,3),j);
+  if(legs.length<2){noteAutopilot(null,'not enough live candidates');return {ran:false,reason:'noCandidates'}}
+  const legKeys=legs.map(l=>l.key);
+  const quote=await quoteUSCombo({legKeys,stakeUsd:ap.stakeUsd,candidates:pool});
+  const placed=await placeUSCombo({legKeys,stakeUsd:ap.stakeUsd,mode:'rfq',rfqId:quote.rfqId,quoteId:quote.quoteId,
+   confirmation:CONFIRM_PLACE,placedBy:'autopilot'});
+  noteAutopilot({at:Date.now(),symbol:placed.entry.symbol,price:placed.entry.fillPrice,quantity:placed.entry.quantity});
+  return {ran:true,placed:1,entry:placed.entry};
+ }catch(e){
+  const code=e?.code||'unknown';
+  if(code==='keyNotFound'||code==='betaNotEnabled'){
+   const s=loadJournal();s.autopilot.enabled=false;saveJournal(s);
+   noteAutopilot({at:Date.now(),disabled:true,reason:code},`autopilot disabled: ${code}`);
+   return {ran:false,reason:code,disabled:true};
+  }
+  noteAutopilot(null,`${code}: ${String(e?.message||e).slice(0,140)}`);
+  return {ran:false,reason:code,error:String(e?.message||e)};
+ }
+}
+
+let loopTimer=null;
+export function startUSComboLoops(){
+ if(loopTimer||!AUTOSTART())return loopTimer;
+ loopTimer=setInterval(()=>{
+  runUSComboAutopilotOnce().catch(()=>{});
+  settleUSCombos().catch(()=>{});
+ },5000);
+ loopTimer.unref?.();
+ return loopTimer;
+}
+export function stopUSComboLoops(){if(loopTimer)clearInterval(loopTimer);loopTimer=null}
+
+// --------------------------------------------------------------- snapshot
+async function enrichBBO(candidates){
+ const out=await mapLimit(candidates.slice(0,12),4,async c=>{
+  try{
+   const cached=bboCache.get(c.symbol);
+   const data=cached&&Date.now()-cached.at<BBO_TTL_MS?cached.data:(await publicFetch(`/v1/markets/${encodeURIComponent(c.symbol)}/bbo`))?.marketData;
+   if(!cached||Date.now()-cached.at>=BBO_TTL_MS)bboCache.set(c.symbol,{at:Date.now(),data});
+   if(!data)return null;
+   const ask=val(data.bestAsk),bid=val(data.bestBid),liquidity=num(data.openInterest);
+   if(!(ask>0&&ask<1&&bid>0&&bid<=ask))return null;
+   const price=c.side==='SIDE_SELL'?r4(1-bid):r4(ask);
+   const spread=bid>0?Math.max(0,r4(ask-bid)):null;
+   const spreadLimit=spreadLimitFor(liquidity);
+   if(price<PRICE_MIN||price>PRICE_MAX)return null;
+   if(spread!=null&&spread>spreadLimit+1e-9)return null;
+   const feePerContract=r4(standardFeePerContract(price,c.feeCoefficient));
+   const rank=c.nearEndScore*4+(100-Math.abs(price-.90)*260)+Math.min(35,Math.log10(Math.max(1,liquidity))*8)-c.etaMinutes*8-spread*500;
+   return {...c,price,bid:r4(bid),ask:r4(ask),spread,spreadLimit,liquidity,liquidityKnown:liquidity>0,feePerContract,rank:Math.round(rank),
+    netPrice:r4(clamp(price+feePerContract,0,1)),priceSource:'bbo',bookAt:bboCache.get(c.symbol)?.at||Date.now()};
+  }catch{return null;}
+ });
+ return out.filter(c=>c&&!c.__error).sort((a,b)=>b.rank-a.rank);
+}
+
+async function refreshCandidates(){
+ const f=await usLiveEvents();
+ const {candidates}=usCandidatesFromEvents(f.ok?f.events:[],Date.now());
+ lastCandidates=String(process.env.POLYMARKET_US_COMBO_BBO||'true').toLowerCase()==='false'?candidates:await enrichBBO(candidates);
+ return lastCandidates;
+}
+
+let snapCache={at:0,data:null},snapBusy=null;
+export async function usComboSnapshot({force=false}={}){
+ if(!force&&snapCache.data&&Date.now()-snapCache.at<SNAPSHOT_TTL_MS)return snapCache.data;
+ if(snapBusy)return snapBusy;
+ snapBusy=(async()=>{
+  const now=Date.now();
+  const readiness=usReadiness();
+  let candidates=[],rejections={},feedErr=null;
+  try{
+   const f=await usLiveEvents({force});
+   const built=usCandidatesFromEvents(f.ok?f.events:[],Date.now());
+   rejections=built.rejections;
+   candidates=String(process.env.POLYMARKET_US_COMBO_BBO||'true').toLowerCase()==='false'?built.candidates:await enrichBBO(built.candidates);
+   lastCandidates=candidates;
+   feedErr=f.ok?null:f.error;
+  }catch(e){feedErr=String(e?.message||e);lastError=feedErr}
+  const j=loadJournal();
+  const ap=j.autopilot;
+  if(lastQuote&&num(lastQuote.expiresAt)<now)lastQuote=null;
+  let suggested=null;
+  const picked=chooseUSCombo(candidates,clamp(num(ap.maxLegs)||2,2,3),j);
+  if(picked.length>=2){
+   try{
+    const c=buildUSCombo({legKeys:picked.map(l=>l.key),stakeUsd:ap.stakeUsd,candidates,at:now});
+    suggested={legs:picked.map(l=>l.key),price:c.price,decimalOdds:c.decimalOdds,stakeUsd:c.stakeUsd,
+     quantity:c.quantity,feeUsd:c.feeUsd,payoutUsd:c.payoutUsd,profitUsd:c.profitUsd};
+   }catch{suggested=null}
+  }
+  const data={at:now,
+   readiness:{credentialsReady:!!readiness.credentialsReady,sessionArmed:!!readiness.sessionArmed,realEnabled:readiness.realEnabled!==false,
+    lastAuthError:readiness.lastAuthError??null,authCode:readiness.authCode??null,developerPortal:'https://polymarket.us/developer'},
+   feed:{ok:!feedErr,error:feedErr,ageMs:feed.at?Math.max(0,Date.now()-feed.at):null,eventsInPlay:feed.inPlay,eventsLive:feed.live,
+    candidates:candidates.length,rejections},
+   candidates:candidates.slice(0,12),
+   suggested,
+   quote:lastQuote,
+   journal:{open:j.open,history:j.history.slice(0,8),stats:{...j.stats,unverified:j.open.filter(x=>x.fillVerified!==true).length}},
+   autopilot:{...ap},
+   limits:usComboLimits(),
+   betaAccess,
+   lastError};
+  snapCache={at:now,data};
+  return data;
+ })().finally(()=>{snapBusy=null});
+ return snapBusy;
+}
+
+export const __testing={resetJournal(){journalCache=null;lastQuote=null;lastCandidates=[];betaAccess='unknown';lastError=null;snapCache={at:0,data:null};feed={at:0,fetchedAt:0,ok:false,error:null,events:[],inPlay:0,live:0};bboCache.clear();settlementCache.clear();settleAt=0;settleClock=null;placeBusy=null;apBusy=false},
+ setClock(fn){settleClock=typeof fn==='function'?fn:null},
+ get lastQuote(){return lastQuote},get candidates(){return lastCandidates},stateFile:STATE_FILE,CONFIRM_PLACE,CONFIRM_AUTOPILOT,SETTLE_THROTTLE_MS,SETTLE_CACHE_PENDING_MS,SETTLE_CACHE_RESOLVED_MS,SETTLE_FETCH_CONCURRENCY,settlementCache};

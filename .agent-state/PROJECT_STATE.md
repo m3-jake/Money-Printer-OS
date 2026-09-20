@@ -1,0 +1,15 @@
+# Money Printer OS — project state (2026-09-14)
+
+- **Authoritative source (2026-09-16):** this integrator worktree started from deployed alpha.42 `4207a70` and fast-forwarded reviewed settlement/latency `125126e`. Data-first audit: `.agent-state/DATA_DECISION_MEMO.md`. Integration ledger: `.agent-state/INTEGRATION_LEDGER.md`. Not installed; no app restart.
+- **Version**: package.json `0.5.0-alpha.42`.
+- **Prior note (stale path):** `/Users/bing/Desktop/Money Printer OS/Current/MPO-alpha41-release-src` was the alpha41 pack source (from 61077bb). Older alphas live in `../../Archive/`.
+- **Installed app**: `~/Applications/Money Printer OS.app` (Electron; `Contents/Resources/app.asar`; `app.asar.previous` = rollback). The Desktop `Money Printer OS.app` is a different, older copy. User data + `.env` live in `~/Library/Application Support/Money Printer OS/` (`data/` holds state, `polymarket-paper.json`, `polymarket-us-combos.json`).
+- **Launch path**: `desktop/main.cjs` spawns `src/index.js` (dashboard on `127.0.0.1:8792`), `src/networkMesh.js`, cluster hub/worker. Updater pulls from `https://bangbowbing.net/downloads/money-printer-os/stable` (Ed25519-signed manifest) and auto-applies when MODE != live.
+- **Packaging**: `python3 .workflow/scratch/release-alpha41.py pack|install|restart` — stages a copy without `.git/.workflow/.agent-state`, packs with `npx @electron/asar` (v4.3.0 cached), installs into the app, restarts, checks `/api/health`.
+- **Sportsbook architecture**:
+  - `src/polymarket.js` + `src/sportsTiming.js`: paper "fast-turnover" lab on **global** Polymarket (gamma + CLOB + sports WS). Paper only; real execution intentionally locked. 2026-09-16 settlement-bias audit: 42/42 settled singles were early-exit WON; live Gamma list hid 4 resolved losses + 1 combo win. Closed-market fetch + any-lost-leg combo booking repaired in paper/research only; strategy `keep=false`. See `.agent-state/SETTLEMENT_BIAS_AUDIT.md`.
+  - `src/polymarketUS.js`: **Polymarket US** retail API via `polymarket-us` SDK 0.1.1 (single-market orders; arm + typed confirmation).
+  - `src/polymarketUSCombos.js` (alpha40): live in-play scanner on Polymarket US, near-settlement 2–3 leg **combos** (`POST /v1/combos` → RFQ → accept/confirm, or limit order on the `caoc-` symbol), journal, safety gates, optional double-opt-in autopilot. Spec: `.workflow/scratch/SPEC-fast-combos.md`.
+- **Polymarket US facts**: Combos launched 2026-08-21; Retail Combos/RFQ API is beta-gated per key; fees `Θ·C·p·(1−p)` (taker 0.06 → 0.0695 and combo curve change after 2026-09-16 23:59 ET); public gateway BBO needs a browser-like User-Agent; `/book` and `/events/slug/*` need signed headers.
+
+- **Alpha41 execution pass (2026-09-15)**: batched/cached quotes and rate-limit backoff; confirmed paper crash recovery; sale-value fees and net break-even; depth-aware paper cash-outs; US fee-inclusive combo sizing and disjoint game selection. See `EXECUTION_UPDATE.md`. 55 mocked regressions passed; installed and running.

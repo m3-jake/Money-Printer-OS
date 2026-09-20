@@ -1,0 +1,2505 @@
+{
+  "cashUsd": 21.28486,
+  "startUsd": 25.22568,
+  "positions": [
+    {
+      "id": "poly_1789484610316_oahyi",
+      "createdAt": 1789484610316,
+      "status": "OPEN",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.050006562541016,
+      "fillPrice": 0.95,
+      "feeUsd": 0.00249,
+      "decimalOdds": 1.050006562541016,
+      "potentialPayoutUsd": 1.050006562541016,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4542172",
+          "eventId": "1019759",
+          "gameId": "6243970",
+          "event": "Ljubljana: Weronika Falkowska vs Kristina Novak",
+          "slug": "wta-falkows-novak-2026-09-15",
+          "question": "Ljubljana: Weronika Falkowska vs Kristina Novak",
+          "timing": {
+            "etaMinutes": 12,
+            "reason": "tennis closing set, five-plus games",
+            "period": "TB2",
+            "score": "2-6, 6-6(4-6)"
+          },
+          "price": 0.95,
+          "fillPrice": 0.95,
+          "outcome": "Kristina Novak",
+          "outcomeIndex": 1,
+          "tokenId": "40144701681437239754512665275562089558159544469161328780959064518091553361475",
+          "priceSource": "clob",
+          "tickSize": 0.01,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000
+        }
+      ],
+      "missingSince": 1789564707851
+    },
+    {
+      "id": "poly_1789472275587_9ch8q",
+      "createdAt": 1789472275587,
+      "status": "OPEN",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.0939781970145335,
+      "fillPrice": 0.91,
+      "feeUsd": 0.00448,
+      "decimalOdds": 1.0939781970145335,
+      "potentialPayoutUsd": 1.0939781970145335,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4528120",
+          "eventId": "1017582",
+          "gameId": "6241131",
+          "event": "Valencia: Jennifer Ruggeri vs Eva Vedder",
+          "slug": "wta-ruggeri-vedder-2026-09-14",
+          "question": "Valencia: Jennifer Ruggeri vs Eva Vedder",
+          "timing": {
+            "etaMinutes": 12,
+            "reason": "tennis closing set, five-plus games",
+            "period": "S2",
+            "score": "5-7, 3-5"
+          },
+          "price": 0.91,
+          "fillPrice": 0.91,
+          "outcome": "Eva Vedder",
+          "outcomeIndex": 1,
+          "tokenId": "11354404719417816317862773359086261639581066284873959000954149939027764566916",
+          "priceSource": "clob",
+          "tickSize": 0.01,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000
+        }
+      ],
+      "missingSince": 1789564707851
+    },
+    {
+      "id": "poly_1789470773700_5k8sw",
+      "createdAt": 1789470773700,
+      "status": "OPEN",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.1547077434701276,
+      "fillPrice": 0.86,
+      "feeUsd": 0.00695,
+      "decimalOdds": 1.1547077434701276,
+      "potentialPayoutUsd": 1.1547077434701276,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4528112",
+          "eventId": "1017578",
+          "gameId": "6241127",
+          "event": "Valencia: Alicia Herrero Linana vs Lucia Cortez Llorca",
+          "slug": "wta-linana-llorca-2026-09-14",
+          "question": "Valencia: Alicia Herrero Linana vs Lucia Cortez Llorca",
+          "timing": {
+            "etaMinutes": 12,
+            "reason": "tennis closing set, five-plus games",
+            "period": "S2",
+            "score": "2-6, 4-5"
+          },
+          "price": 0.86,
+          "fillPrice": 0.86,
+          "outcome": "Lucia Cortez Llorca",
+          "outcomeIndex": 1,
+          "tokenId": "56713485792546813914440721861941756628683238778569084702440167463597998116435",
+          "priceSource": "clob",
+          "tickSize": 0.01,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000
+        }
+      ],
+      "missingSince": 1789564707851
+    },
+    {
+      "id": "poly_1789446029801_ys93x",
+      "createdAt": 1789446029801,
+      "status": "OPEN",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.1810279667422525,
+      "fillPrice": 0.84,
+      "feeUsd": 0.00794,
+      "decimalOdds": 1.1810279667422525,
+      "potentialPayoutUsd": 1.1810279667422525,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4363835",
+          "eventId": "988210",
+          "gameId": "10079537",
+          "event": "Miami Marlins vs. Arizona Diamondbacks",
+          "slug": "mlb-mia-ari-2026-09-14",
+          "question": "Miami Marlins vs. Arizona Diamondbacks",
+          "timing": {
+            "etaMinutes": 15,
+            "reason": "ninth inning or later; estimate only",
+            "period": "Top 9th",
+            "score": "7-6"
+          },
+          "price": 0.84,
+          "fillPrice": 0.84,
+          "outcome": "Miami Marlins",
+          "outcomeIndex": 0,
+          "tokenId": "78110062870324739269145722066012157156451254213272032946736681958020654006262",
+          "priceSource": "clob",
+          "tickSize": 0.01,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000
+        }
+      ],
+      "missingSince": 1789564707851
+    },
+    {
+      "id": "poly_1789429556342_oa6l9",
+      "createdAt": 1789429556342,
+      "status": "OPEN",
+      "kind": "combo",
+      "stakeUsd": 2.5,
+      "shares": 2.8319828173772,
+      "fillPrice": null,
+      "feeUsd": 0.01651,
+      "decimalOdds": 1.13279312695088,
+      "potentialPayoutUsd": 2.8319828173771997,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4063862",
+          "eventId": "948525",
+          "gameId": "90103971",
+          "event": "CA Banfield vs. CA Barracas Central",
+          "slug": "arg-ban-bar-2026-09-14",
+          "question": "Will CA Barracas Central win on 2026-09-14?",
+          "timing": {
+            "etaMinutes": 14,
+            "reason": "second half, 85 minutes or later",
+            "period": "2H",
+            "score": "1-1"
+          },
+          "price": 0.91,
+          "fillPrice": 0.91,
+          "outcome": "No",
+          "outcomeIndex": 1,
+          "tokenId": "84048219742622025729432071530291459132679459005733198245477530315230600578237",
+          "priceSource": "clob",
+          "tickSize": 0.01,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000
+        },
+        {
+          "marketId": "4118850",
+          "eventId": "952800",
+          "gameId": "90103979",
+          "event": "CD Riestra vs. CA Lanús - More Markets",
+          "slug": "arg-rie-lan-2026-09-14-more-markets",
+          "question": "Spread: CA Lanús (-2.5)",
+          "timing": {
+            "etaMinutes": 11,
+            "reason": "second half, 85 minutes or later",
+            "period": "2H",
+            "score": "0-3"
+          },
+          "price": 0.964,
+          "fillPrice": 0.964,
+          "outcome": "CA Lanús",
+          "outcomeIndex": 0,
+          "tokenId": "80605194687503531333665534478902024369330943121317692779600674425549014523291",
+          "priceSource": "clob",
+          "tickSize": 0.001,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000
+        }
+      ],
+      "missingSince": 1789564707851
+    }
+  ],
+  "history": [
+    {
+      "id": "poly_1789487581211_wrp7e",
+      "createdAt": 1789487581211,
+      "status": "WON",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.1677127426653044,
+      "fillPrice": 0.85,
+      "feeUsd": 0.00744,
+      "decimalOdds": 1.1677127426653044,
+      "potentialPayoutUsd": 1.1677127426653044,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4066057",
+          "eventId": "949111",
+          "gameId": "90121852",
+          "event": "Wadi Degla SC vs. El Mokawloon El Arab SC",
+          "slug": "egy1-wds-eme-2026-09-15",
+          "question": "Will El Mokawloon El Arab SC win on 2026-09-15?",
+          "timing": {
+            "etaMinutes": 14,
+            "reason": "second half, 85 minutes or later",
+            "period": "2H",
+            "score": "0-1"
+          },
+          "price": 0.85,
+          "fillPrice": 0.85,
+          "outcome": "Yes",
+          "outcomeIndex": 0,
+          "tokenId": "45425568220788802455896823120894447313457027130208179987111651788357334426828",
+          "priceSource": "clob",
+          "tickSize": 0.01,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000,
+          "result": "won",
+          "resolvedPrice": 0.9900000000000001
+        }
+      ],
+      "settledAt": 1789488152782,
+      "payoutUsd": 1.15546,
+      "pnlUsd": 0.15546,
+      "settlementSource": "early-exit",
+      "exit": {
+        "price": 0.9900000000000001,
+        "feeUsd": 0.00058,
+        "at": 1789488152782
+      }
+    },
+    {
+      "id": "poly_1789484715573_cvsi2",
+      "createdAt": 1789484715573,
+      "status": "WON",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.0458126602315723,
+      "fillPrice": 0.954,
+      "feeUsd": 0.00229,
+      "decimalOdds": 1.0458126602315723,
+      "potentialPayoutUsd": 1.0458126602315723,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4542152",
+          "eventId": "1019749",
+          "gameId": "6243546",
+          "event": "Caldas da Rainha: Elena Micic vs Anouk Koevermans",
+          "slug": "wta-micic-koeverm-2026-09-15",
+          "question": "Caldas da Rainha: Elena Micic vs Anouk Koevermans",
+          "timing": {
+            "etaMinutes": 12,
+            "reason": "tennis closing set, five-plus games",
+            "period": "TB2",
+            "score": "2-6, 6-6(2-5)"
+          },
+          "price": 0.954,
+          "fillPrice": 0.954,
+          "outcome": "Anouk Koevermans",
+          "outcomeIndex": 1,
+          "tokenId": "30154653938784550900100832931191758763948479652935548321696306716690747247202",
+          "priceSource": "clob",
+          "tickSize": 0.001,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000,
+          "result": "won",
+          "resolvedPrice": 0.999
+        }
+      ],
+      "settledAt": 1789487794303,
+      "payoutUsd": 1.04471,
+      "pnlUsd": 0.04471,
+      "settlementSource": "early-exit",
+      "exit": {
+        "price": 0.999,
+        "feeUsd": 0.00005,
+        "at": 1789487794303
+      }
+    },
+    {
+      "id": "poly_1789485807750_sxeej",
+      "createdAt": 1789485807750,
+      "status": "WON",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.029383759412428,
+      "fillPrice": 0.9699999999999999,
+      "feeUsd": 0.0015,
+      "decimalOdds": 1.029383759412428,
+      "potentialPayoutUsd": 1.029383759412428,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4574860",
+          "eventId": "1026365",
+          "gameId": "6257338",
+          "event": "Sao Paulo Open: Darja Semenistaja vs Hayu Kinoshita",
+          "slug": "wta-semenis-kinoshi-2026-09-15",
+          "question": "Sao Paulo Open: Darja Semenistaja vs Hayu Kinoshita",
+          "timing": {
+            "etaMinutes": 12,
+            "reason": "tennis closing set, five-plus games",
+            "period": "S2",
+            "score": "7-5, 5-3"
+          },
+          "price": 0.97,
+          "fillPrice": 0.9699999999999999,
+          "outcome": "Darja Semenistaja",
+          "outcomeIndex": 0,
+          "tokenId": "3574516630089391039060258968704074095875664002550147988975588083051263522726",
+          "priceSource": "clob",
+          "tickSize": 0.01,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000,
+          "result": "won",
+          "resolvedPrice": 0.985
+        }
+      ],
+      "settledAt": 1789486133940,
+      "payoutUsd": 1.01318,
+      "pnlUsd": 0.01318,
+      "settlementSource": "early-exit",
+      "exit": {
+        "price": 0.985,
+        "feeUsd": 0.00076,
+        "at": 1789486133939
+      }
+    },
+    {
+      "id": "poly_1789485136784_g9f1o",
+      "createdAt": 1789485136784,
+      "status": "WON",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.0193887744908154,
+      "fillPrice": 0.98,
+      "feeUsd": 0.001,
+      "decimalOdds": 1.0193887744908154,
+      "potentialPayoutUsd": 1.0193887744908154,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4521835",
+          "eventId": "1016141",
+          "gameId": "6237678",
+          "event": "Sao Paulo Open: Teodora Kostovic vs Victoria Barros",
+          "slug": "wta-kostovi-barros-2026-09-14",
+          "question": "Sao Paulo Open: Teodora Kostovic vs Victoria Barros",
+          "timing": {
+            "etaMinutes": 12,
+            "reason": "tennis closing set, five-plus games",
+            "period": "S2",
+            "score": "6-2, 5-4"
+          },
+          "price": 0.98,
+          "fillPrice": 0.98,
+          "outcome": "Teodora Kostovic",
+          "outcomeIndex": 0,
+          "tokenId": "34592622140543280711440455851896673504732086555709409067240208336168314436652",
+          "priceSource": "clob",
+          "tickSize": 0.001,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000,
+          "result": "won",
+          "resolvedPrice": 0.99
+        }
+      ],
+      "settledAt": 1789485371932,
+      "payoutUsd": 1.00869,
+      "pnlUsd": 0.00869,
+      "settlementSource": "early-exit",
+      "exit": {
+        "price": 0.99,
+        "feeUsd": 0.0005,
+        "at": 1789485371932
+      }
+    },
+    {
+      "id": "poly_1789483183034_w75b4",
+      "createdAt": 1789483183035,
+      "status": "WON",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.0606478437029339,
+      "fillPrice": 0.94,
+      "feeUsd": 0.00299,
+      "decimalOdds": 1.0606478437029339,
+      "potentialPayoutUsd": 1.0606478437029339,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4570960",
+          "eventId": "1025315",
+          "gameId": "6256665",
+          "event": "Valencia: Oksana Selekhmeteva vs Nastasja Schunk",
+          "slug": "wta-selekhm-schunk-2026-09-15",
+          "question": "Valencia: Oksana Selekhmeteva vs Nastasja Schunk",
+          "timing": {
+            "etaMinutes": 12,
+            "reason": "tennis closing set, five-plus games",
+            "period": "S2",
+            "score": "5-7, 3-5"
+          },
+          "price": 0.94,
+          "fillPrice": 0.94,
+          "outcome": "Nastasja Schunk",
+          "outcomeIndex": 1,
+          "tokenId": "55465911077953126323605643446493611008804126050074922997308521013186213576851",
+          "priceSource": "clob",
+          "tickSize": 0.01,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000,
+          "result": "won",
+          "resolvedPrice": 0.9899999999999999
+        }
+      ],
+      "settledAt": 1789483628987,
+      "payoutUsd": 1.04952,
+      "pnlUsd": 0.04952,
+      "settlementSource": "early-exit",
+      "exit": {
+        "price": 0.9899999999999999,
+        "feeUsd": 0.00053,
+        "at": 1789483628987
+      }
+    },
+    {
+      "id": "poly_1789480649361_9ucxv",
+      "createdAt": 1789480649361,
+      "status": "WON",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.0395874916833001,
+      "fillPrice": 0.96,
+      "feeUsd": 0.002,
+      "decimalOdds": 1.0395874916833001,
+      "potentialPayoutUsd": 1.0395874916833001,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4542168",
+          "eventId": "1019757",
+          "gameId": "6243967",
+          "event": "Ljubljana: Alice Tubello vs Vivian Wolff",
+          "slug": "wta-tubello-wolff-2026-09-15",
+          "question": "Ljubljana: Alice Tubello vs Vivian Wolff",
+          "timing": {
+            "etaMinutes": 12,
+            "reason": "tennis closing set, five-plus games",
+            "period": "S2",
+            "score": "6-4, 5-3"
+          },
+          "price": 0.96,
+          "fillPrice": 0.96,
+          "outcome": "Alice Tubello",
+          "outcomeIndex": 0,
+          "tokenId": "96667033424238153781871203512514429432213812943369134991148349846348865186632",
+          "priceSource": "clob",
+          "tickSize": 0.001,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000,
+          "result": "won",
+          "resolvedPrice": 0.99
+        }
+      ],
+      "settledAt": 1789480723861,
+      "payoutUsd": 1.02868,
+      "pnlUsd": 0.02868,
+      "settlementSource": "early-exit",
+      "exit": {
+        "price": 0.99,
+        "at": 1789480723859
+      }
+    },
+    {
+      "id": "poly_1789479473610_s7bbx",
+      "createdAt": 1789479473610,
+      "status": "WON",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.033439839643207,
+      "fillPrice": 0.966,
+      "feeUsd": 0.0017,
+      "decimalOdds": 1.033439839643207,
+      "potentialPayoutUsd": 1.033439839643207,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4570978",
+          "eventId": "1025324",
+          "gameId": "6256674",
+          "event": "Caldas da Rainha: Caroline Werner vs Malaika Rapolu",
+          "slug": "wta-werner-rapolu-2026-09-15",
+          "question": "Caldas da Rainha: Caroline Werner vs Malaika Rapolu",
+          "timing": {
+            "etaMinutes": 12,
+            "reason": "tennis closing set, five-plus games",
+            "period": "S2",
+            "score": "2-6, 3-5"
+          },
+          "price": 0.966,
+          "fillPrice": 0.966,
+          "outcome": "Malaika Rapolu",
+          "outcomeIndex": 1,
+          "tokenId": "51477217186000283197888453374592948740263368126472976523607378752863502240686",
+          "priceSource": "clob",
+          "tickSize": 0.001,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000,
+          "result": "won",
+          "resolvedPrice": 0.999
+        }
+      ],
+      "settledAt": 1789479843831,
+      "payoutUsd": 1.03235,
+      "pnlUsd": 0.03235,
+      "settlementSource": "early-exit",
+      "exit": {
+        "price": 0.999,
+        "at": 1789479843831
+      }
+    },
+    {
+      "id": "poly_1789478590630_h1o80",
+      "createdAt": 1789478590630,
+      "status": "WON",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.050006562541016,
+      "fillPrice": 0.95,
+      "feeUsd": 0.00249,
+      "decimalOdds": 1.050006562541016,
+      "potentialPayoutUsd": 1.050006562541016,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4582014",
+          "eventId": "1027511",
+          "gameId": "6260899",
+          "event": "Caldas da Rainha: Kylie Collins vs Ariana Arseneault",
+          "slug": "wta-collins-arsenea-2026-09-15",
+          "question": "Caldas da Rainha: Kylie Collins vs Ariana Arseneault",
+          "timing": {
+            "etaMinutes": 12,
+            "reason": "tennis closing set, five-plus games",
+            "period": "S3",
+            "score": "6-7(7-9), 6-1, 5-2"
+          },
+          "price": 0.95,
+          "fillPrice": 0.95,
+          "outcome": "Kylie Collins",
+          "outcomeIndex": 0,
+          "tokenId": "98023724059557674663910311468609523915559503500205631458304714228913110656273",
+          "priceSource": "clob",
+          "tickSize": 0.001,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000,
+          "result": "won",
+          "resolvedPrice": 0.999
+        }
+      ],
+      "settledAt": 1789478785878,
+      "payoutUsd": 1.0489,
+      "pnlUsd": 0.0489,
+      "settlementSource": "early-exit",
+      "exit": {
+        "price": 0.999,
+        "at": 1789478785878
+      }
+    },
+    {
+      "id": "poly_1789476236797_3v8uy",
+      "createdAt": 1789476236797,
+      "status": "WON",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.0253610757760292,
+      "fillPrice": 0.9739999999999999,
+      "feeUsd": 0.0013,
+      "decimalOdds": 1.0253610757760292,
+      "potentialPayoutUsd": 1.0253610757760292,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4542162",
+          "eventId": "1019754",
+          "gameId": "6243959",
+          "event": "Ljubljana: Francesca Jones vs Alja Senica",
+          "slug": "wta-jones-senica-2026-09-15",
+          "question": "Ljubljana: Francesca Jones vs Alja Senica",
+          "timing": {
+            "etaMinutes": 12,
+            "reason": "tennis closing set, five-plus games",
+            "period": "S3",
+            "score": "5-7, 6-3, 5-2"
+          },
+          "price": 0.974,
+          "fillPrice": 0.9739999999999999,
+          "outcome": "Francesca Jones",
+          "outcomeIndex": 0,
+          "tokenId": "106066759405452230807707992121642654156660725227801177767936462917329005080698",
+          "priceSource": "clob",
+          "tickSize": 0.001,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000,
+          "result": "won",
+          "resolvedPrice": 0.999
+        }
+      ],
+      "settledAt": 1789476892847,
+      "payoutUsd": 1.02428,
+      "pnlUsd": 0.02428,
+      "settlementSource": "early-exit",
+      "exit": {
+        "price": 0.999,
+        "at": 1789476892847
+      }
+    },
+    {
+      "id": "poly_1789473782950_t5c6k",
+      "createdAt": 1789473782950,
+      "status": "WON",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.071518502445741,
+      "fillPrice": 0.93,
+      "feeUsd": 0.00349,
+      "decimalOdds": 1.071518502445741,
+      "potentialPayoutUsd": 1.071518502445741,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4570970",
+          "eventId": "1025320",
+          "gameId": "6256670",
+          "event": "Ljubljana: Martina Colmegna vs Mia Ristic",
+          "slug": "wta-colmegn-ristic-2026-09-15",
+          "question": "Ljubljana: Martina Colmegna vs Mia Ristic",
+          "timing": {
+            "etaMinutes": 12,
+            "reason": "tennis closing set, five-plus games",
+            "period": "S2",
+            "score": "5-7, 5-6"
+          },
+          "price": 0.93,
+          "fillPrice": 0.93,
+          "outcome": "Mia Ristic",
+          "outcomeIndex": 1,
+          "tokenId": "94904268065073668496109380603122103040379971939085484636582771656181146097662",
+          "priceSource": "clob",
+          "tickSize": 0.01,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000,
+          "result": "won",
+          "resolvedPrice": 0.98
+        }
+      ],
+      "settledAt": 1789474233703,
+      "payoutUsd": 1.04904,
+      "pnlUsd": 0.04904,
+      "settlementSource": "early-exit",
+      "exit": {
+        "price": 0.98,
+        "at": 1789474233703
+      }
+    },
+    {
+      "id": "poly_1789468615238_eg2ol",
+      "createdAt": 1789468615238,
+      "status": "WON",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.0144675757141535,
+      "fillPrice": 0.985,
+      "feeUsd": 0.00075,
+      "decimalOdds": 1.0144675757141535,
+      "potentialPayoutUsd": 1.0144675757141535,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4570974",
+          "eventId": "1025322",
+          "gameId": "6256672",
+          "event": "Ljubljana: Lucija Bagaric vs Laura Samson",
+          "slug": "wta-bagaric-samson-2026-09-15",
+          "question": "Ljubljana: Lucija Bagaric vs Laura Samson",
+          "timing": {
+            "etaMinutes": 12,
+            "reason": "tennis closing set, five-plus games",
+            "period": "S2",
+            "score": "3-6, 2-5"
+          },
+          "price": 0.985,
+          "fillPrice": 0.985,
+          "outcome": "Laura Samson",
+          "outcomeIndex": 1,
+          "tokenId": "59365601830639312387974956960078314269664486655415760788150669967809404852428",
+          "priceSource": "clob",
+          "tickSize": 0.001,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000,
+          "result": "won",
+          "resolvedPrice": 0.999
+        }
+      ],
+      "settledAt": 1789468730328,
+      "payoutUsd": 1.0134,
+      "pnlUsd": 0.0134,
+      "settlementSource": "early-exit",
+      "exit": {
+        "price": 0.999,
+        "at": 1789468730328
+      }
+    },
+    {
+      "id": "poly_1789467163325_pho6w",
+      "createdAt": 1789467163325,
+      "status": "WON",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.129586119645762,
+      "fillPrice": 0.8799999999999999,
+      "feeUsd": 0.00596,
+      "decimalOdds": 1.129586119645762,
+      "potentialPayoutUsd": 1.129586119645762,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4111386",
+          "eventId": "952071",
+          "gameId": "90121604",
+          "event": "South Melbourne FC vs. Lions FC - More Markets",
+          "slug": "auc-sm-lf-2026-09-15-more-markets",
+          "question": "South Melbourne FC vs. Lions FC: 1st Half O/U 1.5",
+          "timing": {
+            "etaMinutes": 8,
+            "reason": "first-half market near halftime",
+            "period": "1H",
+            "score": "0-1"
+          },
+          "price": 0.88,
+          "fillPrice": 0.8799999999999999,
+          "outcome": "Under",
+          "outcomeIndex": 1,
+          "tokenId": "108153578080439831799439449370992534421437898022849269780034921008765229106398",
+          "priceSource": "clob",
+          "tickSize": 0.01,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000,
+          "result": "won",
+          "resolvedPrice": 0.99
+        }
+      ],
+      "settledAt": 1789467433436,
+      "payoutUsd": 1.11773,
+      "pnlUsd": 0.11773,
+      "settlementSource": "early-exit",
+      "exit": {
+        "price": 0.99,
+        "at": 1789467433435
+      }
+    },
+    {
+      "id": "poly_1789465895967_6lw8q",
+      "createdAt": 1789465895967,
+      "status": "WON",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.0426902952799861,
+      "fillPrice": 0.957,
+      "feeUsd": 0.00215,
+      "decimalOdds": 1.0426902952799861,
+      "potentialPayoutUsd": 1.0426902952799861,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4570972",
+          "eventId": "1025321",
+          "gameId": "6256671",
+          "event": "Ljubljana: Anastasiia Sobolieva vs Lea Boskovic",
+          "slug": "wta-sobolie-boskovi-2026-09-15",
+          "question": "Ljubljana: Anastasiia Sobolieva vs Lea Boskovic",
+          "timing": {
+            "etaMinutes": 12,
+            "reason": "tennis closing set, five-plus games",
+            "period": "S2",
+            "score": "6-2, 5-4"
+          },
+          "price": 0.957,
+          "fillPrice": 0.957,
+          "outcome": "Anastasiia Sobolieva",
+          "outcomeIndex": 0,
+          "tokenId": "94227388524911544325533408027310897324899540994559760286346964019053642594594",
+          "priceSource": "clob",
+          "tickSize": 0.001,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000,
+          "result": "won",
+          "resolvedPrice": 0.981
+        }
+      ],
+      "settledAt": 1789466486973,
+      "payoutUsd": 1.02191,
+      "pnlUsd": 0.02191,
+      "settlementSource": "early-exit",
+      "exit": {
+        "price": 0.981,
+        "at": 1789466486973
+      }
+    },
+    {
+      "id": "poly_1789465860913_bedst",
+      "createdAt": 1789465860913,
+      "status": "WON",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.0479051955977923,
+      "fillPrice": 0.952,
+      "feeUsd": 0.00239,
+      "decimalOdds": 1.0479051955977923,
+      "potentialPayoutUsd": 1.0479051955977923,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4542164",
+          "eventId": "1019755",
+          "gameId": "6243963",
+          "event": "Ljubljana: Lucie Havlickova vs Aurora Zantedeschi",
+          "slug": "wta-havlick-zantede-2026-09-15",
+          "question": "Ljubljana: Lucie Havlickova vs Aurora Zantedeschi",
+          "timing": {
+            "etaMinutes": 12,
+            "reason": "tennis closing set, five-plus games",
+            "period": "S2",
+            "score": "6-2, 5-3"
+          },
+          "price": 0.952,
+          "fillPrice": 0.952,
+          "outcome": "Lucie Havlickova",
+          "outcomeIndex": 0,
+          "tokenId": "43378243116395667754536151574617257977002984278520319340336466002692666722294",
+          "priceSource": "clob",
+          "tickSize": 0.001,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000,
+          "result": "won",
+          "resolvedPrice": 0.985
+        }
+      ],
+      "settledAt": 1789466276644,
+      "payoutUsd": 1.03141,
+      "pnlUsd": 0.03141,
+      "settlementSource": "early-exit",
+      "exit": {
+        "price": 0.985,
+        "at": 1789466276644
+      }
+    },
+    {
+      "id": "poly_1789465275101_kdk53",
+      "createdAt": 1789465275101,
+      "status": "WON",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.0193887744908154,
+      "fillPrice": 0.98,
+      "feeUsd": 0.001,
+      "decimalOdds": 1.0193887744908154,
+      "potentialPayoutUsd": 1.0193887744908154,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4570972",
+          "eventId": "1025321",
+          "gameId": "6256671",
+          "event": "Ljubljana: Anastasiia Sobolieva vs Lea Boskovic",
+          "slug": "wta-sobolie-boskovi-2026-09-15",
+          "question": "Ljubljana: Anastasiia Sobolieva vs Lea Boskovic",
+          "timing": {
+            "etaMinutes": 12,
+            "reason": "tennis closing set, five-plus games",
+            "period": "S2",
+            "score": "6-2, 5-4"
+          },
+          "price": 0.98,
+          "fillPrice": 0.98,
+          "outcome": "Anastasiia Sobolieva",
+          "outcomeIndex": 0,
+          "tokenId": "94227388524911544325533408027310897324899540994559760286346964019053642594594",
+          "priceSource": "clob",
+          "tickSize": 0.01,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000,
+          "result": "won",
+          "resolvedPrice": 0.999
+        }
+      ],
+      "settledAt": 1789465715796,
+      "payoutUsd": 1.01832,
+      "pnlUsd": 0.01832,
+      "settlementSource": "early-exit",
+      "exit": {
+        "price": 0.999,
+        "at": 1789465715796
+      }
+    },
+    {
+      "id": "poly_1789463422249_3dkwa",
+      "createdAt": 1789463422249,
+      "status": "WON",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.0233621293791713,
+      "fillPrice": 0.976,
+      "feeUsd": 0.0012,
+      "decimalOdds": 1.0233621293791713,
+      "potentialPayoutUsd": 1.0233621293791713,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4528133",
+          "eventId": "1017588",
+          "gameId": "6241137",
+          "event": "Valencia: Ane Mintegi Del Olmo vs Ariana Geerlings",
+          "slug": "wta-olmo-geerlin-2026-09-14",
+          "question": "Valencia: Ane Mintegi Del Olmo vs Ariana Geerlings",
+          "timing": {
+            "etaMinutes": 12,
+            "reason": "tennis closing set, five-plus games",
+            "period": "S2",
+            "score": "6-1, 5-2"
+          },
+          "price": 0.976,
+          "fillPrice": 0.976,
+          "outcome": "Ane Mintegi Del Olmo",
+          "outcomeIndex": 0,
+          "tokenId": "87609751755625278414269858438678068958819399652310675070265101027778080208257",
+          "priceSource": "clob",
+          "tickSize": 0.001,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000,
+          "result": "won",
+          "resolvedPrice": 0.999
+        }
+      ],
+      "settledAt": 1789464558993,
+      "payoutUsd": 1.02229,
+      "pnlUsd": 0.02229,
+      "settlementSource": "early-exit",
+      "exit": {
+        "price": 0.999,
+        "at": 1789464558993
+      }
+    },
+    {
+      "id": "poly_1789462906534_n6b5h",
+      "createdAt": 1789462906534,
+      "status": "WON",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.0395874916833001,
+      "fillPrice": 0.96,
+      "feeUsd": 0.002,
+      "decimalOdds": 1.0395874916833001,
+      "potentialPayoutUsd": 1.0395874916833001,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4570968",
+          "eventId": "1025319",
+          "gameId": "6256669",
+          "event": "Ljubljana: Mona Barthel vs Radka Zelnickova",
+          "slug": "wta-barthel-zelnick-2026-09-15",
+          "question": "Ljubljana: Mona Barthel vs Radka Zelnickova",
+          "timing": {
+            "etaMinutes": 12,
+            "reason": "tennis closing set, five-plus games",
+            "period": "S2",
+            "score": "6-0, 5-4"
+          },
+          "price": 0.96,
+          "fillPrice": 0.96,
+          "outcome": "Mona Barthel",
+          "outcomeIndex": 0,
+          "tokenId": "106855559462135268338054888287305761686566689609918789153817907623169141060191",
+          "priceSource": "clob",
+          "tickSize": 0.001,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000,
+          "result": "won",
+          "resolvedPrice": 0.999
+        }
+      ],
+      "settledAt": 1789463016737,
+      "payoutUsd": 1.0385,
+      "pnlUsd": 0.0385,
+      "settlementSource": "early-exit",
+      "exit": {
+        "price": 0.999,
+        "at": 1789463016737
+      }
+    },
+    {
+      "id": "poly_1789444707869_mnsml",
+      "createdAt": 1789444707869,
+      "status": "WON",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.0606478437029339,
+      "fillPrice": 0.94,
+      "feeUsd": 0.00299,
+      "decimalOdds": 1.0606478437029339,
+      "potentialPayoutUsd": 1.0606478437029339,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4363833",
+          "eventId": "988209",
+          "gameId": "10079538",
+          "event": "Seattle Mariners vs. Los Angeles Angels",
+          "slug": "mlb-sea-laa-2026-09-14",
+          "question": "Seattle Mariners vs. Los Angeles Angels",
+          "timing": {
+            "etaMinutes": 15,
+            "reason": "ninth inning or later; estimate only",
+            "period": "Top 9th",
+            "score": "4-6"
+          },
+          "price": 0.94,
+          "fillPrice": 0.94,
+          "outcome": "Los Angeles Angels",
+          "outcomeIndex": 1,
+          "tokenId": "94908070480712784696135996697690241430114496794389860732474794784221346910579",
+          "priceSource": "clob",
+          "tickSize": 0.01,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000,
+          "result": "won",
+          "resolvedPrice": 0.999
+        }
+      ],
+      "settledAt": 1789445283646,
+      "payoutUsd": 1.05953,
+      "pnlUsd": 0.05953,
+      "settlementSource": "early-exit",
+      "exit": {
+        "price": 0.999,
+        "at": 1789445283645
+      }
+    },
+    {
+      "id": "poly_1789442835742_ldrmu",
+      "createdAt": 1789442835742,
+      "status": "WON",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.1174495331854577,
+      "fillPrice": 0.8899999999999999,
+      "feeUsd": 0.00547,
+      "decimalOdds": 1.1174495331854577,
+      "potentialPayoutUsd": 1.1174495331854577,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4363831",
+          "eventId": "988208",
+          "gameId": "10079541",
+          "event": "San Diego Padres vs. Colorado Rockies",
+          "slug": "mlb-sd-col-2026-09-14",
+          "question": "San Diego Padres vs. Colorado Rockies",
+          "timing": {
+            "etaMinutes": 15,
+            "reason": "ninth inning or later; estimate only",
+            "period": "Top 9th",
+            "score": "8-7"
+          },
+          "price": 0.89,
+          "fillPrice": 0.8899999999999999,
+          "outcome": "San Diego Padres",
+          "outcomeIndex": 0,
+          "tokenId": "72360149235843424014637565872978035755345180706921592509716933819997422276949",
+          "priceSource": "clob",
+          "tickSize": 0.01,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000,
+          "result": "won",
+          "resolvedPrice": 0.99
+        }
+      ],
+      "settledAt": 1789443804056,
+      "payoutUsd": 1.10572,
+      "pnlUsd": 0.10572,
+      "settlementSource": "early-exit",
+      "exit": {
+        "price": 0.99,
+        "at": 1789443804056
+      }
+    },
+    {
+      "id": "poly_1789441899096_4hqbj",
+      "createdAt": 1789441899096,
+      "status": "WON",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.021371379008653,
+      "fillPrice": 0.978,
+      "feeUsd": 0.0011,
+      "decimalOdds": 1.021371379008653,
+      "potentialPayoutUsd": 1.021371379008653,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4447772",
+          "eventId": "795799",
+          "gameId": "19456",
+          "event": "Broncos vs. Chiefs",
+          "slug": "nfl-den-kc-2026-09-15",
+          "question": "Spread: Chiefs (-20.5)",
+          "timing": {
+            "etaMinutes": 9,
+            "reason": "final quarter, three minutes or less",
+            "period": "Q4",
+            "score": "10-31"
+          },
+          "price": 0.978,
+          "fillPrice": 0.978,
+          "outcome": "Chiefs",
+          "outcomeIndex": 0,
+          "tokenId": "103752156057135272097636007478267990968261931807745934462017432618168331098250",
+          "priceSource": "clob",
+          "tickSize": 0.001,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000,
+          "result": "won",
+          "resolvedPrice": 0.999
+        }
+      ],
+      "settledAt": 1789442088895,
+      "payoutUsd": 1.0203,
+      "pnlUsd": 0.0203,
+      "settlementSource": "early-exit",
+      "exit": {
+        "price": 0.999,
+        "at": 1789442088895
+      }
+    },
+    {
+      "id": "poly_1789440595373_vdkz7",
+      "createdAt": 1789440595373,
+      "status": "WON",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.1420022725845225,
+      "fillPrice": 0.87,
+      "feeUsd": 0.00646,
+      "decimalOdds": 1.1420022725845225,
+      "potentialPayoutUsd": 1.1420022725845225,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4008553",
+          "eventId": "937918",
+          "gameId": "90111009",
+          "event": "América de Cali vs. AD Pasto",
+          "slug": "col1-ad1-adp-2026-09-12",
+          "question": "Will AD Pasto win on 2026-09-12?",
+          "timing": {
+            "etaMinutes": 15,
+            "reason": "second half, 85 minutes or later",
+            "period": "2H",
+            "score": "0-1"
+          },
+          "price": 0.87,
+          "fillPrice": 0.87,
+          "outcome": "Yes",
+          "outcomeIndex": 0,
+          "tokenId": "75748914950116219046082050564144458829594818631576275252491946345234740006654",
+          "priceSource": "clob",
+          "tickSize": 0.01,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000,
+          "result": "won",
+          "resolvedPrice": 0.99
+        }
+      ],
+      "settledAt": 1789441208450,
+      "payoutUsd": 1.13002,
+      "pnlUsd": 0.13002,
+      "settlementSource": "early-exit",
+      "exit": {
+        "price": 0.99,
+        "at": 1789441208450
+      }
+    },
+    {
+      "id": "poly_1789440905845_vbx4a",
+      "createdAt": 1789440905845,
+      "status": "WON",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.0193887744908154,
+      "fillPrice": 0.98,
+      "feeUsd": 0.001,
+      "decimalOdds": 1.0193887744908154,
+      "potentialPayoutUsd": 1.0193887744908154,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4021784",
+          "eventId": "940575",
+          "gameId": "90112720",
+          "event": "Club León FC vs. Atlético San Luis - More Markets",
+          "slug": "mex-leo-asl-2026-09-12-more-markets",
+          "question": "Spread: Club León FC (-1.5)",
+          "timing": {
+            "etaMinutes": 10,
+            "reason": "second half, 85 minutes or later",
+            "period": "2H",
+            "score": "2-0"
+          },
+          "price": 0.98,
+          "fillPrice": 0.98,
+          "outcome": "Club León FC",
+          "outcomeIndex": 0,
+          "tokenId": "99586504366790640477536580579895044542381518986373789982967585723559612800688",
+          "priceSource": "clob",
+          "tickSize": 0.01,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000,
+          "result": "won",
+          "resolvedPrice": 0.99
+        }
+      ],
+      "settledAt": 1789440946085,
+      "payoutUsd": 1.00869,
+      "pnlUsd": 0.00869,
+      "settlementSource": "early-exit",
+      "exit": {
+        "price": 0.99,
+        "at": 1789440946085
+      }
+    },
+    {
+      "id": "poly_1789440270074_c88tk",
+      "createdAt": 1789440270074,
+      "status": "WON",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.050006562541016,
+      "fillPrice": 0.95,
+      "feeUsd": 0.00249,
+      "decimalOdds": 1.050006562541016,
+      "potentialPayoutUsd": 1.050006562541016,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4021800",
+          "eventId": "940575",
+          "gameId": "90112720",
+          "event": "Club León FC vs. Atlético San Luis - More Markets",
+          "slug": "mex-leo-asl-2026-09-12-more-markets",
+          "question": "Club León FC vs. Atlético San Luis: O/U 3.5",
+          "timing": {
+            "etaMinutes": 15,
+            "reason": "second half, 85 minutes or later",
+            "period": "2H",
+            "score": "2-0"
+          },
+          "price": 0.95,
+          "fillPrice": 0.95,
+          "outcome": "Under",
+          "outcomeIndex": 1,
+          "tokenId": "76869871281541250696419404498831869662968849275271528311312037319832387860210",
+          "priceSource": "clob",
+          "tickSize": 0.01,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000,
+          "result": "won",
+          "resolvedPrice": 0.981
+        }
+      ],
+      "settledAt": 1789440640756,
+      "payoutUsd": 1.02908,
+      "pnlUsd": 0.02908,
+      "settlementSource": "early-exit",
+      "exit": {
+        "price": 0.981,
+        "at": 1789440640756
+      }
+    },
+    {
+      "id": "poly_1789439618913_yeiny",
+      "createdAt": 1789439618913,
+      "status": "WON",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.050006562541016,
+      "fillPrice": 0.95,
+      "feeUsd": 0.00249,
+      "decimalOdds": 1.050006562541016,
+      "potentialPayoutUsd": 1.050006562541016,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4535626",
+          "eventId": "988206",
+          "gameId": "10079536",
+          "event": "New York Yankees vs. Minnesota Twins",
+          "slug": "mlb-nyy-min-2026-09-14",
+          "question": "Spread: New York Yankees (-2.5)",
+          "timing": {
+            "etaMinutes": 15,
+            "reason": "ninth inning or later; estimate only",
+            "period": "Top 9th",
+            "score": "8-3"
+          },
+          "price": 0.95,
+          "fillPrice": 0.95,
+          "outcome": "New York Yankees",
+          "outcomeIndex": 0,
+          "tokenId": "19174222161420400427890049347578690659165250712005819390890276290165050332820",
+          "priceSource": "clob",
+          "tickSize": 0.01,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000,
+          "result": "won",
+          "resolvedPrice": 0.98
+        }
+      ],
+      "settledAt": 1789440055959,
+      "payoutUsd": 1.02798,
+      "pnlUsd": 0.02798,
+      "settlementSource": "early-exit",
+      "exit": {
+        "price": 0.98,
+        "at": 1789440055959
+      }
+    },
+    {
+      "id": "poly_1789439188233_6kjap",
+      "createdAt": 1789439188233,
+      "status": "WON",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.0154478043581396,
+      "fillPrice": 0.9839999999999999,
+      "feeUsd": 0.0008,
+      "decimalOdds": 1.0154478043581396,
+      "potentialPayoutUsd": 1.0154478043581396,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4363827",
+          "eventId": "988206",
+          "gameId": "10079536",
+          "event": "New York Yankees vs. Minnesota Twins",
+          "slug": "mlb-nyy-min-2026-09-14",
+          "question": "New York Yankees vs. Minnesota Twins",
+          "timing": {
+            "etaMinutes": 15,
+            "reason": "ninth inning or later; estimate only",
+            "period": "Top 9th",
+            "score": "7-3"
+          },
+          "price": 0.984,
+          "fillPrice": 0.9839999999999999,
+          "outcome": "New York Yankees",
+          "outcomeIndex": 0,
+          "tokenId": "52274438136790203379799220114689764315707024361721592260965569465172511189512",
+          "priceSource": "clob",
+          "tickSize": 0.001,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000,
+          "result": "won",
+          "resolvedPrice": 0.992
+        }
+      ],
+      "settledAt": 1789439438900,
+      "payoutUsd": 1.00692,
+      "pnlUsd": 0.00692,
+      "settlementSource": "early-exit",
+      "exit": {
+        "price": 0.992,
+        "at": 1789439438900
+      }
+    },
+    {
+      "id": "poly_1789438857809_fdr3f",
+      "createdAt": 1789438857809,
+      "status": "WON",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.129586119645762,
+      "fillPrice": 0.8799999999999999,
+      "feeUsd": 0.00596,
+      "decimalOdds": 1.129586119645762,
+      "potentialPayoutUsd": 1.129586119645762,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4363829",
+          "eventId": "988207",
+          "gameId": "10079540",
+          "event": "San Francisco Giants vs. St. Louis Cardinals",
+          "slug": "mlb-sf-stl-2026-09-14",
+          "question": "San Francisco Giants vs. St. Louis Cardinals",
+          "timing": {
+            "etaMinutes": 15,
+            "reason": "ninth inning or later; estimate only",
+            "period": "Top 9th",
+            "score": "1-2"
+          },
+          "price": 0.88,
+          "fillPrice": 0.8799999999999999,
+          "outcome": "St. Louis Cardinals",
+          "outcomeIndex": 1,
+          "tokenId": "113729335893905248354443996322818134125370277720239786113877608291808176295162",
+          "priceSource": "clob",
+          "tickSize": 0.01,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000,
+          "result": "won",
+          "resolvedPrice": 0.99
+        }
+      ],
+      "settledAt": 1789439405831,
+      "payoutUsd": 1.11773,
+      "pnlUsd": 0.11773,
+      "settlementSource": "early-exit",
+      "exit": {
+        "price": 0.99,
+        "at": 1789439405831
+      }
+    },
+    {
+      "id": "poly_1789438892867_84n6w",
+      "createdAt": 1789438892867,
+      "status": "WON",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.0826260176684566,
+      "fillPrice": 0.92,
+      "feeUsd": 0.00398,
+      "decimalOdds": 1.0826260176684566,
+      "potentialPayoutUsd": 1.0826260176684566,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4066070",
+          "eventId": "949116",
+          "gameId": "90108131",
+          "event": "Avaí FC vs. Vila Nova FC",
+          "slug": "bra2-ava-vln-2026-09-14",
+          "question": "Will Vila Nova FC win on 2026-09-14?",
+          "timing": {
+            "etaMinutes": 12,
+            "reason": "second half, 85 minutes or later",
+            "period": "2H",
+            "score": "1-1"
+          },
+          "price": 0.92,
+          "fillPrice": 0.92,
+          "outcome": "No",
+          "outcomeIndex": 1,
+          "tokenId": "8678895429431707544664528972258129325593560079442859995297375465267386778664",
+          "priceSource": "clob",
+          "tickSize": 0.01,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000,
+          "result": "won",
+          "resolvedPrice": 0.98
+        }
+      ],
+      "settledAt": 1789439275826,
+      "payoutUsd": 1.05991,
+      "pnlUsd": 0.05991,
+      "settlementSource": "early-exit",
+      "exit": {
+        "price": 0.98,
+        "at": 1789439275826
+      }
+    },
+    {
+      "id": "poly_1789438291833_c4l1e",
+      "createdAt": 1789438291833,
+      "status": "WON",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.1174495331854577,
+      "fillPrice": 0.8899999999999999,
+      "feeUsd": 0.00547,
+      "decimalOdds": 1.1174495331854577,
+      "potentialPayoutUsd": 1.1174495331854577,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4538561",
+          "eventId": "988205",
+          "gameId": "10079535",
+          "event": "Atlanta Braves vs. Chicago Cubs",
+          "slug": "mlb-atl-chc-2026-09-14",
+          "question": "Spread: Chicago Cubs (-1.5)",
+          "timing": {
+            "etaMinutes": 15,
+            "reason": "ninth inning or later; estimate only",
+            "period": "Top 9th",
+            "score": "3-7"
+          },
+          "price": 0.89,
+          "fillPrice": 0.8899999999999999,
+          "outcome": "Chicago Cubs",
+          "outcomeIndex": 0,
+          "tokenId": "18728396929983945945723924083052375062723283172487768150441013298897550636406",
+          "priceSource": "clob",
+          "tickSize": 0.001,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000,
+          "result": "won",
+          "resolvedPrice": 0.984
+        }
+      ],
+      "settledAt": 1789438820940,
+      "payoutUsd": 1.09869,
+      "pnlUsd": 0.09869,
+      "settlementSource": "early-exit",
+      "exit": {
+        "price": 0.984,
+        "at": 1789438820940
+      }
+    },
+    {
+      "id": "poly_1789437390553_0f2a1",
+      "createdAt": 1789437390553,
+      "status": "WON",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.046774133162486,
+      "fillPrice": 0.95308,
+      "feeUsd": 0.00234,
+      "decimalOdds": 1.046774133162486,
+      "potentialPayoutUsd": 1.046774133162486,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4535352",
+          "eventId": "988203",
+          "gameId": "10079534",
+          "event": "Detroit Tigers vs. Toronto Blue Jays",
+          "slug": "mlb-det-tor-2026-09-14",
+          "question": "Spread: Toronto Blue Jays (-1.5)",
+          "timing": {
+            "etaMinutes": 15,
+            "reason": "ninth inning or later; estimate only",
+            "period": "Top 9th",
+            "score": "5-5"
+          },
+          "price": 0.94,
+          "fillPrice": 0.95308,
+          "outcome": "Detroit Tigers",
+          "outcomeIndex": 1,
+          "tokenId": "82975987370074653495415183307368326700612151116406360823888569222617413119781",
+          "priceSource": "clob",
+          "tickSize": 0.01,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000,
+          "result": "won",
+          "resolvedPrice": 0.991
+        }
+      ],
+      "settledAt": 1789438365740,
+      "payoutUsd": 1.03689,
+      "pnlUsd": 0.03689,
+      "settlementSource": "early-exit",
+      "exit": {
+        "price": 0.991,
+        "at": 1789438365740
+      }
+    },
+    {
+      "id": "poly_1789437595790_n0ixg",
+      "createdAt": 1789437595790,
+      "status": "WON",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.0905463751847044,
+      "fillPrice": 0.9129999999999999,
+      "feeUsd": 0.00433,
+      "decimalOdds": 1.0905463751847044,
+      "potentialPayoutUsd": 1.0905463751847044,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4063863",
+          "eventId": "948526",
+          "gameId": "90103976",
+          "event": "Instituto AC Córdoba vs. AA Estudiantes",
+          "slug": "arg-iac-aae-2026-09-14",
+          "question": "Will Instituto AC Córdoba win on 2026-09-14?",
+          "timing": {
+            "etaMinutes": 14,
+            "reason": "second half, 85 minutes or later",
+            "period": "2H",
+            "score": "2-1"
+          },
+          "price": 0.913,
+          "fillPrice": 0.9129999999999999,
+          "outcome": "Yes",
+          "outcomeIndex": 0,
+          "tokenId": "38814347739804306769206511920070042888883394265500489190901788667898302896862",
+          "priceSource": "clob",
+          "tickSize": 0.001,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000,
+          "result": "won",
+          "resolvedPrice": 0.999
+        }
+      ],
+      "settledAt": 1789438170769,
+      "payoutUsd": 1.0894,
+      "pnlUsd": 0.0894,
+      "settlementSource": "early-exit",
+      "exit": {
+        "price": 0.999,
+        "at": 1789438170768
+      }
+    },
+    {
+      "id": "poly_1789436489476_oc1ui",
+      "createdAt": 1789436489476,
+      "status": "WON",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.1946646277723687,
+      "fillPrice": 0.83,
+      "feeUsd": 0.00843,
+      "decimalOdds": 1.1946646277723687,
+      "potentialPayoutUsd": 1.1946646277723687,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4363823",
+          "eventId": "988204",
+          "gameId": "10079532",
+          "event": "Baltimore Orioles vs. New York Mets",
+          "slug": "mlb-bal-nym-2026-09-14",
+          "question": "Baltimore Orioles vs. New York Mets",
+          "timing": {
+            "etaMinutes": 15,
+            "reason": "ninth inning or later; estimate only",
+            "period": "Top 9th",
+            "score": "2-1"
+          },
+          "price": 0.83,
+          "fillPrice": 0.83,
+          "outcome": "Baltimore Orioles",
+          "outcomeIndex": 0,
+          "tokenId": "13724114581097930445550095145755277109075085769929825852737617264760012101561",
+          "priceSource": "clob",
+          "tickSize": 0.01,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000,
+          "result": "won",
+          "resolvedPrice": 0.99
+        }
+      ],
+      "settledAt": 1789437515863,
+      "payoutUsd": 1.18213,
+      "pnlUsd": 0.18213,
+      "settlementSource": "early-exit",
+      "exit": {
+        "price": 0.99,
+        "at": 1789437515863
+      }
+    },
+    {
+      "id": "poly_1789436389404_z03rx",
+      "createdAt": 1789436389404,
+      "status": "WON",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.0193887744908154,
+      "fillPrice": 0.98,
+      "feeUsd": 0.001,
+      "decimalOdds": 1.0193887744908154,
+      "potentialPayoutUsd": 1.0193887744908154,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4008935",
+          "eventId": "937982",
+          "gameId": "90111009",
+          "event": "América de Cali vs. AD Pasto - Halftime Result",
+          "slug": "col1-ad1-adp-2026-09-12-halftime-result",
+          "question": "AD Pasto leading at halftime?",
+          "timing": {
+            "etaMinutes": 10,
+            "reason": "first-half market near halftime",
+            "period": "1H",
+            "score": "0-0"
+          },
+          "price": 0.98,
+          "fillPrice": 0.98,
+          "outcome": "No",
+          "outcomeIndex": 1,
+          "tokenId": "47966254584708261817839403996625437907555394158914394245095892011938479456807",
+          "priceSource": "clob",
+          "tickSize": 0.01,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000,
+          "result": "won",
+          "resolvedPrice": 0.99
+        }
+      ],
+      "settledAt": 1789437245488,
+      "payoutUsd": 1.00869,
+      "pnlUsd": 0.00869,
+      "settlementSource": "early-exit",
+      "exit": {
+        "price": 0.99,
+        "at": 1789437245488
+      }
+    },
+    {
+      "id": "poly_1789435888566_yc5j6",
+      "createdAt": 1789435888566,
+      "status": "WON",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.129586119645762,
+      "fillPrice": 0.8799999999999999,
+      "feeUsd": 0.00596,
+      "decimalOdds": 1.129586119645762,
+      "potentialPayoutUsd": 1.129586119645762,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4572617",
+          "eventId": "988202",
+          "gameId": "10079533",
+          "event": "Chicago White Sox vs. Cleveland Guardians",
+          "slug": "mlb-cws-cle-2026-09-14",
+          "question": "Spread: Chicago White Sox (-5.5)",
+          "timing": {
+            "etaMinutes": 15,
+            "reason": "ninth inning or later; estimate only",
+            "period": "Top 9th",
+            "score": "6-1"
+          },
+          "price": 0.88,
+          "fillPrice": 0.8799999999999999,
+          "outcome": "Cleveland Guardians",
+          "outcomeIndex": 1,
+          "tokenId": "33780122938318650856339321979478610375907800876202642076915937163683363834556",
+          "priceSource": "clob",
+          "tickSize": 0.01,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000,
+          "result": "won",
+          "resolvedPrice": 0.99
+        }
+      ],
+      "settledAt": 1789437080730,
+      "payoutUsd": 1.11773,
+      "pnlUsd": 0.11773,
+      "settlementSource": "early-exit",
+      "exit": {
+        "price": 0.99,
+        "at": 1789437080730
+      }
+    },
+    {
+      "id": "poly_1789435207757_2z8kc",
+      "createdAt": 1789435207757,
+      "status": "WON",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.1420022725845225,
+      "fillPrice": 0.87,
+      "feeUsd": 0.00646,
+      "decimalOdds": 1.1420022725845225,
+      "potentialPayoutUsd": 1.1420022725845225,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4066051",
+          "eventId": "949110",
+          "gameId": "90105732",
+          "event": "CD Unión La Calera vs. CD Limache",
+          "slug": "chi1-cul-cdl-2026-09-14",
+          "question": "Will CD Unión La Calera win on 2026-09-14?",
+          "timing": {
+            "etaMinutes": 11,
+            "reason": "second half, 85 minutes or later",
+            "period": "2H",
+            "score": "1-0"
+          },
+          "price": 0.87,
+          "fillPrice": 0.87,
+          "outcome": "Yes",
+          "outcomeIndex": 0,
+          "tokenId": "81903120270516981395711775452088942704342020601978661353841632514713938890464",
+          "priceSource": "clob",
+          "tickSize": 0.01,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000,
+          "result": "won",
+          "resolvedPrice": 0.98
+        }
+      ],
+      "settledAt": 1789435683472,
+      "payoutUsd": 1.11804,
+      "pnlUsd": 0.11804,
+      "settlementSource": "early-exit",
+      "exit": {
+        "price": 0.98,
+        "at": 1789435683472
+      }
+    },
+    {
+      "id": "poly_1789434977627_3s8mw",
+      "createdAt": 1789434977627,
+      "status": "WON",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.0939781970145335,
+      "fillPrice": 0.91,
+      "feeUsd": 0.00448,
+      "decimalOdds": 1.0939781970145335,
+      "potentialPayoutUsd": 1.0939781970145335,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4066329",
+          "eventId": "949161",
+          "gameId": "90108131",
+          "event": "Avaí FC vs. Vila Nova FC - Halftime Result",
+          "slug": "bra2-ava-vln-2026-09-14-halftime-result",
+          "question": "Avaí FC vs. Vila Nova FC: Draw at halftime?",
+          "timing": {
+            "etaMinutes": 8,
+            "reason": "first-half market near halftime",
+            "period": "1H",
+            "score": "1-1"
+          },
+          "price": 0.91,
+          "fillPrice": 0.91,
+          "outcome": "Yes",
+          "outcomeIndex": 0,
+          "tokenId": "86059423539819148166399036433622332172006485310695728728021127652036182996356",
+          "priceSource": "clob",
+          "tickSize": 0.01,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000,
+          "result": "won",
+          "resolvedPrice": 0.99
+        }
+      ],
+      "settledAt": 1789435332844,
+      "payoutUsd": 1.0825,
+      "pnlUsd": 0.0825,
+      "settlementSource": "early-exit",
+      "exit": {
+        "price": 0.99,
+        "at": 1789435332844
+      }
+    },
+    {
+      "id": "poly_1789433680867_pxtqn",
+      "createdAt": 1789433680867,
+      "status": "WON",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.105583195135434,
+      "fillPrice": 0.8999999999999999,
+      "feeUsd": 0.00498,
+      "decimalOdds": 1.105583195135434,
+      "potentialPayoutUsd": 1.105583195135434,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4063929",
+          "eventId": "948536",
+          "gameId": "90103976",
+          "event": "Instituto AC Córdoba vs. AA Estudiantes - Halftime Result",
+          "slug": "arg-iac-aae-2026-09-14-halftime-result",
+          "question": "Instituto AC Córdoba leading at halftime?",
+          "timing": {
+            "etaMinutes": 10,
+            "reason": "first-half market near halftime",
+            "period": "1H",
+            "score": "0-0"
+          },
+          "price": 0.9,
+          "fillPrice": 0.8999999999999999,
+          "outcome": "No",
+          "outcomeIndex": 1,
+          "tokenId": "23002955288208382799945941790286639040294689045027068976202921768403402020748",
+          "priceSource": "clob",
+          "tickSize": 0.01,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000,
+          "result": "won",
+          "resolvedPrice": 0.99
+        }
+      ],
+      "settledAt": 1789434176347,
+      "payoutUsd": 1.09398,
+      "pnlUsd": 0.09398,
+      "settlementSource": "early-exit",
+      "exit": {
+        "price": 0.99,
+        "at": 1789434176344
+      }
+    },
+    {
+      "id": "poly_1789433750909_9238c",
+      "createdAt": 1789433750909,
+      "status": "WON",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.01643003243784,
+      "fillPrice": 0.9829999999999999,
+      "feeUsd": 0.00085,
+      "decimalOdds": 1.01643003243784,
+      "potentialPayoutUsd": 1.01643003243784,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4546046",
+          "eventId": "1020892",
+          "gameId": "6244635",
+          "event": "Guadalajara Open Akron: Magdalena Frech vs Nao Hibino",
+          "slug": "wta-frech-hibino-2026-09-14",
+          "question": "Guadalajara Open Akron: Magdalena Frech vs Nao Hibino",
+          "timing": {
+            "etaMinutes": 12,
+            "reason": "tennis closing set, five-plus games",
+            "period": "S2",
+            "score": "6-1, 5-4"
+          },
+          "price": 0.983,
+          "fillPrice": 0.9829999999999999,
+          "outcome": "Magdalena Frech",
+          "outcomeIndex": 0,
+          "tokenId": "30981668696327758252118962463303304000442393800258097625239630917469920092731",
+          "priceSource": "clob",
+          "tickSize": 0.001,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000,
+          "result": "won",
+          "resolvedPrice": 0.999
+        }
+      ],
+      "settledAt": 1789434046204,
+      "payoutUsd": 1.01536,
+      "pnlUsd": 0.01536,
+      "settlementSource": "early-exit",
+      "exit": {
+        "price": 0.999,
+        "at": 1789434046203
+      }
+    },
+    {
+      "id": "poly_1789432699091_bog8l",
+      "createdAt": 1789432699091,
+      "status": "WON",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.0365040666459677,
+      "fillPrice": 0.963,
+      "feeUsd": 0.00185,
+      "decimalOdds": 1.0365040666459677,
+      "potentialPayoutUsd": 1.0365040666459677,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4535263",
+          "eventId": "988198",
+          "gameId": "10079539",
+          "event": "Los Angeles Dodgers vs. Cincinnati Reds",
+          "slug": "mlb-lad-cin-2026-09-14",
+          "question": "Los Angeles Dodgers vs. Cincinnati Reds: O/U 8.5",
+          "timing": {
+            "etaMinutes": 15,
+            "reason": "ninth inning or later; estimate only",
+            "period": "Top 9th",
+            "score": "4-0"
+          },
+          "price": 0.963,
+          "fillPrice": 0.963,
+          "outcome": "Under",
+          "outcomeIndex": 1,
+          "tokenId": "6295658701621087851030116826374919416036063214008923272169403471744892364623",
+          "priceSource": "clob",
+          "tickSize": 0.001,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000,
+          "result": "won",
+          "resolvedPrice": 0.999
+        }
+      ],
+      "settledAt": 1789433787878,
+      "payoutUsd": 1.03542,
+      "pnlUsd": 0.03542,
+      "settlementSource": "early-exit",
+      "exit": {
+        "price": 0.999,
+        "at": 1789433787878
+      }
+    },
+    {
+      "id": "poly_1789433410870_g2367",
+      "createdAt": 1789433410870,
+      "status": "WON",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.0826260176684566,
+      "fillPrice": 0.92,
+      "feeUsd": 0.00398,
+      "decimalOdds": 1.0826260176684566,
+      "potentialPayoutUsd": 1.0826260176684566,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4066166",
+          "eventId": "949140",
+          "gameId": "90104858",
+          "event": "EC Bahia vs. Clube do Remo",
+          "slug": "bra-bah-cre-2026-09-14",
+          "question": "Will EC Bahia win on 2026-09-14?",
+          "timing": {
+            "etaMinutes": 13,
+            "reason": "second half, 85 minutes or later",
+            "period": "2H",
+            "score": "1-0"
+          },
+          "price": 0.92,
+          "fillPrice": 0.92,
+          "outcome": "Yes",
+          "outcomeIndex": 0,
+          "tokenId": "3878578999900617631759487793234124955643333703693983184906873476313169185991",
+          "priceSource": "clob",
+          "tickSize": 0.01,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000,
+          "result": "won",
+          "resolvedPrice": 0.998
+        }
+      ],
+      "settledAt": 1789433625801,
+      "payoutUsd": 1.08035,
+      "pnlUsd": 0.08035,
+      "settlementSource": "early-exit",
+      "exit": {
+        "price": 0.998,
+        "at": 1789433625800
+      }
+    },
+    {
+      "id": "poly_1789431432692_8qdxs",
+      "createdAt": 1789431432692,
+      "status": "WON",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.208634484759119,
+      "fillPrice": 0.82,
+      "feeUsd": 0.00892,
+      "decimalOdds": 1.208634484759119,
+      "potentialPayoutUsd": 1.208634484759119,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4066061",
+          "eventId": "949112",
+          "gameId": "90108130",
+          "event": "América FC vs. São Bernardo FC",
+          "slug": "bra2-afc-ber-2026-09-14",
+          "question": "Will São Bernardo FC win on 2026-09-14?",
+          "timing": {
+            "etaMinutes": 15,
+            "reason": "second half, 85 minutes or later",
+            "period": "2H",
+            "score": "0-1"
+          },
+          "price": 0.82,
+          "fillPrice": 0.82,
+          "outcome": "Yes",
+          "outcomeIndex": 0,
+          "tokenId": "38564295004714067983731460907311601633102069155466361993183698483107567706132",
+          "priceSource": "clob",
+          "tickSize": 0.01,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000,
+          "result": "won",
+          "resolvedPrice": 0.99
+        }
+      ],
+      "settledAt": 1789431690473,
+      "payoutUsd": 1.19595,
+      "pnlUsd": 0.19595,
+      "settlementSource": "early-exit",
+      "exit": {
+        "price": 0.99,
+        "at": 1789431690473
+      }
+    },
+    {
+      "id": "poly_1789431302383_lncro",
+      "createdAt": 1789431302383,
+      "status": "WON",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.071518502445741,
+      "fillPrice": 0.93,
+      "feeUsd": 0.00349,
+      "decimalOdds": 1.071518502445741,
+      "potentialPayoutUsd": 1.071518502445741,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4066107",
+          "eventId": "949130",
+          "gameId": "90105732",
+          "event": "CD Unión La Calera vs. CD Limache - Halftime Result",
+          "slug": "chi1-cul-cdl-2026-09-14-halftime-result",
+          "question": "CD Unión La Calera vs. CD Limache: Draw at halftime?",
+          "timing": {
+            "etaMinutes": 6,
+            "reason": "first-half market near halftime",
+            "period": "1H",
+            "score": "1-0"
+          },
+          "price": 0.93,
+          "fillPrice": 0.93,
+          "outcome": "No",
+          "outcomeIndex": 1,
+          "tokenId": "46285324995635564773321671888704615964742985593747426609868378043526771160664",
+          "priceSource": "clob",
+          "tickSize": 0.01,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000,
+          "result": "won",
+          "resolvedPrice": 0.99
+        }
+      ],
+      "settledAt": 1789431593081,
+      "payoutUsd": 1.06027,
+      "pnlUsd": 0.06027,
+      "settlementSource": "early-exit",
+      "exit": {
+        "price": 0.99,
+        "at": 1789431593081
+      }
+    },
+    {
+      "id": "poly_1789429288818_7zb59",
+      "createdAt": 1789429288818,
+      "status": "WON",
+      "kind": "single",
+      "stakeUsd": 1,
+      "shares": 1.0606478437029339,
+      "fillPrice": 0.94,
+      "feeUsd": 0.00299,
+      "decimalOdds": 1.0606478437029339,
+      "potentialPayoutUsd": 1.0606478437029339,
+      "placedBy": "autopilot",
+      "legs": [
+        {
+          "marketId": "4066804",
+          "eventId": "949210",
+          "gameId": "90104858",
+          "event": "EC Bahia vs. Clube do Remo - Halftime Result",
+          "slug": "bra-bah-cre-2026-09-14-halftime-result",
+          "question": "EC Bahia leading at halftime?",
+          "timing": {
+            "etaMinutes": 10,
+            "reason": "first-half market near halftime",
+            "period": "1H",
+            "score": "1-0"
+          },
+          "price": 0.94,
+          "fillPrice": 0.94,
+          "outcome": "Yes",
+          "outcomeIndex": 0,
+          "tokenId": "110585159721550614060713510597791513404739164014520391924602123297392820795152",
+          "priceSource": "clob",
+          "tickSize": 0.01,
+          "feesEnabled": true,
+          "feeSchedule": {
+            "rate": 0.05,
+            "exponent": 1,
+            "takerOnly": true
+          },
+          "takerBaseFee": 1000,
+          "result": "won",
+          "resolvedPrice": 0.999
+        }
+      ],
+      "settledAt": 1789429890389,
+      "payoutUsd": 1.05953,
+      "pnlUsd": 0.05953,
+      "settlementSource": "early-exit",
+      "exit": {
+        "price": 0.999,
+        "at": 1789429890389
+      }
+    }
+  ],
+  "autopilot": {
+    "enabled": false,
+    "mode": "combos",
+    "stakeSingleUsd": 1,
+    "stakeComboUsd": 2.5,
+    "maxOpenPct": 100,
+    "lastRunAt": 1789571143613,
+    "lastAction": "single Yes · Wadi Degla SC vs. El Mokawloon El Arab SC @ 85.0¢ $1.00",
+    "placedCount": 47,
+    "skipped": [
+      {
+        "marketId": null,
+        "reason": "autopilot-off"
+      }
+    ]
+  },
+  "bankrollDefaultsVersion": 2,
+  "createdAt": 1789429092821
+}

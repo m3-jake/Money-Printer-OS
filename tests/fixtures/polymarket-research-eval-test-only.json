@@ -1,0 +1,56 @@
+{
+  "schema": "polymarket-research-tape/v1",
+  "testOnly": true,
+  "source": "synthetic-test",
+  "bankrollUsd": 50,
+  "maxRelatedEventExposureUsd": 20,
+  "incumbent": { "preset": "take-none" },
+  "candidate": { "preset": "take-all" },
+  "observations": [
+    {
+      "type": "quote",
+      "asOfTs": 1000,
+      "eventId": "game-a",
+      "marketId": "m-a",
+      "tokenId": "t-a",
+      "bid": 0.48,
+      "ask": 0.52,
+      "bids": [{ "price": 0.48, "size": 100 }],
+      "asks": [{ "price": 0.52, "size": 100 }]
+    },
+    {
+      "type": "fee",
+      "asOfTs": 1000,
+      "marketId": "m-a",
+      "feesEnabled": true,
+      "feeSchedule": { "rate": 0.05, "exponent": 1, "takerOnly": true }
+    },
+    {
+      "type": "sports",
+      "asOfTs": 1000,
+      "eventId": "game-a",
+      "period": "Q4",
+      "elapsed": "1:10",
+      "lastUpdate": 1000
+    },
+    {
+      "type": "outcome",
+      "asOfTs": 5000,
+      "eventId": "game-a",
+      "marketId": "m-a",
+      "resolved": true,
+      "resolvedPrice": 0
+    }
+  ],
+  "opportunities": [
+    {
+      "id": "opp-a",
+      "decisionTs": 1000,
+      "eventId": "game-a",
+      "marketId": "m-a",
+      "tokenId": "t-a",
+      "requestedStakeUsd": 10,
+      "signal": { "asOfTs": 1000, "score": 50 }
+    }
+  ]
+}
