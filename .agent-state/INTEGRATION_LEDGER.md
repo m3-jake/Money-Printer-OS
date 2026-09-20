@@ -73,3 +73,64 @@ workers **1** (this 6-thread Mac), batchSize **4096**, ramTargetGB **0.8–1.6**
 The earlier "GPU default rejected" note remains correct for non-CUDA hosts, but WITCHDOCTOR was subsequently verified with the exact fixed 2048×3000 corpus. Persistent CUDA sidecar is accepted only as explicit BEAST screening acceleration: 0 deterministic mismatches, full ranking exact, max abs error 1.455e-11, ~1,028 MB peak VRAM. After one-time initialization, the second end-to-end persistent request was ~918 ms (raw compute ~115 ms) versus 1,655.96 ms for packed JS on the frozen corpus. GPU-only scores are nulled before authoritative ranking; any candidate still able to win after the maximum +10 Monte-Carlo contribution is CPU-rescored, as is the incumbent. Any sidecar/parity/protocol failure falls back to CPU.
 
 Final `npm run test:all` after the persistent-sidecar correction exited 0, including 41 evolution tests and 7 BEAST-specific tests. No deploy/restart/live-state mutation.
+
+## alpha.53 — ship + polish + accounting-fix workflow — 2026-09-19/20
+
+Base: `93c8022` ("alpha53 source as received"), planner-integration base `cb71d4c` ("fix:
+alpha53 paper identity + equity jump guards"). Plan: `.workflow/scratch/PLAN.md`. Ledger:
+`LEDGER-mpo.md` items M1–M8. Five work packages, each in its own worktree under
+`/Users/bing/Desktop/Money Printer OS/Current/MPO-wt-<name>`, file ownership disjoint by
+`PLAN.md` §1.
+
+### Planned merge order (`PLAN.md` §7)
+
+| # | package | status at the time `packaging` ran |
+| --- | --- | --- |
+| 1 | ship-fixes | committed on `wf/ship-fixes` @ `971a168` ("mpo: ship-fixes") — **not yet merged to `main`** |
+| 2 | accounting | uncommitted work-in-progress in `MPO-wt-accounting` (`src/accounting.js`, `src/store.js`, `src/index.js`, `src/positionExecution.js` modified, not committed) — **not yet merged to `main`** |
+| 3 | product | merged directly to `main` @ `2420d77` ("mpo: product") |
+| 4 | visual | uncommitted work-in-progress in `MPO-wt-visual` (`public/css/mpo-shell.css`, `public/css/mpo-workstation.css`, `public/dashboard.html` modified, not committed) — **not yet merged to `main`** |
+| 5 | packaging | this section — implemented `scripts/release-alpha53.mjs` and packed whatever was on `main` HEAD (`2420d77`) at the time, per its own scope |
+
+**Accepted onto `main` this pass:** `product` (`2420d77`) — re-verification only, no source
+change (see its own commit message; `src/polymarket.js` diff vs `93c8022` confirmed empty).
+`packaging` (this commit) — new `scripts/release-alpha53.mjs`, `docs/WINDOWS-RELEASE.md`,
+`docs/UPDATER-MANIFEST.md`, `.gitignore` `__pycache__/` addition + untracking two committed
+`.pyc` files, `.build-version`/`.build-commit` restamp, this ledger entry, and the
+`RELEASE_STATUS.md` fold-forward.
+
+**Not yet merged / rejected — flagged for bing, not resolved by `packaging`:** ship-fixes,
+accounting, and visual are real, separately-scoped packages per `PLAN.md` — they were not
+rejected, they simply had not landed on `main` at the moment `packaging`'s turn came up in
+this workflow run. `packaging` does not own merging them (its file ownership is exclusive and
+does not include their files), and per its own hard constraint it touches only its assigned
+paths. **The `.asar` this pass produced therefore does not contain ship-fixes' test-harness
+wiring, accounting's F1–F8 fixes (including the `REALIZED_WITHOUT_BASIS` guard for the
+70-SOL-class incident), or visual's CSS/markup consolidation.** Re-run `node
+scripts/release-alpha53.mjs pack` once those three land on `main`; the recorded SHA-256 in
+this pass's `release-record.json` / `.agent-state/RELEASE_STATUS.md` is only a proof that the
+packaging mechanism works, not a final ship candidate.
+
+### The "3.0.0 vs 0.5.0-alpha.NN" question (unresolved, flagged for bing)
+
+Recurring across this project's history (see the alpha.52 entry above: "task text said
+'3.0.0-alpha.52'... kept the established 0.5.0-alpha.NN line pending confirmation"). Same
+question resurfaces for alpha53 and remains **unresolved** here too. Per the workflow ledger's
+own Clarified block, this pass **kept `package.json.version` on the `0.5.0-alpha.NN` line**
+(`0.5.0-alpha.53`) rather than jumping to `3.0.0`. `packaging`'s `pack` verb asserts the
+version equals `0.5.0-alpha.53` exactly and would refuse to pack a `3.0.0`-stamped
+`package.json` — if bing decides to make the major-version jump, that assertion (and this
+ledger note) need updating alongside it, not silently.
+
+### Real-money / risk gates re-proven at packaging time
+
+`git grep` re-run against `main` HEAD before packaging (see `.workflow/scratch/packaging/PACKAGING-RUN.md`
+for the full transcript): `liveExecution:'manual'`, `automaticLivePromotionAllowed:false`,
+`liveActivationAllowed:false` all present unchanged at `src/index.js:426-428`;
+`productionLearningUnlocked` gate logic in `src/edgeProof.js` unchanged; `git diff
+93c8022..HEAD -- src/polymarket.js` empty; `git diff 93c8022..HEAD -- desktop/` empty; no
+unauthorized `package.json` script additions outside `"test:"`/`"release:"` prefixes (none
+added by `packaging` at all — it does not touch `package.json`). No live gate loosened, no
+Windows/signature/`signed:true` fabricated, no key material read beyond the public
+`desktop/update-public-key.pem`, no write under `~/Applications` or `~/Library/Application
+Support/Money Printer OS`.
