@@ -1,5 +1,7 @@
 # Money Printer OS alpha.41 — execution and turnover
 
+> HISTORICAL — alpha.41, superseded by `.agent-state/`
+
 Source baseline: alpha.40 commit `61077bb`, inspected on the Mac on September 15, 2026. Windows was offline.
 
 ## Findings
