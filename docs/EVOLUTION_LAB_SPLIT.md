@@ -76,3 +76,12 @@ End to end on the real Windows data: the trader exported 1,089 rows (676 KB); th
 the migrated loop at generation 52,088, ran 52,089 in 189 ms on 8 CPU workers, published
 `CROSS-G11019-575` (1.5 KB) plus a 19.6 KB status; the trader applied it through
 `evolutionChampionPolicy` and the dashboard reported the link as connected.
+
+## Verification (macOS, 2026-09-19)
+
+`npm run test:lab-link` (`tests/lab-link.test.mjs` + `tests/action-queue-rails.test.mjs`) is
+green on this Mac: **8/8**. No Evolution Lab is configured on this machine, so the HUD's
+Evolution panel correctly shows `NOT LINKED` — that is the expected state here, not a fault.
+This does not verify, and should not be read as verifying, Windows connectivity; the
+cross-machine link (lab ↔ trader over the bridge) is exercised only on Windows, per the
+section above.
