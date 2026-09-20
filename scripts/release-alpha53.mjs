@@ -226,6 +226,15 @@ function cmdTestRecord(flags) {
 
 // promote candidate|tested|stable — calls the real release-gate.cjs functions and
 // PRINTS `missing` rather than ever forcing a stage past what the record supports.
+//
+// The gate itself (desktop/release-gate.cjs, never modified here) only reports the
+// single next-step requirement: if `target` is more than one stage ahead of the
+// record's current stage it just says `missing: ['stageOrder']`, without listing
+// what would eventually be needed. For an honest, useful refusal we ALSO walk the
+// whole path from the current stage to `target`, one real adjacent-stage gate check
+// at a time (never mutating the actual record), and union every requirement that
+// shows up anywhere on that path. This never advances or fakes a stage — it only
+// reports more of the truth than the single-step gate call would on its own.
 async function cmdPromote(target) {
   const record = requireExistingRecord();
   if (!record) return false;
@@ -233,12 +242,25 @@ async function cmdPromote(target) {
     return fail(`promote requires a target: candidate | tested | stable`);
   }
   const gatePath = path.join(ROOT, 'desktop', 'release-gate.cjs');
-  const { promotionGate, promoteRelease } = await import(pathToFileURL(gatePath).href);
+  const { STAGES, promotionGate, promoteRelease } = await import(pathToFileURL(gatePath).href);
   const gate = promotionGate(record, target);
   if (!gate.ok) {
-    // Refusal, not forcing a stage: print `missing` and leave the record untouched.
-    console.log(`missing: ${JSON.stringify(gate.missing)}`);
-    log(JSON.stringify({ ok: false, stage: gate.stage, target, missing: gate.missing }, null, 2));
+    // Real, authoritative refusal from the actual current stage.
+    const missing = new Set(gate.missing);
+    // Diagnostic only: also union every requirement anywhere on the path from the
+    // record's current stage to `target`, so a multi-step request (e.g. main ->
+    // tested) still surfaces the real blockers (windows artifact/signature/boot
+    // tests) instead of only the structural "stageOrder" message.
+    const curIdx = STAGES.includes(record.stage) ? STAGES.indexOf(record.stage) : 0;
+    const targetIdx = STAGES.indexOf(target);
+    for (let i = curIdx; i < targetIdx; i++) {
+      const probe = { ...record, stage: STAGES[i] };
+      const step = promotionGate(probe, STAGES[i + 1]);
+      for (const m of step.missing) if (m !== 'stageOrder') missing.add(m);
+    }
+    const missingList = [...missing];
+    console.log(`missing: ${JSON.stringify(missingList)}`);
+    log(JSON.stringify({ ok: false, stage: gate.stage, target, missing: missingList }, null, 2));
     return false;
   }
   const promoted = promoteRelease(record, target);
