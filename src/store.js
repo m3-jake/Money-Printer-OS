@@ -56,22 +56,105 @@ function merge(s) {
     market: { ...f.market, ...s?.market },
     runtime: { ...f.runtime, ...s?.runtime, strategies: { ...f.runtime.strategies, ...s?.runtime?.strategies } },
   };
+  // F1 (ACCOUNTING-AUDIT §3): `fresh()` seeds `pnlLedger: []` and `realizedLifetimePnlSol: 0`.
+  // Spreading it UNDER a persisted state that predates those fields still leaves them present,
+  // so ensurePnlLedger's reconstruction guards can never fire and the first load of a legacy
+  // bankroll silently zeroes lifetime PnL while cashSol still carries the whole trading history.
+  // Drop the seeded keys for exactly those inputs; states that already carry them are untouched.
+  if (s && typeof s === 'object' && !Array.isArray(s)) {
+    if (!Array.isArray(s.pnlLedger)) delete out.pnlLedger;
+    if (!Number.isFinite(Number(s.realizedLifetimePnlSol))) delete out.realizedLifetimePnlSol;
+  }
   ensureResearch(out);
   ensurePnlLedger(out);
   out._accounting = paperIdentity(out);
   const jump = guardEquityJump({ nextEquity: out._accounting.equity, startSol: out.paperStartSol });
   const alerts = [];
   if (!jump.ok) alerts.push({ code: 'EQUITY_JUMP', reasons: jump.reasons });
-  if (!out._accounting.ok && Math.abs(out._accounting.hole) > Math.max(0.5, Number(out.paperStartSol || 0) * 0.25)) {
-    alerts.push({ code: 'PAPER_IDENTITY', hole: out._accounting.hole });
+  // F2: the old bar was max(0.5, start*0.25) against the INEXACT hole — on a 1 SOL bankroll the
+  // observed 0.544 SOL hole cleared it by 0.044 and never raised anything.
+  if (!out._accounting.ok && Math.abs(out._accounting.holeExact) > Math.max(1e-6, Number(out.paperStartSol || 0) * 1e-4)) {
+    alerts.push({ code: 'PAPER_IDENTITY', hole: out._accounting.holeExact });
   }
   if (Number(out._accounting.openRz || 0) > Math.max(3, Number(out.paperStartSol || 0) * 3)) {
     alerts.push({ code: 'OPEN_REALIZED_ABSURD', openRz: out._accounting.openRz });
   }
+  out.system = out.system || {};
   if (alerts.length) {
-    out.system = out.system || {};
     out.system.accountingAlert = { code: alerts[0].code, alerts, at: Date.now(), identity: out._accounting };
     out.system.health = out.system.health === 'HEALTHY' ? 'CAUTION' : out.system.health;
+  } else if (out.system.accountingAlert) {
+    // F4: nothing ever cleared this, and merge's {...f, ...s} carried it forward every cycle,
+    // pinning health at CAUTION forever after a single historic alert.
+    delete out.system.accountingAlert;
+  }
+  publishedBasis = snapshotBasis(out);
+  return out;
+}
+
+// ---------------------------------------------------------------------------------------------
+// F6 (ACCOUNTING-AUDIT §4 RC-A) — realized cash may only appear when basis leaves a position.
+//
+// On 2026-09-10 a priceIntegrityRepair pass rewrote one position's realizedSol from 27.556 to
+// 34.916 (+7.359989876 SOL) while remainingSol did not move by a single lamport. The cash bridge
+// closes to 0.000000000 around that write: it was money creation, and nothing in the tree refused
+// it -- guardEquityJump allowed max(start*5, 5) = 50 SOL per save on a 10 SOL bankroll.
+//
+// The previous published state is snapshotted as COPIED PRIMITIVES rather than read back out of
+// readCache: readCache holds the caller's own object, so any caller that mutates a cached state in
+// place would compare it against itself and see no delta at all.
+// ---------------------------------------------------------------------------------------------
+const BASIS_EPS = 1e-12;
+const REALIZED_EPS = 1e-9;
+// Same window reviewPositionPrice admits a tick in (positionExecution.js): a mark outside it is
+// not evidence of anything and may not authorise realized cash.
+const MARK_RATIO_MIN = 0.05;
+const MARK_RATIO_MAX = 20;
+let publishedBasis = new Map();
+
+function positionBasis(p) {
+  return {
+    rem: Number(p?.remainingSol ?? p?.sizeSol ?? 0) || 0,
+    rz: Number(p?.realizedSol || 0) || 0,
+  };
+}
+
+function snapshotBasis(s) {
+  const m = new Map();
+  for (const p of s?.positions || []) {
+    if (!p || p.id == null) continue;
+    m.set(String(p.id), positionBasis(p));
+  }
+  return m;
+}
+
+export function realizedBasisViolations(state, previous = publishedBasis) {
+  const out = [];
+  for (const p of state?.positions || []) {
+    if (!p || p.id == null) continue;
+    const next = positionBasis(p);
+    const where = { id: p.id, mint: p.mint ?? null, symbol: p.symbol ?? null };
+    const prev = previous.get(String(p.id));
+    if (!prev) {
+      // A position that did not exist in the last published state opens with an entry fee
+      // (realizedSol = -fee, paper) or 0 (live). Positive realized cash on a brand-new position
+      // is the same money creation arriving through a different door.
+      if (next.rz > REALIZED_EPS) out.push({ code: 'REALIZED_WITHOUT_BASIS', ...where, soldBasis: 0, dRealized: next.rz, opened: true });
+      continue;
+    }
+    const soldBasis = prev.rem - next.rem;
+    const dRealized = next.rz - prev.rz;
+    if (soldBasis <= BASIS_EPS) {
+      if (Math.abs(dRealized) > REALIZED_EPS) out.push({ code: 'REALIZED_WITHOUT_BASIS', ...where, soldBasis, dRealized });
+      continue;
+    }
+    const entry = Number(p.entryPrice || 0);
+    const last = Number(p.lastPrice || entry || 0);
+    let markRatio = entry > 0 && last > 0 ? last / entry : 1;
+    if (!Number.isFinite(markRatio) || markRatio <= 0) markRatio = 1;
+    const maxMarkRatio = Math.min(MARK_RATIO_MAX, Math.max(MARK_RATIO_MIN, markRatio));
+    const limit = soldBasis * maxMarkRatio + REALIZED_EPS;
+    if (dRealized > limit) out.push({ code: 'REALIZED_EXCEEDS_MARK', ...where, soldBasis, dRealized, markRatio, maxMarkRatio, limit });
   }
   return out;
 }
@@ -194,6 +277,16 @@ export function saveState(state) {
     maxMultiple: 1e9,
     maxAbsJump: Math.max(Number(s.paperStartSol || 0) * 5, 5),
   });
+  const violations = realizedBasisViolations(s);
+  if (violations.length) {
+    const first = violations[0];
+    s.system = s.system || {};
+    s.system.accountingAlert = { code: first.code, violations, at: Date.now(), identity: id };
+    const err = new Error(`refusing to save: ${first.code} on position ${first.id}`
+      + ` (basis sold ${first.soldBasis}, realized delta ${first.dRealized})`);
+    err.code = first.code; err.violations = violations; err.identity = id;
+    throw err;
+  }
   if (!jump.ok) {
     s.system = s.system || {};
     s.system.accountingAlert = { code: 'EQUITY_JUMP', reasons: jump.reasons, at: Date.now(), identity: id, prevEquity: prevEq };
@@ -230,6 +323,7 @@ export function saveState(state) {
   try { fs.renameSync(temp, stateFile); }
   finally { try { fs.rmSync(temp, { force: true }); } catch {} }
   readCache = { stamp: stateStamp(), value: s };
+  publishedBasis = snapshotBasis(s);
   lastSaveMs = Math.round(performance.now() - started);
   return lastSaveMs;
 }

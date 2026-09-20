@@ -23,7 +23,7 @@ import { estimatePaperExecution, deterministicFillAllowed, estimateRoundTripFric
 import { enqueueAlphaEvent } from './alphaQueue.js';
 import { dailyPnl, recentPnl, bookClosedPnl, unrealizedPnl, equity, updatePortfolio } from './accounting.js';
 import { startAlphaWorker, stopAlphaWorker } from './alphaWorkerManager.js';
-import { exitSimulation, paperExitQuote, reviewPositionPrice } from './positionExecution.js';
+import { exitSimulation, paperExitQuote, reviewPositionPrice, entrySizing, paperEntryRejection } from './positionExecution.js';
 
 const once = process.argv.includes('--once');
 const dashboardOnly = process.argv.includes('--dashboard-only');
@@ -136,17 +136,15 @@ async function enter(s, pick, manual = false) {
     s.stats.skipped++;return;
   }
   const ap = aggressionParams(s.runtime.aggression);
-  const eq = equity(s);
-  const riskSized = eq * (cfg.riskPerTradePct / 100) / (Math.max(3, preset(s).stop) / 100);
   const isPaper = cfg.mode === 'paper';
   const sprintPaper = isPaper && s.runtime.profile === 'SPRINT';
-  const paperPositionCap = sprintPaper ? Math.max(cfg.maxPositionSol, eq * .15) : Math.max(cfg.maxPositionSol, eq * (0.035 + Number(s.runtime.aggression||0) / 2200));
-  const paperExposureCap = sprintPaper ? Math.max(cfg.maxTotalExposureSol, eq * .88) : Math.max(cfg.maxTotalExposureSol, eq * (0.12 + Number(s.runtime.aggression||0) / 330));
-  const positionCap = isPaper ? paperPositionCap : cfg.maxPositionSol;
-  const exposureCap = isPaper ? paperExposureCap : cfg.maxTotalExposureSol;
-  const headroom = Math.max(0, exposureCap - exposure(s));
-  const targetSize = sprintPaper ? Math.max(cfg.tradeSizeSol * ap.sizeFactor, eq * .06) : isPaper ? Math.max(cfg.tradeSizeSol * ap.sizeFactor, eq * (0.012 + Number(s.runtime.aggression||0) / 1800)) : cfg.tradeSizeSol * ap.sizeFactor;
-  const size = Math.max(0, Math.min(targetSize, positionCap, riskSized, headroom));
+  // F8 (ACCOUNTING-AUDIT §4 RC-C): identical arithmetic to before, except that PAPER sizing is now
+  // levered off min(marked equity, cash + cost basis). Live keeps cfg.maxPositionSol /
+  // cfg.maxTotalExposureSol exactly as before. See src/positionExecution.js.
+  const { size } = entrySizing({
+    state: s, config: cfg, sizeFactor: ap.sizeFactor, aggression: s.runtime.aggression,
+    stopPct: preset(s).stop, paper: isPaper, sprint: sprintPaper,
+  });
   if (size < 0.005) return;
 
   // History review: weak-liquidity / high-friction SPRINT fills produced the largest avoidable losses.
@@ -174,6 +172,15 @@ async function enter(s, pick, manual = false) {
   if (manual) s.stats.manualEntries++;
 
   if (cfg.mode === 'paper') {
+    // F7 (ACCOUNTING-AUDIT §4 RC-B): bind the position to a pool at entry. Without it
+    // reviewPositionPrice accepts a price from any pool of the mint and index.js back-fills
+    // pairAddress from the first accepted tick, which can latch onto the wrong pool for good.
+    const entryReject = paperEntryRejection(pick);
+    if (entryReject) {
+      s.stats.skipped++;
+      appendJournal({ type: 'paper-entry-reject', mint: pick.mint, symbol: pick.symbol, reason: entryReject });
+      return;
+    }
     const sim = sprintPreview || estimatePaperExecution(pick, size, Number(s.market?.solUsd || 0), cfg.simulatedSlippageBps, cfg.simulatedFeeBps);
     const entryFee = size * sim.feeBps / 10_000;
     if (s.cashSol < size + entryFee) return;
@@ -322,7 +329,7 @@ async function updatePositions(s) {
     // recognized after repeated refreshes instead of trapping capital forever.
     const anchor = Number(p.lastPrice || p.entryPrice || 0);
     const tickRatio = anchor > 0 ? price / anchor : 1;
-    const review=reviewPositionPrice(p,pair,{paper:cfg.mode==='paper'});
+    const review=reviewPositionPrice(p,pair,{paper:cfg.mode==='paper',ticks:s.tickHistory?.[p.mint]});
     if (!review.accepted) {
       p.priceStatus=review.reason;
       p.priceIntegrityRejects = Number(p.priceIntegrityRejects || 0) + 1;
