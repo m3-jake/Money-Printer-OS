@@ -17,12 +17,15 @@ notes prior to packaging:**
 
 ## Packaging results (this pass)
 
-- **HEAD packaged:** `2420d77c3e8b770375239f03f879a3e89f61851d` ("mpo: product") — the commit
-  on `main` at the moment `packaging` ran, **before** this packaging commit itself lands.
-  `scripts/release-alpha53.mjs pack` records its own `commit = git rev-parse HEAD` at pack
-  time into `release-record.json`; see below for the actual packaged commit, which is the
-  packaging commit itself (pack runs after this file is committed, per the script's own
-  git-clean precondition).
+- **HEAD packaged (final, recorded artifact):** `18134455e1cd7779e4d12fcf2404bf54031a2bbe`
+  ("mpo: packaging — promote refusal shows the full path to target"), the second of two
+  packaging commits on `main` — `eaee2652ab1aa1025314473dd9e23f11f0a3e171` ("mpo: packaging")
+  landed first, was packed once as an intermediate check
+  (SHA-256 `855bda34d1ec5a0a89056fd44cbad9fbec8b42b796a107225f5b51ae1fd58670`), then a small
+  driver fix (the `promote` verb's diagnostic, no gate-logic change) was committed and
+  `pack` re-run against the new HEAD — since `scripts/` is itself part of the packaged tree,
+  editing the script changes the packed bytes. The commit and SHA-256 below are this
+  **final** run and are what `release-record.json` / `sha256.txt` hold.
 - **Integration state at packaging time (IMPORTANT — read before treating this artifact as a
   final ship candidate):** merge order per `PLAN.md` §7 is ship-fixes → accounting → product →
   visual → packaging. At the time packaging ran, only **product** (`2420d77`) was merged onto
@@ -47,7 +50,17 @@ notes prior to packaging:**
   it without that flag would make live RPC network calls, which the workflow's hard
   constraints forbid. This is an honest gap, not a skipped requirement — re-run once
   ship-fixes merges.
-- **Asar artifact:** `<FILLED BELOW BY PACK — see release-record.json>`
+- **Asar artifact:** `/Users/bing/Desktop/Money Printer OS/Current/MPO-alpha53-release.asar`,
+  34,114,521 bytes, SHA-256
+  `be8f1f8a87b83b052cf8d53b827e4d81bf221e0ae6aaa8cc06842f88507c1f57` — matches
+  `.workflow/scratch/packaging/release-record.json` and `.workflow/scratch/packaging/sha256.txt`
+  exactly (`shasum -a 256` cross-checked). Packed from commit
+  `18134455e1cd7779e4d12fcf2404bf54031a2bbe`.
+- **Gate stage:** `main` (unadvanced). `node scripts/release-alpha53.mjs promote tested`
+  refuses, printing
+  `missing: ["stageOrder","windowsArtifactHash","signed","testAll","selftest","macBoot","windowsBoot"]`
+  — no stage forced, no signature or Windows artifact fabricated
+  (`.workflow/scratch/packaging/gate-refusal.log`).
 - **Archive contents verified:** see `asar-manifest.txt` / the grep proof in `PACKAGING-RUN.md`
   under `.workflow/scratch/packaging/` — zero `.env`, zero `.agent-state`/`agent-state`/
   `research`/`artifacts`/`.workflow`/`.git`, zero non-empty `data/*`, exactly one
