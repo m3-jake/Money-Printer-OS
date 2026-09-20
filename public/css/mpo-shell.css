@@ -68,6 +68,9 @@
   --mpo-dur: 150ms;
   --mpo-ease: ease-out;
 
+  --mpo-warn: #ff7a3d;
+  --mpo-warn-bg: #1a0e06;
+
   --silver: var(--mpo-chrome);
   --light: var(--mpo-chrome-light);
   --mid: var(--mpo-chrome-mid);

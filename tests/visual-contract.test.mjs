@@ -195,6 +195,39 @@ test('Experiment Monitor leaderboard exposes live research fields', () => {
   assert.match(dashJs, /automaticLivePromotionAllowed:\s*false/);
 });
 
+test('shared visual token/component consolidation (VISUAL-AUDIT §5/§6) is adopted, not regressed', () => {
+  // §5 additive tokens — no renames/removals of existing ones, these are new.
+  assert.match(css, /--mpo-warn:\s*#ff7a3d/);
+  assert.match(css, /--mpo-warn-bg:\s*#1a0e06/);
+  // §5 new components, defined next to .poly-mod in mpo-workstation.css.
+  assert.match(css, /\.mpo-module\s*\{/);
+  assert.match(css, /\.mpo-module\s*>\s*header\s*\{/);
+  assert.match(css, /\.mpo-module-body\s*\{/);
+  assert.match(css, /\.mpo-meter\s*\{/);
+  assert.match(css, /\.mpo-brand-title\s*\{/);
+  assert.match(css, /\.mpo-danger-fieldset\s*\{/);
+  // .poly-mod itself must stay untouched — the new classes generalize it, not replace it.
+  assert.match(css, /\.poly-mod\s*\{/);
+  assert.match(css, /\.poly-mod\s*>\s*header\s*\{/);
+  // §2/§6 — the benchmark's own real-money fieldset must no longer hardcode the
+  // warn colors inline; it must use the token-driven class instead.
+  assert.doesNotMatch(html, /#ff7a3d/);
+  assert.doesNotMatch(html, /#1a0e06/);
+  assert.match(html, /class="mpo-danger-fieldset"/);
+  // §6 per-screen migration — class swaps, ids/behavior unchanged.
+  assert.match(html, /function renderSystem\(\)[\s\S]*mpo-module/);
+  assert.match(html, /id="sysTelemetry"/);
+  assert.match(html, /id="sysControls"/);
+  assert.match(html, /function renderResearchMonitor\(\)[\s\S]*mpo-module/);
+  assert.match(html, /function renderResearchMonitor\(\)[\s\S]*mpo-meter-bar/);
+  assert.match(html, /function renderControl\(\)[\s\S]*mpo-module/);
+  assert.match(html, /id="testKill"/);
+  assert.match(html, /function renderWallet\(\)[\s\S]*mpo-meter-bar--sm/);
+  assert.match(html, /function renderRisk\(\)[\s\S]*class="mpo-meter"/);
+  assert.match(html, /class="mpo-brand-title"/g);
+  assert.equal((html.match(/class="mpo-brand-title"/g) || []).length, 2, 'Money and Updater panels both adopt .mpo-brand-title');
+});
+
 test('glance telemetry recipes land on laggard panes without restyling Suite', () => {
   assert.match(css, /\.mpo-sysrow/);
   assert.match(css, /\.sysbar\.warn/);
