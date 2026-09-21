@@ -19,6 +19,7 @@
   "scripts": {
     "selftest": "node src/selftest.js",
     "doctor": "node src/doctor.js",
+    "health": "node scripts/health-check.mjs",
     "backtest": "node src/backtest.js",
     "test:recovery": "node --test tests/store-recovery.test.mjs",
     "test:turnover": "node --test tests/sports-turnover.test.mjs tests/update-auth.test.cjs",
