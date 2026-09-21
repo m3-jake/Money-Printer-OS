@@ -40,6 +40,28 @@ test('orphaned drain files older than the grace period are swept, fresh ones are
   fs.utimesSync(old, past / 1000, past / 1000);
   assert.equal(cleanupActionDrains(), 1);
   assert.ok(!fs.existsSync(old)); assert.ok(fs.existsSync(fresh));
+  fs.rmSync(fresh, { force: true });
+});
+
+test('a failure writing the remainder back leaves the .drain file on disk instead of deleting it', () => {
+  enqueueAction({ type: 'toggle-pause' });
+  enqueueAction({ type: 'toggle-pause' });
+  const original = fs.appendFileSync;
+  fs.appendFileSync = (p, ...rest) => {
+    if (String(p) === Q) throw Object.assign(new Error('ENOSPC: no space left on device'), { code: 'ENOSPC' });
+    return original(p, ...rest);
+  };
+  try {
+    assert.throws(() => drainActions(1), /ENOSPC/);
+  } finally {
+    fs.appendFileSync = original;
+  }
+  // the batch (both the taken action and the remainder) must still be recoverable on disk
+  const drainFiles = fs.readdirSync(DIR).filter(n => n.startsWith('actions.ndjson.') && n.endsWith('.drain'));
+  assert.equal(drainFiles.length, 1, 'the drain file must survive a failed write-back, not be deleted');
+  const recovered = fs.readFileSync(path.join(DIR, drainFiles[0]), 'utf8').split('\n').filter(Boolean);
+  assert.equal(recovered.length, 2);
+  for (const n of drainFiles) fs.rmSync(path.join(DIR, n), { force: true });
 });
 
 test.after(() => { try { fs.rmSync(DIR, { recursive: true, force: true }); } catch {} });

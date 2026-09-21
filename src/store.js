@@ -423,15 +423,15 @@ export function drainActions(limit = 1000) {
   } catch {
     return [];
   }
-  try {
-    const lines = fs.readFileSync(drainFile, 'utf8').split('\n').filter(Boolean);
-    const take = lines.slice(0, limit);
-    const remain = lines.slice(limit);
-    if (remain.length) fs.appendFileSync(actionFile, `${remain.join('\n')}\n`);
-    return take.map(x => { try { return JSON.parse(x); } catch { return null; } }).filter(Boolean);
-  } finally {
-    try { fs.rmSync(drainFile, { force: true }); } catch {}
-  }
+  // If anything below throws (e.g. ENOSPC while writing `remain` back), drainFile is left on
+  // disk instead of deleted: it is the only copy of the batch, and cleanupActionDrains only
+  // removes files older than DRAIN_ORPHAN_MS, leaving a window to recover it by hand.
+  const lines = fs.readFileSync(drainFile, 'utf8').split('\n').filter(Boolean);
+  const take = lines.slice(0, limit);
+  const remain = lines.slice(limit);
+  if (remain.length) fs.appendFileSync(actionFile, `${remain.join('\n')}\n`);
+  fs.rmSync(drainFile, { force: true }); // only reached once `remain` is durably persisted
+  return take.map(x => { try { return JSON.parse(x); } catch { return null; } }).filter(Boolean);
 }
 
 export function resetPaper(startSol = cfg.paperStartSol, persist = true) {
