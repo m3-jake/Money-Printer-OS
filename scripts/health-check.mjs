@@ -69,6 +69,14 @@ try {
   if (s.lastError) add('WARN', 'lab.lastError', String(s.lastError).slice(0, 160));
   if (lab.control?.paused) add('WARN', 'lab.control', `paused${lab.control.reason ? ': ' + lab.control.reason : ''}`);
 
+  // A missing research-furnace.json / research-beast.json is read with a silent try/catch and
+  // drops the furnace to NORMAL: 513 variants a generation instead of 4097 on 24 workers. It
+  // looks healthy from the outside, so check the throughput knobs explicitly.
+  const mode = s.researchMode || 'UNKNOWN';
+  const batch = Number(s.currentBatchSize || 0);
+  add(mode === 'NORMAL' ? 'WARN' : 'OK', 'research mode',
+    `${mode}, batch ${batch}, ${s.workerCount} workers` + (mode === 'NORMAL' ? ' - profiles missing or disabled?' : ''));
+
   const pubAt = lab.champion?.publishedAt;
   if (pubAt) {
     const h = (Date.now() - pubAt) / 3600000;
