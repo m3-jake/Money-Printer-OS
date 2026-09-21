@@ -24,6 +24,7 @@ import { enqueueAlphaEvent } from './alphaQueue.js';
 import { dailyPnl, recentPnl, bookClosedPnl, unrealizedPnl, equity, updatePortfolio } from './accounting.js';
 import { startAlphaWorker, stopAlphaWorker } from './alphaWorkerManager.js';
 import { exitSimulation, paperExitQuote, reviewPositionPrice, entrySizing, paperEntryRejection } from './positionExecution.js';
+import { apiUnitEconomicsSnapshot, persistApiUnitEconomics } from './apiUnitEconomics.js';
 
 const once = process.argv.includes('--once');
 const dashboardOnly = process.argv.includes('--dashboard-only');
@@ -443,6 +444,8 @@ async function cycle() {
   const pairs = await discoverCandidates(max);
   s.system.metrics.discoveryMs = Math.round(performance.now() - discoveryStart);
   s.system.discoveryHealth = discoveryHealth();
+  s.system.unitEconomics={externalApi:apiUnitEconomicsSnapshot(),caps:{marketRequestsPerMinute:cfg.marketRequestsPerMinute,heliusRequestsPerMinute:cfg.heliusRequestsPerMinute}};
+  try{persistApiUnitEconomics('trader')}catch{}
   s.research.feedStats ||= {};
   for (const [name, h] of Object.entries(s.system.discoveryHealth || {})) {
     const f = s.research.feedStats[name] || (s.research.feedStats[name] = { seen:0,lastSeen:0,errors:0,latencyMs:0 });

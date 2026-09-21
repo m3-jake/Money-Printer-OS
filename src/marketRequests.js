@@ -1,25 +1,29 @@
+import {apiProviderFromUrl,recordApiRequest,recordApiCacheHit,recordApiCoalescedHit,recordApiCapReject,recordApiFailure} from './apiUnitEconomics.js';
+
 // Coalesce reads, cancel timed-out transports and respect upstream retry windows.
 // Cache timestamps belong to the fetched data, never to the consumer's read.
-export function createMarketRequester({fetcher=(...args)=>globalThis.fetch(...args),now=Date.now,timeoutMs=6500}={}) {
+export function createMarketRequester({fetcher=(...args)=>globalThis.fetch(...args),now=Date.now,timeoutMs=6500,requestsPerMinute=120}={}) {
   const cache=new Map(),pending=new Map(),hosts=new Map();
-  const stats={requests:0,cacheHits:0,rateLimits:0,timeouts:0};
-  async function get(url,label='market feed',{ttlMs=20000,headers={}}={}) {
-    const ts=now(),cached=cache.get(url);
-    if(cached&&ts-cached.fetchedAt<ttlMs){stats.cacheHits++;return cached;}
-    if(pending.has(url))return pending.get(url);
+  const stats={requests:0,cacheHits:0,coalescedHits:0,rateLimits:0,timeouts:0,budgetRejects:0,failures:0};
+  const cap=Math.max(0,Number(requestsPerMinute)||0);
+  async function get(url,label='market feed',{ttlMs=20000,headers={},costPerRequestUsd=null}={}) {
+    const ts=now(),cached=cache.get(url),provider=apiProviderFromUrl(url);
+    if(cached&&ts-cached.fetchedAt<ttlMs){stats.cacheHits++;recordApiCacheHit(provider);return cached;}
+    if(pending.has(url)){stats.coalescedHits++;recordApiCoalescedHit(provider);return pending.get(url);}
     const host=new URL(url).host;
     const state=hosts.get(host)||{retryAt:0,failures:0,window:[]};
     hosts.set(host,state);
     if(ts<state.retryAt)throw new Error(`${label}: rate limit backoff until ${new Date(state.retryAt).toISOString()}`);
     state.window=state.window.filter(t=>ts-t<60000);
-    if(state.window.length>=120)throw new Error(`${label}: local request budget exhausted`);
-    state.window.push(ts);stats.requests++;
+    if(cap>0&&state.window.length>=cap){stats.budgetRejects++;recordApiCapReject(provider);throw new Error(`${label}: local request budget exhausted (${cap}/min)`);}
+    state.window.push(ts);stats.requests++;recordApiRequest(provider,{costPerRequestUsd});
     const task=(async()=>{
       const controller=new AbortController();
       const timer=setTimeout(()=>controller.abort(),timeoutMs);
       try{
         const response=await fetcher(url,{headers,signal:controller.signal});
         if(!response.ok){
+          stats.failures++;recordApiFailure(provider);
           if(response.status===429){
             const retry=response.headers?.get?.('retry-after');
             const seconds=retry==null?NaN:Number(retry);
@@ -37,12 +41,12 @@ export function createMarketRequester({fetcher=(...args)=>globalThis.fetch(...ar
         cache.delete(url);cache.set(url,result);
         while(cache.size>512)cache.delete(cache.keys().next().value);
         return result;
-      }catch(error){if(controller.signal.aborted){stats.timeouts++;throw new Error(`${label} timed out after ${timeoutMs}ms`);}throw error;}
+      }catch(error){if(controller.signal.aborted){stats.timeouts++;stats.failures++;recordApiFailure(provider);throw new Error(`${label} timed out after ${timeoutMs}ms`);}throw error;}
       finally{clearTimeout(timer);}
     })().finally(()=>pending.delete(url));
     pending.set(url,task);return task;
   }
-  return {get,health(){return {...stats,cached:cache.size,inFlight:pending.size,
+  return {get,health(){const saved=stats.cacheHits+stats.coalescedHits,total=stats.requests+saved;return {...stats,requestsPerMinute:cap||null,cacheAvoidanceRate:total?Math.round(saved/total*1e6)/1e6:0,cached:cache.size,inFlight:pending.size,
     retryAt:Math.max(0,...[...hosts.values()].map(h=>h.retryAt)),
     ok:![...hosts.values()].some(h=>h.retryAt>now())};}};
 }

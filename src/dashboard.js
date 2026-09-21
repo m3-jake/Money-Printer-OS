@@ -10,6 +10,7 @@ import { saveResourcePolicy, resourceSnapshot, systemTelemetry } from './resourc
 import { polymarketSnapshot, placePaperCombo, placePaperSingle, setAutopilot, runAutopilotOnce, resetPolymarketPaper, realPolymarketReadiness, simulateComboSamples } from './polymarket.js';
 import { polymarketUSSnapshot, usReadiness, configurePolymarketUS, armPolymarketUS, previewPolymarketUSOrder, submitPolymarketUSOrder, closePolymarketUSPosition, cancelPolymarketUSOrder, cancelAllPolymarketUS } from './polymarketUS.js';
 import { usComboSnapshot, buildUSCombo, quoteUSCombo, placeUSCombo, cancelUSRfq, setUSComboAutopilot, settleUSCombos, forgetUSCombo, startUSComboLoops } from './polymarketUSCombos.js';
+import { readApiUnitEconomics } from './apiUnitEconomics.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const html = fs.readFileSync(path.join(ROOT, 'public', 'dashboard.html'), 'utf8');
@@ -406,6 +407,7 @@ export function startDashboard() {
       if (req.method === 'GET' && u.pathname === '/api/evolution') { const st = loadStateCached(); return json(res, { ...(st.evolution || {}), loop: evolutionLoopView(st.evolutionLoop || st.evolution?.loop || {}), labLink: labLinkView(st) }); }
       if (req.method === 'GET' && u.pathname === '/api/network') { const r=await meshRequest('GET','/state'); return json(res,r.body,r.status); }
       if (req.method === 'GET' && u.pathname === '/api/resources') return json(res, resourceSnapshot());
+      if (req.method === 'GET' && u.pathname === '/api/unit-economics') return json(res, readApiUnitEconomics());
       if (req.method === 'GET' && u.pathname === '/api/polymarket') return json(res, await polymarketSnapshot());
       if (req.method === 'GET' && u.pathname === '/api/polymarket/readiness') return json(res, realPolymarketReadiness());
       if (req.method === 'GET' && u.pathname === '/api/polymarket-us') return json(res, await polymarketUSSnapshot());

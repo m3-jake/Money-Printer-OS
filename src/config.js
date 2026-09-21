@@ -1,9 +1,12 @@
 import 'dotenv/config';
 const num=(k,d)=>Number(process.env[k]??d), str=(k,d='')=>process.env[k]??d;
+const optNum=k=>{const v=process.env[k];if(v===undefined||String(v).trim()==='')return null;const n=Number(v);return Number.isFinite(n)&&n>=0?n:null};
 const bool=(k,d=false)=>['1','true','yes','on'].includes(str(k,String(d)).toLowerCase());
 export const cfg={
  mode:str('MODE','paper').toLowerCase(), paperStartSol:num('PAPER_START_SOL',1), scanIntervalSec:num('SCAN_INTERVAL_SEC',8),
  dashboardPort:num('DASHBOARD_PORT',8792), dashboardHost:str('DASHBOARD_HOST','127.0.0.1'), openDashboard:bool('OPEN_DASHBOARD',false), maxCandidates:num('MAX_CANDIDATES',240),
+ marketRequestsPerMinute:Math.max(1,num('MARKET_REQUESTS_PER_MINUTE',120)), heliusRequestsPerMinute:Math.max(0,num('HELIUS_REQUESTS_PER_MINUTE',0)),
+ dexScreenerCostPerRequestUsd:optNum('DEXSCREENER_COST_PER_REQUEST_USD'), geckoTerminalCostPerRequestUsd:optNum('GECKOTERMINAL_COST_PER_REQUEST_USD'), heliusCostPerRequestUsd:optNum('HELIUS_COST_PER_REQUEST_USD'),
  minLiquidityUsd:num('MIN_LIQUIDITY_USD',1500), minH1VolumeUsd:num('MIN_H1_VOLUME_USD',1000), maxFdvUsd:num('MAX_FDV_USD',50000000),
  maxPairAgeHours:num('MAX_PAIR_AGE_HOURS',168),
  maxTop10HolderPct:num('MAX_TOP10_HOLDER_PCT',55), maxTop1HolderPct:num('MAX_TOP1_HOLDER_PCT',18),

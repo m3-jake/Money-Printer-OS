@@ -1,10 +1,11 @@
 import { mapLimit } from './utils.js';
 import { programStreamHints } from './stream.js';
 import { createMarketRequester } from './marketRequests.js';
+import { cfg } from './config.js';
 
 const BASE = 'https://api.dexscreener.com';
 const GECKO = 'https://api.geckoterminal.com/api/v2';
-const requests = createMarketRequester();
+const requests = createMarketRequester({requestsPerMinute:cfg.marketRequestsPerMinute});
 const SEED_TTL_MS = 45_000;
 const STALE_SEED_TTL_MS = 10 * 60_000;
 
@@ -25,7 +26,8 @@ export async function solUsdPrice() {
 }
 
 async function getJson(url, label = 'market feed', ttlMs = 20000) {
-  return requests.get(url,label,{ttlMs,headers:{accept:url.startsWith(GECKO)?'application/json;version=20230203':'application/json','user-agent':'SolanaMemeScout/9.0'}});
+  const costPerRequestUsd=url.startsWith(GECKO)?cfg.geckoTerminalCostPerRequestUsd:cfg.dexScreenerCostPerRequestUsd;
+  return requests.get(url,label,{ttlMs,costPerRequestUsd,headers:{accept:url.startsWith(GECKO)?'application/json;version=20230203':'application/json','user-agent':'SolanaMemeScout/9.0'}});
 }
 
 async function feed(path, source, health) {

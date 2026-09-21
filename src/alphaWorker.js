@@ -6,6 +6,7 @@ import { writeEdgeProof } from './edgeProof.js';
 import { writeAlphaInsights } from './alphaInsights.js';
 import { writeDailyAlphaReport } from './dailyAlphaReport.js';
 import { mineHypotheses } from './hypothesisMiner.js';
+import { persistApiUnitEconomics } from './apiUnitEconomics.js';
 
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
@@ -19,6 +20,7 @@ function pumpEnrichment(){while(enrichmentActive<ENRICHMENT_CONCURRENCY&&enrichm
 async function enrichCandidate(observation){
  const result=await indexMintTransactions(observation.mint,80);const events=Array.isArray(result)?result:(result.events||[]);
  for(const x of events){if(x.funding){upsertFunding(x.funder,x.wallet,x.ts,x.sol);fundingDirty=true;continue}upsertTxEvent(x);txDirty=true;if(x.side==='BUY'&&x.wallet&&Date.now()-(fundingIndexed.get(x.wallet)||0)>24*3600_000){fundingIndexed.set(x.wallet,Date.now());for(const f of await indexWalletFunding(x.wallet,x.ts,25)){upsertFunding(f.funder,f.wallet,f.ts,f.sol);fundingDirty=true}}}
+ try{persistApiUnitEconomics('alpha-worker')}catch{}
 }
 function processEvent(e){
  if(e.type==='candidate'){
