@@ -38,7 +38,15 @@ export function assembleMemeAlphaReport({cold,forensics,latency,replay}={}){
   const sprint=replayRows.find(r=>r.config==='SPRINT');
   const coldTop=replayRows.find(r=>r.config==='COLD_TOPQ');
   const friction=!!forensics?.verdict?.frictionFlip||(Number(forensics?.overall?.medianGrossReturnPct||0)>=0&&Number(forensics?.overall?.medianReturnPct||0)<0);
-  const staleCause=/maxHold 25/.test(String(forensics?.stalePurge?.cause||forensics?.verdict?.stalePurgeCause||''));
+  // The gate asks whether the stale-purge closes are explained by the maxHold timer. It used to
+  // regex the prose for "maxHold 25", which hardcoded the SPRINT preset: an applied champion sets
+  // its own maxHold (index.js:312), so this silently failed for every champion that did not
+  // happen to use 25. Read the boolean tradeForensics now reports, falling back to the old prose
+  // match so a report file written before that field existed still parses.
+  const stale=forensics?.stalePurge;
+  const staleCause=typeof stale?.matchesMaxHold==='boolean'
+    ? stale.matchesMaxHold
+    : /maxHold \d+/.test(String(stale?.cause||forensics?.verdict?.stalePurgeCause||''));
   const staleN=Number(forensics?.stalePurge?.n||0);
   const gates=[
     gate('cold-sentinel-excluded',Number(chron.sentinelLiquidity||0)>=0&&chron.criteria?.sentinelLiquidityExcluded===true,`sentinel=${chron.sentinelLiquidity??'n/a'} raw=${chron.rawN??'n/a'} economic=${chron.n??'n/a'}`),
