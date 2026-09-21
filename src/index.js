@@ -24,7 +24,7 @@ import { enqueueAlphaEvent } from './alphaQueue.js';
 import { dailyPnl, recentPnl, bookClosedPnl, unrealizedPnl, equity, updatePortfolio } from './accounting.js';
 import { startAlphaWorker, stopAlphaWorker } from './alphaWorkerManager.js';
 import { exitSimulation, paperExitQuote, reviewPositionPrice, entrySizing, paperEntryRejection } from './positionExecution.js';
-import { apiUnitEconomicsSnapshot, persistApiUnitEconomics } from './apiUnitEconomics.js';
+import { apiUnitEconomicsSnapshot, persistApiUnitEconomics, attributeScanCycle, strategyNetPnlAfterDataCost, evaluateRoiGuard } from './apiUnitEconomics.js';
 
 const once = process.argv.includes('--once');
 const dashboardOnly = process.argv.includes('--dashboard-only');
@@ -444,7 +444,7 @@ async function cycle() {
   const pairs = await discoverCandidates(max);
   s.system.metrics.discoveryMs = Math.round(performance.now() - discoveryStart);
   s.system.discoveryHealth = discoveryHealth();
-  s.system.unitEconomics={externalApi:apiUnitEconomicsSnapshot(),caps:{marketRequestsPerMinute:cfg.marketRequestsPerMinute,heliusRequestsPerMinute:cfg.heliusRequestsPerMinute}};
+  s.system.unitEconomics={externalApi:apiUnitEconomicsSnapshot(),caps:{marketRequestsPerMinute:cfg.marketRequestsPerMinute,heliusRequestsPerMinute:cfg.heliusRequestsPerMinute,dailySpendCapUsd:cfg.apiDailySpendCapUsd}};
   try{persistApiUnitEconomics('trader')}catch{}
   s.research.feedStats ||= {};
   for (const [name, h] of Object.entries(s.system.discoveryHealth || {})) {
@@ -524,6 +524,12 @@ async function cycle() {
   const followupPrices = dueMints.length ? await batchTokenPrices(dueMints) : new Map();
   const outcomeCutoff=Date.now()-2500;
   const settledOutcomes = settleOutcomeSamples(s, ranked, followupPrices);
+  const scanAttribution = attributeScanCycle({
+    candidates: ranked.length,
+    ready: ranked.filter(x => x.stage === 'READY').length,
+    watch: ranked.filter(x => x.stage === 'WATCH').length,
+    outcomesSettled: settledOutcomes,
+  });
   for(const o of (s.research?.learner?.outcomes||[]).filter(x=>Number(x.ts)>=outcomeCutoff)){
     const c=o.context||{}; const liq=Math.max(1,Number(c.liquidity||0)),execution=Math.max(0,Math.min(100,Number(c.execution||50)));
     const frictionPct=estimateRoundTripFrictionPct({liquidity:liq,executionScore:execution,rawReturnPct:Number(o.returnPct||0),feeBps:25});
@@ -576,6 +582,20 @@ async function cycle() {
   if (latestRpcHealth) s.rpcHealth = latestRpcHealth;
   s.market.solUsd = Number(await solPricePromise) || Number(s.market.solUsd || 0);
   updatePortfolio(s);
+  const econSnap=apiUnitEconomicsSnapshot();
+  const dataCostUsd=econSnap.totals.pricedRequests?econSnap.totals.configuredCostUsd:null;
+  const strategyNet=strategyNetPnlAfterDataCost({grossPnlSol:Number(stat(s,'UNIFIED_EDGE').pnlSol||0),dataCostUsd,solUsd:s.market.solUsd});
+  const edgeStatNet=stat(s,'UNIFIED_EDGE');
+  edgeStatNet.dataCostUsd=strategyNet.dataCostUsd;
+  edgeStatNet.netPnlSol=strategyNet.netPnlSol;
+  s.system.unitEconomics={
+    externalApi:econSnap,
+    caps:{marketRequestsPerMinute:cfg.marketRequestsPerMinute,heliusRequestsPerMinute:cfg.heliusRequestsPerMinute,dailySpendCapUsd:cfg.apiDailySpendCapUsd},
+    scanAttribution,
+    strategyNetPnl:strategyNet,
+    roiGuard:evaluateRoiGuard({costUsd:dataCostUsd,valueUsd:cfg.apiResearchValueUsd,minRoi:cfg.apiRoiGuardMinRoi}),
+  };
+  try{persistApiUnitEconomics('trader')}catch{}
   const lead=ranked[0];
   s.system.lastCycle = Date.now();
   supervisorTick(s, ranked);

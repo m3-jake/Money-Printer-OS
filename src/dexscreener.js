@@ -2,6 +2,9 @@ import { mapLimit } from './utils.js';
 import { programStreamHints } from './stream.js';
 import { createMarketRequester } from './marketRequests.js';
 import { cfg } from './config.js';
+import { configureApiSpendPolicy } from './apiUnitEconomics.js';
+
+configureApiSpendPolicy({dailySpendCapUsd:cfg.apiDailySpendCapUsd,roiValueUsd:cfg.apiResearchValueUsd,roiMinRoi:cfg.apiRoiGuardMinRoi});
 
 const BASE = 'https://api.dexscreener.com';
 const GECKO = 'https://api.geckoterminal.com/api/v2';
@@ -25,9 +28,9 @@ export async function solUsdPrice() {
   return solPriceCache.priceUsd || 0;
 }
 
-async function getJson(url, label = 'market feed', ttlMs = 20000) {
+async function getJson(url, label = 'market feed', ttlMs = 20000, purpose = 'scan') {
   const costPerRequestUsd=url.startsWith(GECKO)?cfg.geckoTerminalCostPerRequestUsd:cfg.dexScreenerCostPerRequestUsd;
-  return requests.get(url,label,{ttlMs,costPerRequestUsd,headers:{accept:url.startsWith(GECKO)?'application/json;version=20230203':'application/json','user-agent':'SolanaMemeScout/9.0'}});
+  return requests.get(url,label,{ttlMs,costPerRequestUsd,purpose,headers:{accept:url.startsWith(GECKO)?'application/json;version=20230203':'application/json','user-agent':'SolanaMemeScout/9.0'}});
 }
 
 async function feed(path, source, health) {
@@ -225,7 +228,7 @@ export async function batchTokenPrices(addresses = []) {
   const out = new Map();
   const unique = [...new Set(addresses.filter(Boolean))];
   const batches=[]; for(let i=0;i<unique.length;i+=30)batches.push(unique.slice(i,i+30));
-  const rows=await mapLimit(batches,3,async batch=>{try{return (await getJson(`${BASE}/tokens/v1/solana/${batch.join(',')}`,'dex:followup-batch',30000)).data||[]}catch{return[]}});
+  const rows=await mapLimit(batches,3,async batch=>{try{return (await getJson(`${BASE}/tokens/v1/solana/${batch.join(',')}`,'dex:followup-batch',30000,'research')).data||[]}catch{return[]}});
   for(const pairs of rows){for(const p of Array.isArray(pairs)?pairs:[]){const mint=p.baseToken?.address,price=Number(p.priceUsd||0);if(!mint||!(price>0))continue;const prev=out.get(mint);if(!prev||Number(p.liquidity?.usd||0)>prev.liq)out.set(mint,{price,liq:Number(p.liquidity?.usd||0)});}}
   return new Map([...out].map(([mint,x])=>[mint,x.price]));
 }

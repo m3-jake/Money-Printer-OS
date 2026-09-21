@@ -3,6 +3,9 @@ import { cfg } from './config.js';
 import { connection } from './rpc.js';
 import { withTimeout } from './utils.js';
 import { createMarketRequester } from './marketRequests.js';
+import { configureApiSpendPolicy } from './apiUnitEconomics.js';
+
+configureApiSpendPolicy({dailySpendCapUsd:cfg.apiDailySpendCapUsd,roiValueUsd:cfg.apiResearchValueUsd,roiMinRoi:cfg.apiRoiGuardMinRoi});
 
 const heliusRequests=createMarketRequester({timeoutMs:7000,requestsPerMinute:cfg.heliusRequestsPerMinute});
 export function transactionIndexerHealth(){return {helius:heliusRequests.health()}}
@@ -21,7 +24,7 @@ async function customFeed(mint,limit){if(!cfg.txFeedUrl)return null;const u=new 
 async function helius(mint,limit){
  if(!cfg.heliusApiKey)return null;
  const u=`https://api.helius.xyz/v0/addresses/${encodeURIComponent(mint)}/transactions?api-key=${encodeURIComponent(cfg.heliusApiKey)}&limit=${Math.min(100,limit)}`;
- const {data:rows}=await heliusRequests.get(u,'Helius enhanced transactions',{ttlMs:0,costPerRequestUsd:cfg.heliusCostPerRequestUsd});const events=[];
+ const {data:rows}=await heliusRequests.get(u,'Helius enhanced transactions',{ttlMs:0,costPerRequestUsd:cfg.heliusCostPerRequestUsd,purpose:'index'});const events=[];
  for(const tx of rows){let idx=0;for(const tr of tx.tokenTransfers||[]){if(tr.mint!==mint)continue;const amount=Number(tr.tokenAmount||0);if(tr.toUserAccount)events.push({signature:tx.signature,eventIndex:idx++,ts:Number(tx.timestamp||0)*1000,slot:tx.slot||0,mint,wallet:tr.toUserAccount,side:'BUY',tokenDelta:amount,solDelta:0,source:'helius',raw:{type:tx.type}});if(tr.fromUserAccount)events.push({signature:tx.signature,eventIndex:idx++,ts:Number(tx.timestamp||0)*1000,slot:tx.slot||0,mint,wallet:tr.fromUserAccount,side:'SELL',tokenDelta:-amount,solDelta:0,source:'helius',raw:{type:tx.type}})}
   for(const nt of tx.nativeTransfers||[]){if(nt.fromUserAccount&&nt.toUserAccount)events.push({funding:true,funder:nt.fromUserAccount,wallet:nt.toUserAccount,ts:Number(tx.timestamp||0)*1000,sol:Number(nt.amount||0)/1e9,signature:tx.signature})}
  }
@@ -35,5 +38,5 @@ export async function indexMintTransactions(mint,limit=50){try{return await cust
 
 export async function indexWalletFunding(wallet,beforeTs=Date.now(),limit=30){
  if(!cfg.heliusApiKey||!wallet)return[];
- try{const u=`https://api.helius.xyz/v0/addresses/${encodeURIComponent(wallet)}/transactions?api-key=${encodeURIComponent(cfg.heliusApiKey)}&limit=${Math.min(100,limit)}`;const {data:rows}=await heliusRequests.get(u,'Helius wallet funding',{ttlMs:0,costPerRequestUsd:cfg.heliusCostPerRequestUsd}),out=[];for(const tx of rows){const ts=Number(tx.timestamp||0)*1000;if(ts>beforeTs)continue;for(const nt of tx.nativeTransfers||[]){if(nt.toUserAccount===wallet&&nt.fromUserAccount&&nt.fromUserAccount!==wallet)out.push({funder:nt.fromUserAccount,wallet,ts,sol:Number(nt.amount||0)/1e9,signature:tx.signature})}}return out}catch{return[]}
+ try{const u=`https://api.helius.xyz/v0/addresses/${encodeURIComponent(wallet)}/transactions?api-key=${encodeURIComponent(cfg.heliusApiKey)}&limit=${Math.min(100,limit)}`;const {data:rows}=await heliusRequests.get(u,'Helius wallet funding',{ttlMs:0,costPerRequestUsd:cfg.heliusCostPerRequestUsd,purpose:'index'}),out=[];for(const tx of rows){const ts=Number(tx.timestamp||0)*1000;if(ts>beforeTs)continue;for(const nt of tx.nativeTransfers||[]){if(nt.toUserAccount===wallet&&nt.fromUserAccount&&nt.fromUserAccount!==wallet)out.push({funder:nt.fromUserAccount,wallet,ts,sol:Number(nt.amount||0)/1e9,signature:tx.signature})}}return out}catch{return[]}
 }

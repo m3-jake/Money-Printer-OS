@@ -1,22 +1,27 @@
-import {apiProviderFromUrl,recordApiRequest,recordApiCacheHit,recordApiCoalescedHit,recordApiCapReject,recordApiFailure} from './apiUnitEconomics.js';
+import {apiProviderFromUrl,recordApiRequest,recordApiCacheHit,recordApiCoalescedHit,recordApiCapReject,recordApiFailure,admitApiSpend,recordApiSpendCapReject,recordApiRoiGuardReject} from './apiUnitEconomics.js';
 
 // Coalesce reads, cancel timed-out transports and respect upstream retry windows.
 // Cache timestamps belong to the fetched data, never to the consumer's read.
 export function createMarketRequester({fetcher=(...args)=>globalThis.fetch(...args),now=Date.now,timeoutMs=6500,requestsPerMinute=120}={}) {
   const cache=new Map(),pending=new Map(),hosts=new Map();
-  const stats={requests:0,cacheHits:0,coalescedHits:0,rateLimits:0,timeouts:0,budgetRejects:0,failures:0};
+  const stats={requests:0,cacheHits:0,coalescedHits:0,rateLimits:0,timeouts:0,budgetRejects:0,spendCapRejects:0,roiGuardRejects:0,failures:0};
   const cap=Math.max(0,Number(requestsPerMinute)||0);
-  async function get(url,label='market feed',{ttlMs=20000,headers={},costPerRequestUsd=null}={}) {
+  async function get(url,label='market feed',{ttlMs=20000,headers={},costPerRequestUsd=null,purpose=null}={}) {
     const ts=now(),cached=cache.get(url),provider=apiProviderFromUrl(url);
-    if(cached&&ts-cached.fetchedAt<ttlMs){stats.cacheHits++;recordApiCacheHit(provider);return cached;}
-    if(pending.has(url)){stats.coalescedHits++;recordApiCoalescedHit(provider);return pending.get(url);}
+    if(cached&&ts-cached.fetchedAt<ttlMs){stats.cacheHits++;recordApiCacheHit(provider,{costPerRequestUsd,purpose});return cached;}
+    if(pending.has(url)){stats.coalescedHits++;recordApiCoalescedHit(provider,{costPerRequestUsd,purpose});return pending.get(url);}
     const host=new URL(url).host;
     const state=hosts.get(host)||{retryAt:0,failures:0,window:[]};
     hosts.set(host,state);
     if(ts<state.retryAt)throw new Error(`${label}: rate limit backoff until ${new Date(state.retryAt).toISOString()}`);
     state.window=state.window.filter(t=>ts-t<60000);
     if(cap>0&&state.window.length>=cap){stats.budgetRejects++;recordApiCapReject(provider);throw new Error(`${label}: local request budget exhausted (${cap}/min)`);}
-    state.window.push(ts);stats.requests++;recordApiRequest(provider,{costPerRequestUsd});
+    const admit=admitApiSpend({costUsd:costPerRequestUsd,now:ts});
+    if(!admit.ok){
+      if(admit.kind==='daily-spend-cap'){stats.spendCapRejects++;recordApiSpendCapReject(provider);throw new Error(`${label}: daily USD spend cap exhausted`);}
+      if(admit.kind==='roi-guard'){stats.roiGuardRejects++;recordApiRoiGuardReject(provider);throw new Error(`${label}: ROI guard blocked spend`);}
+    }
+    state.window.push(ts);stats.requests++;recordApiRequest(provider,{costPerRequestUsd,purpose,now:ts});
     const task=(async()=>{
       const controller=new AbortController();
       const timer=setTimeout(()=>controller.abort(),timeoutMs);

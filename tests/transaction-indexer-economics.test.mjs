@@ -35,4 +35,6 @@ test('Helius indexing uses the configured cap and explicit request cost accounti
   const econ=apiUnitEconomicsSnapshot().providers.helius;
   assert.equal(econ.requests,2);assert.equal(econ.capRejects,1);assert.equal(econ.pricedRequests,2);assert.equal(econ.unpricedRequests,0);
   assert.equal(econ.configuredCostUsd,.003);
+  assert.equal(econ.purposes.index.pricedRequests,2);
+  assert.equal(econ.purposes.index.configuredCostUsd,.003);
 });
