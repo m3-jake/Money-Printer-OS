@@ -64,4 +64,36 @@ test('a failure writing the remainder back leaves the .drain file on disk instea
   for (const n of drainFiles) fs.rmSync(path.join(DIR, n), { force: true });
 });
 
+// scan-candidate rows are ~98% of market.ndjson by volume (~1 GB/day measured). The research
+// machine needs them - they are the Evolution Lab's dataset - but a laptop that only trades can
+// drop them. Everything else must still be journaled either way.
+test('MPO_JOURNAL_SCAN_CANDIDATES=false drops only scan-candidate rows', async () => {
+  const sub = fs.mkdtempSync(path.join(os.tmpdir(), 'mpo-journal-'));
+  const run = async (flag) => {
+    const mod = await import(`../src/store.js?journal=${flag}`);
+    return mod;
+  };
+  // default: everything is kept
+  process.env.MONEY_PRINTER_DATA_DIR = sub;
+  delete process.env.MPO_JOURNAL_SCAN_CANDIDATES;
+  const on = await run('on');
+  on.appendJournalBatch([{ type: 'scan-candidate', a: 1 }, { type: 'trade-open', a: 2 }]);
+  on.appendJournal({ type: 'scan-candidate', a: 3 });
+  let rows = fs.readFileSync(path.join(sub, 'market.ndjson'), 'utf8').trim().split('\n').map(JSON.parse);
+  assert.deepEqual(rows.map(r => r.type), ['scan-candidate', 'trade-open', 'scan-candidate']);
+
+  // opted out: scan-candidate is dropped, the rest survives
+  fs.rmSync(path.join(sub, 'market.ndjson'), { force: true });
+  process.env.MPO_JOURNAL_SCAN_CANDIDATES = 'false';
+  const off = await run('off');
+  assert.equal(off.JOURNAL_SCAN_CANDIDATES, false);
+  off.appendJournalBatch([{ type: 'scan-candidate', a: 1 }, { type: 'trade-open', a: 2 }]);
+  off.appendJournal({ type: 'scan-candidate', a: 3 });
+  off.appendJournal({ type: 'trade-close', a: 4 });
+  rows = fs.readFileSync(path.join(sub, 'market.ndjson'), 'utf8').trim().split('\n').map(JSON.parse);
+  assert.deepEqual(rows.map(r => r.type), ['trade-open', 'trade-close'], 'only scan-candidate is dropped');
+  delete process.env.MPO_JOURNAL_SCAN_CANDIDATES;
+  fs.rmSync(sub, { recursive: true, force: true });
+});
+
 test.after(() => { try { fs.rmSync(DIR, { recursive: true, force: true }); } catch {} });
