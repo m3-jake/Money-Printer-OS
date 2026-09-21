@@ -339,13 +339,23 @@ function rotateJournalIfNeeded() {
   } catch {}
 }
 
+// scan-candidate rows are ~98% of market.ndjson by volume - measured at ~1 GB a day on
+// WITCHDOCTOR. They are the research dataset the Evolution Lab trains on, so the research
+// machine must keep them. A laptop that only trades gains nothing from the writes and pays for
+// them in SSD wear and battery, so it can opt out with MPO_JOURNAL_SCAN_CANDIDATES=false.
+// Rotation already bounds the footprint (3 x JOURNAL_MAX_BYTES); this bounds the write rate.
+export const JOURNAL_SCAN_CANDIDATES = String(process.env.MPO_JOURNAL_SCAN_CANDIDATES ?? '').trim().toLowerCase() !== 'false';
+const journalKeeps = row => JOURNAL_SCAN_CANDIDATES || row?.type !== 'scan-candidate';
+
 export function appendJournal(row) {
+  if (!journalKeeps(row)) return;
   fs.mkdirSync(dir, { recursive: true });
   rotateJournalIfNeeded();
   fs.appendFileSync(journalFile, `${JSON.stringify({ ...row, ts: row.ts || Date.now() })}\n`);
 }
 
 export function appendJournalBatch(rows = []) {
+  rows = rows.filter(journalKeeps);
   if (!rows.length) return;
   fs.mkdirSync(dir, { recursive: true });
   rotateJournalIfNeeded();
