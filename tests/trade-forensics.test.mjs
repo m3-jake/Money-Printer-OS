@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {diagnoseCloses,diagnoseStalePurge,cohortStats} from '../src/tradeForensics.js';
+import {diagnoseCloses,diagnoseStalePurge,cohortStats,effectiveMaxHold} from '../src/tradeForensics.js';
 
 function trade(i,{reason='stop-loss',ret=-8,pnl=-0.001,hold=2,liq=40000,mfe=0,mae=-6}={}){
   const opened=1_000_000+i*60_000;
@@ -65,4 +65,36 @@ test('CLI refuses to write into the app data directory and import fence holds',(
     const report=JSON.parse(fs.readFileSync(out,'utf8'));
     assert.equal(report.stalePurge.n,1);
   }finally{fs.rmSync(dir,{recursive:true,force:true})}
+});
+
+// index.js:312 takes maxHold from the applied evolution champion, whose only bound in
+// learner.js is Math.max(1, ...). diagnoseStalePurge used to compare every run against a
+// hardcoded 25, so a champion on a 2-minute hold reported "hold time does not match SPRINT
+// maxHold 25" forever - and researchReport.js gates on that string, so the gate was useless.
+test('stale-purge is judged against the maxHold actually in force', () => {
+  const xs = Array.from({ length: 6 }, (_, i) => trade(i, { reason: 'stale-purge', ret: 12, pnl: 0.01, hold: 2 }));
+
+  const wrong = diagnoseStalePurge(xs);                                   // legacy default of 25
+  assert.equal(wrong.matchesMaxHold, false);
+  assert.match(wrong.cause, /does not match maxHold 25/);
+
+  const right = diagnoseStalePurge(xs, { maxHoldMin: 2, maxHoldSource: 'champion X-1' });
+  assert.equal(right.matchesMaxHold, true, 'a 2-minute hold matches a 2-minute maxHold');
+  assert.match(right.cause, /maxHold 2-min timer \(champion X-1\)/);
+});
+
+test('effectiveMaxHold prefers the applied champion, then the preset, then the default', () => {
+  const champ = { id: 'C-9', variant: { maxHoldMin: 2 } };
+
+  assert.deepEqual(
+    effectiveMaxHold({ evolutionLoop: { champion: champ }, runtime: { activeEvolutionChampionId: 'C-9', exitPreset: 'yolo' } }),
+    { maxHoldMin: 2, maxHoldSource: 'champion C-9' });
+
+  // a champion that exists but is NOT the applied one must not be used
+  assert.deepEqual(
+    effectiveMaxHold({ evolutionLoop: { champion: champ }, runtime: { activeEvolutionChampionId: null, exitPreset: 'sprint' } }),
+    { maxHoldMin: 25, maxHoldSource: 'preset sprint' });
+
+  assert.deepEqual(effectiveMaxHold({ runtime: { exitPreset: 'yolo' } }), { maxHoldMin: 360, maxHoldSource: 'preset yolo' });
+  assert.deepEqual(effectiveMaxHold({}), { maxHoldMin: 25, maxHoldSource: 'default' });
 });
