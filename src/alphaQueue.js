@@ -60,12 +60,15 @@ export function drainAlphaEvents(limit=2000){
   try{const size=fs.statSync(file).size;if(size>QUEUE_MAX_BYTES){quarantineAlphaQueue(`${size} bytes`);return[]}}catch{}
   const tmp=`${file}.${process.pid}.${Date.now()}.drain`;
   try{fs.renameSync(file,tmp)}catch{return[]}
-  try{
-    const xs=fs.readFileSync(tmp,'utf8').split('\n').filter(Boolean);
-    const take=xs.slice(0,limit),remain=xs.slice(limit);
-    if(remain.length)fs.appendFileSync(file,remain.join('\n')+'\n');
-    return take.map(x=>{try{return JSON.parse(x)}catch{return null}}).filter(Boolean);
-  }finally{try{fs.rmSync(tmp,{force:true})}catch{}}
+  // Same rule as store.js drainActions: only remove the drain file once the remainder is durably
+  // written back. Deleting it in a finally destroyed the whole batch when the write-back failed
+  // (ENOSPC, read-only data dir) - both the events being returned and the remainder being
+  // re-queued. cleanupAlphaDrains still reclaims it after DRAIN_ORPHAN_MS.
+  const xs=fs.readFileSync(tmp,'utf8').split('\n').filter(Boolean);
+  const take=xs.slice(0,limit),remain=xs.slice(limit);
+  if(remain.length)fs.appendFileSync(file,remain.join('\n')+'\n');
+  fs.rmSync(tmp,{force:true});
+  return take.map(x=>{try{return JSON.parse(x)}catch{return null}}).filter(Boolean);
 }
 
 for(const sig of ['beforeExit','exit'])process.on(sig,flush);

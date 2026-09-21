@@ -43,6 +43,7 @@ test('orphaned drain files older than the grace period are swept, fresh ones are
   fs.utimesSync(old, past / 1000, past / 1000);
   assert.equal(cleanupAlphaDrains(), 1);
   assert.ok(!fs.existsSync(old)); assert.ok(fs.existsSync(fresh));
+  fs.rmSync(fresh, { force: true });
 });
 
 test('candidate dedupe (one row per mint per 30s) is unaffected by the byte rail', () => {
@@ -51,6 +52,29 @@ test('candidate dedupe (one row per mint per 30s) is unaffected by the byte rail
   assert.equal(enqueueAlphaEvent({ ...row, ts: row.ts + 1000 }), false);
   flushAlphaEvents();
   assert.deepEqual(drainAlphaEvents().map(a => a.observation.mint), ['DEDUPE-MINT']);
+});
+
+// The same data-loss path that was fixed in store.js drainActions, which this file's sibling
+// commit missed here: a failed write-back of the remainder must not destroy the batch.
+test('a failure writing the remainder back leaves the .drain file on disk instead of deleting it', () => {
+  enqueueAlphaEvent({ type: 'outcome', outcome: { mint: 'A' } });
+  enqueueAlphaEvent({ type: 'outcome', outcome: { mint: 'B' } });
+  flushAlphaEvents();
+  const original = fs.appendFileSync;
+  fs.appendFileSync = (p, ...rest) => {
+    if (String(p) === Q) throw Object.assign(new Error('ENOSPC: no space left on device'), { code: 'ENOSPC' });
+    return original(p, ...rest);
+  };
+  try {
+    assert.throws(() => drainAlphaEvents(1), /ENOSPC/);
+  } finally {
+    fs.appendFileSync = original;
+  }
+  const drains = fs.readdirSync(DIR).filter(n => n.startsWith('alpha-queue.ndjson.') && n.endsWith('.drain'));
+  assert.equal(drains.length, 1, 'the drain file must survive a failed write-back');
+  const recovered = fs.readFileSync(path.join(DIR, drains[0]), 'utf8').split('\n').filter(Boolean);
+  assert.equal(recovered.length, 2, 'both the taken event and the remainder are still recoverable');
+  for (const n of drains) fs.rmSync(path.join(DIR, n), { force: true });
 });
 
 test.after(() => { try { fs.rmSync(DIR, { recursive: true, force: true }); } catch {} });
