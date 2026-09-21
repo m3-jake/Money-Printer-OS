@@ -77,6 +77,18 @@ try {
   add(mode === 'NORMAL' ? 'WARN' : 'OK', 'research mode',
     `${mode}, batch ${batch}, ${s.workerCount} workers` + (mode === 'NORMAL' ? ' - profiles missing or disabled?' : ''));
 
+  // Is the loop actually reaching disk? saveLocalLoop swallowed its failures, so on 2026-09-21
+  // evolution-loop.json froze at generation 53,549 for ten hours while every other signal here
+  // read healthy and the in-memory loop climbed to 120,602. Only an orphaned .tmp saved it.
+  const lw = s.loopWrite || lab.status?.loopWrite;
+  if (lw) {
+    const staleMin = lw.staleMs == null ? null : Math.round(lw.staleMs / 60000);
+    const bad = lw.lastWriteAt === 0 || (staleMin != null && staleMin > 10);
+    add(bad ? 'RED' : lw.errors ? 'WARN' : 'OK', 'loop persisted',
+      lw.lastWriteAt === 0 ? 'never written this run' :
+      `${staleMin}m since last durable write, ${lw.errors} write error(s)` + (lw.lastError ? ` - ${String(lw.lastError).slice(0, 80)}` : ''));
+  }
+
   const pubAt = lab.champion?.publishedAt;
   if (pubAt) {
     const h = (Date.now() - pubAt) / 3600000;
