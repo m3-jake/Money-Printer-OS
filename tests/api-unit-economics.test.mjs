@@ -115,16 +115,17 @@ test('ROI guard is inactive without explicit cost and value and only blocks pric
   let calls=0;
   const requester=createMarketRequester({requestsPerMinute:20,fetcher:async()=>{calls++;return Response.json({ok:true})}});
   await requester.get('https://api.dexscreener.com/a','dex',{ttlMs:0,costPerRequestUsd:.003,purpose:'research'});
-  await assert.rejects(requester.get('https://api.dexscreener.com/b','dex',{ttlMs:0,costPerRequestUsd:.002,purpose:'research'}),/ROI guard blocked spend/);
+  await assert.rejects(requester.get('https://api.dexscreener.com/b','dex',{ttlMs:0,costPerRequestUsd:.005,purpose:'research'}),/ROI guard blocked spend/);
   await requester.get('https://api.dexscreener.com/c','dex',{ttlMs:0,purpose:'research'});
   assert.equal(calls,2);
   assert.equal(apiUnitEconomicsSnapshot().providers.dexscreener.roiGuardRejects,1);
   assert.equal(requester.health().roiGuardRejects,1);
   resetApiUnitEconomicsForTests();
   configureApiSpendPolicy({roiValueUsd:1,roiMinRoi:1});
-  assert.equal(admitApiSpend({costUsd:.01}).ok,true);
-  assert.equal(admitApiSpend({costUsd:2}).ok,false);
-  assert.equal(admitApiSpend({costUsd:2,valueUsd:null}).ok,true);
+  assert.equal(admitApiSpend({costUsd:.01,purpose:'research'}).ok,true);
+  assert.equal(admitApiSpend({costUsd:2,purpose:'research'}).ok,false);
+  assert.equal(admitApiSpend({costUsd:2,purpose:'scan'}).ok,true);
+  assert.equal(admitApiSpend({costUsd:2,purpose:'research',valueUsd:null}).ok,true);
 });
 
 test('scan-cycle attribution and net strategy P&L after data costs leave gross trading P&L untouched',()=>{

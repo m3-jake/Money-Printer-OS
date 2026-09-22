@@ -82,14 +82,17 @@ export function evaluateRoiGuard({costUsd=null,valueUsd=null,minRoi=null}={}){
   return {active:true,ok,reason:ok?'roi-ok':'roi-below-min',costUsd:c,valueUsd:v,roi,minRoi:min};
 }
 
-export function admitApiSpend({costUsd=null,valueUsd,now}={}){
+export function admitApiSpend({costUsd=null,valueUsd,now,purpose=null}={}){
   const ts=now??policy.now();
   const cap=evaluateDailySpendCap({costUsd,now:ts});
   if(!cap.ok)return {ok:false,kind:'daily-spend-cap',cap,roi:null};
   const c=validCost(costUsd);
-  const v=valueUsd===undefined?policy.roiValueUsd:validCost(valueUsd);
-  const costForRoi=c===null?null:money(daySpendUsd+c);
-  const roi=evaluateRoiGuard({costUsd:costForRoi,valueUsd:v,minRoi:policy.roiMinRoi});
+  const scopedPurpose=purposeName(purpose);
+  // API_RESEARCH_VALUE_USD is a per-request research value estimate. It must not
+  // silently gate baseline scan/index traffic, and each request is judged on its
+  // own incremental cost rather than cumulative daily spend.
+  const v=valueUsd===undefined?(scopedPurpose==='research'?policy.roiValueUsd:null):validCost(valueUsd);
+  const roi=evaluateRoiGuard({costUsd:c,valueUsd:v,minRoi:policy.roiMinRoi});
   if(roi.active&&!roi.ok)return {ok:false,kind:'roi-guard',cap,roi};
   return {ok:true,kind:'admit',cap,roi};
 }
@@ -203,15 +206,11 @@ function dailyView(now){
 export function apiUnitEconomicsSnapshot(){
   const rows=normalizedRows();
   const t=totals(rows);
-  const roi=evaluateRoiGuard({
-    costUsd:t.pricedRequests?t.configuredCostUsd:null,
-    valueUsd:policy.roiValueUsd,
-    minRoi:policy.roiMinRoi,
-  });
+  const roi={scope:'research',mode:'per-request',configured:policy.roiValueUsd!==null,valueUsd:policy.roiValueUsd,minRoi:policy.roiMinRoi,rejects:t.roiGuardRejects};
   return {
     schema:'mpo.api-unit-economics.v1',startedAt,updatedAt:Date.now(),providers:rows,totals:t,
     daily:dailyView(),scanAttribution:scanAttributionView(),roiGuard:roi,spendPolicy:apiSpendPolicy(),
-    costSemantics:'configured per-request costs only; unpriced requests are reported separately; avoidedCostUsd is configured cost of cache and coalesced hits; daily spend caps and ROI guard apply only to priced requests and only when those inputs are explicitly configured',
+    costSemantics:'configured per-request costs only; unpriced requests are reported separately; avoidedCostUsd is configured cost of cache and coalesced hits; daily spend caps apply only to priced requests; ROI guard applies only to purpose=research priced requests with explicit research value and cost inputs',
   };
 }
 export function persistApiUnitEconomics(role='trader'){
@@ -250,7 +249,7 @@ export function readApiUnitEconomics({maxAgeMs=10*60_000}={}){
   return {
     schema:'mpo.api-unit-economics.v1',updatedAt:now,roles,providers:providersOut,totals:t,
     scanAttribution:scanAttributionView(attr),
-    costSemantics:'configured per-request costs only; unpriced requests are reported separately; avoidedCostUsd is configured cost of cache and coalesced hits; daily spend caps and ROI guard apply only to priced requests and only when those inputs are explicitly configured',
+    costSemantics:'configured per-request costs only; unpriced requests are reported separately; avoidedCostUsd is configured cost of cache and coalesced hits; daily spend caps apply only to priced requests; ROI guard applies only to purpose=research priced requests with explicit research value and cost inputs',
   };
 }
 export function resetApiUnitEconomicsForTests(){

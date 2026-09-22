@@ -24,7 +24,7 @@ import { enqueueAlphaEvent } from './alphaQueue.js';
 import { dailyPnl, recentPnl, bookClosedPnl, unrealizedPnl, equity, updatePortfolio } from './accounting.js';
 import { startAlphaWorker, stopAlphaWorker } from './alphaWorkerManager.js';
 import { exitSimulation, paperExitQuote, reviewPositionPrice, entrySizing, paperEntryRejection } from './positionExecution.js';
-import { apiUnitEconomicsSnapshot, persistApiUnitEconomics, attributeScanCycle, strategyNetPnlAfterDataCost, evaluateRoiGuard } from './apiUnitEconomics.js';
+import { apiUnitEconomicsSnapshot, persistApiUnitEconomics, attributeScanCycle, strategyNetPnlAfterDataCost } from './apiUnitEconomics.js';
 
 const once = process.argv.includes('--once');
 const dashboardOnly = process.argv.includes('--dashboard-only');
@@ -593,7 +593,7 @@ async function cycle() {
     caps:{marketRequestsPerMinute:cfg.marketRequestsPerMinute,heliusRequestsPerMinute:cfg.heliusRequestsPerMinute,dailySpendCapUsd:cfg.apiDailySpendCapUsd},
     scanAttribution,
     strategyNetPnl:strategyNet,
-    roiGuard:evaluateRoiGuard({costUsd:dataCostUsd,valueUsd:cfg.apiResearchValueUsd,minRoi:cfg.apiRoiGuardMinRoi}),
+    roiGuard:econSnap.roiGuard,
   };
   try{persistApiUnitEconomics('trader')}catch{}
   const lead=ranked[0];

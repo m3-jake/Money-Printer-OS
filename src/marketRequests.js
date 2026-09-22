@@ -16,7 +16,7 @@ export function createMarketRequester({fetcher=(...args)=>globalThis.fetch(...ar
     if(ts<state.retryAt)throw new Error(`${label}: rate limit backoff until ${new Date(state.retryAt).toISOString()}`);
     state.window=state.window.filter(t=>ts-t<60000);
     if(cap>0&&state.window.length>=cap){stats.budgetRejects++;recordApiCapReject(provider);throw new Error(`${label}: local request budget exhausted (${cap}/min)`);}
-    const admit=admitApiSpend({costUsd:costPerRequestUsd,now:ts});
+    const admit=admitApiSpend({costUsd:costPerRequestUsd,now:ts,purpose});
     if(!admit.ok){
       if(admit.kind==='daily-spend-cap'){stats.spendCapRejects++;recordApiSpendCapReject(provider);throw new Error(`${label}: daily USD spend cap exhausted`);}
       if(admit.kind==='roi-guard'){stats.roiGuardRejects++;recordApiRoiGuardReject(provider);throw new Error(`${label}: ROI guard blocked spend`);}
