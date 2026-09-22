@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {createMarketRequester} from '../src/marketRequests.js';
-import {apiUnitEconomicsSnapshot,resetApiUnitEconomicsForTests,persistApiUnitEconomics,readApiUnitEconomics,configureApiSpendPolicy,evaluateRoiGuard,evaluateDailySpendCap,admitApiSpend,attributeScanCycle,strategyNetPnlAfterDataCost,recordApiRequest} from '../src/apiUnitEconomics.js';
+import {apiUnitEconomicsSnapshot,resetApiUnitEconomicsForTests,persistApiUnitEconomics,readApiUnitEconomics,configureApiSpendPolicy,evaluateRoiGuard,evaluateDailySpendCap,admitApiSpend,attributeScanCycle,strategyNetPnlAfterDataCost,recordApiRequest,recordApiCacheHit} from '../src/apiUnitEconomics.js';
 
 test.beforeEach(()=>resetApiUnitEconomicsForTests());
 
@@ -139,6 +139,83 @@ test('scan-cycle attribution and net strategy P&L after data costs leave gross t
   assert.equal(unknown.netPnlSol,-0.4);assert.equal(unknown.adjusted,false);assert.equal(unknown.dataCostUsd,null);
   const noFx=strategyNetPnlAfterDataCost({grossPnlSol:1,dataCostUsd:20,solUsd:null});
   assert.equal(noFx.netPnlSol,null);assert.equal(noFx.dataCostUsd,20);
+});
+
+test('scan outcome costs use scan-purpose spend only while strategy net P&L stays on total priced data cost',()=>{
+  recordApiRequest('dexscreener',{costPerRequestUsd:.01,purpose:'scan'});
+  recordApiRequest('dexscreener',{costPerRequestUsd:.05,purpose:'research'});
+  recordApiRequest('helius',{costPerRequestUsd:.02,purpose:'index'});
+  recordApiCacheHit('dexscreener',{costPerRequestUsd:.01,purpose:'scan'});
+  recordApiCacheHit('dexscreener',{costPerRequestUsd:.04,purpose:'research'});
+  recordApiCacheHit('helius',{costPerRequestUsd:.03,purpose:'index'});
+  const attr=attributeScanCycle({candidates:10,ready:2,watch:1,outcomesSettled:5});
+  assert.equal(attr.configuredCostUsd,.01);
+  assert.equal(attr.costPerScan,.01);
+  assert.equal(attr.costPerCandidate,.001);
+  assert.equal(attr.costPerReady,.005);
+  assert.equal(attr.costPerOutcome,.002);
+  assert.equal(attr.costBasis,'scan-purpose-configured-spend');
+  recordApiRequest('dexscreener',{costPerRequestUsd:.02,purpose:'scan'});
+  recordApiRequest('dexscreener',{costPerRequestUsd:.09,purpose:'research'});
+  const attr2=attributeScanCycle({candidates:5,ready:1,watch:0,outcomesSettled:1});
+  assert.equal(attr2.configuredCostUsd,.03);
+  assert.equal(attr2.scans,2);
+  assert.equal(attr2.costPerScan,.015);
+  const snap=apiUnitEconomicsSnapshot();
+  assert.equal(snap.schema,'mpo.api-unit-economics.v1');
+  assert.equal(snap.totals.configuredCostUsd,.19);
+  assert.equal(snap.totals.avoidedCostUsd,.08);
+  assert.equal(snap.purposeSpend.scan.configuredCostUsd,.03);
+  assert.equal(snap.purposeSpend.scan.avoidedCostUsd,.01);
+  assert.equal(snap.purposeSpend.scan.efficiency,.25);
+  assert.equal(snap.purposeSpend.research.configuredCostUsd,.14);
+  assert.equal(snap.purposeSpend.research.avoidedCostUsd,.04);
+  assert.equal(snap.purposeSpend.research.efficiency,.222222);
+  assert.equal(snap.purposeSpend.index.configuredCostUsd,.02);
+  assert.equal(snap.purposeSpend.index.avoidedCostUsd,.03);
+  assert.equal(snap.purposeSpend.index.efficiency,.6);
+  assert.equal(snap.totals.purposes.scan.efficiency,.25);
+  const net=strategyNetPnlAfterDataCost({grossPnlSol:1,dataCostUsd:snap.totals.configuredCostUsd,solUsd:200});
+  assert.equal(net.dataCostUsd,.19);
+  assert.equal(net.dataCostSol,.00095);
+  assert.equal(net.netPnlSol,.99905);
+  assert.equal(net.grossPnlSol,1);
+  assert.notEqual(net.dataCostUsd,attr2.configuredCostUsd);
+});
+
+test('unit-economics snapshot keeps v1 keys and extends with purposeSpend',()=>{
+  const snap=apiUnitEconomicsSnapshot();
+  for(const k of ['schema','startedAt','updatedAt','providers','totals','daily','scanAttribution','roiGuard','spendPolicy','costSemantics']){
+    assert.ok(k in snap,k);
+  }
+  assert.equal(snap.schema,'mpo.api-unit-economics.v1');
+  for(const k of ['scans','candidates','ready','watch','outcomesSettled','configuredCostUsd','costPerScan','costPerCandidate','costPerReady','costPerOutcome']){
+    assert.ok(k in snap.scanAttribution,k);
+  }
+  for(const k of ['scan','research','index']){
+    assert.equal(snap.purposeSpend[k].configuredCostUsd,0);
+    assert.equal(snap.purposeSpend[k].avoidedCostUsd,0);
+    assert.equal(snap.purposeSpend[k].efficiency,0);
+  }
+});
+
+test('persisted role snapshots merge purpose spend without mixing scan outcome cost',()=>{
+  const role=`test-purpose-${process.pid}`;
+  recordApiRequest('dexscreener',{costPerRequestUsd:.004,purpose:'scan'});
+  recordApiRequest('dexscreener',{costPerRequestUsd:.006,purpose:'research'});
+  recordApiCacheHit('dexscreener',{costPerRequestUsd:.002,purpose:'scan'});
+  attributeScanCycle({candidates:2,ready:1,watch:0,outcomesSettled:1});
+  persistApiUnitEconomics(role);
+  const merged=readApiUnitEconomics({maxAgeMs:60000});
+  assert.equal(merged.schema,'mpo.api-unit-economics.v1');
+  assert.equal(merged.scanAttribution.configuredCostUsd,.004);
+  assert.equal(merged.scanAttribution.costPerOutcome,.004);
+  assert.equal(merged.purposeSpend.scan.configuredCostUsd,.004);
+  assert.equal(merged.purposeSpend.scan.avoidedCostUsd,.002);
+  assert.equal(merged.purposeSpend.scan.efficiency,.333333);
+  assert.equal(merged.purposeSpend.research.configuredCostUsd,.006);
+  assert.equal(merged.totals.configuredCostUsd,.01);
+  try{fs.rmSync(path.resolve(process.env.MONEY_PRINTER_DATA_DIR||'data','api-unit-economics',`${role}.json`),{force:true})}catch{}
 });
 
 test('daily spend cap rolls over at UTC day boundary',()=>{

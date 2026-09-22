@@ -583,7 +583,7 @@ async function cycle() {
   s.market.solUsd = Number(await solPricePromise) || Number(s.market.solUsd || 0);
   updatePortfolio(s);
   const econSnap=apiUnitEconomicsSnapshot();
-  const dataCostUsd=econSnap.totals.pricedRequests?econSnap.totals.configuredCostUsd:null;
+  const dataCostUsd=econSnap.totals.pricedRequests?econSnap.totals.configuredCostUsd:null; // total priced data cost, not scan-purpose-only attribution
   const strategyNet=strategyNetPnlAfterDataCost({grossPnlSol:Number(stat(s,'UNIFIED_EDGE').pnlSol||0),dataCostUsd,solUsd:s.market.solUsd});
   const edgeStatNet=stat(s,'UNIFIED_EDGE');
   edgeStatNet.dataCostUsd=strategyNet.dataCostUsd;

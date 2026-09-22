@@ -42,8 +42,41 @@ function rollDay(ts){
   if(d!==dayKey){dayKey=d;daySpendUsd=0}
   return d;
 }
-function currentConfiguredCost(){
-  let t=0;for(const x of providers.values())t+=Number(x.configuredCostUsd||0);return money(t);
+function currentConfiguredCost(purpose=null){
+  let t=0;
+  if(purpose){
+    const k=purposeName(purpose);
+    for(const x of providers.values())t+=Number(x.purposes?.[k]?.configuredCostUsd||0);
+  }else{
+    for(const x of providers.values())t+=Number(x.configuredCostUsd||0);
+  }
+  return money(t);
+}
+function spendEfficiency(configured,avoided){
+  const c=money(configured),a=money(avoided),d=c+a;
+  return d?Math.round(a/d*1e6)/1e6:0;
+}
+function requestAvoidance(requests,cacheHits,coalescedHits){
+  const saved=Number(cacheHits||0)+Number(coalescedHits||0);
+  const total=Number(requests||0)+saved;
+  return total?Math.round(saved/total*1e6)/1e6:0;
+}
+function decoratePurpose(p=emptyPurpose()){
+  const configured=money(p.configuredCostUsd),avoided=money(p.avoidedCostUsd);
+  return {
+    requests:Number(p.requests||0),pricedRequests:Number(p.pricedRequests||0),unpricedRequests:Number(p.unpricedRequests||0),
+    configuredCostUsd:configured,cacheHits:Number(p.cacheHits||0),coalescedHits:Number(p.coalescedHits||0),avoidedCostUsd:avoided,
+    efficiency:spendEfficiency(configured,avoided),
+    cacheAvoidanceRate:requestAvoidance(p.requests,p.cacheHits,p.coalescedHits),
+  };
+}
+function purposeSpendView(purposes){
+  const out={};
+  for(const k of PURPOSES){
+    const p=decoratePurpose(purposes?.[k]);
+    out[k]={configuredCostUsd:p.configuredCostUsd,avoidedCostUsd:p.avoidedCostUsd,efficiency:p.efficiency};
+  }
+  return out;
 }
 
 export function configureApiSpendPolicy(patch={}){
@@ -126,7 +159,7 @@ export function recordApiRoiGuardReject(provider){row(provider).roiGuardRejects+
 export function recordApiFailure(provider){row(provider).failures++}
 
 export function attributeScanCycle({candidates=0,ready=0,watch=0,outcomesSettled=0}={}){
-  const current=currentConfiguredCost();
+  const current=currentConfiguredCost('scan');
   const delta=money(Math.max(0,current-attribution.lastMarkCostUsd));
   attribution.lastMarkCostUsd=current;
   attribution.scans++;
@@ -150,17 +183,18 @@ export function strategyNetPnlAfterDataCost({grossPnlSol=null,dataCostUsd=null,s
 }
 
 function scanAttributionView(a=attribution){
-  const cost=money(a.attributedCostUsd??a.configuredCostUsd??0);
+  const cost=money(a.attributedCostUsd??a.scanConfiguredCostUsd??a.configuredCostUsd??0);
   const per=(n)=>n?money(cost/n):null;
   return {
     scans:Number(a.scans||0),candidates:Number(a.candidates||0),ready:Number(a.ready||0),watch:Number(a.watch||0),
     outcomesSettled:Number(a.outcomesSettled||0),configuredCostUsd:cost,
     costPerScan:per(a.scans),costPerCandidate:per(a.candidates),costPerReady:per(a.ready),costPerOutcome:per(a.outcomesSettled),
+    costBasis:'scan-purpose-configured-spend',
   };
 }
 
 function clonePurpose(p=emptyPurpose()){
-  return {...emptyPurpose(),...p,configuredCostUsd:money(p.configuredCostUsd),avoidedCostUsd:money(p.avoidedCostUsd)};
+  return decoratePurpose(p);
 }
 function clonePurposes(src){
   const out=emptyPurposes();
@@ -176,6 +210,7 @@ function normalizedRows(source=providers){
       configuredCostUsd:money(x.configuredCostUsd),avoidedCostUsd:money(x.avoidedCostUsd||0),
       spendCapRejects:Number(x.spendCapRejects||0),roiGuardRejects:Number(x.roiGuardRejects||0),
       cacheAvoidanceRate:total?Math.round(saved/total*1e6)/1e6:0,
+      efficiency:spendEfficiency(x.configuredCostUsd,x.avoidedCostUsd||0),
       purposes:clonePurposes(x.purposes),
     };
   }
@@ -192,9 +227,10 @@ function totals(rows){
     }
   }
   t.configuredCostUsd=money(t.configuredCostUsd);t.avoidedCostUsd=money(t.avoidedCostUsd);
-  for(const k of PURPOSES){t.purposes[k].configuredCostUsd=money(t.purposes[k].configuredCostUsd);t.purposes[k].avoidedCostUsd=money(t.purposes[k].avoidedCostUsd)}
+  for(const k of PURPOSES)t.purposes[k]=decoratePurpose(t.purposes[k]);
   const saved=t.cacheHits+t.coalescedHits,total=t.requests+saved;
   t.cacheAvoidanceRate=total?Math.round(saved/total*1e6)/1e6:0;
+  t.efficiency=spendEfficiency(t.configuredCostUsd,t.avoidedCostUsd);
   return t;
 }
 function dailyView(now){
@@ -203,14 +239,16 @@ function dailyView(now){
   return {day:dayKey,spentUsd:money(daySpendUsd),capUsd:cap,remainingUsd:cap==null?null:money(Math.max(0,cap-daySpendUsd))};
 }
 
+const COST_SEMANTICS='configured per-request costs only; unpriced requests are reported separately; avoidedCostUsd is configured cost of cache and coalesced hits; daily spend caps apply only to priced requests; ROI guard applies only to purpose=research priced requests with explicit research value and cost inputs; scanAttribution outcome costs use scan-purpose configured spend only; strategy net P&L uses total priced configured cost; purposeSpend reports configured and avoided spend and spend-avoidance efficiency per purpose';
+
 export function apiUnitEconomicsSnapshot(){
   const rows=normalizedRows();
   const t=totals(rows);
   const roi={scope:'research',mode:'per-request',configured:policy.roiValueUsd!==null,valueUsd:policy.roiValueUsd,minRoi:policy.roiMinRoi,rejects:t.roiGuardRejects};
   return {
     schema:'mpo.api-unit-economics.v1',startedAt,updatedAt:Date.now(),providers:rows,totals:t,
-    daily:dailyView(),scanAttribution:scanAttributionView(),roiGuard:roi,spendPolicy:apiSpendPolicy(),
-    costSemantics:'configured per-request costs only; unpriced requests are reported separately; avoidedCostUsd is configured cost of cache and coalesced hits; daily spend caps apply only to priced requests; ROI guard applies only to purpose=research priced requests with explicit research value and cost inputs',
+    daily:dailyView(),scanAttribution:scanAttributionView(),purposeSpend:purposeSpendView(t.purposes),roiGuard:roi,spendPolicy:apiSpendPolicy(),
+    costSemantics:COST_SEMANTICS,
   };
 }
 export function persistApiUnitEconomics(role='trader'){
@@ -248,8 +286,8 @@ export function readApiUnitEconomics({maxAgeMs=10*60_000}={}){
   const t=totals(providersOut);
   return {
     schema:'mpo.api-unit-economics.v1',updatedAt:now,roles,providers:providersOut,totals:t,
-    scanAttribution:scanAttributionView(attr),
-    costSemantics:'configured per-request costs only; unpriced requests are reported separately; avoidedCostUsd is configured cost of cache and coalesced hits; daily spend caps apply only to priced requests; ROI guard applies only to purpose=research priced requests with explicit research value and cost inputs',
+    scanAttribution:scanAttributionView(attr),purposeSpend:purposeSpendView(t.purposes),
+    costSemantics:COST_SEMANTICS,
   };
 }
 export function resetApiUnitEconomicsForTests(){
