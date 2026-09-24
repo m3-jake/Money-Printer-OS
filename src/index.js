@@ -1,5 +1,7 @@
 import { exec } from 'node:child_process';
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, fileURLToPath } from 'node:url';
+import fs from 'node:fs';
+import path from 'node:path';
 import { cfg } from './config.js';
 import { discoverCandidates, refreshPair, refreshPositionPairs, discoveryHealth, solUsdPrice, batchTokenPrices } from './dexscreener.js';
 import { analyze, explain, marketRegime } from './strategy.js';
@@ -698,9 +700,16 @@ async function main() {
   } while (true);
 }
 
+// Robust entry check: import.meta.url is realpath'd by the loader while argv[1] is not
+// (e.g. /var -> /private/var, symlinked installs), and the desktop supervisor spawns this
+// file via ELECTRON_RUN_AS_NODE from inside app.asar. Compare resolved real paths, and
+// always run when supervised by desktop/main.cjs.
 const isMainModule = (() => {
+  if (process.env.MONEY_PRINTER_SUPERVISED === '1') return true;
   try {
-    return import.meta.url === pathToFileURL(process.argv[1] || '').href;
+    if (!process.argv[1]) return false;
+    const real = p => { try { return fs.realpathSync(p); } catch { return p; } };
+    return real(fileURLToPath(import.meta.url)) === real(path.resolve(process.argv[1]));
   } catch {
     return false;
   }
