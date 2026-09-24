@@ -49,6 +49,7 @@
     "release:pack": "node scripts/release-alpha53.mjs pack",
     "release:record": "node scripts/release-alpha53.mjs test-record",
     "release:promote": "node scripts/release-alpha53.mjs promote",
+    "release:unified": "node scripts/build-unified.mjs",
     "test:unit-economics": "node --test tests/api-unit-economics.test.mjs tests/transaction-indexer-economics.test.mjs"
   }
 }
