@@ -65,3 +65,9 @@ Until a real Windows artifact and boot test exist:
 
 This is the gate working as designed — see `.agent-state/RELEASE_STATUS.md` for this pass's
 recorded stage and the exact `missing` output.
+
+## Still pending bing (2026-09-24, unified 3ba4959 build)
+
+- **Updater manifest is unsigned** (`releaseManifestSigned:false` in `RELEASE.json`); no agent has the Ed25519 private key. Recipe: `docs/UPDATER-MANIFEST.md`.
+- **Polymarket US API key regeneration** at polymarket.us/developer is pending; until then signed calls classify as `keyNotFound` and autopilot stays off.
+- Windows Authenticode signing and the Windows boot test remain open as described above.
