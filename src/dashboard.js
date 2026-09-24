@@ -11,6 +11,7 @@ import { polymarketSnapshot, placePaperCombo, placePaperSingle, setAutopilot, ru
 import { polymarketUSSnapshot, usReadiness, configurePolymarketUS, armPolymarketUS, previewPolymarketUSOrder, submitPolymarketUSOrder, closePolymarketUSPosition, cancelPolymarketUSOrder, cancelAllPolymarketUS } from './polymarketUS.js';
 import { usComboSnapshot, buildUSCombo, quoteUSCombo, placeUSCombo, cancelUSRfq, setUSComboAutopilot, settleUSCombos, forgetUSCombo, startUSComboLoops } from './polymarketUSCombos.js';
 import { readApiUnitEconomics } from './apiUnitEconomics.js';
+import updateChannel from '../desktop/update-channel.cjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const html = fs.readFileSync(path.join(ROOT, 'public', 'dashboard.html'), 'utf8');
@@ -37,9 +38,14 @@ function json(res, obj, status = 200, extraHeaders = {}) {
 function queue(type, data = {}) {
   return enqueueAction({ type, ...data });
 }
+// The channel is whatever desktop/main.cjs resolves from the same env (docs/RELEASE-CHANNEL.md). The
+// supervisor records a `LAN <peer>` label when a cluster peer won the last check; anything else (or a
+// status file written by an older build) shows the configured channel, never a stale URL.
 function updaterState(){
-  try { return {...JSON.parse(fs.readFileSync(UPDATE_STATUS_FILE,'utf8')),current:packageMeta.version,channel:'https://bangbowbing.net/downloads/money-printer-os/stable'}; }
-  catch { return {status:'IDLE',current:packageMeta.version,available:null,channel:'https://bangbowbing.net/downloads/money-printer-os/stable'}; }
+  const resolved=updateChannel.resolveUpdateChannel(process.env);
+  const base={current:packageMeta.version,channelKind:resolved.kind,channelUrl:resolved.url,channelError:resolved.configError};
+  try { const st=JSON.parse(fs.readFileSync(UPDATE_STATUS_FILE,'utf8')); const lan=typeof st.channel==='string'&&st.channel.startsWith('LAN '); return {...st,...base,channel:lan?st.channel:resolved.label}; }
+  catch { return {status:'IDLE',available:null,...base,channel:resolved.label}; }
 }
 function requestUpdater(action){
   fs.mkdirSync(DATA_DIR,{recursive:true});

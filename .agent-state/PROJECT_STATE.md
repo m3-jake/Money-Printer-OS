@@ -27,9 +27,12 @@
   install into `~/Applications` or restart the installed app themselves.
 - **Launch path**: `desktop/main.cjs` spawns `src/index.js` (dashboard on `127.0.0.1:8792`) and
   `src/networkMesh.js`; no `evolution`/`clusterHub`/`clusterWorker`/`researchAudit` children
-  post-split. Updater pulls from `https://bangbowbing.net/downloads/money-printer-os/stable`
-  (Ed25519-signed manifest; public key `desktop/update-public-key.pem`) and auto-applies when
-  `MODE != live`.
+  post-split. Updater pulls from this repository's GitHub Releases (`desktop/update-channel.cjs` +
+  `desktop/update-fetch.cjs`; `MONEY_PRINTER_UPDATE_URL` overrides, `MONEY_PRINTER_UPDATE_TOKEN`
+  while the repo is private; Ed25519-signed `manifest.json` release asset, public key
+  `desktop/update-public-key.pem`) and auto-applies when `MODE != live`. The old
+  `bangbowbing.net/downloads/...` directory never had a host. Flow, signing script and CI/release
+  workflows: `docs/RELEASE-CHANNEL.md`.
 - **Packaging**: alpha53 uses a staged-copy + `npx @electron/asar@4.3.0` pack driven by
   `scripts/release-alpha53.mjs` (`pack` | `test-record` | `promote`; `install`/`restart` exist
   only as a reference and hard-refuse under an agent). No `release-alpha41.py`-style script in
