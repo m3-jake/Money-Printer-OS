@@ -1,5 +1,15 @@
 # Windows release status
 
+**Update 2026-09-24 (WITCHDOCTOR):** the Windows host can now build and boot-test its own archive.
+`npm run release:windows-asar` (`scripts/build-windows-asar.mjs`) stages `app.asar` exactly as step 2 of
+`build-unified.mjs` does (clean `git archive` of the allowlist, `npm ci --omit=dev --omit=optional`,
+BUILD.json, forbidden-file check, `@electron/asar pack`) and writes BUILD-INFO.json + SHA256SUMS.txt
+next to it. `npm run smoke:windows -- --asar <file>` (`scripts/smoke-windows.mjs`) is the twin of the mac
+engine smoke: the installed Electron runtime runs the archive as Node in `--dashboard-only` paper mode
+against a throwaway data dir and must answer 200 on the dashboard. Neither script signs or installs; the
+swap into `resourcespp.asar` (with a backup) is still done by hand or by the installer.
+`.agent-state/RELEASE_STATUS.md` records each build that was actually booted this way.
+
 **Update 2026-09-24:** an **unsigned Windows x64 package now exists**. It is produced reproducibly on
 macOS by `npm run release:unified` (`scripts/build-unified.mjs`). The script takes the official
 Electron 38.8.6 win32-x64 runtime (SHA-256 pinned and verified), renames it to `Money Printer OS.exe`,

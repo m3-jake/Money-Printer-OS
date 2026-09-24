@@ -52,6 +52,8 @@
     "release:record": "node scripts/release-alpha53.mjs test-record",
     "release:promote": "node scripts/release-alpha53.mjs promote",
     "release:unified": "node scripts/build-unified.mjs",
+    "release:windows-asar": "node scripts/build-windows-asar.mjs",
+    "smoke:windows": "node scripts/smoke-windows.mjs",
     "test:unit-economics": "node --test tests/api-unit-economics.test.mjs tests/transaction-indexer-economics.test.mjs"
   }
 }
