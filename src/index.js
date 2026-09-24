@@ -1,4 +1,5 @@
 import { exec } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
 import { cfg } from './config.js';
 import { discoverCandidates, refreshPair, refreshPositionPairs, discoveryHealth, solUsdPrice, batchTokenPrices } from './dexscreener.js';
 import { analyze, explain, marketRegime } from './strategy.js';
@@ -697,7 +698,19 @@ async function main() {
   } while (true);
 }
 
-main().catch(error => {
-  console.error(compactError(error));
-  process.exitCode = 1;
-});
+const isMainModule = (() => {
+  try {
+    return import.meta.url === pathToFileURL(process.argv[1] || '').href;
+  } catch {
+    return false;
+  }
+})();
+
+if (isMainModule) {
+  main().catch(error => {
+    console.error(compactError(error));
+    process.exitCode = 1;
+  });
+}
+
+export { main };
