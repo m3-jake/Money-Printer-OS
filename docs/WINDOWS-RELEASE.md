@@ -1,4 +1,23 @@
-# Windows release: what does not exist yet
+# Windows release status
+
+**Update 2026-09-24:** an **unsigned Windows x64 package now exists**. It is produced reproducibly on
+macOS by `npm run release:unified` (`scripts/build-unified.mjs`). The script takes the official
+Electron 38.8.6 win32-x64 runtime (SHA-256 pinned and verified), renames it to `Money Printer OS.exe`,
+and adds the same `resources/app.asar` as the mac build, plus `MPO-RELEASE.json`, `PAYLOAD-SHA256.json`
+and the installer (`scripts/unified/windows/Install-Windows.ps1` / `Install.cmd`). See
+`.agent-state/RELEASE_STATUS.md` for the latest artifact path and SHA-256.
+
+Still pending (bing):
+- **Authenticode signing** of the exe. No certificate or signtool setup exists in this repo.
+- **Windows boot test** on a real Windows host (`windowsBootTested:false` in RELEASE.json).
+- The exe icon is the stock Electron icon. Swapping it needs rcedit on Windows or wine.
+
+Until those are done, `release-gate.cjs` still correctly refuses promotion past `candidate`. The
+historical analysis below still describes those gate requirements.
+
+---
+
+## (Historical) Windows release: what did not exist yet
 
 This document states plainly, per `.workflow/scratch/PACKAGING.md` §5 and
 `.workflow/scratch/OPEN-ITEMS.md` (item S1), that **no Windows build, signing, or CI

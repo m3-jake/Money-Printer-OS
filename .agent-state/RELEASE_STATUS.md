@@ -1,3 +1,26 @@
+# Unified Mac + Windows build — 0.5.0-alpha.53+unified.3ba4959 (2026-09-24, **latest**)
+
+Built by `npm run release:unified` (`scripts/build-unified.mjs`) from a clean `git archive` of
+`3ba49595a59228c3d7f3db2da7df18dda5eabb7f`. Neither package was installed by an agent. Everything below
+was observed in that run; nothing is carried over from older builds.
+
+| field | value |
+| --- | --- |
+| output dir | `/Users/bing/Desktop/Money Printer OS/Current/Unified-3ba4959-20260924/` |
+| app.asar (shared, byte-identical in both zips) | `2c928f526567dba01c081145f66cf2b53f5d6c49c9eda14f1b8701404d529079` (31387171 bytes, header `c08c53629a5e248d2eb14a65ef7fea812f13eb7b723b4e53949535f3cc7b2ae0`) |
+| `Money-Printer-OS-Alpha53-3ba4959-macOS-arm64.zip` | `1f850b9eaae167d51c55a144cd2e5e0852595d21addbc71f0ee672589ab19189` (120645598 bytes) |
+| `Money-Printer-OS-Alpha53-3ba4959-Windows-x64.zip` | `10ed57558f12ca36b5d8902267f034d49b4f1e89c807c6e2d6e910e8fb7056c5` (146683264 bytes) |
+| Electron | 38.8.6. darwin-arm64 and win32-x64 zips matched the official SHASUMS256.txt (pinned in script) |
+| tests (source tree, same commit) | `npm run test:all` **316/316 pass, 0 fail, 19 suites**; `node src/selftest.js` **SELFTEST PASS**; `tests/release-gate.test.cjs` **6/6** (tests are not in the asar allowlist, so they run from source) |
+| mac engine smoke | packaged Electron binary, `ELECTRON_RUN_AS_NODE=1`, `app.asar/src/index.js --dashboard-only`, MODE=paper, throwaway data dir: dashboard **200**, /api/health **200**; process stopped afterwards |
+| signing | macOS **local ad-hoc only** (`codesign --verify --deep --strict` OK). Not Developer-ID signed or notarized. Windows **not Authenticode-signed**. Updater manifest **not signed**. |
+| Windows | x64 folder + Install-Windows.ps1/Install.cmd (refuses a running app, live mode, or open exposures; preserves AppData; keeps a rollback copy), PAYLOAD-SHA256.json. **Not boot-tested on Windows.** The exe keeps the stock Electron icon because rcedit needs Windows or wine. |
+
+Fixed during this build: the `src/index.js` entry guard from bbc8f4d silently skipped `main()` when a
+symlink was on the path (`/var` resolves to `/private/var`), so the packaged engine hung with no output.
+Fixed in `3ba4959`: it now compares realpaths and always runs when `MONEY_PRINTER_SUPERVISED=1`.
+Rebuild: `npm run release:unified -- --force` (runtimes are cached in `Current/runtime-downloads/`).
+
 # Release status — alpha.53 (INTEGRATED + PACKAGED, **not installed** by an agent)
 
 Version `0.5.0-alpha.53` (`package.json`, unchanged all workflow). This section **replaces** the

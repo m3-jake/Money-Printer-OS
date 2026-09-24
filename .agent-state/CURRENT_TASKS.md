@@ -1,5 +1,7 @@
 # Current tasks — 2026-09-20 (alpha.53, integrated + packaged)
 
+- 2026-09-24: unified build script `scripts/build-unified.mjs` landed; mac arm64 + Windows x64 packages built from 3ba4959 (see RELEASE_STATUS.md). Still pending bing: Authenticode signing, Windows boot test, updater manifest signing, install.
+
 Folded forward from the 2026-09-16 (alpha.42-era) table below and the undotted
 `agent-state/CURRENT_TASKS.md` snapshot (2026-09-19), which is now deleted — this file is the
 single, current record. Restamped by the integrator after all five alpha53 work packages
