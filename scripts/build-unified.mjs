@@ -138,6 +138,8 @@ async function main() {
   const WORK = fs.mkdtempSync(path.join(os.tmpdir(), `mpo-unified-${short}-`));
   log(`commit ${commit}  release ${releaseId}\n  out  ${OUT}\n  work ${WORK}\n  cache ${CACHE}`);
 
+  let smoke = { ran: false }; // filled after zipping; in-zip READMEs defer to RELEASE.json
+
   // 1. tests in the source tree (same commit; tracked tree verified clean above)
   const tests = { ran: false };
   if (!flag('--skip-tests')) {
@@ -261,7 +263,6 @@ async function main() {
   if (!identical) die(`asar mismatch after zip: mac ${vMac} win ${vWin} expected ${asarInfo.sha256}`);
 
   // 6. packaged mac engine smoke boot (isolated paper / dashboard-only)
-  let smoke = { ran: false };
   if (!flag('--skip-smoke')) smoke = await macSmoke(path.join(VX, 'm', 'macOS', `${APP_NAME}.app`), LOGS);
   writeJson(path.join(OUT, 'MAC-ENGINE-SMOKE.json'), smoke);
   if (smoke.ran && !smoke.success) die(`mac engine smoke boot failed (see ${LOGS}/mac-engine.log)`);
@@ -295,7 +296,7 @@ async function main() {
   }
   function validation() {
     const t = tests.ran ? `${tests.testCount} test cases passed in npm run test:all (${tests.suiteInvocations} suites). Self-test passed.\nRelease-gate test passed from the source tree at this commit (tests are not packaged).` : 'Tests were SKIPPED for this build (--skip-tests).';
-    return `${t}\nLocked dependencies installed using npm ci --ignore-scripts --omit=dev --omit=optional.\n${smoke.success ? 'Packaged Mac engine and dashboard served HTTP 200 using isolated paper-mode data.' : 'Mac engine smoke boot was NOT run for this build.'}\nMac app has a verified local ad-hoc signature; it is not Developer-ID signed or notarized.\nBoth Electron runtimes matched the official Electron release checksums.\nWindows app is not Authenticode-signed and keeps the stock Electron exe icon.\nNo signed updater/stable promotion is claimed.\n`;
+    return `${t}\nLocked dependencies installed using npm ci --ignore-scripts --omit=dev --omit=optional.\n${!smoke.ran ? 'Mac engine smoke boot result: see RELEASE.json / START-HERE.txt next to the zips.' : smoke.success ? 'Packaged Mac engine and dashboard served HTTP 200 using isolated paper-mode data.' : 'Mac engine smoke boot FAILED or was not run.'}\nMac app has a verified local ad-hoc signature; it is not Developer-ID signed or notarized.\nBoth Electron runtimes matched the official Electron release checksums.\nWindows app is not Authenticode-signed and keeps the stock Electron exe icon.\nNo signed updater/stable promotion is claimed.\n`;
   }
   function startHere(zips) {
     return `MONEY PRINTER OS - SHARED MAC / WINDOWS RELEASE\n\n${header()}\nSTATUS\nMac: macOS arm64 app bundle built. NOT installed by the build.\nWindows: full x64 package built. NOT installed or boot-tested on Windows.\n\nVALIDATION\n${validation()}\nARTIFACTS\n${zips.map((z) => `${z.file}\n  sha256 ${z.sha256}`).join('\n')}\n\nMAC INSTALL (bing, by hand, with Money Printer OS closed and in paper mode)\nKeep the existing app as a rollback copy, then replace it with macOS/${APP_NAME}.app,\ne.g.  mv "/Applications/${APP_NAME}.app" "/Applications/${APP_NAME}.app.backup-<date>"\n      ditto "macOS/${APP_NAME}.app" "/Applications/${APP_NAME}.app"\nDo not overwrite or copy your user-data directory when changing app versions.\n\nWINDOWS INSTALL\nExtract the entire Windows ZIP, then open Windows/Install.cmd.\nClose Money Printer OS first. The installer verifies all payload files, preserves\nAppData, saves a rollback copy, and updates Desktop/Start Menu shortcuts.\nIt refuses active application processes, configured live mode, and known open real\nexposures. It does not launch trading or change Windows execution/security policy.\nMultiple detected installations require an explicit -InstallDir path.\n\nPRESERVED\nNo .env / credentials / wallet settings / balances / trade state / history are in\neither package. data/ inside app.asar is empty.\n\nREPRODUCIBILITY\nRebuild: git checkout ${short} && npm run release:unified -- --force\nSource came from git archive of the pinned revision. Runtime allowlist:\n${ALLOW.join(', ')}, node_modules (npm ci) and an empty data/.\nBUILD.json and .build-commit in app.asar identify the exact packaged revision.\nBoth platform bundles contain the exact same app.asar.\n`;
