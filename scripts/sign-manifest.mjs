@@ -32,6 +32,9 @@ const require = createRequire(import.meta.url);
 const { verifyManifest } = require('../desktop/update-auth.cjs');
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DEFAULT_PUBLIC_KEY = path.join(ROOT, 'desktop', 'update-public-key.pem');
+// Repo-relative, always with forward slashes: the docs and the tests spell this path
+// desktop/update-public-key.pem on every platform, and Windows path.relative would print a backslash.
+const relPosix = (p) => (path.relative(ROOT, path.resolve(p)) || p).split(path.sep).join('/');
 const USAGE = `usage:
   node scripts/sign-manifest.mjs stage  --asar <app.asar> [--version <v>] [--out <manifest.unsigned.json>]
   node scripts/sign-manifest.mjs sign   --asar <app.asar> --key <ed25519-private.pem> [--version <v>] [--out <manifest.json>] [--public-key <pem>]
@@ -148,10 +151,10 @@ function cmdSign(args) {
   const m = { version: a.version, sha256: a.sha256, size: a.size };
   m.signature = crypto.sign(null, Buffer.from(payloadOf(m)), privateKey).toString('base64');
   try { verifyManifest(m, { remote: true, publicKey }); }
-  catch { throw new Error(`the private key does not match ${path.relative(ROOT, path.resolve(publicKeyFile)) || publicKeyFile}; the app would reject this manifest, so nothing was written`); }
+  catch { throw new Error(`the private key does not match ${relPosix(publicKeyFile)}; the app would reject this manifest, so nothing was written`); }
   const out = path.resolve(args.out && args.out !== true ? args.out : path.join(path.dirname(a.file), 'manifest.json'));
   writeJson(out, m);
-  console.log(JSON.stringify({ signed: true, out, version: m.version, sha256: m.sha256, size: m.size, publicKey: path.relative(ROOT, path.resolve(publicKeyFile)) || publicKeyFile }, null, 2));
+  console.log(JSON.stringify({ signed: true, out, version: m.version, sha256: m.sha256, size: m.size, publicKey: relPosix(publicKeyFile) }, null, 2));
   return 0;
 }
 
