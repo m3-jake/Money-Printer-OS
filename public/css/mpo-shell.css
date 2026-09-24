@@ -207,6 +207,9 @@ button, input, select, textarea { font: inherit; }
   top: 18px;
   right: 24px;
   z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   text-align: right;
   font-family: var(--mpo-font-brand);
   font-style: italic;
@@ -233,6 +236,16 @@ button, input, select, textarea { font: inherit; }
   margin-top: 9px;
 }
 .brand-mark { filter: drop-shadow(1px 2px 2px #0004); }
+/* Persistent corner product mark: the spiked-cash render sits beside the text
+   logo at all times (same asset as the boot mark, Money and Updater panels). */
+.brand .brand-corner {
+  flex: none;
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  filter: drop-shadow(2px 3px 3px #000a);
+}
+.brand .brand-text { text-align: right; }
 
 .icons {
   position: absolute;
@@ -748,6 +761,7 @@ textarea:focus-visible,
 
 @media (max-width: 1000px) {
   .brand { font-size: 22px; }
+  .brand .brand-corner { width: 52px; height: 52px; }
   .icons { gap: 5px; }
   .window { max-width: calc(100vw - 100px); }
 }
