@@ -1,78 +1,58 @@
-# Updater manifest signing (public download channel)
+# Updater manifest signing (public release channel)
 
-This document is the exact, verbatim recipe from `.workflow/scratch/PACKAGING.md` §4 for
-producing the signed `manifest.json` that `desktop/main.cjs` fetches from
-`https://bangbowbing.net/downloads/money-printer-os/stable/manifest.json` and that
-`desktop/update-auth.cjs::verifyManifest()` checks before an installed copy will apply an
-update.
+The signed `manifest.json` is what lets an installed copy trust a release. `desktop/main.cjs`
+fetches it from the release channel (this repository's GitHub Releases — see
+`docs/RELEASE-CHANNEL.md`) and `desktop/update-auth.cjs::verifyManifest()` checks it before a byte
+of `app.asar` is applied.
 
-**No agent runs this command, ever.** It requires the release signing private key, which
-does not exist anywhere in this repository and which no agent session may search for, read,
-name, or infer. `desktop/update-public-key.pem` (the public half) is the only key material
-that may be read by an agent, and confirms the key type is Ed25519
-(`openssl pkey -pubin -in desktop/update-public-key.pem -text`).
+**No agent signs, ever.** Signing needs the Ed25519 release private key, which does not exist
+anywhere in this repository and which no agent session may search for, read, name, or infer.
+`desktop/update-public-key.pem` (the public half) is the only key material an agent may read;
+`openssl pkey -pubin -in desktop/update-public-key.pem -text` confirms it is Ed25519.
 
 ## What the updater verifies
 
-`desktop/update-auth.cjs::verifyManifest(m, { remote, token, peer, publicKey })` expects a
-manifest shaped `{ version, sha256, size, signature }`. For the public/remote channel
-(`remote: true`), it verifies with:
+`verifyManifest(m, { remote: true, publicKey })` expects `{ version, sha256, size, signature }`
+and checks
 
 ```js
-crypto.verify(null, Buffer.from(payload), publicKey, Buffer.from(m.signature, 'base64'))
+crypto.verify(null, Buffer.from(`${version}:${sha256}:${size}`), publicKey, Buffer.from(signature, 'base64'))
 ```
 
-where `payload` is the literal string:
+`crypto.sign`/`crypto.verify` with a `null` algorithm only work with a key type that carries its own
+algorithm — Ed25519 here — so the signing counterpart is an Ed25519 **private** key, never RSA/ECDSA.
+
+## The script
+
+`scripts/sign-manifest.mjs` implements the recipe so nobody has to paste JavaScript:
 
 ```
-`${version}:${sha256}:${size}`
+node scripts/sign-manifest.mjs stage  --asar app.asar                                   # unsigned shape; CI attaches it as manifest.unsigned.json
+node scripts/sign-manifest.mjs sign   --asar app.asar --key <release-private-key.pem>   # bing, by hand, on the key-holding machine
+node scripts/sign-manifest.mjs verify --manifest manifest.json --asar app.asar          # anyone; re-checks exactly as the app does
 ```
 
-`crypto.verify`/`crypto.sign` called with a `null` algorithm only work with a key whose type
-carries its own algorithm — confirmed Ed25519 here — so the signing counterpart is an
-Ed25519 **private** key, never RSA/ECDSA.
+- `version` comes from the `package.json` packed inside the archive (`--version` may restate it but
+  must match), so a manifest can only describe the archive it was made from.
+- `sign` has no default key path and never looks for one. It refuses a non-Ed25519 key, refuses a
+  key that does not verify against `desktop/update-public-key.pem`, writes nothing in either case,
+  never echoes the key path, and refuses to run inside an agent session (`CLAUDECODE` set). An
+  encrypted PEM takes its passphrase from `MPO_SIGNING_KEY_PASSPHRASE`.
+- `verify` exits 0 only when the signature verifies and, with `--asar`, the archive's SHA-256, size
+  and packed version all match.
 
-## Signing recipe (bing runs this, on the machine holding the private key — NOT an agent)
+`npm run test:updater` covers all three verbs with a throwaway key.
 
-```js
-const crypto = require('node:crypto');
-const fs = require('node:fs');
+## Where this fits
 
-const privateKey = crypto.createPrivateKey(
-  fs.readFileSync('<PRIVATE KEY PATH — bing fills this in>')
-);
+1. `.github/workflows/release.yml` (or `npm run release:unified` on the Mac) produces `app.asar`
+   and stages `manifest.unsigned.json` next to it.
+2. Bing runs `sign` on the machine holding the private key, then `verify`.
+3. Bing uploads `manifest.json` to the draft GitHub Release and publishes it.
 
-const version = '0.5.0-alpha.53';
-const sha256 = '<sha256 of the packaged .asar — from release-record.json / sha256.txt>';
-const size = <byte size of the packaged .asar>;
-
-const payload = `${version}:${sha256}:${size}`;
-const signature = crypto.sign(null, Buffer.from(payload), privateKey).toString('base64');
-
-const manifest = { version, sha256, size, signature };
-fs.writeFileSync('manifest.json', JSON.stringify(manifest, null, 2));
-// upload manifest.json alongside the .asar to
-// bangbowbing.net/downloads/money-printer-os/stable/
-```
-
-The `<PRIVATE KEY PATH — bing fills this in>` placeholder above is intentional and must stay
-a placeholder in this repository. This packaging pass did not search for, read, name, or
-otherwise infer any actual private key path, per the workflow's hard constraints.
+No agent performs step 2 or step 3.
 
 ## LAN/cluster channel (separate, not this key)
 
-The LAN/cluster path (`remote: false`, a `token` present) uses a different, **symmetric**
-HMAC-SHA256 scheme keyed by `CLUSTER_TOKEN` and does not touch the Ed25519 release signing
-key at all. It is out of scope for this document, which covers only the public download
-channel's asymmetric signature.
-
-## Where this fits in the release flow
-
-1. `scripts/release-alpha53.mjs pack` produces the `.asar`, its SHA-256, and its byte size
-   (see `release-record.json`).
-2. Bing runs the signing recipe above, by hand, on the machine holding the private key, to
-   produce `manifest.json`.
-3. Bing uploads both the `.asar` and `manifest.json` to
-   `bangbowbing.net/downloads/money-printer-os/stable/`.
-
-No agent performs step 2 or step 3.
+The LAN/cluster path (`remote: false`, a `CLUSTER_TOKEN` present) uses a symmetric HMAC-SHA256
+over the same payload and does not touch the Ed25519 release key. It is out of scope here.

@@ -5,9 +5,10 @@ const { app, BrowserWindow, Menu, shell } = require('electron');
 const { spawn } = require('node:child_process');
 const crypto = require('node:crypto');
 const { verifyManifest } = require('./update-auth.cjs');
+const { resolveUpdateChannel, resolveUpdateToken } = require('./update-channel.cjs');
+const { httpBuffer, fetchChannelManifest } = require('./update-fetch.cjs');
 const { updateSafety } = require('./release-gate.cjs');
 const { researchServicePolicy } = require('./research-supervision.cjs');
-const https = require('node:https');
 const path = require('node:path');
 const fs = require('node:fs');
 const http = require('node:http');
@@ -45,9 +46,12 @@ const UPDATE_INTERVAL_MS = Math.max(60000, Number(process.env.UPDATE_INTERVAL_MS
 const UPDATE_DIR = path.join(USER_ROOT, 'update');
 const UPDATE_STATUS = path.join(DATA, 'update-status.json');
 const UPDATE_REQUEST = path.join(DATA, 'update-request.json');
-const REMOTE_UPDATE_URL = String(process.env.MONEY_PRINTER_UPDATE_URL || 'https://bangbowbing.net/downloads/money-printer-os/stable').replace(/\/$/, '');
+// Public release channel: this repo's GitHub Releases by default, MONEY_PRINTER_UPDATE_URL to override
+// (docs/RELEASE-CHANNEL.md). A bad override is reported on the next check, never a crash here.
+const REMOTE_CHANNEL = resolveUpdateChannel(process.env);
+const REMOTE_UPDATE_URL = REMOTE_CHANNEL.url;
 const RELEASE_PUBLIC_KEY = fs.readFileSync(path.join(ROOT,'desktop','update-public-key.pem'),'utf8');
-let updateBusy = false, updateReady = null;
+let updateBusy = false, updateReady = null, channelWarned = false;
 // In dev Electron is handed desktop/main.cjs directly and app.getVersion() falls back to Electron's own
 // version, which then gets advertised to the hive as this node's build. Read the real one from the root.
 const APP_VERSION = (() => { try { return JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version || app.getVersion(); } catch { return app.getVersion(); } })();
@@ -161,7 +165,6 @@ async function waitForReady(timeoutMs = READY_TIMEOUT_MS) {
 // ---------------------------------------------------------------- cluster code updater
 function updateStatus(patch) { try { fs.mkdirSync(DATA,{recursive:true}); const prev=fs.existsSync(UPDATE_STATUS)?JSON.parse(fs.readFileSync(UPDATE_STATUS,'utf8')):{}; const next={...prev,...patch,ts:Date.now()}; if(patch.status&&patch.status!=='ERROR'&&!Object.prototype.hasOwnProperty.call(patch,'error')) next.error=null; if(patch.status==='CURRENT') next.note=null; fs.writeFileSync(UPDATE_STATUS,JSON.stringify(next,null,2)); } catch {} }
 function versionGreater(a,b){const A=String(a).match(/\d+/g)?.map(Number)||[],B=String(b).match(/\d+/g)?.map(Number)||[];for(let i=0;i<Math.max(A.length,B.length);i++){const d=(A[i]||0)-(B[i]||0);if(d)return d>0}return false}
-function httpBuffer(url, token){return new Promise((resolve,reject)=>{const lib=url.startsWith('https:')?https:http,req=lib.get(url,{headers:token?{Authorization:`Bearer ${token}`}:{},timeout:15000},res=>{if(res.statusCode!==200){res.resume();return reject(new Error(`HTTP ${res.statusCode}`))}const chunks=[];res.on('data',c=>chunks.push(c));res.on('end',()=>resolve(Buffer.concat(chunks)))});req.on('timeout',()=>req.destroy(new Error('update timeout')));req.on('error',reject)})}
 async function peerUpdateSource(){
  try{const b=await httpBuffer(`http://127.0.0.1:${Number(process.env.MONEY_PRINTER_MESH_HTTP_PORT||18800)}/state`,'');const st=JSON.parse(b.toString('utf8'));const newer=(st.peers||[]).filter(p=>p.online&&p.host&&p.updatePort&&versionGreater(p.version,APP_VERSION)).sort((a,b)=>versionGreater(a.version,b.version)?-1:1)[0];return newer?`http://${newer.host}:${newer.updatePort}`:null}catch{return null}
 }
@@ -173,14 +176,20 @@ function rawSha256(file){const prev=process.noAsar;process.noAsar=true;try{retur
 async function checkForClusterUpdate(manual=false){
  if(!PACKAGED||updateBusy)return;updateBusy=true;
  try{const peer=process.env.CLUSTER_TOKEN?await peerUpdateSource():null;const clusterHost=['1','true','yes','on'].includes(String(process.env.CLUSTER_HOST||'').toLowerCase());const configured=!clusterHost&&process.env.CLUSTER_HUB_URL?process.env.CLUSTER_HUB_URL.replace(/\/$/,''):null;const hub=configured||peer||REMOTE_UPDATE_URL;
-  const remote=hub===REMOTE_UPDATE_URL,manifestUrl=remote?`${hub}/manifest.json`:`${hub}/update/manifest`;
-  updateStatus({status:'CHECKING',current:APP_VERSION,source:hub});const mb=await httpBuffer(manifestUrl,remote?'':process.env.CLUSTER_TOKEN||'');const m=JSON.parse(mb.toString('utf8'));const updateToken=process.env.CLUSTER_TOKEN||'',signedPayload=`${m.version}:${m.sha256}:${m.size}`;
+  const remote=hub===REMOTE_UPDATE_URL,channel=remote?REMOTE_CHANNEL.label:`LAN ${hub}`,userAgent=`Money-Printer-OS-updater/${APP_VERSION}`;
+  if(remote&&REMOTE_CHANNEL.configError&&!channelWarned){channelWarned=true;log(`updater: ${REMOTE_CHANNEL.configError}`)}
+  updateStatus({status:'CHECKING',current:APP_VERSION,source:hub,channel});
+  // Remote: the channel adapter (GitHub Releases, or a plain manifest.json + app.asar directory) with the optional
+  // MONEY_PRINTER_UPDATE_TOKEN — never the cluster token. LAN/cluster: the peer's /update/* endpoints, HMAC'd with CLUSTER_TOKEN.
+  const updateToken=process.env.CLUSTER_TOKEN||'';let m,pkg;
+  if(remote){const r=await fetchChannelManifest(REMOTE_CHANNEL,{token:resolveUpdateToken(process.env),userAgent});m=r.manifest;pkg=r.package;}
+  else{const mb=await httpBuffer(`${hub}/update/manifest`,{token:updateToken,headers:{'user-agent':userAgent}});m=JSON.parse(mb.toString('utf8'));const packageUrl=`${hub}/update/app.asar`;pkg={url:packageUrl,size:null,download:()=>httpBuffer(packageUrl,{token:updateToken,headers:{'user-agent':userAgent}})};}
   verifyManifest(m,{remote,token:updateToken,peer:!!peer,publicKey:RELEASE_PUBLIC_KEY});
-  if(!m.version||!versionGreater(m.version,APP_VERSION)){updateStatus({status:'CURRENT',current:APP_VERSION,available:m.version||null,source:hub});return}
+  if(!m.version||!versionGreater(m.version,APP_VERSION)){updateStatus({status:'CURRENT',current:APP_VERSION,available:m.version||null,source:hub,channel});return}
   // A version we already tried to install but are not running now means the swap failed (read-only
   // bundle, Gatekeeper, permissions). Do not loop quit→relaunch→download every interval; wait for a manual retry.
   const prev=readUpdateStatus();if(!manual&&prev.installAttempted===m.version){updateStatus({status:'ERROR',current:APP_VERSION,available:m.version,error:`update ${m.version} was installed but did not take effect; use "Check for updates" to retry`});log(`updater: ${m.version} previously applied but ${APP_VERSION} is still running; not retrying automatically`);return}
-  fs.mkdirSync(UPDATE_DIR,{recursive:true});const packageUrl=remote?`${hub}/app.asar`:`${hub}/update/app.asar`;const buf=await httpBuffer(packageUrl,remote?'':process.env.CLUSTER_TOKEN||'');const sha=crypto.createHash('sha256').update(buf).digest('hex');if(sha!==m.sha256||buf.length!==Number(m.size))throw new Error('update checksum or size mismatch');const next=path.join(UPDATE_DIR,`app-${m.version}.asar`);rawWriteFile(next,buf);updateReady={version:m.version,file:next};updateStatus({status:'READY',current:APP_VERSION,available:m.version,size:buf.length});log(`updater: ${m.version} downloaded and verified`);
+  fs.mkdirSync(UPDATE_DIR,{recursive:true});if(pkg.size!=null&&pkg.size!==Number(m.size))throw new Error(`release app.asar is ${pkg.size} bytes but the signed manifest says ${m.size}`);const buf=await pkg.download();const sha=crypto.createHash('sha256').update(buf).digest('hex');if(sha!==m.sha256||buf.length!==Number(m.size))throw new Error('update checksum or size mismatch');const next=path.join(UPDATE_DIR,`app-${m.version}.asar`);rawWriteFile(next,buf);updateReady={version:m.version,file:next};updateStatus({status:'READY',current:APP_VERSION,available:m.version,size:buf.length});log(`updater: ${m.version} downloaded and verified`);
   installMenu();
   if(String(process.env.MODE||'paper').toLowerCase()!=='live')setTimeout(()=>applyClusterUpdate(),12000);
   else log(`updater: ${m.version} is ready; live mode never restarts on its own — use "Install downloaded update" when flat`);
