@@ -29,9 +29,13 @@ jobs:
       MODE: paper
       DOCTOR_OFFLINE: '1'
       FORCE_COLOR: '0'
-      MONEY_PRINTER_DATA_DIR: ${{ runner.temp }}/mpo-data
     steps:
       - uses: actions/checkout@v4
+
+      # Keep the app's data dir (doctor/selftest state) outside the checkout. The `runner` context is
+      # not available in job-level env, so it is exported from a step.
+      - name: Isolate app data dir
+        run: echo "MONEY_PRINTER_DATA_DIR=$RUNNER_TEMP/mpo-data" >> "$GITHUB_ENV"
 
       - uses: actions/setup-node@v4
         with:
