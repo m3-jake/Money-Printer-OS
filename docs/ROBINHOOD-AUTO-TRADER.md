@@ -1,5 +1,7 @@
 # Robinhood Auto Trader (crypto, official API, paper-first)
 
+> **Implementation status - 2026-09-25:** alpha.56 is a paper-only recovery candidate. The paper controller, read-only monitoring, HTTP integration and desktop panel are implemented and tested. Live placement/cancellation, arming, real autopilot, reconciliation and browser credential saving are not installed. No environment flag activates real trading. See [the recovery report](ROBINHOOD-RECOVERY-2026-09-25.md) for delivered scope and verification. The design below describes the target architecture, not a claim that all live features ship today.
+
 The Robinhood Auto Trader window and `GET /api/robinhood` report a self-contained venue module that trades spot crypto through Robinhood's official Crypto Trading API (`https://trading.robinhood.com`). It is built in the Polymarket US style (`src/polymarketUS.js` + `src/polymarketUSCombos.js`): its own signed transport, its own journal under `MONEY_PRINTER_DATA_DIR`, server-side fail-closed gates, a double-opt-in real autopilot and an unref'd loop started by `src/dashboard.js`. It never imports or is imported by the Solana scanner (`src/index.js`), `src/store.js` or `src/accounting.js`. Real money is off by default (`ROBINHOOD_REAL_ENABLED` defaults to `false`), and real autopilot cannot be enabled until the in-house paper book has qualified the strategy on live quotes.
 
 This document is the specification for version 0.5.0-alpha.56. Section 19 lists the work packages and section 20 the interface contract that implementers build against.

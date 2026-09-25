@@ -32,3 +32,14 @@ test('release must progress main -> candidate -> tested -> stable with signed ev
   assert.deepEqual(r.rollback,rollback);
   fs.rmSync(d,{recursive:true,force:true});
 });
+
+test('Robinhood journal exposure and malformed state block updates without touching balances',()=>{
+ const d=tmp(),file=path.join(d,'robinhood-auto-trader.json');
+ try{
+  for(const value of [{version:1,open:[{id:'rh-test',status:'SUBMITTED_UNCERTAIN'}]},{version:1,open:[],recoveryRequired:true},{version:1,open:'invalid'},null]){
+   const text=JSON.stringify(value);fs.writeFileSync(file,text);const gate=updateSafety(d);assert.equal(gate.safe,false);assert.match(gate.reasons.join(' '),/Robinhood/);assert.equal(fs.readFileSync(file,'utf8'),text);
+  }
+  fs.writeFileSync(file,'{broken');assert.equal(updateSafety(d).safe,false);
+  fs.writeFileSync(file,JSON.stringify({version:1,open:[]}));assert.equal(updateSafety(d).safe,true);
+ }finally{fs.rmSync(d,{recursive:true,force:true})}
+});

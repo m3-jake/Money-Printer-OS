@@ -1,3 +1,4 @@
+import { handleRobinhoodRequest, startRobinhoodLoops, stopRobinhoodLoops } from './robinhoodHttp.js';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -355,6 +356,7 @@ export function startDashboard() {
   const server = http.createServer(async (req, res) => {
     try {
       const u = new URL(req.url, 'http://127.0.0.1');
+      if(u.pathname==='/api/robinhood'||u.pathname.startsWith('/api/robinhood/'))return await handleRobinhoodRequest(req,res,u,{json,body});
       if (req.method === 'GET' && u.pathname === '/') {
         productTelemetry(ledger => ledger.recordVisit(req, res, u));
         res.writeHead(200, {
@@ -518,6 +520,8 @@ export function startDashboard() {
   server.on('clientError', (_, socket) => socket.end('HTTP/1.1 400 Bad Request\r\n\r\n'));
   // Combo loops are inert unless autopilot is enabled AND the session is armed.
   try { startUSComboLoops(); } catch { /* combo loops are optional */ }
+  startRobinhoodLoops();
+  server.on('close',()=>stopRobinhoodLoops());
   server.listen(cfg.dashboardPort, cfg.dashboardHost, () => console.log(`Dashboard: http://${cfg.dashboardHost}:${cfg.dashboardPort}`));
   return server;
 }

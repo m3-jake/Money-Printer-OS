@@ -17,7 +17,15 @@ function readJsonFile(file) {
 function updateSafety(dataDir) {
   const engineRead = readJsonFile(path.join(dataDir, 'combo-engine.json'));
   const journalRead = readJsonFile(path.join(dataDir, 'polymarket-us-combos.json'));
+  const robinhoodFile = path.join(dataDir, 'robinhood-auto-trader.json');
+  const robinhoodRead = readJsonFile(robinhoodFile);
+  const robinhood = robinhoodRead.value;
   const reasons = [];
+  if (!robinhoodRead.ok) reasons.push('Robinhood journal unreadable');
+  if (fs.existsSync(robinhoodFile) && (!robinhood || Array.isArray(robinhood) || robinhood.version !== 1 || !Array.isArray(robinhood.open))) reasons.push('Robinhood journal schema requires recovery');
+  if (robinhood?.recoveryRequired) reasons.push('Robinhood journal requires recovery');
+  const robinhoodOpen = Array.isArray(robinhood?.open) ? robinhood.open.length : 0;
+  if (robinhoodOpen) reasons.push(`${robinhoodOpen} Robinhood crypto order exposure(s) open`);
   if (!engineRead.ok) reasons.push('combo-engine.json unreadable');
   if (!journalRead.ok) reasons.push('polymarket-us-combos.json unreadable');
   const engine = engineRead.value || {};
@@ -28,7 +36,7 @@ function updateSafety(dataDir) {
   const journalOpen = (Array.isArray(journal.open) ? journal.open : []).filter(Boolean);
   if (engineReal.length) reasons.push(`${engineReal.length} real Combo Engine exposure(s) open`);
   if (journalOpen.length) reasons.push(`${journalOpen.length} Polymarket order/RFQ exposure(s) open`);
-  return { safe: reasons.length === 0, reasons, engineRealOpen: engineReal.length, journalOpen: journalOpen.length };
+  return { safe: reasons.length === 0, reasons, engineRealOpen: engineReal.length, journalOpen: journalOpen.length, robinhoodOpen };
 }
 
 function sha256(file) {
