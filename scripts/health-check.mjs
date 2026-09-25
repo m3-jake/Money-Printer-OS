@@ -11,7 +11,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { loopPersistenceCheck } from '../src/labHealth.js';
+import { loopPersistenceCheck, collectorCaptureCheck } from '../src/labHealth.js';
 
 const JSON_OUT = process.argv.includes('--json');
 const TRADER_URL = process.env.MPO_TRADER_URL || 'http://127.0.0.1:8792';
@@ -130,6 +130,14 @@ try {
   add(gb > 8 ? 'WARN' : 'OK', 'trader data dir', `${gb.toFixed(2)} GB`);
 } catch (e) {
   add('WARN', 'disk', `could not inspect ${TRADER_DATA} (${e.message})`);
+}
+
+// ---------------------------------------------------------------- tape collector
+{
+  let status = null;
+  try { status = JSON.parse(fs.readFileSync(path.join(TRADER_DATA, 'research-capture-status.json'), 'utf8')); } catch {}
+  const c = collectorCaptureCheck(status || {});
+  add(c.level, 'tape collector', c.detail);
 }
 
 // ---------------------------------------------------------------- report

@@ -4,12 +4,12 @@
 (`CURRENT_TASKS.md`, `KNOWN_BUGS.md`, `PROJECT_STATE.md`, `RELEASE_STATUS.md`) and in `reports/NEXT-STEPS-2026-09-25.md`.
 Don't re-inventory the repo. Update this file at the end of every batch.
 
-Last updated: 2026-09-25, batch 2. Branch `feature/robinhood-auto-trader`, version `0.5.0-alpha.56`.
+Last updated: 2026-09-25, batch 3. Branch `feature/robinhood-auto-trader`, version `0.5.0-alpha.56`.
 
 ## Architecture (inventoried once)
 
 - **Desktop shell:** `desktop/main.cjs` (Electron). It supervises child processes (engine `src/index.js`, `src/networkMesh.js`, and optionally `src/researchCollector.js`) and restarts them with backoff. Research services policy: `desktop/research-supervision.cjs` (`MPO_RESEARCH_COLLECTOR`, default on).
-- **Engine / HUD:** `src/index.js` (Solana meme paper engine; calls `main()` at import, not importable by tests), `src/dashboard.js` (HTTP API + `public/dashboard.html`).
+- **Engine / HUD:** `src/index.js` (Solana meme paper engine; has a realpath main-guard at `:702`, exports only `main`), `src/dashboard.js` (HTTP API + `public/dashboard.html`).
 - **Books:** `src/store.js` holds paper state and its accounting invariants. Atomic writes go through `src/atomicRename.js`.
 - **Polymarket:** `src/polymarket.js` (global, paper), `src/polymarketUS.js` and `src/polymarketUSCombos.js` (US and RFQ; auth currently fails with `keyNotFound`).
 - **Robinhood (this branch):** `src/robinhood*.js`, paper only. Real execution isn't installed. See `docs/ROBINHOOD-AUTO-TRADER.md` and `docs/ROBINHOOD-RECOVERY-2026-09-25.md`.
@@ -27,7 +27,7 @@ Last updated: 2026-09-25, batch 2. Branch `feature/robinhood-auto-trader`, versi
 - Polymarket US API key returns 401 `keyNotFound`. Only bing can fix it by regenerating the key.
 - Combo/RFQ access is gated by a beta allow-list on Polymarket's side.
 - The research evidence gate isn't wired in (deliberate). The Polymarket strategy family loses after fees (report section 1).
-- `src/index.js` has no main-guard, so `enter()` can't be unit-tested end to end.
+- `enter()` in `src/index.js` still has no direct end-to-end test. The main-guard exists; the blocker is that importing the engine pulls in config, store and network modules. F7/F8 are covered through `positionExecution.js`. Low priority.
 - The alpha.54 build hasn't been installed. Signing and publishing are bing-only.
 - The collector's cursor file can still be lost if it was already NUL-filled before this fix. The only effect is duplicate Solana ticks (bounded by `tickHistory`).
 
@@ -70,10 +70,24 @@ Last updated: 2026-09-25, batch 2. Branch `feature/robinhood-auto-trader`, versi
   - Trader: `git -C W:\money-printer-os branch archive/main-asar-lineage-20260925 main`, then `git -C W:\money-printer-os branch -f main feature/robinhood-auto-trader`. `main` then equals `origin/main` plus 9 commits, a fast-forward for the remote.
   - Pushing is a separate step and hasn't been done.
 
+## Batch 3 (2026-09-25): collector observability
+
+- `src/labHealth.js` gained `collectorCaptureCheck`, and `npm run health` shows a `tape collector` line.
+  - RED when the heartbeat is more than 5 min old.
+  - WARN when Polymarket capture is more than 10 min old, when a Polymarket error is newer than the last capture, or when a write error happened in the last hour.
+  - WARN when the collector has never run.
+- `src/researchCollector.js` entry check now matches `src/index.js`: it resolves real paths and trusts `MONEY_PRINTER_SUPERVISED=1`. The old plain compare made the collector a silent no-op on symlinked or junctioned installs, or on macOS `/var` paths, so the app kept restarting it with exit 0.
+- Batch 1 had left mixed CRLF lines in `tests/research-collector.test.mjs`. The repo is LF (`core.autocrlf=false`), and it's normalized now.
+- **Checked and found no change needed:**
+  - The Lab's `readTapeFile` (`src/polymarketTape.js:116`) already skips and counts malformed lines.
+  - `src/index.js` already has a main-guard (the KNOWN_BUGS note was stale).
+- Tests: `research-collector` 7/7, `lab-health` 2/2, full `npm run test:all` **533 pass / 0 fail**. Live smoke: collector start, then the health line reads OK with a 1 s heartbeat.
+- The batch 2 merges are still pending bing. See the commands above.
+
 ## Next recommended batch (priority order)
 
-1. **bing, on the machine:** start the standalone collector at logon (Task Scheduler running `npm run collector -- --data "%APPDATA%\Money Printer OS\data"`), and disable `MoneyPrinterReplayWorkhorse`. The report's `MPO_RESEARCH_COLLECTOR=false` step is optional now that the lock exists.
-2. Add the collector's status (`research-capture-status.json` freshness, `lastWriteError`, lock holder) to `npm run health` / doctor, so a silent stop becomes visible.
-3. Make raw-tape readers skip torn/NUL lines explicitly and count them, instead of each reader deciding. Check `researchEvidenceStore` and `replayLab`.
-4. Add a main-guard to `src/index.js` so `enter()` can be tested end to end (KNOWN_BUGS accounting note 2).
-5. Once Codex's Lab branch merges, re-run the three sandbox searches (report section 2.3). The commands run in the Lab repo, not this one.
+1. **bing:** run the two merge commands (batch 2), then say whether to push. Schedule `npm run collector -- --data "%APPDATA%\Money Printer OS\data"` at logon, and disable `MoneyPrinterReplayWorkhorse`.
+2. Re-run the Lab's three Polymarket sandbox searches with the committed fee model (report section 2.3: `node scripts/polymarket-research.mjs --mode search ...` in the Lab repo, read-only against `W:/mpo-polymarket-research`). Record the verdict here.
+3. Refresh or retire the stale admin scripts (report section 2.8). They live outside this repo, so ask bing where first.
+4. Design work (not compute): a second Polymarket strategy family. Options are fee-free NFL-only markets or maker/limit posting with a queue model (report section 2.5).
+5. Optional: an end-to-end `enter()` test harness, which needs dependency injection for config, store and network.

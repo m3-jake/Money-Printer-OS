@@ -121,5 +121,13 @@ async function run(){
  }
 }
 
-const isMain=process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url);
+// Same entry rule as src/index.js: the loader realpaths import.meta.url but not argv[1] (symlinked
+// installs, /var -> /private/var), and a plain compare made the collector a silent no-op there.
+export function isEntryModule(argv1=process.argv[1],moduleUrl=import.meta.url,env=process.env){
+ if(env.MONEY_PRINTER_SUPERVISED==='1')return true;
+ if(!argv1)return false;
+ const real=p=>{try{return fs.realpathSync(p)}catch{return p}};
+ try{return real(fileURLToPath(moduleUrl))===real(path.resolve(argv1))}catch{return false}
+}
+const isMain=isEntryModule();
 if(isMain)run().catch(e=>{console.error(e);process.exitCode=1});

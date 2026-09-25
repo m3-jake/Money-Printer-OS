@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { collectSolanaTicks, filterPolymarketRecords, appendNdjson, atomicJson, acquireCollectorLock, releaseCollectorLock } from '../src/researchCollector.js';
+import { pathToFileURL } from 'node:url';
+import { collectSolanaTicks, filterPolymarketRecords, appendNdjson, atomicJson, acquireCollectorLock, releaseCollectorLock, isEntryModule } from '../src/researchCollector.js';
 
 test('Solana evidence collector appends only unseen observed ticks',()=>{
   const state={tickHistory:{MINT:[{ts:100,price:1,liq:1000,v5:10,flow:1.2,score:70,buys:4,sells:2},{ts:200,price:1.1,liq:1100,v5:12,flow:1.4,score:75,buys:5,sells:2}]}};
@@ -66,4 +67,16 @@ test('collector lock admits one owner, yields to a live holder and takes over st
   assert.equal(acquireCollectorLock(lock,{pid:333,now:Date.now()+120_000,staleMs:60_000,isAlive:()=>true}).ok,true);
   releaseCollectorLock(lock,222);assert.equal(fs.existsSync(lock),true,'a non-owner must not release the lock');
   releaseCollectorLock(lock,333);assert.equal(fs.existsSync(lock),false);
+});
+
+test('collector entry check survives symlinked install paths and trusts the desktop supervisor',t=>{
+  const dir=tmp(),real=path.join(dir,'researchCollector.js');fs.writeFileSync(real,'');
+  const url=pathToFileURL(fs.realpathSync(real)).href;
+  assert.equal(isEntryModule(real,url,{}),true);
+  assert.equal(isEntryModule(path.join(dir,'other.js'),url,{}),false);
+  assert.equal(isEntryModule(undefined,url,{}),false);
+  assert.equal(isEntryModule(undefined,url,{MONEY_PRINTER_SUPERVISED:'1'}),true);
+  const link=path.join(dir,'linked');
+  try{fs.symlinkSync(dir,link,'junction')}catch{t.diagnostic('symlinks unavailable; skipped link case');return}
+  assert.equal(isEntryModule(path.join(link,'researchCollector.js'),url,{}),true);
 });
