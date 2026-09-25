@@ -17,6 +17,11 @@ test('weak or untrusted champion cannot become a paper policy',()=>{
  assert.equal(evolutionChampionPolicy({evolutionLoop:{champion:{...good,stage:'LIVE'}}}),null);
  assert.equal(evolutionChampionPolicy({evolutionLoop:{champion:{...good,metrics:{...good.metrics,heldOutN:11}}}}),null);
  assert.equal(evolutionChampionPolicy({evolutionLoop:{champion:{...good,metrics:{...good.metrics,monteCarloPassPct:69}}}}),null);
+ for(const key of ['heldOutN','samples','activityPct','monteCarloPassPct','stressAvgPct','consistencyPct']){
+  for(const value of ['invalid',Infinity,null]) assert.equal(evolutionChampionPolicy({evolutionLoop:{champion:{...good,metrics:{...good.metrics,[key]:value}}}}),null,`${key} must be measured and finite`);
+ }
+ assert.equal(evolutionChampionPolicy({evolutionLoop:{champion:{...good,variant:{...good.variant,maxHoldMin:Infinity}}}}),null);
+ assert.equal(evolutionChampionPolicy({evolutionLoop:{champion:{...good,variant:{...good.variant,weights:{edge:'invalid'}}}}}),null);
 });
 
 test('engine applies evolution champion only behind paper-mode guards',()=>{

@@ -12,6 +12,13 @@ process.env.MONEY_PRINTER_DATA_DIR = DIR;
 const { enqueueAction, drainActions, cleanupActionDrains, quarantineActionQueue, ACTION_MAX_BYTES, QUEUE_MAX_BYTES, DRAIN_ORPHAN_MS } = await import('../src/store.js');
 const Q = path.join(DIR, 'actions.ndjson');
 
+test('retired evolution-sync cannot enter the queue and historical queued snapshots cannot become policies', () => {
+  assert.throws(() => enqueueAction({ type: 'evolution-sync', evolutionLoop: { champion: { id: 'UNVALIDATED' } } }), /retired/);
+  fs.writeFileSync(Q, JSON.stringify({ type: 'evolution-sync', evolutionLoop: { champion: { id: 'UNVALIDATED' } } }) + '\n');
+  enqueueAction({ type: 'toggle-pause' });
+  assert.deepEqual(drainActions().map(action => action.type), ['toggle-pause']);
+});
+
 test('small actions round-trip; an action above the byte rail is refused before touching disk', () => {
   enqueueAction({ type: 'toggle-pause' });
   enqueueAction({ type: 'runtime', patch: { aggression: 72 } });

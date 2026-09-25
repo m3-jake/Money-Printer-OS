@@ -77,18 +77,19 @@ export function readLabLink({ dir = dataDir(), bridge = bridgeDir(), key = bridg
     if (bs || bc) candidates.push({ source: 'bridge', status: bs, champion: bc, freshMs: BRIDGE_FRESH_MS });
   }
   if (!candidates.length) return { connected: false, source: 'none', status: null, champion: null, ageMs: null };
-  // Freshest status wins; a stale source still contributes its champion if nothing fresher has one.
+  // Keep status and champion on the same source. A disconnected source has no policy authority.
   candidates.sort((a, b) => Number(b.status?.updatedAt || 0) - Number(a.status?.updatedAt || 0));
   const best = candidates[0];
-  const ageMs = best.status ? Math.max(0, now - Number(best.status.updatedAt)) : null;
-  const champion = best.champion || candidates.find(c => c.champion)?.champion || null;
-  return { connected: ageMs != null && ageMs <= best.freshMs, source: best.source, status: best.status, champion, ageMs };
+  const ageMs = best.status ? now - Number(best.status.updatedAt) : null;
+  const connected = ageMs != null && ageMs >= 0 && ageMs <= best.freshMs;
+  const champion = connected && best.champion?.labNodeId === best.status?.labNodeId ? best.champion : null;
+  return { connected, source: best.source, status: best.status, champion, ageMs };
 }
 
 // The evolutionLoop view the dashboard/control plane already understand, built from lab records.
 export function loopViewFromLab(status, championDoc) {
   const st = status || {};
-  const c = championDoc?.champion || st.champion || null;
+  const c = championDoc?.champion || null;
   return {
     enabled: true,
     source: 'evolution-lab',

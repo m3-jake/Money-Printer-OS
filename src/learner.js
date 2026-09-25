@@ -15,8 +15,12 @@ function norm(a) {
   };
 }
 export function evolutionChampionPolicy(s){
+  if(s?.labLink && !s.labLink.connected)return null;
   const c=s?.evolutionLoop?.champion,v=c?.variant,m=c?.metrics||{};
   if(!v||!c?.id||c.id==='BASE'||!['SHADOW','PAPER_CANARY','PAPER'].includes(String(c.stage||'')))return null;
+  if(!['heldOutN','samples','activityPct','monteCarloPassPct','stressAvgPct','consistencyPct'].every(k=>m[k]!=null&&Number.isFinite(Number(m[k]))))return null;
+  if(['threshold','stopPct','takePct','maxHoldMin'].some(k=>v[k]!=null&&(!Number.isFinite(Number(v[k]))||Number(v[k])<=0)))return null;
+  if(v.weights && (typeof v.weights!=='object'||!FEATURES.every(k=>Number.isFinite(Number(v.weights[k]??0))&&Number(v.weights[k]??0)>=0)||!FEATURES.some(k=>Number(v.weights[k])>0)))return null;
   if(Number(m.heldOutN||0)<12||Number(m.samples||0)<40||Number(m.activityPct||0)<8||Number(m.monteCarloPassPct||0)<70||Number(m.stressAvgPct||0)<-2||Number(m.consistencyPct||0)<50)return null;
   return{id:c.id,sourceStage:c.stage,threshold:Math.max(20,Math.min(95,Number(v.threshold||60))),stopPct:Math.max(.5,Number(v.stopPct||8)),takePct:Math.max(1,Number(v.takePct||16)),maxHoldMin:Math.max(1,Number(v.maxHoldMin||30)),weights:v.weights||DEFAULT_WEIGHTS,promotedAt:Number(c.promotedAt||0)};
 }

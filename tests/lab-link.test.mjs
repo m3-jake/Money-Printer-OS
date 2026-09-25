@@ -73,6 +73,24 @@ test('stale local status hands over to a fresher signed bridge; bad signatures a
   assert.equal(verifyRecord(signRecord({ a: 1 }, 'k'), 'k').a, 1);
 });
 
+test('stale or forged publications cannot retain a policy or smuggle one through status', () => {
+  resetLabLinkMemory();
+  const dir = path.join(DIR, 'authority');
+  const now = 1_000_000;
+  write(path.join(dir, 'lab-link', 'status.json'), statusDoc(now, { champion: goodChampion('STATUS-INJECTION') }));
+  write(path.join(dir, 'lab-link', 'champion.json'), championDoc(goodChampion('VALID'), now));
+  const s = {};
+  syncLabLink(s, { dir, bridge: '', now });
+  assert.equal(evolutionChampionPolicy(s).id, 'VALID');
+  syncLabLink(s, { dir, bridge: '', now: now + LOCAL_FRESH_MS + 1 });
+  assert.equal(s.labLink.connected, false);
+  assert.equal(evolutionChampionPolicy(s), null, 'losing the lab heartbeat revokes the prior policy');
+  assert.equal(s.evolutionLoop.champion, null, 'status cannot restore a rejected champion');
+  write(path.join(dir, 'lab-link', 'champion.json'), championDoc(goodChampion('OTHER-LAB'), now, { labNodeId: 'different-lab' }));
+  assert.equal(readLabLink({ dir, bridge: '', now }).champion, null);
+  assert.equal(readLabLink({ dir, bridge: '', now: now - 1 }).connected, false, 'a future heartbeat is not fresh evidence');
+});
+
 test('the trader publishes only usable 5m rows, throttled, plus a signed bridge copy', () => {
   resetLabLinkMemory();
   const now = 2_000_000;

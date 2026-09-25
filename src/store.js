@@ -396,6 +396,7 @@ export function enqueueAction(action) {
   const queued = { id: action.id || randomUUID(), ...action, ts: action.ts || Date.now() };
   const line = `${JSON.stringify(queued)}\n`;
   if (Buffer.byteLength(line) > ACTION_MAX_BYTES) throw new Error(`action ${queued.type || '?'} is ${Buffer.byteLength(line)} bytes; the queue accepts at most ${ACTION_MAX_BYTES}`);
+  if (queued.type === 'evolution-sync') throw new Error('Legacy evolution-sync is retired; use the validated Lab link.');
   fs.appendFileSync(actionFile, line);
   return queued;
 }
@@ -441,7 +442,11 @@ export function drainActions(limit = 1000) {
   const remain = lines.slice(limit);
   if (remain.length) fs.appendFileSync(actionFile, `${remain.join('\n')}\n`);
   fs.rmSync(drainFile, { force: true }); // only reached once `remain` is durably persisted
-  return take.map(x => { try { return JSON.parse(x); } catch { return null; } }).filter(Boolean);
+  return take.map(x => { try { return JSON.parse(x); } catch { return null; } }).filter(Boolean).filter(action => {
+    if (action.type !== 'evolution-sync') return true;
+    appendJournal({ type: 'action-rejected', actionType: action.type, actionId: action.id || null, reason: 'Legacy evolution-sync is retired.' });
+    return false;
+  });
 }
 
 export function resetPaper(startSol = cfg.paperStartSol, persist = true) {
