@@ -47,7 +47,7 @@
     "test:latency": "node --test tests/latency-diagnosis.test.mjs tests/latency-db.test.mjs",
     "test:evidence": "node --test tests/research-evidence-gate.test.mjs tests/research-evidence-store.test.mjs tests/research-collector.test.mjs tests/research-supervision.test.cjs tests/research-control-plane.test.mjs tests/research-lifecycle.test.mjs tests/project-journal.test.mjs",
     "evidence-canary": "node scripts/research-evidence-canary.mjs",
-    "test:lab-link": "node --test tests/lab-link.test.mjs tests/action-queue-rails.test.mjs tests/alpha-queue-rails.test.mjs",
+    "test:lab-link": "node --test tests/lab-link.test.mjs tests/lab-health.test.mjs tests/action-queue-rails.test.mjs tests/alpha-queue-rails.test.mjs",
     "release:pack": "node scripts/release-alpha53.mjs pack",
     "release:record": "node scripts/release-alpha53.mjs test-record",
     "release:promote": "node scripts/release-alpha53.mjs promote",

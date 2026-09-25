@@ -11,6 +11,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { loopPersistenceCheck } from '../src/labHealth.js';
 
 const JSON_OUT = process.argv.includes('--json');
 const TRADER_URL = process.env.MPO_TRADER_URL || 'http://127.0.0.1:8792';
@@ -80,14 +81,10 @@ try {
   // Is the loop actually reaching disk? saveLocalLoop swallowed its failures, so on 2026-09-21
   // evolution-loop.json froze at generation 53,549 for ten hours while every other signal here
   // read healthy and the in-memory loop climbed to 120,602. Only an orphaned .tmp saved it.
-  const lw = s.loopWrite || lab.status?.loopWrite;
-  if (lw) {
-    const staleMin = lw.staleMs == null ? null : Math.round(lw.staleMs / 60000);
-    const bad = lw.lastWriteAt === 0 || (staleMin != null && staleMin > 10);
-    add(bad ? 'RED' : lw.errors ? 'WARN' : 'OK', 'loop persisted',
-      lw.lastWriteAt === 0 ? 'never written this run' :
-      `${staleMin}m since last durable write, ${lw.errors} write error(s)` + (lw.lastError ? ` - ${String(lw.lastError).slice(0, 80)}` : ''));
-  }
+  const persistence = loopPersistenceCheck(s);
+  add(persistence.level, 'loop persisted', persistence.detail);
+  if (s.feed) add(s.feed.ready ? 'OK' : 'WARN', 'research observations', s.feed.ready ? `${s.feed.rowsTotal} rows; latest observation ${Math.round(s.feed.observationAgeMs / 60000)}m old` : String(s.feed.blockedReason || 'fresh observations unavailable'));
+  add(s.paperPromotionAllowed === true ? 'OK' : 'WARN', 'candidate qualification', s.paperPromotionAllowed === true ? 'Paper comparison authorized by evidence' : 'Research only; no candidate authorized to replace the paper incumbent');
 
   const pubAt = lab.champion?.publishedAt;
   if (pubAt) {
