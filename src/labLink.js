@@ -95,6 +95,8 @@ export function loopViewFromLab(status, championDoc) {
   return {
     enabled: true,
     source: 'evolution-lab',
+    paperPromotionAllowed: championDoc?.paperPromotionAllowed === true,
+    qualificationStage: championDoc?.qualificationStage || st.qualificationStage || 'RESEARCH_ONLY',
     labNodeId: st.labNodeId || championDoc?.labNodeId || null,
     labName: st.labName || championDoc?.labName || null,
     labVersion: st.labVersion || championDoc?.labVersion || null,
@@ -146,6 +148,8 @@ export function syncLabLink(s, opts = {}) {
     status: link.status?.status || null,
     championId: link.champion?.champion?.id || null,
     championPublishedAt: link.champion?.publishedAt || null,
+    paperPromotionAllowed: link.connected && link.champion?.paperPromotionAllowed === true,
+    qualificationStage: link.champion?.qualificationStage || link.status?.qualificationStage || 'RESEARCH_ONLY',
     checkedAt: now,
   };
   if (!link.status && !link.champion) {
@@ -157,7 +161,7 @@ export function syncLabLink(s, opts = {}) {
     lastApplied = { key: '', at: now };
     return changed;
   }
-  const key = `${link.status?.updatedAt || 0}:${link.champion?.publishedAt || 0}:${link.champion?.champion?.id || ''}`;
+  const key = `${link.status?.updatedAt || 0}:${link.champion?.publishedAt || 0}:${link.champion?.champion?.id || ''}:${s.labLink.connected}:${s.labLink.paperPromotionAllowed}`;
   if (key === lastApplied.key) return false;
   lastApplied = { key, at: now };
   s.evolutionLoop = loopViewFromLab(link.status, link.champion);

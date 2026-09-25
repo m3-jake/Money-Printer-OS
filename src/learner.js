@@ -15,7 +15,8 @@ function norm(a) {
   };
 }
 export function evolutionChampionPolicy(s){
-  if(s?.labLink && !s.labLink.connected)return null;
+  if(s?.labLink && (!s.labLink.connected||s.labLink.paperPromotionAllowed!==true))return null;
+  if(s?.evolutionLoop?.source==='evolution-lab'&&s.evolutionLoop.paperPromotionAllowed!==true)return null;
   const c=s?.evolutionLoop?.champion,v=c?.variant,m=c?.metrics||{};
   if(!v||!c?.id||c.id==='BASE'||!['SHADOW','PAPER_CANARY','PAPER'].includes(String(c.stage||'')))return null;
   if(!['heldOutN','samples','activityPct','monteCarloPassPct','stressAvgPct','consistencyPct'].every(k=>m[k]!=null&&Number.isFinite(Number(m[k]))))return null;

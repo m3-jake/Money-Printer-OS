@@ -20,7 +20,7 @@ const { evolutionChampionPolicy } = await import('../src/learner.js');
 
 const write = (file, v) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, JSON.stringify(v)); };
 const goodChampion = (id = 'LAB-CHAMP', promotedAt = 5_000) => ({ id, stage: 'SHADOW', promotedAt, previousId: 'BASE', variant: { id, threshold: 62, stopPct: 1.5, takePct: 100, maxHoldMin: 2, weights: { edge: .05, explosion: .16, execution: .08, momentum: .34, liquidity: .08, freshness: .07, flow: .11, volumeAccel: .04, priceAccel: .07 } }, metrics: { heldOutN: 22, samples: 60, activityPct: 8.1, monteCarloPassPct: 100, stressAvgPct: 18, consistencyPct: 100, robustScore: 40 } });
-const championDoc = (c, now, extra = {}) => ({ schema: LAB_LINK_SCHEMA.champion, labNodeId: 'lab-1', labName: 'WITCHDOCTOR', labVersion: '0.1.0', publishedAt: now, generation: 42, variantsTested: 9000, champion: c, liveActivationAllowed: false, automaticLivePromotionAllowed: false, ...extra });
+const championDoc = (c, now, extra = {}) => ({ schema: LAB_LINK_SCHEMA.champion, labNodeId: 'lab-1', labName: 'WITCHDOCTOR', labVersion: '0.1.0', publishedAt: now, generation: 42, variantsTested: 9000, champion: c, paperPromotionAllowed: true, qualificationStage: 'PAPER_COMPARISON', liveActivationAllowed: false, automaticLivePromotionAllowed: false, ...extra });
 const statusDoc = (now, extra = {}) => ({ schema: LAB_LINK_SCHEMA.status, labNodeId: 'lab-1', labName: 'WITCHDOCTOR', labVersion: '0.1.0', updatedAt: now, status: 'RUNNING', generation: 42, variantsTested: 9000, workerCount: 24, researchMode: 'BEAST', challengers: Array.from({ length: 20 }, (_, i) => ({ id: `C${i}`, metrics: { robustScore: i } })), events: Array.from({ length: 40 }, (_, i) => ({ ts: i, type: 'INFO', message: 'm' })), ...extra });
 
 test('no lab files means not connected, and the trader keeps its BASE policy', () => {
@@ -109,6 +109,22 @@ test('a future local heartbeat cannot mask a fresh authenticated bridge', () => 
   assert.equal(link.connected, true);
   assert.equal(link.source, 'bridge');
   assert.equal(link.champion.champion.id, 'BRIDGE');
+});
+
+test('research-only and legacy champions remain visible but never replace the paper incumbent', () => {
+  const dir = path.join(DIR, 'unqualified');
+  const now = 1_800_000;
+  write(path.join(dir, 'lab-link', 'status.json'), statusDoc(now));
+  const s = {};
+  for (const allowed of [undefined, false]) {
+    resetLabLinkMemory();
+    write(path.join(dir, 'lab-link', 'champion.json'), championDoc(goodChampion('RESEARCH'), now, { paperPromotionAllowed: allowed, qualificationStage: 'RESEARCH_ONLY' }));
+    syncLabLink(s, { dir, bridge: '', now });
+    assert.equal(s.labLink.connected, true);
+    assert.equal(s.evolutionLoop.champion.id, 'RESEARCH');
+    assert.equal(evolutionChampionPolicy(s), null);
+    assert.equal(evolutionChampionPolicy({ evolutionLoop: s.evolutionLoop }), null);
+  }
 });
 
 test('the trader publishes only usable 5m rows, throttled, plus a signed bridge copy', () => {
