@@ -62,6 +62,23 @@ try {
   add('RED', 'trader', `unreachable at ${TRADER_URL} (${e.message})`);
 }
 
+// ---------------------------------------------------------------- robinhood (optional venue; an older build without the route is only a WARN)
+try {
+  const rh = await getJson(`${TRADER_URL}/api/robinhood`);
+  const r = rh.readiness || {}, loop = rh.loop || {}, ev = rh.evolve || {}, ap = rh.journal?.autopilot || {};
+  const armedOrReal = r.sessionArmed || r.realEnabled;
+  add(armedOrReal ? 'WARN' : 'OK', 'robinhood', `${r.credentialsReady ? 'keys' : 'no keys'} keyValid=${!!r.keyValid} real=${!!r.realEnabled} armed=${!!r.sessionArmed} qualified=${!!r.qualified} auth=${r.authCode || 'n/a'}`);
+  add(loop.running ? 'OK' : 'WARN', 'robinhood loop', loop.running ? `running every ${Math.round((loop.tickMs || 0) / 1000)}s, last tick ${loop.lastTickAt ? Math.round((Date.now() - loop.lastTickAt) / 60000) + 'm ago' : 'never'}` : 'not running (ROBINHOOD_AUTOSTART=false or venue disabled)');
+  if (r.recoveryRequired || r.paperRecoveryRequired) add('RED', 'robinhood state', `${r.recoveryRequired ? 'real journal' : 'paper book'} requires recovery`);
+  if (ap.enabled) add('WARN', 'robinhood real autopilot', `ENABLED on ${(ap.symbols || []).join(',')} (${ap.orderUsd} USD/order)`);
+  const open = (rh.journal?.open || []).length, unverified = rh.journal?.stats?.unverified || 0;
+  if (open) add(unverified ? 'WARN' : 'OK', 'robinhood exposure', `${open} open real row(s), ${unverified} unverified - the updater holds until flat`);
+  const tape = Object.entries(ev.tapeDays || {}).map(([s, d]) => `${s} ${d}d`).join(', ');
+  add(ev.enabled === false ? 'WARN' : 'OK', 'robinhood evolve', `${ev.enabled === false ? 'disabled' : 'gen ' + (ev.generation || 0)}, ${ev.proposed ? 'champion ' + ev.proposed.paramsHash + ' PROPOSED' : 'no proposal'}, autopromote=${!!ev.autopromote}, tape ${tape || 'empty'}`);
+} catch (e) {
+  add('WARN', 'robinhood', `readiness unavailable (${e.message}) - older build or trader down`);
+}
+
 // ---------------------------------------------------------------- lab
 try {
   const lab = await getJson(`${LAB_URL}/api/state`);

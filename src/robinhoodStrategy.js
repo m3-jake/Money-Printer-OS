@@ -370,7 +370,8 @@ export function cooldownUntil({ closedAt, pnlUsd }, params) {
   return closedAt + minutes * 60000;
 }
 
-export function pickCandidates(featuresBySymbol, openSymbols = [], cooldowns = {}, maxOpen = 1, now = Date.now()) {
+// `weights` (optional, §21): { [symbol]: multiplier } applied to the score, e.g. { 'BTC-USD': 1.5 } for the primary symbol.
+export function pickCandidates(featuresBySymbol, openSymbols = [], cooldowns = {}, maxOpen = 1, now = Date.now(), weights = null) {
   const open = new Set(openSymbols || []);
   const slots = Math.max(0, Math.floor(maxOpen) - open.size);
   if (slots === 0) return [];
@@ -382,7 +383,8 @@ export function pickCandidates(featuresBySymbol, openSymbols = [], cooldowns = {
     const row = featuresBySymbol[symbol] || {};
     const f = row.features;
     if (!f || !f.ok || !(row.costPct > 0) || !Number.isFinite(f.expectedMovePct)) continue;
-    ranked.push({ symbol, score: f.expectedMovePct / row.costPct });
+    const w = weights && Number.isFinite(Number(weights[symbol])) && Number(weights[symbol]) > 0 ? Number(weights[symbol]) : 1;
+    ranked.push({ symbol, score: (f.expectedMovePct / row.costPct) * w });
   }
   ranked.sort((a, b) => (b.score - a.score) || (a.symbol < b.symbol ? -1 : a.symbol > b.symbol ? 1 : 0));
   return ranked.slice(0, slots).map((r) => r.symbol);

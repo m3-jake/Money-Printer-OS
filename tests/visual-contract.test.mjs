@@ -40,6 +40,27 @@ test('confirmation phrases remain exact in UI and backends', () => {
   assert.match(combos, /confirmation!=='FORGET'/);
 });
 
+test('Robinhood confirmation phrases remain exact in UI, HTTP surface and backend', () => {
+  const rh = read('src/robinhoodAutoTrader.js');
+  const rhHttp = read('src/robinhoodHttp.js');
+  const panel = read('public/assets/robinhood-panel.js');
+  const phrases = ['PLACE REAL CRYPTO ORDER', 'CANCEL REAL CRYPTO ORDER', 'CANCEL REAL CRYPTO ORDERS', 'ENABLE REAL CRYPTO AUTOPILOT'];
+  for (const p of phrases) { assert.match(html, rx(p)); assert.match(panel, rx(p)); }
+  assert.match(rh, /CONFIRM_PLACE='PLACE REAL CRYPTO ORDER'/);
+  assert.match(rh, /CONFIRM_CANCEL='CANCEL REAL CRYPTO ORDER'/);
+  assert.match(rh, /CONFIRM_CANCEL_ALL='CANCEL REAL CRYPTO ORDERS'/);
+  assert.match(rh, /CONFIRM_AUTOPILOT='ENABLE REAL CRYPTO AUTOPILOT'/);
+  assert.match(rh, /CONFIRM_FORGET='FORGET'/);
+  assert.match(rh, /confirmation!=='FORGET'/);
+  assert.match(rh, /realEnabled=\(\)=>String\(process\.env\.ROBINHOOD_REAL_ENABLED\|\|'false'\)\.toLowerCase\(\)==='true'/, 'real trading stays off unless the env is exactly true');
+  assert.match(rhHttp, /confirmation!=='RESET PAPER'/);
+  assert.match(rhHttp, /placedBy:'manual'/, 'HTTP never places as autopilot');
+  assert.match(rhHttp, /'evolve\/apply'/);
+  assert.match(dashJs, /handleRobinhoodRequest\(req,res,u,\{json,body\}\)/);
+  for (const route of ['/api/robinhood', '/api/robinhood/readiness', '/api/robinhood/evolve']) assert.match(rhHttp, rx(`u.pathname==='${route}'`));
+  assert.doesNotMatch(rh, /automaticLivePromotionAllowed\s*[:=]\s*true|liveActivationAllowed\s*[:=]\s*true/);
+});
+
 test('GET /css/ handler exists next to /assets/', () => {
   assert.match(dashJs, /pathname\.startsWith\('\/css\/'\)/);
   assert.match(dashJs, /'text\/css'/);

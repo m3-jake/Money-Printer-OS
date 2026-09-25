@@ -309,6 +309,24 @@ function monitorTick() {
   });
 }
 
+const LAB_PORT = Number(process.env.MPO_LAB_PORT || 8793);
+const LAB_EXE = path.join(process.env.LOCALAPPDATA || '', 'Programs', 'money-printer-evolution-lab', 'Money Printer Evolution Lab.exe');
+function openEvolutionLab() {
+  const probe = http.get({ host: HOST, port: LAB_PORT, path: '/', timeout: 1500 }, (res) => {
+    res.resume();
+    // it is running: its own single-instance lock focuses the window when the exe is launched again
+    launchLab();
+  });
+  probe.on('error', () => launchLab());
+  probe.on('timeout', () => { probe.destroy(); launchLab(); });
+  function launchLab() {
+    if (process.platform === 'win32' && fs.existsSync(LAB_EXE)) {
+      try { spawn(LAB_EXE, [], { detached: true, stdio: 'ignore', cwd: path.dirname(LAB_EXE) }).unref(); return; } catch (e) { log(`lab launch failed: ${e.message}`); }
+    }
+    shell.openExternal(`http://${HOST}:${LAB_PORT}/`);
+  }
+}
+
 function installMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     { label: 'Money Printer OS', submenu: [
@@ -318,6 +336,10 @@ function installMenu() {
       { label: 'Restart engine', click: () => { if (ownsEngine) { for (const p of Object.values(procs)) p.restarts = 0; stopAll('SIGTERM'); } } },
       { label: 'Open log', click: () => shell.openPath(LOG) },
       { label: 'Open data folder', click: () => shell.openPath(DATA) },
+      { type: 'separator' },
+      // The Evolution Lab is a SEPARATE application (docs/EVOLUTION_LAB_SPLIT.md): this only
+      // launches its installed exe, or focuses its window through its own port if it is up.
+      { label: 'Open Evolution Lab', click: () => openEvolutionLab() },
       { type: 'separator' }, { role: 'quit' } ] },
     { label: 'Edit', submenu: [
       { role: 'undo' }, { role: 'redo' }, { type: 'separator' },

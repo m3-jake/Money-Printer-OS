@@ -9,6 +9,19 @@
   `.agent-state/RELEASE_STATUS.md` for the packaged artifact). Older alphas (`MPO-alpha38/39/40/41/42-release-src`)
   are history only, under `../../Archive/` conventions from prior trees.
 - **Version:** package.json `0.5.0-alpha.53`.
+- **Robinhood Auto Trader (2026-09-25, branch `feature/robinhood-auto-trader`, spec `docs/ROBINHOOD-AUTO-TRADER.md`):**
+  self-contained crypto venue on Robinhood's official Crypto Trading API (`src/robinhoodSigner.js`,
+  `robinhoodTransport.js`, `robinhoodJournal.js`, `robinhoodStrategy.js`, `robinhoodAutoTrader.js`,
+  `robinhoodHttp.js`; HUD panel `public/assets/robinhood-panel.js` synced into `dashboard.html`).
+  Paper-first, Bitcoin-primary; real money off by default (`ROBINHOOD_REAL_ENABLED=false`), real orders
+  need an armed session + typed phrases, real autopilot needs paper qualification and self-disables on
+  `dailyLossCap`, `qualificationLost`, `paramsChanged`, `keyNotFound`/`notPermitted`. Package F closed:
+  `tests/robinhood-hud.test.mjs`, backend assertions in `tests/visual-contract.test.mjs`, `doctor` and
+  `health-check` readiness lines, release-gate + Windows installer refuse updates while real rows are open.
+  **Robinhood Evolution** (spec section 22): durable tape `data/robinhood-tape/<SYMBOL>.ndjson` (45 days),
+  pure replay `src/robinhoodBacktest.js`, bounded-mutation search `src/robinhoodEvolve.js` with ledger
+  `data/robinhood-evolve.json`; champions are PROPOSED in the HUD and applied to the paper params only
+  (`ROBINHOOD_EVOLVE_AUTOPROMOTE=false` by default). `npm run test:robinhood` is offline (fetch stubbed).
 - **Headline (alpha53): the Evolution Lab split.** The strategy-search furnace (evolution
   daemon, BEAST/GPU scorer, robustness audit, research cluster) moved out of this trader into a
   separate Windows-only app, `money-printer-evolution-lab`. This tree keeps the network mesh,
