@@ -2,11 +2,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { renameSyncWithRetry } from './atomicRename.js';
 
 const DATA_DIR=path.resolve(process.env.MONEY_PRINTER_DATA_DIR||'data');
 const RAW_DIR=path.join(DATA_DIR,'research-evidence','raw');
 const CURSOR_FILE=path.join(DATA_DIR,'research-evidence','collector-state.json');
 const STATUS_FILE=path.join(DATA_DIR,'research-capture-status.json');
+const LOCK_FILE=path.join(DATA_DIR,'research-evidence','collector.lock');
+const LOCK_STALE_MS=Math.max(10_000,Number(process.env.MPO_COLLECTOR_LOCK_STALE_MS||60_000));
 const SOLANA_MS=Math.max(500,Number(process.env.MPO_SOLANA_CAPTURE_MS||1000));
 const POLY_MS=Math.max(2000,Number(process.env.MPO_POLY_CAPTURE_MS||5000));
 const POLY_HEARTBEAT_MS=Math.max(POLY_MS,Number(process.env.MPO_POLY_HEARTBEAT_MS||30000));
@@ -15,9 +18,38 @@ const LEVELS=Math.max(3,Math.min(20,Number(process.env.MPO_POLY_CAPTURE_LEVELS||
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
 function readJson(file,fallback={}){try{return JSON.parse(fs.readFileSync(file,'utf8'))}catch{return fallback}}
-function atomicJson(file,obj){fs.mkdirSync(path.dirname(file),{recursive:true});const tmp=`${file}.${process.pid}.tmp`;fs.writeFileSync(tmp,JSON.stringify(obj,null,2));fs.renameSync(tmp,file)}
+// fsync before rename: a power loss must leave either the old file or the new one, never a NUL-filled file.
+export function atomicJson(file,obj){
+ fs.mkdirSync(path.dirname(file),{recursive:true});const tmp=`${file}.${process.pid}.tmp`;
+ const fd=fs.openSync(tmp,'w');try{fs.writeSync(fd,JSON.stringify(obj,null,2));fs.fsyncSync(fd)}finally{fs.closeSync(fd)}
+ renameSyncWithRetry(tmp,file);
+}
 function day(ts=Date.now()){return new Date(ts).toISOString().slice(0,10)}
-function appendNdjson(name,rows){if(!rows.length)return 0;fs.mkdirSync(RAW_DIR,{recursive:true});const f=path.join(RAW_DIR,`${name}-${day()}.ndjson`);const body=rows.map(x=>JSON.stringify(x)).join('\n')+'\n';fs.appendFileSync(f,body);return Buffer.byteLength(body)}
+// A torn tail (power loss mid-append, or a NUL-extended file) must not swallow the next record:
+// start a fresh line whenever the file does not already end in a newline.
+export function appendNdjson(name,rows,{dir=RAW_DIR,now=Date.now()}={}){
+ if(!rows.length)return 0;fs.mkdirSync(dir,{recursive:true});
+ const f=path.join(dir,`${name}-${day(now)}.ndjson`);let lead='';
+ try{const st=fs.statSync(f);if(st.size>0){const fd=fs.openSync(f,'r');try{const b=Buffer.alloc(1);fs.readSync(fd,b,0,1,st.size-1);if(b[0]!==0x0a)lead='\n'}finally{fs.closeSync(fd)}}}catch{}
+ const body=lead+rows.map(x=>JSON.stringify(x)).join('\n')+'\n';fs.appendFileSync(f,body);return Buffer.byteLength(body);
+}
+// One collector per data dir. The trader spawns one as a child and a standalone runner may run another;
+// without this they would both append the same day file. A lock is stale when its pid is gone or it has
+// not been refreshed for staleMs (covers pid reuse after a reboot).
+function pidAlive(pid){try{process.kill(pid,0);return true}catch(e){return e?.code==='EPERM'}}
+export function acquireCollectorLock(file,{pid=process.pid,now=Date.now(),staleMs=LOCK_STALE_MS,isAlive=pidAlive}={}){
+ fs.mkdirSync(path.dirname(file),{recursive:true});
+ for(let attempt=0;attempt<2;attempt++){
+  try{const fd=fs.openSync(file,'wx');try{fs.writeSync(fd,JSON.stringify({pid,at:now}))}finally{fs.closeSync(fd)}return {ok:true,file}}
+  catch(e){if(e?.code!=='EEXIST')throw e}
+  const held=readJson(file,null),age=(()=>{try{return now-fs.statSync(file).mtimeMs}catch{return Infinity}})();
+  const holder=Number(held?.pid||0);
+  if(holder&&holder!==pid&&isAlive(holder)&&age<staleMs)return {ok:false,file,heldBy:holder};
+  try{fs.unlinkSync(file)}catch{}
+ }
+ return {ok:false,file,heldBy:null};
+}
+export function releaseCollectorLock(file,pid=process.pid){try{if(Number(readJson(file,null)?.pid)===pid)fs.unlinkSync(file)}catch{}}
 function hashBook(r){return crypto.createHash('sha256').update(JSON.stringify({b:r.bids,a:r.asks,f:r.feeMeta})).digest('hex')}
 
 export function collectSolanaTicks(state={},cursor={}){
@@ -52,6 +84,10 @@ export function filterPolymarketRecords(snapshot={},state={},now=Date.now()){
 
 async function run(){
  fs.mkdirSync(RAW_DIR,{recursive:true});
+ const lock=acquireCollectorLock(LOCK_FILE);
+ if(!lock.ok){console.log(`research collector: another collector (pid ${lock.heldBy??'unknown'}) owns ${DATA_DIR}; exiting`);return}
+ const release=()=>releaseCollectorLock(LOCK_FILE);process.on('exit',release);
+ for(const sig of ['SIGINT','SIGTERM'])process.on(sig,()=>{release();process.exit(0)});
  let cursor=readJson(CURSOR_FILE,{solana:{},books:{},stats:{solanaRows:0,polyRows:0,bytes:0}}),lastPoly=0,polyApi=null;
  process.env.POLYMARKET_AUTOSTART='false';
  const status={schema:'mpo.research-capture-status.v1',startedAt:Date.now(),pid:process.pid,liveOrderAccess:false};
@@ -74,7 +110,13 @@ async function run(){
       coverage:{depth:true,costs:feeRows>0,latency:false,sharedCapital:false}};
    }catch(e){status.polymarket={...(status.polymarket||{}),error:String(e?.message||e),lastErrorAt:Date.now()}}
   }
-  cursor.updatedAt=Date.now();atomicJson(CURSOR_FILE,cursor);atomicJson(STATUS_FILE,{...status,updatedAt:Date.now(),bytesTotal:cursor.stats.bytes,rawDir:RAW_DIR});
+  // A transient Windows rename refusal (Dropbox/AV holding the file) must not kill the collector.
+  try{cursor.updatedAt=Date.now();atomicJson(CURSOR_FILE,cursor);atomicJson(STATUS_FILE,{...status,updatedAt:Date.now(),bytesTotal:cursor.stats.bytes,rawDir:RAW_DIR})}
+  catch(e){status.lastWriteError={message:String(e?.message||e),at:Date.now()}}
+  // Refresh the lock; if another collector declared it stale and took it over, yield rather than double-write.
+  const owner=readJson(LOCK_FILE,null);
+  if(owner&&Number(owner.pid)!==process.pid){console.log('research collector: lock taken over; exiting');return}
+  try{const t=new Date();fs.utimesSync(LOCK_FILE,t,t)}catch{}
   await sleep(Math.max(50,SOLANA_MS-(Date.now()-loopAt)));
  }
 }

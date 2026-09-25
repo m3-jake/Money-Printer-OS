@@ -1,0 +1,64 @@
+# Money Printer OS: status ledger
+
+**Read this first.** It is the entry point for each new session. Deeper history lives in `.agent-state/`
+(`CURRENT_TASKS.md`, `KNOWN_BUGS.md`, `PROJECT_STATE.md`, `RELEASE_STATUS.md`) and in `reports/NEXT-STEPS-2026-09-25.md`.
+Don't re-inventory the repo. Update this file at the end of every batch.
+
+Last updated: 2026-09-25, batch 1. Branch `feature/robinhood-auto-trader`, version `0.5.0-alpha.56`.
+
+## Architecture (inventoried once)
+
+- **Desktop shell:** `desktop/main.cjs` (Electron). It supervises child processes (engine `src/index.js`, `src/networkMesh.js`, and optionally `src/researchCollector.js`) and restarts them with backoff. Research services policy: `desktop/research-supervision.cjs` (`MPO_RESEARCH_COLLECTOR`, default on).
+- **Engine / HUD:** `src/index.js` (Solana meme paper engine; calls `main()` at import, not importable by tests), `src/dashboard.js` (HTTP API + `public/dashboard.html`).
+- **Books:** `src/store.js` holds paper state and its accounting invariants. Atomic writes go through `src/atomicRename.js`.
+- **Polymarket:** `src/polymarket.js` (global, paper), `src/polymarketUS.js` and `src/polymarketUSCombos.js` (US and RFQ; auth currently fails with `keyNotFound`).
+- **Robinhood (this branch):** `src/robinhood*.js`, paper only. Real execution isn't installed. See `docs/ROBINHOOD-AUTO-TRADER.md` and `docs/ROBINHOOD-RECOVERY-2026-09-25.md`.
+- **Research/evidence:** `src/researchCollector.js` writes the tape to `<data>/research-evidence/raw/*.ndjson`. Around it sit `researchEvidenceGate/Store`, `researchControlPlane` and `polymarketResearchEval`. The gate is intentionally not wired into the live app.
+- **Evolution Lab** (BEAST/GPU furnace) lives in a separate repo, `money-printer-evolution-lab`. Codex was working there as of 2026-09-25. Don't touch it from here.
+- **Tests:** 54 files in `tests/`, run by `npm run test:all`. Everything is mocked and uses temp dirs.
+
+## Confirmed working (2026-09-25)
+
+- Every test file passes when run one by one: **520 pass, 0 fail**. `node src/selftest.js` reports SELFTEST PASS with an isolated data dir.
+- The collector was run end to end against live public Polymarket data in a temp dir: 179 depth rows, the lock yields to a second instance, and a stale lock is taken over.
+
+## Broken / unfinished / open (details in `.agent-state/KNOWN_BUGS.md`)
+
+- Polymarket US API key returns 401 `keyNotFound`. Only bing can fix it by regenerating the key.
+- Combo/RFQ access is gated by a beta allow-list on Polymarket's side.
+- The research evidence gate isn't wired in (deliberate). The Polymarket strategy family loses after fees (report section 1).
+- `src/index.js` has no main-guard, so `enter()` can't be unit-tested end to end.
+- The alpha.54 build hasn't been installed. Signing and publishing are bing-only.
+- The collector's cursor file can still be lost if it was already NUL-filled before this fix. The only effect is duplicate Solana ticks (bounded by `tickHistory`).
+
+## Bugs fixed
+
+| Batch | Bug | Fix |
+| --- | --- | --- |
+| 1 | A transient Windows rename refusal (Dropbox/AV) on the status/cursor write threw out of the collector loop and killed it. | `renameSyncWithRetry`, wrapped in try. The error is recorded as `lastWriteError`. |
+| 1 | Status/cursor JSON was written without fsync, so a power loss could leave NUL-filled files (same failure as the Lab's 09-22 loss). | `atomicJson` now fsyncs before the rename. |
+| 1 | The standalone collector and the trader's child collector could both append the same day file. | Per-data-dir `collector.lock` (pid plus 60 s refresh, stale takeover). The loser exits 0, and a collector whose lock was taken over also exits. |
+| 1 | An append after a torn or NUL tail glued the next record onto garbage. | `appendNdjson` starts a new line when the file doesn't end in `\n`. |
+| 1 | The collector only ran as a child of the trader, so three days of tape were lost. | `scripts/run-collector.mjs` / `npm run collector -- --data <dir>` (self-restarting). |
+
+## Files changed
+
+- Batch 1: `src/researchCollector.js`, `scripts/run-collector.mjs` (new), `package.json` (`collector` script), `tests/research-collector.test.mjs` (+3 tests), `docs/RESEARCH_EVIDENCE_PIPELINE.md`, this file.
+
+## Tests performed
+
+- Batch 1: full per-file sweep (520/0) before the changes; `tests/research-collector.test.mjs` 6/6; `test:evidence` 55/0; `release-gate` 7/0; selftest pass. Live smoke tests of the collector lock, takeover and runner.
+
+## Decisions
+
+- Real-money execution stays forbidden: Robinhood is paper-only, and `liveExecution:'manual'` doesn't change.
+- The collector yields (exit 0) rather than failing when another instance owns the data dir, so supervisors simply retry, which also gives failover.
+- The untracked `reports/NEXT-STEPS-2026-09-25.md` and `reports/research/` were left untracked. They belong to an earlier read-only session.
+
+## Next recommended batch (priority order)
+
+1. **bing, on the machine:** start the standalone collector at logon (Task Scheduler running `npm run collector -- --data "%APPDATA%\Money Printer OS\data"`), and disable `MoneyPrinterReplayWorkhorse`. The report's `MPO_RESEARCH_COLLECTOR=false` step is optional now that the lock exists.
+2. Add the collector's status (`research-capture-status.json` freshness, `lastWriteError`, lock holder) to `npm run health` / doctor, so a silent stop becomes visible.
+3. Make raw-tape readers skip torn/NUL lines explicitly and count them, instead of each reader deciding. Check `researchEvidenceStore` and `replayLab`.
+4. Add a main-guard to `src/index.js` so `enter()` can be tested end to end (KNOWN_BUGS accounting note 2).
+5. Once Codex's Lab branch merges, re-run the three sandbox searches (report section 2.3). The commands run in the Lab repo, not this one.
