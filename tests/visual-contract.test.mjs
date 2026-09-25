@@ -52,7 +52,8 @@ test('Robinhood confirmation phrases remain exact in UI, HTTP surface and backen
   assert.match(rh, /CONFIRM_AUTOPILOT='ENABLE REAL CRYPTO AUTOPILOT'/);
   assert.match(rh, /CONFIRM_FORGET='FORGET'/);
   assert.match(rh, /confirmation!=='FORGET'/);
-  assert.match(rh, /realEnabled=\(\)=>String\(process\.env\.ROBINHOOD_REAL_ENABLED\|\|'false'\)\.toLowerCase\(\)==='true'/, 'real trading stays off unless the env is exactly true');
+  assert.match(rh, /const PAPER_ONLY_BUILD=true/, 'production Robinhood build is paper-only');
+  assert.match(rh, /realEnabled=\(\)=>!paperOnlyBuild\(\)&&String\(process\.env\.ROBINHOOD_REAL_ENABLED\|\|'false'\)\.toLowerCase\(\)==='true'/, 'paper-only build lock wins even if the env requests live mode');
   assert.match(rhHttp, /confirmation!=='RESET PAPER'/);
   assert.match(rhHttp, /placedBy:'manual'/, 'HTTP never places as autopilot');
   assert.match(rhHttp, /'evolve\/apply'/);

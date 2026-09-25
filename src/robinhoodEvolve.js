@@ -11,6 +11,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import * as S from './robinhoodStrategy.js';
 import {backtestTape,walkForwardSplit,emptyMetrics} from './robinhoodBacktest.js';
+import {renameSyncWithRetry} from './atomicRename.js';
 
 const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const DATA_DIR=path.resolve(process.env.MONEY_PRINTER_DATA_DIR||path.join(ROOT,'data'));
@@ -145,7 +146,7 @@ export function saveEvolveLedger(l){
  cache=normalizeLedger(l);
  const dir=path.dirname(EVOLVE_FILE);fs.mkdirSync(dir,{recursive:true});
  const tmp=path.join(dir,`.robinhood-evolve.${process.pid}.${Date.now().toString(36)}.tmp`);
- try{fs.writeFileSync(tmp,JSON.stringify(cache,null,2));fs.renameSync(tmp,EVOLVE_FILE)}catch(e){try{fs.rmSync(tmp,{force:true})}catch{}throw e}
+ try{fs.writeFileSync(tmp,JSON.stringify(cache,null,2));renameSyncWithRetry(tmp,EVOLVE_FILE)}catch(e){try{fs.rmSync(tmp,{force:true})}catch{}throw e}
  return cache;
 }
 export function ledgerEvent(l,type,text,extra={}){l.events=[{at:Date.now(),type,text:String(text).slice(0,200),...extra},...(l.events||[])].slice(0,EVENT_CAP)}

@@ -32,7 +32,7 @@ test('required controls, fieldsets and routes are present',()=>{
  for(const attr of ['data-rh-close','data-rh-sell','data-rh-cancel','data-rh-forget'])assert.match(panel,rx(attr));
  for(const a of ['config','arm','preview','order','cancel','cancel-all','forget','reconcile','autopilot','autopilot/run','paper-order','paper-close','paper-reset','paper-autopilot','paper-autopilot/run','evolve/run','evolve/apply'])assert.ok(panel.includes("rhAction('"+a+"'"),a);
  assert.match(panel,/fetch\('\/api\/robinhood'\)/);
- assert.match(panel,/<legend>ROBINHOOD CRYPTO · REAL MONEY<\/legend>/);assert.match(panel,/mpo-danger-fieldset/);assert.match(panel,/Evolution \(paper-only self-improvement\)/);assert.match(panel,/Apply to paper/);assert.match(panel,/Run now/);
+ assert.match(panel,/<legend>ROBINHOOD CONNECTION · PAPER-ONLY LOCK<\/legend>/);assert.match(panel,/PAPER-ONLY BUILD/);assert.match(panel,/mpo-danger-fieldset/);assert.match(panel,/Evolution \(paper-only self-improvement\)/);assert.match(panel,/Apply to paper/);assert.match(panel,/Run now/);
  assert.match(panel,/Agentic Trading MCP/);assert.match(panel,/PRIMARY x/);
  assert.match(panel,/rhAction\('evolve\/apply',\{paramsHash:ev\.proposed\.paramsHash\}/,'apply posts the proposed hash the server validates');
  assert.match(panel,/ROBINHOOD_EVOLVE_AUTOPROMOTE=true/);

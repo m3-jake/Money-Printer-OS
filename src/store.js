@@ -5,6 +5,7 @@ import { cfg } from './config.js';
 import { strategyNames, defaults as runtimeDefaults } from './runtime.js';
 import { ensureResearch } from './research.js';
 import { ensurePnlLedger, paperIdentity, guardEquityJump } from './accounting.js';
+import { renameSyncWithRetry } from './atomicRename.js';
 
 const dir = path.resolve(process.env.MONEY_PRINTER_DATA_DIR || 'data');
 const stateFile = path.join(dir, 'state.json');
@@ -312,7 +313,7 @@ export function saveState(state) {
       const previous = fs.readFileSync(stateFile, 'utf8');
       validateAccount(JSON.parse(previous));
       fs.writeFileSync(backupTemp, previous, { flush: true });
-      fs.renameSync(backupTemp, backupFile);
+      renameSyncWithRetry(backupTemp, backupFile);
       lastBackupAt = Date.now();
     } catch {
       // The prior backup remains intact if validation or publication fails.
@@ -320,7 +321,7 @@ export function saveState(state) {
       try { fs.rmSync(backupTemp, { force: true }); } catch {}
     }
   }
-  try { fs.renameSync(temp, stateFile); }
+  try { renameSyncWithRetry(temp, stateFile); }
   finally { try { fs.rmSync(temp, { force: true }); } catch {} }
   readCache = { stamp: stateStamp(), value: s };
   publishedBasis = snapshotBasis(s);

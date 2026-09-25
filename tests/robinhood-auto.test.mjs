@@ -26,10 +26,12 @@ const S=await import('../src/robinhoodStrategy.js');
 function reset(){RH.__testing.reset();fs.rmSync(process.env.MONEY_PRINTER_DATA_DIR,{recursive:true,force:true});fs.mkdirSync(process.env.MONEY_PRINTER_DATA_DIR,{recursive:true});J.__testing.resetPaper();J.__testing.resetJournal();TX.__testing.resetTransport();TX.__testing.setClock(()=>time);RH.__testing.setClock(()=>time);bid=100;ask=100.1;quoteTime=null;calls.length=0;process.env.ROBINHOOD_REAL_ENABLED='false'}
 test.after(()=>{RH.stopRobinhoodLoops();globalThis.fetch=nativeFetch;fs.rmSync(root,{recursive:true,force:true})});
 test('import and idle tick make no venue requests',async()=>{assert.equal(calls.length,0);reset();assert.equal((await RH.__testing.tick()).reason,'idle');assert.equal(calls.length,0)});
-test('real execution stays gated: disarmed at boot, env flag only enables arming, arming makes no request',async()=>{
- reset();assert.equal(RH.robinhoodReadiness().realEnabled,false);assert.equal(RH.robinhoodReadiness().sessionArmed,false);assert.throws(()=>RH.armRobinhood(true),e=>e.code==='realDisabled');
- process.env.ROBINHOOD_REAL_ENABLED='true';assert.equal(RH.robinhoodReadiness().realEnabled,true);await assert.rejects(RH.placeRobinhoodOrder({symbol:'BTC-USD',usd:10,confirmation:'PLACE REAL CRYPTO ORDER'}),e=>e.code==='notArmed');
- RH.armRobinhood(true);assert.equal(RH.robinhoodReadiness().sessionArmed,true);await assert.rejects(RH.placeRobinhoodOrder({symbol:'BTC-USD',usd:10,confirmation:'wrong'}),e=>e.code==='confirmation');assert.equal(calls.length,0);
+test('paper-only build hard-locks real execution even if the environment requests live mode',async()=>{
+ reset();let r=RH.robinhoodReadiness();assert.equal(r.paperOnlyBuild,true);assert.equal(r.execution,'paper-only');assert.equal(r.realEnabled,false);assert.equal(r.sessionArmed,false);
+ assert.throws(()=>RH.armRobinhood(true),e=>e.code==='paperOnly');
+ process.env.ROBINHOOD_REAL_ENABLED='true';r=RH.robinhoodReadiness();assert.equal(r.realEnabled,false);
+ await assert.rejects(RH.placeRobinhoodOrder({symbol:'BTC-USD',usd:10,confirmation:'PLACE REAL CRYPTO ORDER'}),e=>e.code==='paperOnly');
+ assert.equal(calls.length,0);
 });
 test('current official v2 fields map correctly; snapshot masks account and excludes private credentials',async()=>{
  reset();const s=await RH.robinhoodSnapshot();assert.equal(s.account.feeRatio,0.0085);assert.equal(s.account.accountNumber,'****1234');assert.equal(s.quotes[0].bid,100);assert.equal(s.quotes[0].ask,100.1);

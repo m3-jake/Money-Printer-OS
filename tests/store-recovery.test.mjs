@@ -74,6 +74,24 @@ test('valid saves retain the preceding account as recoverable backup', async () 
   assert.equal(f.loadState().cashSol, 6);
   assert.ok(!fs.readdirSync(f.dir).some(n => n.endsWith('.tmp')));
 });
+test('transient Windows EPERM during primary publication is retried', async () => {
+  const f = await fixture(account(5), account(4));
+  const rename = fs.renameSync;
+  let attempts = 0;
+  fs.renameSync = (from, to) => {
+    if (to === path.join(f.dir, 'state.json') && attempts++ < 2) {
+      const err = new Error('simulated Windows file lock');
+      err.code = 'EPERM';
+      throw err;
+    }
+    return rename(from, to);
+  };
+  try { f.saveState(account(6)); }
+  finally { fs.renameSync = rename; }
+  assert.equal(attempts, 3);
+  assert.equal(f.loadState().cashSol, 6);
+  assert.ok(!fs.readdirSync(f.dir).some(n => n.endsWith('.tmp')));
+});
 test('failed primary publication leaves the old account readable', async () => {
   const f = await fixture(account(5), account(4));
   const rename = fs.renameSync;

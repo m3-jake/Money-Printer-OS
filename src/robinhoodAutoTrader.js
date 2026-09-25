@@ -27,13 +27,17 @@ import * as J from './robinhoodJournal.js';
 import * as S from './robinhoodStrategy.js';
 import * as T from './robinhoodTape.js';
 import * as E from './robinhoodEvolve.js';
+import { fetchPublicPaperMarket } from './robinhoodPaperFeed.js';
 export const CONFIRM_PLACE='PLACE REAL CRYPTO ORDER', CONFIRM_CANCEL='CANCEL REAL CRYPTO ORDER', CONFIRM_CANCEL_ALL='CANCEL REAL CRYPTO ORDERS', CONFIRM_AUTOPILOT='ENABLE REAL CRYPTO AUTOPILOT', CONFIRM_FORGET='FORGET';
 const clone=x=>structuredClone(x), envNum=(k,d)=>{const n=Number(process.env[k]);return Number.isFinite(n)&&n>0?n:d};
 const TICK_MS=Math.max(5000,envNum('ROBINHOOD_TICK_MS',15000)), PREVIEW_TTL_MS=30000, PREVIEW_CACHE_MS=10000, SNAPSHOT_TTL_MS=5000, ENTRY_TTL_MS=90000, RECONCILE_THROTTLE_MS=5000, NEVER_RECEIVED_MS=600000, NEVER_RECEIVED_LISTINGS=3;
 const SYMBOL_RE=/^[A-Z0-9]{2,10}-USD$/;
 const DATA_DIR=path.dirname(J.JOURNAL_FILE), USER_ROOT=path.dirname(DATA_DIR), ENV_FILE=path.join(USER_ROOT,'.env');
 let timer=null, clockFn=null, tickBusy=false, paperBusy=false, feedFlight=null, snapshotFlight=null;
+const PAPER_ONLY_BUILD=true;
+let testRealExecutionUnlocked=false;
 let account=null, pairs=new Map(), quotes=new Map(), feedAt=0, identity='', lastTickAt=0, lastError=null, paperDirty=false;
+let paperQuoteSource=null, paperFallbackReason=null, paperFallbackUntil=0;
 let sessionArmed=false, placeBusy=false, apBusy=false, reconcileBusy=false, lastPreview=null, lastReconcileRun=0;
 let evolveBusy=false, evolveCheckedAt=0;
 const EVOLVE_CHECK_MS=300000;
@@ -45,7 +49,9 @@ const safeMessage=e=>{let m=String(e?.message||e);for(const v of Object.values(c
 const noteText=t=>String(t).replace(/\s+/g,' ').slice(0,160);
 function note(stage,e){lastError={at:now(),stage,code:e?.code||'unknown',message:safeMessage(e)}}
 function addNote(entry,text){entry.notes=[...(entry.notes||[]).slice(-7),{at:now(),text:noteText(text)}]}
-const realEnabled=()=>String(process.env.ROBINHOOD_REAL_ENABLED||'false').toLowerCase()==='true';
+const paperOnlyBuild=()=>PAPER_ONLY_BUILD&&!testRealExecutionUnlocked;
+const realEnabled=()=>!paperOnlyBuild()&&String(process.env.ROBINHOOD_REAL_ENABLED||'false').toLowerCase()==='true';
+function assertRealExecutionAvailable(){if(paperOnlyBuild())fail('paperOnly','Robinhood real execution is locked in this build; paper trading only')}
 export function robinhoodLimits(){return {maxOrderUsd:envNum('ROBINHOOD_MAX_ORDER_USD',25),maxOpen:Math.floor(envNum('ROBINHOOD_MAX_OPEN',5)),dailyLossCapUsd:envNum('ROBINHOOD_DAILY_LOSS_CAP_USD',50),priceTolerance:envNum('ROBINHOOD_PRICE_TOLERANCE',0.02)}}
 // §21 Bitcoin specialization: primary symbol, candidate weight and per-order multiplier, all re-read from env.
 export function robinhoodPrimary(){
@@ -58,30 +64,46 @@ const primaryFirst=list=>{const p=robinhoodPrimary().symbol;return list.includes
 const primaryWeights=()=>{const p=robinhoodPrimary();return {[p.symbol]:p.weight}};
 export function primaryOrderUsd(symbol,orderUsd,limits=robinhoodLimits()){const p=robinhoodPrimary(),base=Number(orderUsd)||0;return Math.min(symbol===p.symbol?base*p.orderMult:base,limits.maxOrderUsd)}
 export function robinhoodSymbols(){const s=symbols(process.env.ROBINHOOD_SYMBOLS);return primaryFirst(s.length?s:['BTC-USD','ETH-USD','SOL-USD'])}
-function needCredentials(){if(!creds().apiKey||!keyObject())fail('noCredentials','Robinhood API keys are required (paper needs read-only API keys for live quotes)')}
+function needCredentials(){if(!creds().apiKey||!keyObject())fail('noCredentials','Robinhood API credentials are required for Robinhood-authenticated data or future live execution')}
 function paper(){const p=J.loadPaper();p.params=S.normalizeParams({...p.params,sampleMs:TICK_MS});p.paramsHash=S.paramsHash(p.params);return p}
 function fee(){const f=account?.feeRatio;return Number.isFinite(f)&&f>=0&&f<0.25?f:envNum('ROBINHOOD_FEE_RATIO_FALLBACK',0.0085)}
 function fresh(q){return q&&Number.isFinite(q.bid)&&q.bid>0&&Number.isFinite(q.ask)&&q.ask>=q.bid&&Number.isFinite(q.at)&&q.at<=now()&&now()-q.at<=30000}
 function quote(symbol){const q=quotes.get(symbol);if(!fresh(q))fail('validation','A fresh, valid bid/ask quote is required');return q}
 const openSymbolsReal=(j=J.loadJournal())=>j.open.map(e=>e.symbol);
 async function refreshFeed(requested=robinhoodSymbols(),force=false){
- needCredentials();const fingerprint=createHash('sha256').update(JSON.stringify(creds())).digest('hex');
- if(identity!==fingerprint){identity=fingerprint;account=null;pairs=new Map();quotes=new Map();feedAt=0}
+ const c=creds(),key=keyObject(),hasCredentials=!!(c.apiKey&&key),fingerprint=hasCredentials?createHash('sha256').update(JSON.stringify(c)).digest('hex'):'paper-public';
+ if(identity!==fingerprint){identity=fingerprint;account=null;pairs=new Map();quotes=new Map();feedAt=0;paperFallbackUntil=0}
  const wanted=primaryFirst([...new Set([robinhoodPrimary().symbol,...requested,...paper().positions.map(p=>p.symbol),...openSymbolsReal()])]);
  if(!force&&now()-feedAt<15000&&wanted.every(s=>fresh(quotes.get(s))&&pairs.has(s)))return;
  if(feedFlight){await feedFlight;if(wanted.every(s=>fresh(quotes.get(s))&&pairs.has(s)))return}
  feedFlight=(async()=>{
-  if(!account||now()-account.at>600000){account=await fetchAccount();if(!account.accountNumber)fail('validation','API account response lacks an account number');account.at=now()}
-  if(force||wanted.some(s=>!pairs.has(s)))for(const [s,p] of await fetchTradingPairs(wanted))pairs.set(s,p);
-  const batch=await fetchBestBidAsk(wanted);let valid=0;
-  for(const q of batch){if(!wanted.includes(q.symbol)||!fresh(q))continue;quotes.set(q.symbol,q);valid++}
-  if(!valid)fail('validation','Robinhood returned no valid current quotes');feedAt=now();lastError=null;
+  const canFallback=paperOnlyBuild();
+  if(hasCredentials&&!(canFallback&&now()<paperFallbackUntil)){
+   try{
+    if(!account||now()-account.at>600000){account=await fetchAccount();if(!account.accountNumber)fail('validation','API account response lacks an account number');account.at=now()}
+    if(force||wanted.some(s=>!pairs.has(s)))for(const [s,p] of await fetchTradingPairs(wanted))pairs.set(s,p);
+    const batch=await fetchBestBidAsk(wanted);let valid=0;
+    for(const q of batch){if(!wanted.includes(q.symbol)||!fresh(q))continue;quotes.set(q.symbol,{...q,source:q.source||'robinhood'});valid++}
+    if(!valid)fail('validation','Robinhood returned no valid current quotes');
+    feedAt=now();paperQuoteSource='robinhood';paperFallbackReason=null;paperFallbackUntil=0;lastError=null;return;
+   }catch(e){
+    const fallbackCodes=new Set(['keyNotFound','notPermitted','noCredentials','badKey','rateLimited','network','http']);
+    if(!canFallback||!fallbackCodes.has(e?.code))throw e;
+    note('robinhood-quotes',e);paperFallbackReason={code:e.code||'unknown',message:safeMessage(e),at:now()};
+    paperFallbackUntil=now()+(['keyNotFound','notPermitted','badKey'].includes(e?.code)?300000:30000);
+   }
+  }else if(!canFallback)needCredentials();
+  const market=await fetchPublicPaperMarket(wanted,{now});
+  for(const p of market.pairs)pairs.set(p.symbol,p);
+  let valid=0;for(const q of market.quotes){if(!wanted.includes(q.symbol)||!fresh(q))continue;quotes.set(q.symbol,q);valid++}
+  if(!valid)fail('validation','Public paper feed returned no valid current quotes');
+  account=null;feedAt=now();paperQuoteSource=market.source;lastError=null;
  })();try{await feedFlight}catch(e){note('quotes',e);throw e}finally{feedFlight=null}
 }
 function qualification(p=paper()){return J.evaluateQualification(p,now(),J.qualificationThresholds(),robinhoodLimits())}
 export function robinhoodReadiness(){
  const c=creds(),key=keyObject(),auth=rhLastAuth(),clock=rhClock(),rate=rhRateLimit(),j=J.loadJournal(),p=paper(),primary=robinhoodPrimary();
- return {platform:'Robinhood Crypto',hasApiKey:!!c.apiKey,hasPrivateKey:!!c.privateKeyBase64,keyValid:!!key,credentialsReady:!!(c.apiKey&&key),publicKey:key?publicKeyBase64(key):null,realEnabled:realEnabled(),sessionArmed,execution:'manual-confirm-only',equities:'official Agentic Trading MCP only — not automated here',developerPortal:'https://robinhood.com/account/crypto',lastAuthError:auth.error?safeMessage(auth.error):null,authCode:auth.code,lastAuthAt:auth.at,clockSkewSec:clock.lastDateHeaderSec===null?null:clock.lastDateHeaderSec-Math.floor(clock.syncedAt/1000),rateLimit:{backoffUntil:rate.backoffUntil,consecutive429:rate.consecutive429},recoveryRequired:!!j.recoveryRequired,paperRecoveryRequired:!!p.recoveryRequired,qualified:qualification(p).qualified,primary:{symbol:primary.symbol,weight:primary.weight}};
+ return {platform:'Robinhood Crypto',hasApiKey:!!c.apiKey,hasPrivateKey:!!c.privateKeyBase64,keyValid:!!key,credentialsReady:!!(c.apiKey&&key),publicKey:key?publicKeyBase64(key):null,paperOnlyBuild:paperOnlyBuild(),paperQuoteSource,paperFallbackReason:paperFallbackReason?clone(paperFallbackReason):null,realEnabled:realEnabled(),sessionArmed,execution:paperOnlyBuild()?'paper-only':'manual-confirm-only',equities:'official Agentic Trading MCP only — not automated here',developerPortal:'https://robinhood.com/account/crypto',lastAuthError:auth.error?safeMessage(auth.error):null,authCode:auth.code,lastAuthAt:auth.at,clockSkewSec:clock.lastDateHeaderSec===null?null:clock.lastDateHeaderSec-Math.floor(clock.syncedAt/1000),rateLimit:{backoffUntil:rate.backoffUntil,consecutive429:rate.consecutive429},recoveryRequired:!!j.recoveryRequired,paperRecoveryRequired:!!p.recoveryRequired,qualified:qualification(p).qualified,primary:{symbol:primary.symbol,weight:primary.weight}};
 }
 // ------------------------------------------------------------------ credentials / arming
 function rewriteEnv(values){let text='';try{text=fs.readFileSync(ENV_FILE,'utf8')}catch{}for(const [k,v] of Object.entries(values)){const line=`${k}=${String(v).replace(/\n/g,'')}`;const re=new RegExp(`^${k}=.*$`,'m');text=re.test(text)?text.replace(re,line):`${text.trimEnd()}\n${line}\n`}fs.mkdirSync(USER_ROOT,{recursive:true});fs.writeFileSync(ENV_FILE,text,{encoding:'utf8',mode:0o600});try{fs.chmodSync(ENV_FILE,0o600)}catch{}}
@@ -89,12 +111,14 @@ export function configureRobinhood({apiKey,privateKey,realEnabled:enable=false}=
  const key=String(apiKey||'').trim(),seed=String(privateKey||'').trim();
  if(key.length<8||/\s/.test(key))fail('validation','API key looks incomplete (expected rh-api-<uuid>)');
  loadRobinhoodPrivateKey(seed); // throws badKey with the seed||publicKey hint
- process.env.ROBINHOOD_API_KEY=key;process.env.ROBINHOOD_PRIVATE_KEY=seed;process.env.ROBINHOOD_REAL_ENABLED=enable===true?'true':'false';
- rewriteEnv({ROBINHOOD_API_KEY:key,ROBINHOOD_PRIVATE_KEY:seed,ROBINHOOD_REAL_ENABLED:enable===true?'true':'false'});
- account=null;pairs=new Map();quotes=new Map();feedAt=0;identity='';previewCache.clear();lastPreview=null;sessionArmed=false;
+ const liveAllowed=!paperOnlyBuild()&&enable===true;
+ process.env.ROBINHOOD_API_KEY=key;process.env.ROBINHOOD_PRIVATE_KEY=seed;process.env.ROBINHOOD_REAL_ENABLED=liveAllowed?'true':'false';
+ rewriteEnv({ROBINHOOD_API_KEY:key,ROBINHOOD_PRIVATE_KEY:seed,ROBINHOOD_REAL_ENABLED:liveAllowed?'true':'false'});
+ account=null;pairs=new Map();quotes=new Map();feedAt=0;identity='';paperQuoteSource=null;paperFallbackReason=null;paperFallbackUntil=0;previewCache.clear();lastPreview=null;sessionArmed=false;
  return robinhoodReadiness();
 }
 export function armRobinhood(armed=false){
+ if(armed===true)assertRealExecutionAvailable();
  const j=J.loadJournal();if(j.recoveryRequired)fail('stateRecovery',j.recoveryError||'STATE RECOVERY REQUIRED');
  if(!robinhoodReadiness().credentialsReady)fail('noCredentials','Connect Robinhood API credentials first');
  if(armed===true&&!realEnabled())fail('realDisabled','Set ROBINHOOD_REAL_ENABLED=true in your .env and restart to arm real trading');
@@ -196,6 +220,7 @@ function applyExitState(j,entry,order){
 }
 // ------------------------------------------------------------------ place (buy / sell)
 export async function placeRobinhoodOrder({symbol,side='buy',usd,qty,orderType='market',entryId,confirmation,placedBy='manual',overrideCooldown=false,reason='manual'}={}){
+ assertRealExecutionAvailable();
  const who=placedBy==='autopilot'?'autopilot':'manual';
  if(side==='sell'||(entryId&&side!=='buy'))return placeRealSell({entryId,confirmation,placedBy:who,reason});
  const sym=validSymbol(symbol),type=String(orderType||'market').toLowerCase();if(!['market','limit'].includes(type))fail('validation','orderType must be market or limit');
@@ -263,6 +288,7 @@ async function placeRealSell({entryId,confirmation,placedBy,reason}){
 function cancellable(e){if(['SUBMITTED','SUBMITTED_UNCERTAIN'].includes(e.status)&&e.orderId)return {orderId:e.orderId,kind:'entry'};if(['CLOSING','CLOSING_UNCERTAIN'].includes(e.status)&&e.exit?.orderId)return {orderId:e.exit.orderId,kind:'exit'};return null}
 async function ensureAccount(){needCredentials();if(!account||now()-account.at>600000){await refreshFeed([],true)}return account}
 export async function cancelRobinhoodOrder({entryId,confirmation}={}){
+ assertRealExecutionAvailable();
  if(confirmation!==CONFIRM_CANCEL)fail('confirmation',`Type ${CONFIRM_CANCEL} to confirm`);
  needCredentials();const j=J.loadJournal(),entry=byId(j,entryId);if(!entry)fail('notFound','Real entry not found');
  const target=cancellable(entry);if(!target)fail('notCancellable','Only submitted (unverified) buys or pending exits with an order id can be cancelled; use Reconcile first');
@@ -272,6 +298,7 @@ export async function cancelRobinhoodOrder({entryId,confirmation}={}){
  return {ok:true,entry:clone(byId(J.loadJournal(),entryId))};
 }
 export async function cancelAllRobinhood({confirmation}={}){
+ assertRealExecutionAvailable();
  if(confirmation!==CONFIRM_CANCEL_ALL)fail('confirmation',`Type ${CONFIRM_CANCEL_ALL} to confirm`);
  needCredentials();const cancelled=[],errors=[];
  for(const e of J.loadJournal().open.filter(cancellable)){try{await cancelRobinhoodOrder({entryId:e.id,confirmation:CONFIRM_CANCEL});cancelled.push(e.id)}catch(err){errors.push({entryId:e.id,error:safeMessage(err)});if(err.code==='keyNotFound'||err.code==='notPermitted')break}}
@@ -287,6 +314,7 @@ export function forgetRobinhoodEntry({entryId,confirmation,acknowledgeHolding=fa
 }
 // ------------------------------------------------------------------ reconcile
 export async function reconcileRobinhood({force=false}={}){
+ assertRealExecutionAvailable();
  const j0=J.loadJournal();
  if(j0.recoveryRequired)return {ran:false,checked:0,changed:0,lastReconcileAt:j0.lastReconcileAt,errors:[{entryId:null,code:'stateRecovery',message:j0.recoveryError}]};
  if(reconcileBusy||(!force&&now()-lastReconcileRun<RECONCILE_THROTTLE_MS))return {ran:false,checked:0,changed:0,lastReconcileAt:j0.lastReconcileAt,errors:[]};
@@ -345,6 +373,7 @@ export async function reconcileRobinhood({force=false}={}){
 // ------------------------------------------------------------------ real autopilot
 export function robinhoodAutopilot(){return clone(J.loadJournal().autopilot)}
 export function setRobinhoodAutopilot(patch={}){
+ if(patch.enabled===true)assertRealExecutionAvailable();
  const j=J.loadJournal();if(j.recoveryRequired)fail('stateRecovery',j.recoveryError||'STATE RECOVERY REQUIRED');
  if(apBusy)fail('busy','Real autopilot pass in progress');
  const ap=clone(j.autopilot),limits=robinhoodLimits();
@@ -368,6 +397,7 @@ function featureRows(p,list){const out={};for(const symbol of primaryFirst([...n
  const f=S.computeFeatures(J.tapeFor(p,symbol),p.params,now()),costPct=S.roundTripCost(fee(),f.spreadPct||0,p.params),signal=S.entrySignal(f,{costPct,params:p.params});out[symbol]={features:f,costPct,signal};
 }return out}
 export async function runRobinhoodAutopilotOnce(){
+ if(paperOnlyBuild())return {ran:false,reason:'paperOnly',disabled:true};
  if(apBusy)return {ran:false,reason:'busy'};
  let j=J.loadJournal();
  if(!j.autopilot.enabled)return {ran:false,reason:'disabled'};
@@ -464,7 +494,7 @@ export function setRobinhoodPaperAutopilot(patch={}){
  if(patch.symbols!==undefined){const list=Array.isArray(patch.symbols)?patch.symbols:String(patch.symbols).split(',');if(!list.length||list.length>6)fail('validation','Choose one to six crypto USD pairs');p.autopilot.symbols=primaryFirst([...new Set(list.map(validSymbol))])}
  const priorHash=p.paramsHash;
  if(patch.params!==undefined){if(!patch.params||typeof patch.params!=='object'||Array.isArray(patch.params))fail('validation','Strategy parameters must be a JSON object');p.params=S.normalizeParams({...p.params,...patch.params,sampleMs:TICK_MS});p.paramsHash=S.paramsHash(p.params)}
- if(patch.enabled===true)needCredentials();if(patch.enabled!==undefined)p.autopilot.enabled=patch.enabled;
+ if(patch.enabled!==undefined)p.autopilot.enabled=patch.enabled;
  commitPaper(p);
  // A new strategy hash invalidates the qualification the real autopilot was enabled under: disable it now, not at the next pass.
  if(p.paramsHash!==priorHash){const j=J.loadJournal();if(!j.recoveryRequired&&j.autopilot.enabled)disableAutopilot('paramsChanged',`paper params ${priorHash} -> ${p.paramsHash}`)}
@@ -506,7 +536,6 @@ async function tick(){
  if(tickBusy||paperBusy)return {ran:false,reason:'busy'};
  const initial=paper(),j=J.loadJournal();if(initial.recoveryRequired&&!j.open.length&&!j.autopilot.enabled)return {ran:false,reason:'paperRecovery'};
  if(!needsQuotes(initial,j))return {ran:false,reason:'idle'};
- if(!robinhoodReadiness().credentialsReady)return {ran:false,reason:'noCredentials'};
  if(lastTickAt&&now()-lastTickAt<TICK_MS)return {ran:false,reason:'cadence'};
  tickBusy=true;lastTickAt=now();const out={ran:true};
  try{
@@ -609,7 +638,7 @@ function snapshotView(){
 }
 export async function robinhoodSnapshot({force=false}={}){
  if(snapshotFlight)return snapshotFlight;
- snapshotFlight=(async()=>{try{if(robinhoodReadiness().credentialsReady)await refreshFeed([...new Set([...robinhoodSymbols(),...paper().autopilot.symbols,...J.loadJournal().autopilot.symbols])],force)}catch(e){note('snapshot',e)}return snapshotView()})();
+ snapshotFlight=(async()=>{try{if(paperOnlyBuild()||robinhoodReadiness().credentialsReady)await refreshFeed([...new Set([...robinhoodSymbols(),...paper().autopilot.symbols,...J.loadJournal().autopilot.symbols])],force)}catch(e){note('snapshot',e)}return snapshotView()})();
  try{return await snapshotFlight}finally{snapshotFlight=null}
 }
-export const __testing={tick,setClock(fn){clockFn=fn},reset(){stopRobinhoodLoops();account=null;pairs=new Map();quotes=new Map();feedAt=0;identity='';lastTickAt=0;lastError=null;paperDirty=false;feedFlight=null;snapshotFlight=null;sessionArmed=false;placeBusy=false;apBusy=false;reconcileBusy=false;lastPreview=null;lastReconcileRun=0;previewCache.clear();evolveBusy=false;evolveCheckedAt=0;J.__testing.resetPaper();J.__testing.resetJournal();T.__testing.reset();E.__testing.reset()},journalFile:J.JOURNAL_FILE,paperFile:J.PAPER_FILE,envFile:ENV_FILE,TICK_MS,SNAPSHOT_TTL_MS,PREVIEW_TTL_MS,ENTRY_TTL_MS,CONFIRM_PLACE,CONFIRM_CANCEL,CONFIRM_CANCEL_ALL,CONFIRM_AUTOPILOT,get lastPreview(){return lastPreview},get sessionArmed(){return sessionArmed},primaryOrderUsd,evolveFile:E.EVOLVE_FILE,tapeDir:T.TAPE_DIR};
+export const __testing={tick,setClock(fn){clockFn=fn},unlockRealExecutionForTests(v=true){testRealExecutionUnlocked=v===true;sessionArmed=false},reset(){stopRobinhoodLoops();testRealExecutionUnlocked=false;account=null;pairs=new Map();quotes=new Map();feedAt=0;identity='';paperQuoteSource=null;paperFallbackReason=null;paperFallbackUntil=0;lastTickAt=0;lastError=null;paperDirty=false;feedFlight=null;snapshotFlight=null;sessionArmed=false;placeBusy=false;apBusy=false;reconcileBusy=false;lastPreview=null;lastReconcileRun=0;previewCache.clear();evolveBusy=false;evolveCheckedAt=0;J.__testing.resetPaper();J.__testing.resetJournal();T.__testing.reset();E.__testing.reset()},journalFile:J.JOURNAL_FILE,paperFile:J.PAPER_FILE,envFile:ENV_FILE,TICK_MS,SNAPSHOT_TTL_MS,PREVIEW_TTL_MS,ENTRY_TTL_MS,CONFIRM_PLACE,CONFIRM_CANCEL,CONFIRM_CANCEL_ALL,CONFIRM_AUTOPILOT,get lastPreview(){return lastPreview},get sessionArmed(){return sessionArmed},primaryOrderUsd,evolveFile:E.EVOLVE_FILE,tapeDir:T.TAPE_DIR};

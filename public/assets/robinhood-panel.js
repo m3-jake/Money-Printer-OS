@@ -1,5 +1,5 @@
-// Robinhood Auto Trader panel: paper lab plus the REAL MONEY fieldset. Phrases are typed by the operator each time,
-// sent verbatim, never pre-filled and never kept in page state; the server compares them with === before any request.
+// Robinhood Auto Trader panel. This release is paper-only: API credentials feed authenticated market data,
+// while the backend hard-rejects Robinhood real-order, cancel, reconcile and real-autopilot mutations.
 let rhState=null,rhSubmitting=false,rhRefreshBusy=false,rhMessage='',rhDraft={},rhPreview=null;
 const RH_FOCUS_IDS=['rhSymbol','rhUsd','rhSymbols','rhOrderUsd','rhMaxOpen','rhBank','rhParams','rhResetConfirm','rhRealSymbol','rhRealUsd','rhRealType','rhApOrderUsd','rhApMaxOpen','rhApLossCap','rhApSymbols','rhApType'];
 const RH_SECRET_IDS=['rhApiKey','rhSecret','rhConfirm','rhAutoConfirm'];
@@ -25,7 +25,7 @@ function renderRobinhood(force=false){
  const root=document.getElementById('body-robinhood');if(!root)return;
  if(!force&&rhTyping())return;rhCapture();
  if(!rhState){setBody('robinhood',`<div class="mpo-surface-dark"><h2>ROBINHOOD AUTO TRADER</h2><p>${polyEscape(rhMessage||'Loading...')}</p></div>`);return}
- const r=rhState.readiness||{},p=rhState.paper||{},a=p.autopilot||{},q=p.qualification||{},j=rhState.journal||{},ap=j.autopilot||{},lim=rhState.limits||{},prim=(rhState.strategy||{}).primary||{},disabled=rhSubmitting?'disabled':'';
+ const r=rhState.readiness||{},p=rhState.paper||{},a=p.autopilot||{},q=p.qualification||{},j=rhState.journal||{},ap=j.autopilot||{},lim=rhState.limits||{},prim=(rhState.strategy||{}).primary||{},paperLocked=r.paperOnlyBuild===true,disabled=rhSubmitting?'disabled':'',liveDisabled=(rhSubmitting||paperLocked)?'disabled':'';
  const positions=p.positions||[],history=p.history||[],quoteMap=Object.fromEntries((rhState.quotes||[]).map(q=>[q.symbol,q]));
  const symbol=rhVal('rhSymbol','BTC-USD'),usd=rhVal('rhUsd',10),maxOpen=rhVal('rhMaxOpen',a.maxOpen||3),orderUsd=rhVal('rhOrderUsd',a.orderUsd||25),watch=rhVal('rhSymbols',(a.symbols||['BTC-USD','ETH-USD']).join(','));
  const realSymbol=rhVal('rhRealSymbol',prim.symbol||'BTC-USD'),realUsd=rhVal('rhRealUsd',10),realType=rhVal('rhRealType','market');
@@ -39,23 +39,24 @@ function renderRobinhood(force=false){
  const evRow=(label,c)=>{const m=(c&&c.metrics)||{};return `<tr><td>${label}</td><td>${polyEscape(c?c.paramsHash:'--')}</td><td>${evNum(c?c.score:null,3)}</td><td>${polyEscape(String(m.closes??'--'))}</td><td>${rhPct(m.hitRate)}</td><td>${evNum(m.profitFactor,2)}</td><td>${rhMoney(m.pnlUsd)}</td><td>${rhMoney(m.maxDrawdownUsd)}</td><td>${evNum(m.tradesPerDay,2)}</td></tr>`};
  setBody('robinhood',`<div class="mpo-surface-dark" style="padding:14px">
  <h2>ROBINHOOD AUTO TRADER <small> / CRYPTO · BITCOIN PRIMARY</small></h2>
- <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><span class="mpo-badge">${r.credentialsReady?'KEYS PRESENT':'KEYS NEEDED'}</span><span class="mpo-badge">${r.realEnabled?'REAL ENABLED':'REAL DISABLED'}</span><span class="mpo-badge">${r.sessionArmed?'ARMED':'SAFE'}</span><span class="mpo-badge">${a.enabled?'PAPER AUTOPILOT ON':'PAPER AUTOPILOT OFF'}</span><span class="mpo-badge">${ap.enabled?'REAL AUTOPILOT ON':'REAL AUTOPILOT OFF'}</span>${r.recoveryRequired?'<span class="mpo-badge">RECOVERY</span>':''}<button id="rhRefresh" ${disabled}>Refresh</button></div>
+ <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><span class="mpo-badge">${r.credentialsReady?'RH KEYS PRESENT':'RH KEYS OPTIONAL FOR PAPER'}</span><span class="mpo-badge">${paperLocked?'PAPER ONLY · LIVE LOCKED':(r.realEnabled?'REAL ENABLED':'REAL DISABLED')}</span><span class="mpo-badge">PAPER FEED · ${polyEscape(r.paperQuoteSource||'CONNECTING')}</span><span class="mpo-badge">${a.enabled?'PAPER AUTOPILOT ON':'PAPER AUTOPILOT OFF'}</span>${r.recoveryRequired?'<span class="mpo-badge">RECOVERY</span>':''}<button id="rhRefresh" ${disabled}>Refresh</button></div>
  <div class="metric-grid">${metric('Buying power',rhMoney(rhState.account?.buyingPowerUsd))}${metric('Fee tier',rhPct(rhState.account?.feeRatio))}${metric('Paper equity',rhMoney(p.equityUsd))}${metric('Paper P/L',rhMoney(p.stats?.pnlUsd))}${metric('Real open / unverified',(openReal.length)+' / '+(j.stats?.unverified||0))}${metric('Realized today / cap',rhMoney(j.realizedTodayUsd)+' / '+rhMoney(lim.dailyLossCapUsd))}</div>
  <p role="status" id="rhMessage">${polyEscape(rhMessage)}</p>
  ${p.recoveryRequired?`<div class="mpo-error">PAPER RECOVERY REQUIRED: ${polyEscape(p.recoveryError||'Review the book before resetting.')}</div>`:''}
  ${j.recoveryRequired?`<div class="mpo-error">REAL JOURNAL RECOVERY REQUIRED: ${polyEscape(j.recoveryError||'Review data/robinhood-auto-trader.json before any real action.')}</div>`:''}
- ${rhState.lastError?`<div class="mpo-error">${polyEscape(rhState.lastError.stage+': '+rhState.lastError.message)}${r.authCode==='keyNotFound'?' (check system time / clock skew '+polyEscape(String(r.clockSkewSec))+' s)':''}</div>`:''}
- <details><summary>Connection and safety</summary><p>Official Crypto Trading API only (${polyEscape(r.developerPortal||'')}). Generate a key pair locally with <code>node -e "import('./src/robinhoodSigner.js').then(m=>console.log(JSON.stringify(m.generateRobinhoodKeyPair(),null,2)))"</code>, paste the public key into the portal, then connect the API key and the 32-byte base64 private seed below.</p><p>Account: ${polyEscape(rhState.account?.accountNumber||'not authenticated')} | API: ${polyEscape(r.authCode||'not checked')} | Public key: ${polyEscape(r.publicKey||'--')} | Clock skew: ${polyEscape(String(r.clockSkewSec===null||r.clockSkewSec===undefined?'--':r.clockSkewSec))} s</p><p>Stocks and options are not automated here; Robinhood's Agentic Trading MCP is the only sanctioned route and this app never uses mobile-app impersonation.</p></details>
+ ${rhState.lastError?`<div class="mpo-error">${polyEscape(rhState.lastError.stage+': '+rhState.lastError.message)}</div>`:''}
+ ${r.paperFallbackReason?`<div class="mpo-empty">Robinhood authenticated quotes unavailable (${polyEscape(r.paperFallbackReason.code||'unknown')}); simulation is using public Coinbase market data until Robinhood credentials work.</div>`:''}
+ <details><summary>Connection and safety</summary><p>Paper mode can use a public read-only market feed when Robinhood authentication is unavailable. For Robinhood-authenticated quotes later, generate a key pair locally with <code>node -e "import('./src/robinhoodSigner.js').then(m=>console.log(JSON.stringify(m.generateRobinhoodKeyPair(),null,2)))"</code>, paste the public key into the Robinhood portal, then connect the API key and matching private seed below.</p><p>Account: ${polyEscape(rhState.account?.accountNumber||'not authenticated')} | Robinhood API: ${polyEscape(r.authCode||'not checked')} | Paper quote source: ${polyEscape(r.paperQuoteSource||'connecting')} | Public key: ${polyEscape(r.publicKey||'--')}</p><p>Stocks and options are not automated here; Robinhood's Agentic Trading MCP is the only sanctioned route and this app never uses mobile-app impersonation.</p></details>
  <fieldset class="mpo-fieldset"><legend>Paper order</legend>
  <label>Pair <input id="rhSymbol" value="${polyEscape(symbol)}" maxlength="14"></label>
  <label>USD <input id="rhUsd" type="number" min="1" max="${lim.maxOrderUsd}" step="1" value="${polyEscape(usd)}"></label>
- <button id="rhBuy" ${disabled||(!r.credentialsReady?'disabled':'')}>Buy in paper book</button>
- <p>Simulated fills include spread, slippage and estimated fees. They are not actual Robinhood executions.</p></fieldset>
+ <button id="rhBuy" ${disabled}>Buy in paper book</button>
+ <p>Simulated fills include observed spread, modeled slippage and conservative estimated fees. Feed: ${polyEscape(r.paperQuoteSource||'connecting')}. They are not actual Robinhood executions.</p></fieldset>
  <fieldset class="mpo-fieldset"><legend>Paper autopilot</legend>
  <label>Pairs <input id="rhSymbols" value="${polyEscape(watch)}" size="26"></label>
  <label>USD/order <input id="rhOrderUsd" type="number" min="1" max="${lim.maxOrderUsd}" value="${polyEscape(orderUsd)}" style="width:70px"></label>
  <label>Max positions <input id="rhMaxOpen" type="number" min="1" max="${lim.maxOpen}" value="${polyEscape(maxOpen)}" style="width:55px"></label>
- <button id="rhSave" ${disabled}>Save settings</button><button id="rhToggle" ${disabled||(!a.enabled&&!r.credentialsReady?'disabled':'')}>${a.enabled?'Stop paper':'Start paper'}</button><button id="rhTick" ${disabled}>Sample / check exits</button>
+ <button id="rhSave" ${disabled}>Save settings</button><button id="rhToggle" ${disabled}>${a.enabled?'Stop paper':'Start paper'}</button><button id="rhTick" ${disabled}>Sample / check exits</button>
  <details><summary>Strategy parameters</summary><textarea id="rhParams" rows="5" style="width:100%">${polyEscape(rhVal('rhParams',JSON.stringify(p.params,null,2)))}</textarea><p>Changing parameters invalidates qualification for the old strategy. Sampling interval follows the actual loop.</p></details>
  <p>Sampling every ${fmt(rhState.loop.tickMs/1000,0)} seconds. Warm-up requires ${Math.max(p.params?.warmupSamples||120,p.params?.minSamples||120)} observations. ${a.lastAction?polyEscape('Last action: '+a.lastAction.action+' '+a.lastAction.symbol):'No strategy action yet.'}</p>
  </fieldset>
@@ -64,7 +65,7 @@ function renderRobinhood(force=false){
  </tbody></table><p>The move estimate measures volatility, not predicted profit. Fees and fill costs are modeled, not verified.</p></fieldset>
  <fieldset class="mpo-fieldset"><legend>Paper research qualification</legend>
  <b>${q.qualified?'QUALIFIED under params '+polyEscape(p.paramsHash||'--'):'NOT QUALIFIED'}</b><p>${q.closes||0} eligible strategy closes / ${rhState.qualificationThresholds.minCloses} required | Hit rate ${rhPct(q.hitRate)} vs required ${rhPct(q.requiredHitRate)} | PF ${polyEscape(String(q.profitFactor??'--'))} | Net sample P/L ${rhMoney(q.pnlUsd)} | Max drawdown ${rhMoney(q.maxDrawdownUsd)}</p>
- <p>${polyEscape((q.reasons||[]).join('; ')||'Paper evidence only. This does not establish future profitability; it only unlocks real autopilot.')}</p>
+ <p>${polyEscape((q.reasons||[]).join('; ')||'Paper evidence only. This does not establish future profitability; live trading remains locked in this build.')}</p>
  <small>Manual entries and manual exits never count. Only the current strategy hash ${polyEscape(p.paramsHash||'--')} and the configured rolling window are evaluated.</small></fieldset>
  <fieldset class="mpo-fieldset"><legend>Open paper positions</legend><table class="mpo-table"><thead><tr><th>Pair</th><th>Quantity</th><th>Entry cost</th><th>Open P/L</th><th>Source</th><th>Action</th></tr></thead><tbody>
  ${positions.length?positions.map(x=>`<tr><td>${polyEscape(x.symbol)}</td><td>${fmt(x.qty,8)}</td><td>${rhMoney(x.costUsd)}</td><td>${rhMoney(x.unrealizedUsd)}</td><td>${polyEscape(x.placedBy)}</td><td><button data-rh-close="${polyEscape(x.id)}" ${disabled}>Close paper</button></td></tr>`).join(''):'<tr><td colspan="6">No open simulated positions.</td></tr>'}</tbody></table></fieldset>
@@ -79,24 +80,25 @@ function renderRobinhood(force=false){
  <small>Candidates are bounded mutations of the current paper parameters replayed walk-forward on the recorded tape (train 70% / test 30%). Applying changes only the paper strategy hash, which resets qualification and disables real autopilot; real parameters are never touched. Autopromote needs ROBINHOOD_EVOLVE_AUTOPROMOTE=true.</small>
  ${ev.proposed?`<details><summary>Champion parameters ${polyEscape(ev.proposed.paramsHash)}</summary><pre>${polyEscape(JSON.stringify(ev.proposed.params,null,1))}</pre></details>`:''}
  </fieldset>
- <fieldset class="mpo-danger-fieldset"><legend>ROBINHOOD CRYPTO · REAL MONEY</legend>
+ <fieldset class="mpo-danger-fieldset"><legend>ROBINHOOD CONNECTION · PAPER-ONLY LOCK</legend>
+ <div class="mpo-error">PAPER-ONLY BUILD: real orders, cancellations, reconciliation and real autopilot are hard-disabled in the backend.</div>
  <p>${check(r.hasApiKey&&r.hasPrivateKey,'keys present')} ${check(r.keyValid,'key valid')} ${check(r.realEnabled,'real enabled')} ${check(r.sessionArmed,'armed')} ${check(r.qualified,'qualified')} <span class="mpo-badge">PRIMARY ${polyEscape(prim.symbol||'BTC-USD')}</span> <small>limits: ${rhMoney(lim.maxOrderUsd)}/order · ${polyEscape(String(lim.maxOpen))} open · ${rhMoney(lim.dailyLossCapUsd)}/day</small></p>
  <details ${r.credentialsReady?'':'open'}><summary>Configure credentials</summary>
  <label>API key <input id="rhApiKey" autocomplete="off" placeholder="rh-api-..." size="40"></label>
  <label>Private key seed <input id="rhSecret" type="password" autocomplete="new-password" placeholder="base64 32-byte seed" size="40"></label>
- <label><input id="rhRealEnable" type="checkbox"> enable real trading (writes ROBINHOOD_REAL_ENABLED=true)</label>
- <button id="rhConfigure" ${disabled}>Save to .env</button><p>Written to the user .env with mode 0600; the seed is never shown again. Saving disarms the session.</p></details>
- ${r.realEnabled?`<button id="rhArm" ${disabled||(!r.credentialsReady||r.recoveryRequired?'disabled':'')}>${r.sessionArmed?'DISARM':'ARM this session'}</button>`:'<p class="mpo-empty">Real trading is disabled. Set ROBINHOOD_REAL_ENABLED=true in your .env (or tick the box above) and restart to enable arming.</p>'}
+ <label><input id="rhRealEnable" type="checkbox" disabled> real trading locked for this build</label>
+ <button id="rhConfigure" ${disabled}>Save paper-feed credentials</button><p>These credentials are used for authenticated Robinhood market data. The app always writes ROBINHOOD_REAL_ENABLED=false in this build; the seed is never shown again.</p></details>
+ ${paperLocked?'<p class="mpo-empty">Live Robinhood execution is intentionally unavailable in this build.</p>':(r.realEnabled?`<button id="rhArm" ${disabled||(!r.credentialsReady||r.recoveryRequired?'disabled':'')}>${r.sessionArmed?'DISARM':'ARM this session'}</button>`:'<p class="mpo-empty">Real trading is disabled.</p>')}
  <div><label>Pair <input id="rhRealSymbol" value="${polyEscape(realSymbol)}" maxlength="14"></label>
  <label>USD <input id="rhRealUsd" type="number" min="1" max="${lim.maxOrderUsd}" step="1" value="${polyEscape(realUsd)}"></label>
  <label>Type <select id="rhRealType"><option value="market" ${realType==='market'?'selected':''}>market</option><option value="limit" ${realType==='limit'?'selected':''}>limit</option></select></label>
- <button id="rhPreviewBtn" ${disabled||(!r.credentialsReady?'disabled':'')}>Preview</button></div>
+ <button id="rhPreviewBtn" ${liveDisabled||(!r.credentialsReady?'disabled':'')}>Preview future live order</button></div>
  <div id="rhPreviewOut">${previewFresh?`<p>qty ${polyEscape(rhPreview.qtyStr)} · est cost ${rhMoney(rhPreview.estTotalUsd)} · fee ${rhMoney(rhPreview.estFeeUsd)} · ref ask ${rhMoney(rhPreview.refAsk)}${rhPreview.limitPrice?' · limit '+polyEscape(rhPreview.limitPrice):''} · round trip ${rhPct(rhPreview.costPct)} · expires in ${Math.max(0,Math.round((rhPreview.expiresAt-Date.now())/1000))}s · <b>${rhPreview.wouldPass?'WOULD PASS':'WOULD FAIL'}</b></p><table class="mpo-table"><tbody>${gateRows}</tbody></table>${(rhPreview.warnings||[]).length?'<p>'+polyEscape(rhPreview.warnings.join(' | '))+'</p>':''}`:'<p>No fresh preview.</p>'}</div>
  <label>Confirm <input id="rhConfirm" autocomplete="off" placeholder="Type PLACE REAL CRYPTO ORDER" size="34"></label>
  <button id="rhPlace" disabled>Place real order</button>
  <table class="mpo-table"><thead><tr><th>Pair</th><th>Status</th><th>By</th><th>Qty</th><th>Avg</th><th>Mark</th><th>Unrealized</th><th>Age</th><th>Actions</th></tr></thead><tbody>
- ${openReal.length?openReal.map(e=>`<tr><td>${polyEscape(e.symbol)}</td><td>${polyEscape(e.status)}${e.lastNote?' <small>'+polyEscape(e.lastNote)+'</small>':''}</td><td>${polyEscape(e.placedBy||'')}</td><td>${fmt(e.filledQty||e.requestedQty,8)}</td><td>${rhMoney(e.avgPrice)}</td><td>${rhMoney(e.markBid)}</td><td>${rhMoney(e.unrealizedUsd)}</td><td>${rhAge(e.ageMs)}</td><td>${e.status==='OPEN'&&e.fillVerified?`<button data-rh-sell="${polyEscape(e.id)}" ${disabled}>Sell…</button>`:''}<button data-rh-cancel="${polyEscape(e.id)}" ${disabled}>Cancel…</button><button data-rh-forget="${polyEscape(e.id)}" ${disabled}>Forget…</button></td></tr>`).join(''):'<tr><td colspan="9">No open real entries.</td></tr>'}</tbody></table>
- <button id="rhCancelAll" ${disabled||(!r.credentialsReady?'disabled':'')}>Cancel all…</button><button id="rhReconcile" ${disabled||(!r.credentialsReady?'disabled':'')}>Reconcile now</button>
+ ${openReal.length?openReal.map(e=>`<tr><td>${polyEscape(e.symbol)}</td><td>${polyEscape(e.status)}${e.lastNote?' <small>'+polyEscape(e.lastNote)+'</small>':''}</td><td>${polyEscape(e.placedBy||'')}</td><td>${fmt(e.filledQty||e.requestedQty,8)}</td><td>${rhMoney(e.avgPrice)}</td><td>${rhMoney(e.markBid)}</td><td>${rhMoney(e.unrealizedUsd)}</td><td>${rhAge(e.ageMs)}</td><td>${e.status==='OPEN'&&e.fillVerified?`<button data-rh-sell="${polyEscape(e.id)}" ${liveDisabled}>Sell…</button>`:''}<button data-rh-cancel="${polyEscape(e.id)}" ${liveDisabled}>Cancel…</button><button data-rh-forget="${polyEscape(e.id)}" ${disabled}>Forget…</button></td></tr>`).join(''):'<tr><td colspan="9">No open real entries.</td></tr>'}</tbody></table>
+ <button id="rhCancelAll" ${liveDisabled||(!r.credentialsReady?'disabled':'')}>Cancel all…</button><button id="rhReconcile" ${liveDisabled||(!r.credentialsReady?'disabled':'')}>Reconcile now</button>
  <details><summary>Real history (last ${realHist.length})</summary><table class="mpo-table"><tbody>${realHist.map(e=>`<tr><td>${polyEscape(e.symbol)}</td><td>${polyEscape(e.status)}</td><td>${polyEscape(e.exitReason||'')}</td><td>${rhMoney(e.pnlUsd)}</td></tr>`).join('')}</tbody></table></details>
  <div class="mpo-module"><b>REAL AUTOPILOT</b> ${ap.enabled?'<span class="mpo-badge">ON</span>':'<span class="mpo-badge">OFF</span>'}
  <label>USD/order <input id="rhApOrderUsd" type="number" min="1" max="${lim.maxOrderUsd}" value="${polyEscape(apOrderUsd)}" style="width:70px"></label>
@@ -104,12 +106,12 @@ function renderRobinhood(force=false){
  <label>Daily loss cap <input id="rhApLossCap" type="number" min="1" max="${lim.dailyLossCapUsd}" value="${polyEscape(apLossCap)}" style="width:70px"></label>
  <label>Pairs <input id="rhApSymbols" value="${polyEscape(apSymbols)}" size="26"></label>
  <label>Type <select id="rhApType"><option value="market" ${apType==='market'?'selected':''}>market</option><option value="limit" ${apType==='limit'?'selected':''}>limit</option></select></label>
- <button id="rhApSave" ${disabled}>Save settings</button>
+ <button id="rhApSave" ${liveDisabled}>Save settings</button>
  <label>Confirm <input id="rhAutoConfirm" autocomplete="off" placeholder="Type ENABLE REAL CRYPTO AUTOPILOT" size="36"></label>
- <button id="rhApEnable" ${disabled||(!r.sessionArmed||!r.qualified||ap.enabled?'disabled':'')}>Enable real autopilot</button><button id="rhApDisable" ${disabled||(!ap.enabled?'disabled':'')}>Disable</button><button id="rhApRun" ${disabled||(!ap.enabled?'disabled':'')}>Run once</button>
+ <button id="rhApEnable" ${liveDisabled||(!r.sessionArmed||!r.qualified||ap.enabled?'disabled':'')}>Enable real autopilot</button><button id="rhApDisable" ${liveDisabled||(!ap.enabled?'disabled':'')}>Disable</button><button id="rhApRun" ${liveDisabled||(!ap.enabled?'disabled':'')}>Run once</button>
  <p>Last action: ${ap.lastAction?polyEscape(ap.lastAction.action+' '+(ap.lastAction.ids||[ap.lastAction.symbol||'']).join(',')):'--'} | skipped: ${polyEscape((ap.skipped||[]).map(s=>s.symbol+':'+s.reason).join(', ')||'--')}</p>
  ${ap.disabledReason?`<div class="mpo-error">Autopilot disabled: ${polyEscape(ap.disabledReason)}</div>`:''}
- <small>Primary ${polyEscape(prim.symbol||'BTC-USD')} scores x${polyEscape(String(prim.weight||1))} and may size x${polyEscape(String(prim.orderMult||1))}, never above ${rhMoney(lim.maxOrderUsd)}. Requires the phrase, ROBINHOOD_REAL_ENABLED=true, an armed session and paper qualification; it self-disables when qualification lapses, on auth errors and at the daily loss cap.</small></div>
+ <small>Future live controls are retained for testing but are unreachable while the paper-only build lock is active. The active Robinhood strategy is the simulated paper engine above.</small></div>
  </fieldset>
  <fieldset class="mpo-fieldset"><legend>Reset simulated book</legend><label>Starting USD <input id="rhBank" type="number" min="50" max="100000" value="${polyEscape(rhVal('rhBank',p.startUsd||1000))}"></label><label>Type RESET PAPER <input id="rhResetConfirm" value="${polyEscape(rhVal('rhResetConfirm',''))}" autocomplete="off"></label><button id="rhReset" ${disabled}>Reset paper only</button><p>Clears simulated positions, history and qualification; stops paper autopilot. Real balances and the real journal are untouched.</p></fieldset>
  </div>`);
@@ -121,7 +123,7 @@ function renderRobinhood(force=false){
  el('rhSave').onclick=()=>{try{const params=JSON.parse(el('rhParams').value);rhAction('paper-autopilot',{symbols:el('rhSymbols').value,orderUsd:Number(el('rhOrderUsd').value),maxOpen:Number(el('rhMaxOpen').value),params})}catch{rhMessage='Strategy parameters must be valid JSON.';renderRobinhood(true)}};
  el('rhReset').onclick=()=>{const amountUsd=Number(el('rhBank').value),confirmation=el('rhResetConfirm').value;if(confirmation==='RESET PAPER')rhAction('paper-reset',{amountUsd,confirmation});else{rhMessage='Type RESET PAPER to confirm.';renderRobinhood(true)}};
  root.querySelectorAll('[data-rh-close]').forEach(button=>button.onclick=()=>rhAction('paper-close',{id:button.dataset.rhClose}));
- el('rhConfigure').onclick=()=>{const apiKey=el('rhApiKey').value,privateKey=el('rhSecret').value,realEnabled=el('rhRealEnable').checked;el('rhSecret').value='';rhAction('config',{apiKey,privateKey,realEnabled},'Credentials saved to .env; session disarmed.')};
+ el('rhConfigure').onclick=()=>{const apiKey=el('rhApiKey').value,privateKey=el('rhSecret').value;el('rhSecret').value='';rhAction('config',{apiKey,privateKey,realEnabled:false},'Paper-feed credentials saved; live trading remains locked.')};
  if(el('rhArm'))el('rhArm').onclick=()=>rhAction('arm',{armed:!r.sessionArmed},r.sessionArmed?'Disarmed.':'Armed for this session only.');
  el('rhPreviewBtn').onclick=async()=>{const result=await rhAction('preview',{symbol:el('rhRealSymbol').value,usd:Number(el('rhRealUsd').value),orderType:el('rhRealType').value},'Preview ready.');if(result){rhPreview=result;renderRobinhood(true)}};
  const place=el('rhPlace'),confirm=el('rhConfirm');

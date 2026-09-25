@@ -4,6 +4,7 @@
 // Imports only src/robinhoodErrors.js. No network. sessionArmed is never written to either file.
 import fs from 'node:fs';
 import path from 'node:path';
+import { renameSyncWithRetry } from './atomicRename.js';
 import {randomUUID} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {fail} from './robinhoodErrors.js';
@@ -84,7 +85,7 @@ function atomicWrite(file,name,data){
  const dir=path.dirname(file);
  fs.mkdirSync(dir,{recursive:true});
  const tmp=path.join(dir,`.${name}.${process.pid}.${Date.now().toString(36)}${Math.random().toString(36).slice(2,6)}.tmp`);
- try{fs.writeFileSync(tmp,JSON.stringify(data,null,2));fs.renameSync(tmp,file)}
+ try{fs.writeFileSync(tmp,JSON.stringify(data,null,2));renameSyncWithRetry(tmp,file)}
  catch(e){try{fs.rmSync(tmp,{force:true})}catch{}throw e}
 }
 export function saveJournal(s){

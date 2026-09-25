@@ -9,6 +9,7 @@ import * as ed25519 from '@noble/ed25519';
 import { lateGameEstimate, TURNOVER_TARGET_MINUTES } from './sportsTiming.js';
 import { usReadiness, noteUSAuthResult } from './polymarketUS.js';
 import { mapLimit } from './utils.js';
+import { renameSyncWithRetry } from './atomicRename.js';
 
 const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const DATA_DIR=path.resolve(process.env.MONEY_PRINTER_DATA_DIR||path.join(ROOT,'data'));
@@ -398,7 +399,7 @@ function saveJournal(s){
  const dir=path.dirname(STATE_FILE);
  fs.mkdirSync(dir,{recursive:true});
  const tmp=path.join(dir,`.polymarket-us-combos.${process.pid}.${Date.now().toString(36)}${Math.random().toString(36).slice(2,6)}.tmp`);
- try{fs.writeFileSync(tmp,JSON.stringify(journalCache,null,2));fs.renameSync(tmp,STATE_FILE)}
+ try{fs.writeFileSync(tmp,JSON.stringify(journalCache,null,2));renameSyncWithRetry(tmp,STATE_FILE)}
  catch(e){try{fs.rmSync(tmp,{force:true})}catch{}throw e}
  return journalCache;
 }
