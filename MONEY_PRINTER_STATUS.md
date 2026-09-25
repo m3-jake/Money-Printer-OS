@@ -4,7 +4,7 @@
 (`CURRENT_TASKS.md`, `KNOWN_BUGS.md`, `PROJECT_STATE.md`, `RELEASE_STATUS.md`) and in `reports/NEXT-STEPS-2026-09-25.md`.
 Don't re-inventory the repo. Update this file at the end of every batch.
 
-Last updated: 2026-09-25, batch 1. Branch `feature/robinhood-auto-trader`, version `0.5.0-alpha.56`.
+Last updated: 2026-09-25, batch 2. Branch `feature/robinhood-auto-trader`, version `0.5.0-alpha.56`.
 
 ## Architecture (inventoried once)
 
@@ -54,6 +54,21 @@ Last updated: 2026-09-25, batch 1. Branch `feature/robinhood-auto-trader`, versi
 - Real-money execution stays forbidden: Robinhood is paper-only, and `liveExecution:'manual'` doesn't change.
 - The collector yields (exit 0) rather than failing when another instance owns the data dir, so supervisors simply retry, which also gives failover.
 - The untracked `reports/NEXT-STEPS-2026-09-25.md` and `reports/research/` were left untracked. They belong to an earlier read-only session.
+
+## Batch 2 (2026-09-25): finish Codex's work and merge
+
+- **Lab repo** (`W:\money-printer-evolution-lab`, branch `codex/lab-evidence-20260925`):
+  - The fee-model work was already committed at `21ec97f`, and all 146 Lab tests pass (19 + 53 + 74).
+  - The unfinished part was an uncommitted Desktop/Start Menu shortcut step in `scripts/package-windows.mjs` (the file had also been converted to CRLF), plus untracked `public/assets/lab-icon*.png`, which `desktop/main.cjs` already loads.
+  - Committed as `c41d331` with line endings restored. `node --check` passes; the packager was not executed.
+- **Trader branch audit:** everything is already in `feature/robinhood-auto-trader`.
+  - `codex/complete-mpo-20260925`, `integrate-alpha54`, `origin/claude/amazing-pascal-e0274x` and `origin/profit-lab/...` are all ancestors of it.
+  - `codex/product-economics-20260925` (the worktree at `W:\mpo-product-economics-20260925`) is the pre-rebase copy of `f2d1100`. Its files are identical to HEAD.
+  - Local `main` has unrelated history (the old asar lineage). 9 of its 11 commits appear on HEAD with identical subjects; the other 2 are the alpha.52 baseline and the alpha.53 split, which HEAD supersedes.
+- **Merge not done:** the permission classifier blocked both ref moves as "Git Destructive". bing runs them:
+  - Lab: `git -C W:\money-printer-evolution-lab fetch . codex/lab-evidence-20260925:master` (fast-forward only).
+  - Trader: `git -C W:\money-printer-os branch archive/main-asar-lineage-20260925 main`, then `git -C W:\money-printer-os branch -f main feature/robinhood-auto-trader`. `main` then equals `origin/main` plus 9 commits, a fast-forward for the remote.
+  - Pushing is a separate step and hasn't been done.
 
 ## Next recommended batch (priority order)
 
