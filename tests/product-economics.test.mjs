@@ -77,6 +77,58 @@ test('source acquisition costs are not invented per-user costs or trading PnL',t
   assert.throws(()=>event(l,'visit',' '),/required/);
 });
 
+test('pricing an unknown support cost preserves its recorded effort and rejects conflicting effort',t=>{
+  const l=fixture(t);
+  event(l,'support_cost','support-unknown',{currency:'USD',amountUsd:null,unknownReason:'invoice pending',supportMinutes:35});
+  assert.equal(l.summary().totals.supportMinutes,35);
+  assert.throws(()=>event(l,'support_cost','conflict',{currency:'USD',amountUsd:12,replacesEventId:'support-unknown',supportMinutes:34}),/cannot change recorded support minutes/);
+  const resolution={currency:'USD',amountUsd:12,replacesEventId:'support-unknown'};
+  event(l,'support_cost','resolved-support',resolution);
+  assert.equal(event(l,'support_cost','resolved-support',resolution).duplicate,true);
+  const s=l.summary();
+  for(const row of [s.totals,...s.bySource,...s.byUser]) { assert.equal(row.supportMinutes,35); assert.equal(row.supportCostUsd,12); assert.equal(row.unpricedCosts,0); }
+});
+
+test('unpriced categories only suppress ratios whose numerator is incomplete',t=>{
+  const l=fixture(t);
+  event(l,'visit','v');event(l,'activation','a');event(l,'payment','p',payment);
+  event(l,'acquisition_cost','priced-acquisition',{currency:'USD',amountUsd:10});
+  event(l,'serving_cost','priced-serving',{currency:'USD',amountUsd:2});
+  event(l,'support_cost','unknown-support',{currency:'USD',amountUsd:null,unknownReason:'invoice pending'});
+  let s=l.summary();
+  for(const row of [s.totals,...s.bySource,...s.byUser]) {
+    assert.equal(row.cacUsd,10);assert.equal(row.costPerActivationUsd,10);assert.equal(row.servingCostPerActiveUserUsd,2);
+    assert.equal(row.contributionUsd,null);assert.equal(row.unpricedCostsByCategory.support_cost,1);
+  }
+  event(l,'serving_cost','unknown-serving',{currency:'USD',amountUsd:null,unknownReason:'invoice pending'});
+  s=l.summary();assert.equal(s.totals.cacUsd,10);assert.equal(s.totals.costPerActivationUsd,10);assert.equal(s.totals.servingCostPerActiveUserUsd,null);
+  event(l,'acquisition_cost','unknown-acquisition',{currency:'USD',amountUsd:null,unknownReason:'invoice pending'});
+  s=l.summary();assert.equal(s.totals.cacUsd,null);assert.equal(s.totals.costPerActivationUsd,null);
+});
+
+test('late non-direct visits cannot rewrite an already converted direct acquisition cohort',t=>{
+  for(const conversion of ['signup','activation','payment']) {
+    const l=fixture(t);
+    event(l,'visit','visit-direct',{timestamp:BASE,userId:null,anonymousId:'visitor'});
+    event(l,conversion,'convert',{...(conversion==='payment'?payment:{}),timestamp:BASE+1,anonymousId:'visitor'});
+    if(conversion!=='payment')event(l,'payment','payment',{...payment,timestamp:BASE+2});
+    event(l,'acquisition_cost','acquisition',{currency:'USD',amountUsd:9,timestamp:BASE+3});
+    const before=l.summary();
+    event(l,'visit','later-campaign',{timestamp:BASE+4,attribution:{source:'later-ad',channel:'paid'}});
+    const after=l.summary();
+    assert.equal(after.bySource.length,1);assert.equal(after.bySource[0].attribution.source,'direct');
+    assert.equal(after.bySource[0].netRevenueUsd,before.bySource[0].netRevenueUsd);
+    assert.equal(after.bySource[0].acquisitionCostUsd,before.bySource[0].acquisitionCostUsd);
+  }
+});
+
+test('attribution respects event order when conversion and campaign visit share a timestamp',t=>{
+  const l=fixture(t);
+  event(l,'visit','z-direct');event(l,'activation','z-activation');
+  event(l,'visit','a-late-campaign',{attribution:{source:'late',channel:'paid'}});
+  assert.equal(l.summary().byUser[0].attribution.source,'direct');
+});
+
 test('retention uses mature activation cohorts and real return days, not future activity',t=>{
   const l=fixture(t);
   event(l,'visit','v');event(l,'activation','a');

@@ -96,6 +96,11 @@ export class ProductEconomics {
         const original = this.get(event.replacesEventId);
         if (!original || original.type !== event.type || original.amountMicros !== null || original.userId !== event.userId || original.anonymousId !== event.anonymousId || JSON.stringify(original.attribution) !== JSON.stringify(event.attribution)) throw new Error('Cost resolution must match an unknown cost and its identity/attribution');
         if (this.db.prepare("SELECT event_id FROM product_events WHERE json_extract(body,'$.replacesEventId')=?").get(event.replacesEventId)) throw new Error('Unknown cost is already resolved');
+        // Pricing previously recorded support does not erase or rewrite the work performed.
+        if (original.supportMinutes !== null) {
+          if (event.supportMinutes !== null && event.supportMinutes !== original.supportMinutes) throw new Error('Cost resolution cannot change recorded support minutes');
+          event.supportMinutes = original.supportMinutes;
+        }
       }
       const timestamp = event.timestamp ?? Date.now();
       this.db.prepare('INSERT INTO product_events(event_id,ts,fingerprint,body) VALUES(?,?,?,?)').run(event.eventId, timestamp, fingerprint, JSON.stringify({ ...event, timestamp }));
@@ -133,17 +138,19 @@ export class ProductEconomics {
     return this.record({ eventId: `activation:paper:${anonymousId}`, type: 'activation', anonymousId, milestone: 'first-successful-manual-paper-order' });
   }
   summary({ now = Date.now() } = {}) {
-    const events = this.db.prepare('SELECT body FROM product_events WHERE ts<=? ORDER BY ts,event_id').all(now).map(row => JSON.parse(row.body));
+    const events = this.db.prepare('SELECT body FROM product_events WHERE ts<=? ORDER BY ts,rowid').all(now).map(row => JSON.parse(row.body));
     // Identities are derived from events visible at this as-of time, not future links.
     const identities = new Map(events.filter(e => e.anonymousId && e.userId).map(e => [e.anonymousId, e.userId]));
     const subject = e => e.userId ? `user:${e.userId}` : e.anonymousId ? (identities.has(e.anonymousId) ? `user:${identities.get(e.anonymousId)}` : `anonymous:${e.anonymousId}`) : null;
-    const attributed = new Map();
+    const attributed = new Map(), attributionLocked = new Set();
     for (const e of events) {
       const id = subject(e); if (!id) continue;
       const prior = attributed.get(id);
-      if (!prior || (prior.source === 'direct' && e.attribution.source !== 'direct')) attributed.set(id, e.attribution);
+      if (!prior || (!attributionLocked.has(id) && prior.source === 'direct' && e.attribution.source !== 'direct')) attributed.set(id, e.attribution);
+      // A later campaign visit cannot rewrite the customer's acquisition/conversion cohort.
+      if (['signup', 'activation', 'payment'].includes(e.type)) attributionLocked.add(id);
     }
-    const bucket = label => ({ label, visitors: new Set(), signups: new Set(), activated: new Set(), paying: new Set(), active: new Set(), revenue: 0, refunds: 0, acquisition: 0, serving: 0, fees: 0, support: 0, supportMinutes: 0, unpriced: 0, costTypes: new Set() });
+    const bucket = label => ({ label, visitors: new Set(), signups: new Set(), activated: new Set(), paying: new Set(), active: new Set(), revenue: 0, refunds: 0, acquisition: 0, serving: 0, fees: 0, support: 0, supportMinutes: 0, unpriced: 0, unpricedByCategory: Object.fromEntries([...COSTS].map(type=>[type,0])), costTypes: new Set() });
     const total = bucket('all'), sources = new Map(), users = new Map(), activationAt = new Map(), visits = new Map();
     const replaced = new Set(events.map(e => e.replacesEventId).filter(Boolean));
     const eligible = events.filter(e => !replaced.has(e.eventId));
@@ -162,7 +169,7 @@ export class ProductEconomics {
         if (['visit','activation'].includes(e.type)) b.active.add(id);
         if (COSTS.has(e.type)) {
           b.costTypes.add(e.type);
-          if (e.amountMicros === null) b.unpriced++;
+          if (e.amountMicros === null) { b.unpriced++; b.unpricedByCategory[e.type]++; }
           else b[({ acquisition_cost: 'acquisition', serving_cost: 'serving', payment_fee: 'fees', support_cost: 'support' })[e.type]] += e.amountMicros;
           b.supportMinutes += e.supportMinutes || 0;
         }
@@ -180,11 +187,11 @@ export class ProductEconomics {
       return { label: b.label, ...(b.attribution ? { attribution: b.attribution } : {}), visitors, signups: b.signups.size, activatedUsers: activated, payingUsers: paid, activeUsers: active,
         visitToActivationRate: visitors ? activatedVisitors/visitors : null, activationToPaidRate: activated ? paidActivated/activated : null,
         grossRevenueUsd: usd(b.revenue), refundsUsd: usd(b.refunds), netRevenueUsd: usd(net), acquisitionCostUsd: usd(b.acquisition), servingCostUsd: usd(b.serving), paymentFeesUsd: usd(b.fees), supportCostUsd: usd(b.support), supportMinutes: b.supportMinutes,
-        knownCostsUsd: usd(costs), unpricedCosts: b.unpriced, missingCostCategories, costCoverage: complete ? 'recorded-categories-priced' : 'incomplete',
+        knownCostsUsd: usd(costs), unpricedCosts: b.unpriced, unpricedCostsByCategory: { ...b.unpricedByCategory }, missingCostCategories, costCoverage: complete ? 'recorded-categories-priced' : 'incomplete',
         knownCostContributionUsd: usd(contribution), contributionUsd: complete ? usd(contribution) : null, contributionMargin: complete && net>0 ? contribution/net : null,
-        cacUsd: paid && b.costTypes.has('acquisition_cost') && !b.unpriced ? usd(b.acquisition)/paid : null,
-        costPerActivationUsd: activated && b.costTypes.has('acquisition_cost') && !b.unpriced ? usd(b.acquisition)/activated : null,
-        servingCostPerActiveUserUsd: active && b.costTypes.has('serving_cost') && !b.unpriced ? usd(b.serving)/active : null };
+        cacUsd: paid && b.costTypes.has('acquisition_cost') && !b.unpricedByCategory.acquisition_cost ? usd(b.acquisition)/paid : null,
+        costPerActivationUsd: activated && b.costTypes.has('acquisition_cost') && !b.unpricedByCategory.acquisition_cost ? usd(b.acquisition)/activated : null,
+        servingCostPerActiveUserUsd: active && b.costTypes.has('serving_cost') && !b.unpricedByCategory.serving_cost ? usd(b.serving)/active : null };
     };
     const retention = Object.fromEntries([1,7,30].map(days => {
       const mature = [...activationAt].filter(([,ts]) => Math.floor(ts/DAY)+days < Math.floor(now/DAY));
