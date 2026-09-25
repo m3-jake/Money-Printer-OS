@@ -208,9 +208,9 @@ export function leaderboardRows(loop = {}, { now = Date.now(), limit = 12 } = {}
   return rows.slice(0, Math.max(1, Math.min(24, Number(limit) || 12)));
 }
 
-export function boundedChampionActivation({ mode = "paper", champion = null, persistedPolicy = null, now = Date.now() } = {}) {
+export function boundedChampionActivation({ mode = "paper", champion = null, persistedPolicy = null, labLink = null, now = Date.now() } = {}) {
   const paper = String(mode || "").toLowerCase() === "paper";
-  const policy = evolutionChampionPolicy({ evolutionLoop: { champion } });
+  const policy = evolutionChampionPolicy({ evolutionLoop: { champion }, labLink });
   const applied = paper && !!policy;
   const base = {
     ...SAFETY,
@@ -267,6 +267,7 @@ export function readResearchControlPlane({ dataDir = "data", journalLimit = 250,
     mode,
     champion: loop.champion,
     persistedPolicy: state?.system?.activeEvolutionPolicy,
+    labLink: state?.labLink,
     now,
   });
   const journal = includeJournal ? projectJournalSnapshot(files.journal, { limit: journalLimit }) : { schema: "mpo.project-journal.v1", total: 0, categories: {}, rows: [] };

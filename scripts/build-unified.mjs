@@ -320,20 +320,26 @@ async function macSmoke(appBundle, LOGS) {
     DASHBOARD_PORT: String(SMOKE_PORT), MONEY_PRINTER_DATA_DIR: dataDir };
   const logFd = fs.openSync(path.join(LOGS, 'mac-engine.log'), 'w');
   const child = spawn(bin, [entry, '--dashboard-only'], { cwd: dataDir, env, stdio: ['ignore', logFd, logFd] });
-  let status = 0; let health = 0;
+  let status = 0; let health = 0; let healthOk = false;
   for (let i = 0; i < 60 && !status; i++) {
     await new Promise((r) => setTimeout(r, 1000));
     if (child.exitCode !== null) break;
     status = await httpStatus(`http://127.0.0.1:${SMOKE_PORT}/`);
   }
-  if (status) health = await httpStatus(`http://127.0.0.1:${SMOKE_PORT}/api/health`);
+  if (status) {
+    try {
+      const response = await fetch(`http://127.0.0.1:${SMOKE_PORT}/api/health`, { signal: AbortSignal.timeout(3000) });
+      health = response.status;
+      healthOk = (await response.json()).ok === true;
+    } catch { healthOk = false; }
+  }
   const pid = child.pid;
   child.kill('SIGTERM');
   await new Promise((r) => { const t = setTimeout(() => { child.kill('SIGKILL'); r(); }, 5000); child.once('exit', () => { clearTimeout(t); r(); }); });
   fs.closeSync(logFd);
   fs.rmSync(dataDir, { recursive: true, force: true });
   return { ran: true, pid, binary: 'packaged Electron (ELECTRON_RUN_AS_NODE=1)', mode: 'paper', dashboardOnly: true,
-    port: SMOKE_PORT, dashboardStatus: status, healthStatus: health, isolatedDataDir: 'temp dir (deleted)', success: status === 200 };
+    port: SMOKE_PORT, dashboardStatus: status, healthStatus: health, healthOk, isolatedDataDir: 'temp dir (deleted)', success: status === 200 && health === 200 && healthOk };
 }
 
 main().catch((e) => die(e.stack || String(e)));

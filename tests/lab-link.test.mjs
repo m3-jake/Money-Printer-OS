@@ -89,6 +89,26 @@ test('stale or forged publications cannot retain a policy or smuggle one through
   write(path.join(dir, 'lab-link', 'champion.json'), championDoc(goodChampion('OTHER-LAB'), now, { labNodeId: 'different-lab' }));
   assert.equal(readLabLink({ dir, bridge: '', now }).champion, null);
   assert.equal(readLabLink({ dir, bridge: '', now: now - 1 }).connected, false, 'a future heartbeat is not fresh evidence');
+  write(path.join(dir, 'lab-link', 'status.json'), statusDoc(now, { labNodeId: undefined }));
+  write(path.join(dir, 'lab-link', 'champion.json'), championDoc(goodChampion('NO-ID'), now, { labNodeId: undefined }));
+  assert.equal(readLabLink({ dir, bridge: '', now }).champion, null);
+  fs.rmSync(path.join(dir, 'lab-link', 'status.json'));
+  fs.rmSync(path.join(dir, 'lab-link', 'champion.json'));
+  s.evolutionLoop.champion = goodChampion('PREVIOUS');
+  assert.equal(syncLabLink(s, { dir, bridge: '', now }), true);
+  assert.equal(s.evolutionLoop.champion, null, 'deleting all publications revokes the displayed champion too');
+});
+
+test('a future local heartbeat cannot mask a fresh authenticated bridge', () => {
+  const dir = path.join(DIR, 'future-local'), bridge = path.join(DIR, 'valid-bridge');
+  const now = 1_500_000;
+  write(path.join(dir, 'lab-link', 'status.json'), statusDoc(now + 60_000));
+  write(path.join(bridge, 'lab-link', 'status.json'), signRecord(statusDoc(now - 1_000), 'key'));
+  write(path.join(bridge, 'lab-link', 'champion.json'), signRecord(championDoc(goodChampion('BRIDGE'), now - 2_000), 'key'));
+  const link = readLabLink({ dir, bridge, key: 'key', now });
+  assert.equal(link.connected, true);
+  assert.equal(link.source, 'bridge');
+  assert.equal(link.champion.champion.id, 'BRIDGE');
 });
 
 test('the trader publishes only usable 5m rows, throttled, plus a signed bridge copy', () => {

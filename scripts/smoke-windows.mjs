@@ -59,7 +59,7 @@ let healthJson = null; try { healthJson = JSON.parse(health.body); } catch { /* 
 const result = {
   ran: true, asar: ASAR, binary: 'installed Electron runtime (ELECTRON_RUN_AS_NODE=1)', exe: EXE, mode: 'paper', dashboardOnly: true,
   port: PORT, pid, dashboardStatus: status, healthStatus: health.status, healthOk: healthJson ? healthJson.ok === true : null, health: healthJson ? healthJson.health : null,
-  isolatedDataDir: 'temp dir (deleted)', success: status === 200, log: logFile, at: new Date().toISOString(),
+  isolatedDataDir: 'temp dir (deleted)', success: status === 200 && health.status === 200 && healthJson?.ok === true, log: logFile, at: new Date().toISOString(),
 };
 fs.writeFileSync(path.join(OUT, 'WINDOWS-ENGINE-SMOKE.json'), JSON.stringify(result, null, 2) + '\n');
 console.log(JSON.stringify(result, null, 2));

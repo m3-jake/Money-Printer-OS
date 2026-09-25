@@ -56,13 +56,14 @@ export function verifyRecord(record, key) {
 const finite = x => { const n = Number(x); return Number.isFinite(n) ? n : null; };
 function validChampion(doc) {
   if (!doc || doc.schema !== LAB_LINK_SCHEMA.champion) return null;
+  if (typeof doc.labNodeId !== 'string' || !doc.labNodeId.trim()) return null;
   const c = doc.champion;
   if (!c || typeof c !== 'object' || !c.id || !c.variant || typeof c.variant !== 'object' || !c.metrics || typeof c.metrics !== 'object') return null;
   if (doc.liveActivationAllowed === true || doc.automaticLivePromotionAllowed === true) return null; // never trust a record that claims live authority
   return doc;
 }
 function validStatus(doc) {
-  return doc && doc.schema === LAB_LINK_SCHEMA.status && Number.isFinite(Number(doc.updatedAt)) ? doc : null;
+  return doc && doc.schema === LAB_LINK_SCHEMA.status && typeof doc.labNodeId === 'string' && doc.labNodeId.trim() && Number.isFinite(Number(doc.updatedAt)) ? doc : null;
 }
 
 // Reads the lab's publications and picks the freshest trustworthy source.
@@ -78,7 +79,8 @@ export function readLabLink({ dir = dataDir(), bridge = bridgeDir(), key = bridg
   }
   if (!candidates.length) return { connected: false, source: 'none', status: null, champion: null, ageMs: null };
   // Keep status and champion on the same source. A disconnected source has no policy authority.
-  candidates.sort((a, b) => Number(b.status?.updatedAt || 0) - Number(a.status?.updatedAt || 0));
+  const fresh = candidate => candidate.status && now >= Number(candidate.status.updatedAt) && now - Number(candidate.status.updatedAt) <= candidate.freshMs;
+  candidates.sort((a, b) => Number(!!fresh(b)) - Number(!!fresh(a)) || Number(b.status?.updatedAt || 0) - Number(a.status?.updatedAt || 0));
   const best = candidates[0];
   const ageMs = best.status ? now - Number(best.status.updatedAt) : null;
   const connected = ageMs != null && ageMs >= 0 && ageMs <= best.freshMs;
@@ -146,7 +148,15 @@ export function syncLabLink(s, opts = {}) {
     championPublishedAt: link.champion?.publishedAt || null,
     checkedAt: now,
   };
-  if (!link.status && !link.champion) return false;
+  if (!link.status && !link.champion) {
+    const changed = !!s.evolutionLoop?.champion;
+    if (s.evolutionLoop) {
+      s.evolutionLoop = { ...s.evolutionLoop, champion: null, status: 'DISCONNECTED' };
+      s.evolution = { ...(s.evolution || {}), loop: s.evolutionLoop };
+    }
+    lastApplied = { key: '', at: now };
+    return changed;
+  }
   const key = `${link.status?.updatedAt || 0}:${link.champion?.publishedAt || 0}:${link.champion?.champion?.id || ''}`;
   if (key === lastApplied.key) return false;
   lastApplied = { key, at: now };

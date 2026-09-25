@@ -28,6 +28,18 @@ test('small actions round-trip; an action above the byte rail is refused before 
   assert.ok(!fs.existsSync(Q));
 });
 
+test('legacy rejection journal failure never loses a legitimate queued action', () => {
+  fs.writeFileSync(Q, JSON.stringify({ type: 'evolution-sync' }) + '\n');
+  enqueueAction({ type: 'toggle-pause' });
+  const append = fs.appendFileSync;
+  fs.appendFileSync = (file, ...args) => {
+    if (String(file).endsWith('market.ndjson')) throw new Error('journal disk unavailable');
+    return append(file, ...args);
+  };
+  try { assert.deepEqual(drainActions().map(a => a.type), ['toggle-pause']); }
+  finally { fs.appendFileSync = append; }
+});
+
 test('an oversized queue file is quarantined instead of being read into memory', () => {
   fs.writeFileSync(Q, '');
   fs.truncateSync(Q, QUEUE_MAX_BYTES + 1); // sparse: no real bytes are written

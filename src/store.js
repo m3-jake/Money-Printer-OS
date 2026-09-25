@@ -444,7 +444,7 @@ export function drainActions(limit = 1000) {
   fs.rmSync(drainFile, { force: true }); // only reached once `remain` is durably persisted
   return take.map(x => { try { return JSON.parse(x); } catch { return null; } }).filter(Boolean).filter(action => {
     if (action.type !== 'evolution-sync') return true;
-    appendJournal({ type: 'action-rejected', actionType: action.type, actionId: action.id || null, reason: 'Legacy evolution-sync is retired.' });
+    try { appendJournal({ type: 'action-rejected', actionType: action.type, actionId: action.id || null, reason: 'Legacy evolution-sync is retired.' }); } catch { /* Rejection diagnostics must not discard unrelated queued actions. */ }
     return false;
   });
 }
