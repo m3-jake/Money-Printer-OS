@@ -11,6 +11,7 @@ import { polymarketSnapshot, placePaperCombo, placePaperSingle, setAutopilot, ru
 import { polymarketUSSnapshot, usReadiness, configurePolymarketUS, armPolymarketUS, previewPolymarketUSOrder, submitPolymarketUSOrder, closePolymarketUSPosition, cancelPolymarketUSOrder, cancelAllPolymarketUS } from './polymarketUS.js';
 import { usComboSnapshot, buildUSCombo, quoteUSCombo, placeUSCombo, cancelUSRfq, setUSComboAutopilot, settleUSCombos, forgetUSCombo, startUSComboLoops } from './polymarketUSCombos.js';
 import { readApiUnitEconomics } from './apiUnitEconomics.js';
+import { productEconomics, productIngestionAuthorized, productReadAuthorized } from './productEconomics.js';
 import updateChannel from '../desktop/update-channel.cjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -38,6 +39,9 @@ function json(res, obj, status = 200, extraHeaders = {}) {
 function queue(type, data = {}) {
   return enqueueAction({ type, ...data });
 }
+// Telemetry failure must never make a completed paper order look rejected.
+function productTelemetry(fn) { try { return fn(productEconomics()); } catch (error) { console.warn('Product telemetry unavailable:', error.message); } }
+function paperOrderResult(req, result) { productTelemetry(ledger => ledger.recordPaperActivation(req, result)); return result; }
 // The channel is whatever desktop/main.cjs resolves from the same env (docs/RELEASE-CHANNEL.md). The
 // supervisor records a `LAN <peer>` label when a cluster peer won the last check; anything else (or a
 // status file written by an older build) shows the configured channel, never a stale URL.
@@ -352,6 +356,7 @@ export function startDashboard() {
     try {
       const u = new URL(req.url, 'http://127.0.0.1');
       if (req.method === 'GET' && u.pathname === '/') {
+        productTelemetry(ledger => ledger.recordVisit(req, res, u));
         res.writeHead(200, {
           'content-type': 'text/html; charset=utf-8',
           'cache-control': 'no-store',
@@ -414,6 +419,10 @@ export function startDashboard() {
       if (req.method === 'GET' && u.pathname === '/api/network') { const r=await meshRequest('GET','/state'); return json(res,r.body,r.status); }
       if (req.method === 'GET' && u.pathname === '/api/resources') return json(res, resourceSnapshot());
       if (req.method === 'GET' && u.pathname === '/api/unit-economics') return json(res, readApiUnitEconomics());
+      if (req.method === 'GET' && u.pathname === '/api/product-economics') {
+        if (!productReadAuthorized(req)) return json(res, {ok:false,error:'Product reporting requires localhost or a server token'}, 403);
+        return json(res, productEconomics().summary());
+      }
       if (req.method === 'GET' && u.pathname === '/api/polymarket') return json(res, await polymarketSnapshot());
       if (req.method === 'GET' && u.pathname === '/api/polymarket/readiness') return json(res, realPolymarketReadiness());
       if (req.method === 'GET' && u.pathname === '/api/polymarket-us') return json(res, await polymarketUSSnapshot());
@@ -430,6 +439,14 @@ export function startDashboard() {
         return res.end('not found');
       }
 
+      if (u.pathname === '/api/product-economics/event') {
+        if (!productIngestionAuthorized(req)) return json(res, {ok:false,error:'Authenticated server ingestion is required'}, 401);
+        const event = await body(req);
+        if (event.__error) return json(res, {ok:false,error:event.__error}, 400);
+        try { return json(res, productEconomics().record(event)); }
+        catch (error) { return json(res, {ok:false,error:error.message}, 400); }
+      }
+
       if (u.pathname === '/api/pause') { const a = queue('toggle-pause'); return json(res, { ok: true, queued: true, actionId: a.id }); }
       if (u.pathname === '/api/kill') { const a = queue('toggle-kill'); return json(res, { ok: true, queued: true, actionId: a.id }); }
       if (u.pathname === '/api/reset') {
@@ -444,8 +461,8 @@ export function startDashboard() {
       if (u.pathname === '/api/resources') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); return json(res,{ok:true,policy:saveResourcePolicy({cpuPercent:b.cpuPercent,memoryGB:b.memoryGB,diskGB:b.diskGB},'manual')}); }
       if (u.pathname === '/api/resources/sync') return json(res,{ok:true,policy:saveResourcePolicy({},'hive')});
       if (u.pathname === '/api/polymarket/reset') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); return json(res,{ok:true,paper:resetPolymarketPaper(b.amountUsd)}); }
-      if (u.pathname === '/api/polymarket/paper-combo') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); try{return json(res,placePaperCombo(b))}catch(e){return json(res,{ok:false,error:String(e.message||e)},400)} }
-      if (u.pathname === '/api/polymarket/paper-single') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); try{return json(res,placePaperSingle(b))}catch(e){return json(res,{ok:false,error:String(e.message||e)},400)} }
+      if (u.pathname === '/api/polymarket/paper-combo') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); try{return json(res,paperOrderResult(req,placePaperCombo(b)))}catch(e){return json(res,{ok:false,error:String(e.message||e)},400)} }
+      if (u.pathname === '/api/polymarket/paper-single') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); try{return json(res,paperOrderResult(req,placePaperSingle(b)))}catch(e){return json(res,{ok:false,error:String(e.message||e)},400)} }
       if (u.pathname === '/api/polymarket/autopilot') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); try{return json(res,{ok:true,autopilot:setAutopilot(b)})}catch(e){return json(res,{ok:false,error:String(e.message||e)},400)} }
       if (u.pathname === '/api/polymarket/autopilot/run') { try{return json(res,{ok:true,...await runAutopilotOnce()})}catch(e){return json(res,{ok:false,error:String(e.message||e)},500)} }
       if (u.pathname === '/api/polymarket-us/config') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); try{return json(res,{ok:true,readiness:configurePolymarketUS(b)})}catch(e){return json(res,{ok:false,error:String(e.message||e)},400)} }

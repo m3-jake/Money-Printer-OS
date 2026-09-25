@@ -43,7 +43,7 @@
     "test:evolution": "node --test tests/evolution-paper-policy.test.mjs tests/lab-link.test.mjs",
     "test:release-gate": "node --test tests/release-gate.test.cjs",
     "test:visual": "node --test tests/renderer-alpha52.test.mjs tests/visual-assets.test.mjs tests/visual-contract.test.mjs",
-    "test:all": "npm run test:recovery && npm run test:turnover && npm run test:updater && npm run test:execution && npm run test:unit-economics && npm run test:settlement && npm run test:polymarket-us && npm run test:combos && npm run test:edge-robustness && npm run test:accounting && npm run test:replay && npm run test:experiments && npm run test:research && npm run test:evidence && npm run test:poly-research-eval && npm run test:evolution && npm run test:lab-link && npm run test:visual && npm run test:release-gate && npm run test:latency",
+    "test:all": "npm run test:recovery && npm run test:turnover && npm run test:updater && npm run test:execution && npm run test:unit-economics && npm run test:product-economics && npm run test:settlement && npm run test:polymarket-us && npm run test:combos && npm run test:edge-robustness && npm run test:accounting && npm run test:replay && npm run test:experiments && npm run test:research && npm run test:evidence && npm run test:poly-research-eval && npm run test:evolution && npm run test:lab-link && npm run test:visual && npm run test:release-gate && npm run test:latency",
     "test:latency": "node --test tests/latency-diagnosis.test.mjs tests/latency-db.test.mjs",
     "test:evidence": "node --test tests/research-evidence-gate.test.mjs tests/research-evidence-store.test.mjs tests/research-collector.test.mjs tests/research-supervision.test.cjs tests/research-control-plane.test.mjs tests/research-lifecycle.test.mjs tests/project-journal.test.mjs",
     "evidence-canary": "node scripts/research-evidence-canary.mjs",
@@ -54,6 +54,7 @@
     "release:unified": "node scripts/build-unified.mjs",
     "release:windows-asar": "node scripts/build-windows-asar.mjs",
     "smoke:windows": "node scripts/smoke-windows.mjs",
+    "test:product-economics": "node --test tests/product-economics.test.mjs tests/product-economics-http.test.mjs",
     "test:unit-economics": "node --test tests/api-unit-economics.test.mjs tests/transaction-indexer-economics.test.mjs"
   }
 }
