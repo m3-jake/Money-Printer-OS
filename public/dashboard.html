@@ -32,6 +32,7 @@ let state=null,journal=[],projectJournal={rows:[]},networkState={peers:[],messag
 let chartView={range:'session',zoom:1,pan:0,dragging:false,lastX:0,hoverX:null};let fxSig='',fxBurstTimer=null,fxBurstUntil=0,fxLastRealizedSol=null,fxComboPrimed=false;const fxSeenComboSettlements=new Set();
 const renderSig=new Map();
 const perf={stateKB:0,renderMs:0,refreshMs:0,lastStateAt:0};
+let productEconomicsState=null;
 // [id,name,glyph,style,host?] — a host entry means this app is a TAB inside host's window.
 const APPS=[
 ['money','Money Printer OS','$','about'],
@@ -45,13 +46,14 @@ const APPS=[
 ['researchmon','Experiment Monitor','LAB','dark'],
 ['journal','Journal','JRN','dark'],
 ['system','System','SYS','dark'],
+['economics','Product Economics','$','light','system'],
 ['network','Network','NET','light','system'],
 ['log','Live Log','TXT','dark','system'],
 ['updater','Updater','UP','light','system'],
 ['settings','Settings','⚙','light','system']
 ];
 const ICON_PNG={money:'money.png',trade:'trade.png',sportsbook:'sportsbook.png',system:'settings.png',network:'network.png',settings:'settings.png'};
-const TAB_LABEL={trade:'Terminal',evolution:'Evolution',wallet:'Wallets',risk:'Risk',archive:'Archive',control:'Controls',system:'Monitor',network:'Network',log:'Log',updater:'Updater',settings:'Settings'};
+const TAB_LABEL={trade:'Terminal',evolution:'Evolution',wallet:'Wallets',risk:'Risk',archive:'Archive',control:'Controls',system:'Monitor',economics:'Product',network:'Network',log:'Log',updater:'Updater',settings:'Settings'};
 const DESKTOP_ICONS=['money','trade','sportsbook','researchmon','journal','system'];
 const appMeta=id=>APPS.find(a=>a[0]===id);
 const hostOf=id=>appMeta(id)?.[4]||id;
@@ -750,7 +752,7 @@ function renderArchive(){
 function renderUpdater(){
  const el=$('#body-updater');if(!el)return;const u=updateState||{},status=String(u.status||'IDLE').toUpperCase();
  const good=['CURRENT','READY'].includes(status),busy=['CHECKING','INSTALLING'].includes(status);
- setBody('updater',`<div class="mpo-surface-light" style="padding:12px;color:#111;min-height:100%"><div style="display:flex;align-items:center;gap:12px"><img class="brand-mark" src="/assets/money-printer-logo.png" alt="" style="width:72px;height:72px;object-fit:contain"><div><div class="mpo-brand-title">MONEY PRINTER OS UPDATER</div><b class="mpo-badge ${good?'mpo-badge--live':busy?'mpo-badge--degraded':'mpo-badge--down'}">${polyEscape(status)}</b></div></div>${busy?`<div class="mpo-loading">${status==='INSTALLING'?'Installing verified update…':'Checking for signed updates…'}</div>`:''}<div class="mpo-metrics" style="margin-top:10px"><div class="mpo-metric"><label>INSTALLED</label><b>${polyEscape(u.current||state?.build?.version||'—')}</b></div><div class="mpo-metric"><label>AVAILABLE</label><b>${polyEscape(u.available||'—')}</b></div><div class="mpo-metric"><label>CHANNEL</label><b title="${polyEscape(u.channel||u.source||'bangbowbing.net')}">${polyEscape(u.channel||u.source||'bangbowbing.net')}</b></div><div class="mpo-metric"><label>LAST CHECK</label><b>${u.ts?new Date(u.ts).toLocaleTimeString():'—'}</b></div></div><p>${polyEscape(u.error||u.note||'Money Printer OS checks for signed updates shortly after startup and every 10 minutes.')}</p><div class="toolbar"><button class="btn" id="updateCheck" ${busy?'disabled':''}>Check now</button><button class="btn" id="updateInstall" ${status==='READY'?'':'disabled'}>Install downloaded update</button></div><p class="muted">Internet releases are verified with the Money Printer OS release public key and SHA-256 before installation.</p></div>`);
+ setBody('updater',`<div class="mpo-surface-light" style="padding:12px;color:#111;min-height:100%"><div style="display:flex;align-items:center;gap:12px"><img class="brand-mark" src="/assets/money-printer-logo.png" alt="" style="width:72px;height:72px;object-fit:contain"><div><div class="mpo-brand-title">MONEY PRINTER OS UPDATER</div><b class="mpo-badge ${good?'mpo-badge--live':busy?'mpo-badge--degraded':'mpo-badge--down'}">${polyEscape(status)}</b></div></div>${busy?`<div class="mpo-loading">${status==='INSTALLING'?'Installing verified update…':'Checking for signed updates…'}</div>`:''}<div class="mpo-metrics" style="margin-top:10px"><div class="mpo-metric"><label>INSTALLED</label><b>${polyEscape(u.current||state?.build?.version||'—')}</b></div><div class="mpo-metric"><label>AVAILABLE</label><b>${polyEscape(u.available||'—')}</b></div><div class="mpo-metric"><label>CHANNEL</label><b title="${polyEscape(u.channelUrl||u.channel||u.source||'')}">${polyEscape(u.channel||u.source||'—')}</b></div><div class="mpo-metric"><label>LAST CHECK</label><b>${u.ts?new Date(u.ts).toLocaleTimeString():'—'}</b></div></div><p>${polyEscape(u.error||u.channelError||u.note||'Money Printer OS checks for signed updates shortly after startup and every 10 minutes.')}</p><div class="toolbar"><button class="btn" id="updateCheck" ${busy?'disabled':''}>Check now</button><button class="btn" id="updateInstall" ${status==='READY'?'':'disabled'}>Install downloaded update</button></div><p class="muted">Internet releases are verified with the Money Printer OS release public key and SHA-256 before installation.</p></div>`);
  $('#updateCheck')?.addEventListener('click',async()=>{updateState={...updateState,status:'CHECKING'};renderUpdater();await post('/api/update/check',{}).catch(()=>null);setTimeout(refreshUpdater,1400)});
  $('#updateInstall')?.addEventListener('click',async()=>{await post('/api/update/install',{}).catch(()=>null);updateState={...updateState,status:'INSTALLING',note:'Restarting into the verified update…'};renderUpdater()});
 }
@@ -773,6 +775,13 @@ function renderSimple(id){
  setBody(id,`<div style="padding:12px;color:#111">Money Printer OS ${polyEscape(s.build?.version||'')}</div>`);
 }
 function renderChanged(id,sig,fn){if(!windowVisible(id))return;const key=JSON.stringify(sig);if(renderSig.get(id)===key)return;renderSig.set(id,key);fn()}
+function renderProductEconomics(){
+ const p=productEconomicsState,t=p?.totals;
+ if(!t)return setBody('economics',`<div class="mpo-module-body">${polyEscape(p?.error||'Loading product economics…')}</div>`);
+ const dollars=v=>v===null||v===undefined?'Unknown':money(v),pct=v=>v===null||v===undefined?'Collecting':fmt(v*100,1)+'%';
+ const rows=(p.bySource||[]).map(r=>`<tr><td>${polyEscape(r.attribution.source)} / ${polyEscape(r.attribution.channel)}${r.attribution.campaign?' · '+polyEscape(r.attribution.campaign):''}</td><td>${r.visitors}</td><td>${r.activatedUsers}</td><td>${r.payingUsers}</td><td>${dollars(r.netRevenueUsd)}</td><td>${dollars(r.contributionUsd)}</td></tr>`).join('');
+ setBody('economics',`<div class="mpo-module"><header><span>Product revenue and pilot progress</span></header><div class="mpo-module-body"><p>${t.visitors} visitors → ${t.activatedUsers} activated → ${t.payingUsers} paid · ${t.signups} verified signups</p><p>Activation: first successful manual paper order. Trading results do not count as product revenue.</p><p>Revenue ${dollars(t.netRevenueUsd)} · Recorded costs ${dollars(t.knownCostsUsd)} · Contribution ${dollars(t.contributionUsd)} · Margin ${pct(t.contributionMargin)}</p><p>${t.unpricedCosts} unpriced cost records · ${t.missingCostCategories.length} cost categories awaiting records. Known-cost contribution: ${dollars(t.knownCostContributionUsd)}; incomplete costs cannot establish profitability.</p><p>Signup: ${polyEscape(p.connections.signup)} · Payments: ${polyEscape(p.connections.payment)} · Serving costs: ${polyEscape(p.connections.servingCosts)}</p><p>Return retention D1 ${pct(p.retention.d1.rate)} · D7 ${pct(p.retention.d7.rate)} · D30 ${pct(p.retention.d30.rate)} · Support ${fmt(t.supportMinutes,1)} minutes</p></div></div><table class="table"><thead><tr><th>Source</th><th>Visits</th><th>Active</th><th>Paid</th><th>Net revenue</th><th>Contribution</th></tr></thead><tbody>${rows||'<tr><td colspan="6">No visits recorded yet.</td></tr>'}</tbody></table><div class="mpo-module-body"><p>Each browser is an anonymous visitor until a verified account links it. These local records are not a completed customer pilot.</p></div>`);
+}
 function renderAll(force=false){
  if(force)renderSig.clear(); const s=state||{},m=s.system?.metrics||{},e=s.evolutionLoop||{},p=s.portfolio||{}; const t0=performance.now();
  renderChanged('trade',[p.equitySol,p.cashSol,s.dailyPnlSol,s.system?.health,s.watchlist,s.positions],renderTrade);
@@ -781,6 +790,7 @@ function renderAll(force=false){
  renderChanged('journal',[projectJournal,journal,journalFilter,journalQuery],renderJournal);
  renderChanged('evolution',e,renderEvolution);
  renderChanged('system',[m,e.status,e.workerCount,e.datasetSamples,s.system?.lastCycle,perf.stateKB,Math.round(perf.refreshMs)],renderSystem);
+ renderChanged('economics',productEconomicsState,renderProductEconomics);
  renderChanged('log',journal.slice(-180),renderLog);
  renderChanged('wallet',s.walletIntel?.wallets,renderWallet);
  renderChanged('control',[s.mode,s.runtime,s.config,e.status],renderControl);
@@ -838,6 +848,10 @@ async function refreshProjectJournal(){
 async function refreshUpdater(){
  try{const r=await fetch('/api/update',{cache:'no-store'});if(r.ok)updateState=await r.json()}catch{}renderSig.delete('updater');renderAll()
 }
+async function refreshProductEconomics(){
+ try{const r=await fetch('/api/product-economics',{cache:'no-store',signal:AbortSignal.timeout(5000)});productEconomicsState=await r.json()}catch{productEconomicsState={error:'Product economics unavailable'}}
+ renderSig.delete('economics');renderAll();
+}
 async function refreshResearchMonitor(){
  try{const r=await fetch('/api/research-monitor',{cache:'no-store',signal:AbortSignal.timeout(4000)});if(r.ok)researchMonitor=await r.json();else researchMonitor={...researchMonitor,status:'error',error:'monitor HTTP '+r.status}}catch(e){researchMonitor={...researchMonitor,status:'error',error:e.message||'research monitor unavailable'}}renderSig.delete('researchmon');renderAll()
 }
@@ -848,12 +862,14 @@ function boot(){
  const tick=()=>{if(i>=steps.length){setTimeout(()=>$('#boot').classList.add('hide'),250);return}$('#bootText').textContent=steps[i][0];$('#bootBar').style.width=steps[i][1]+'%';i++;setTimeout(tick,180)};tick();
 }
 buildIcons();buildWindows();buildStart();boot();refreshJournal();refreshProjectJournal();refreshNetwork();refreshPolymarket();refreshPolymarketUS();refreshUSComboSnapshot();refreshUpdater();refreshResearchMonitor();refreshState();
+refreshProductEconomics();
 setInterval(()=>{if(!document.hidden)refreshState()},1500);
 setInterval(()=>{if(!document.hidden)refreshNetwork()},5000);
 setInterval(()=>{if(!document.hidden)refreshPolymarket()},5000);
 setInterval(()=>{if(!document.hidden&&windowVisible('sportsbook')&&polyModules.us.visible&&polyModules.us.open)refreshPolymarketUS()},15000);
 setInterval(()=>{if(!document.hidden&&windowVisible('sportsbook')&&polyModules.combos.visible&&polyModules.combos.open)refreshUSComboSnapshot()},5000);
 setInterval(()=>{if(!document.hidden)refreshUpdater()},15000);
+setInterval(()=>{if(!document.hidden&&windowVisible('economics'))refreshProductEconomics()},15000);
 setInterval(()=>{if(!document.hidden&&windowVisible('researchmon'))refreshResearchMonitor()},3000);
 setInterval(()=>{if(!document.hidden)refreshJournal()},15000);
 setInterval(()=>{if(!document.hidden&&windowVisible('journal'))refreshProjectJournal()},15000);

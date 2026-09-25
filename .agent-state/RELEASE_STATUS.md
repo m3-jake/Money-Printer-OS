@@ -1,3 +1,21 @@
+# Windows build — 0.5.0-alpha.54+windows.aa32002 (2026-09-24, WITCHDOCTOR, **not installed**)
+
+Built by `npm run release:windows-asar` (`scripts/build-windows-asar.mjs`) from a clean `git archive` of
+`aa320021def77ed5b37402364f09fd2871465c28` on the Windows host itself. First version cut from the
+reconciled tree: GitHub `main` + the nine Windows-only commits that lived only in `W:\money-printer-os` +
+PR #1 (GitHub Releases update channel, ci.yml/release.yml, manifest signing). No mac package, no zips, no
+signing.
+
+| field | value |
+| --- | --- |
+| output dir | `W:\mpo-alpha54-build\` (app.asar, BUILD-INFO.json, SHA256SUMS.txt, WINDOWS-ENGINE-SMOKE.json) |
+| app.asar | `f6d0d438dad093a259a3b6b661922c75782387653a156833ad798de3cc491db9` (30073777 bytes, 2618 entries, 0 native modules) |
+| Electron | 38.8.6 — the runtime already installed at `%LOCALAPPDATA%\Programs\money-printer-os` |
+| tests (source tree, Node v24.16.0, Windows) | `npm run test:all` 331/333 before Pillow was installed, the two failures being `tests/visual-assets.test.mjs` shelling to `python3 -c "from PIL import Image"`; `test:visual` **26/26** after `pip install pillow`; `test:release-gate` **6/6** and `test:latency` **7/7** run on their own because the chain had stopped at `test:visual`; `node src/selftest.js` **SELFTEST PASS** |
+| Windows engine smoke | `npm run smoke:windows`: installed `Money Printer OS.exe` as Node (`ELECTRON_RUN_AS_NODE=1`), `app.asar/src/index.js --dashboard-only`, MODE=paper, throwaway data dir: dashboard **200**, /api/health **200** `ok:true` (STARTING); process stopped, data dir deleted. First Windows boot test of a packaged engine. |
+| install | **not done by an agent.** WITCHDOCTOR still runs the alpha.53 archive; the app and the Evolution Lab were both stopped at build time (`npm run health` RED on both). Swap by hand with the app closed: back up `resources\app.asar`, copy `W:\mpo-alpha54-build\app.asar` over it, re-read the SHA-256 |
+| still open | Authenticode, signed updater manifest (jake's Ed25519 key), Mac install, `release-gate.cjs` stage promotion |
+
 # Unified Mac + Windows build — 0.5.0-alpha.53+unified.3ba4959 (2026-09-24, **latest**)
 
 Built by `npm run release:unified` (`scripts/build-unified.mjs`) from a clean `git archive` of

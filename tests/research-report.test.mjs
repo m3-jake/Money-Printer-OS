@@ -73,3 +73,38 @@ test('CLI refuses app-data writes and import fence holds',()=>{
     assert.equal(fs.existsSync(out.replace(/\.json$/,'.md')),true);
   }finally{fs.rmSync(dir,{recursive:true,force:true})}
 });
+
+// The stale-purge gate used to regex the forensics prose for the literal "maxHold 25", which
+// hardcoded the SPRINT preset. An applied evolution champion sets its own maxHold (index.js:312,
+// bounded only by Math.max(1, ...)), so any champion not on 25 minutes failed the gate forever
+// regardless of whether its stale-purges were explained. Read the structured boolean instead.
+test('the stale-purge gate follows the champion maxHold, not a hardcoded 25', () => {
+  const base = {
+    cold: { pass: true, sentinelExcluded: true, chronological: { pass: true }, walkForward: { pass: true } },
+    latency: { bottleneck: 'DISCOVERY', wait: 100, medians: { wait: 100 } },
+    replay: {},
+  };
+  const forensicsWith = sp => ({
+    n: 247, negativeMedian: true,
+    overall: { medianReturnPct: -2.8, medianGrossReturnPct: 0.1 },
+    stalePurge: sp, verdict: { frictionFlip: true, dominantLossReason: 'stop-loss' },
+  });
+  const gateOf = r => r.gates.find(g => g.id === 'forensics-stale-purge-maxhold');
+
+  // a champion on a 2-minute hold whose closes DO match it: explained, so the gate holds
+  const ok = assembleMemeAlphaReport({ ...base, forensics: forensicsWith({
+    n: 124, matchesMaxHold: true, maxHoldMin: 2, maxHoldSource: 'champion C-1',
+    cause: 'maxHold 2-min timer (champion C-1)' }) });
+  assert.equal(gateOf(ok).ok, true, 'a 2-minute champion timer is a valid explanation');
+
+  // closes that do NOT match the configured hold are genuinely unexplained
+  const bad = assembleMemeAlphaReport({ ...base, forensics: forensicsWith({
+    n: 124, matchesMaxHold: false, maxHoldMin: 25, maxHoldSource: 'preset sprint',
+    cause: 'hold time 2.1 min does not match maxHold 25 (preset sprint)' }) });
+  assert.equal(gateOf(bad).ok, false, 'an unexplained hold time must still fail');
+
+  // a report written before matchesMaxHold existed still parses via the prose fallback
+  const legacy = assembleMemeAlphaReport({ ...base, forensics: forensicsWith({
+    n: 229, cause: 'SPRINT maxHold 25-min timer' }) });
+  assert.equal(gateOf(legacy).ok, true, 'older forensics files must not regress');
+});

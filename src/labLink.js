@@ -56,13 +56,14 @@ export function verifyRecord(record, key) {
 const finite = x => { const n = Number(x); return Number.isFinite(n) ? n : null; };
 function validChampion(doc) {
   if (!doc || doc.schema !== LAB_LINK_SCHEMA.champion) return null;
+  if (typeof doc.labNodeId !== 'string' || !doc.labNodeId.trim()) return null;
   const c = doc.champion;
   if (!c || typeof c !== 'object' || !c.id || !c.variant || typeof c.variant !== 'object' || !c.metrics || typeof c.metrics !== 'object') return null;
   if (doc.liveActivationAllowed === true || doc.automaticLivePromotionAllowed === true) return null; // never trust a record that claims live authority
   return doc;
 }
 function validStatus(doc) {
-  return doc && doc.schema === LAB_LINK_SCHEMA.status && Number.isFinite(Number(doc.updatedAt)) ? doc : null;
+  return doc && doc.schema === LAB_LINK_SCHEMA.status && typeof doc.labNodeId === 'string' && doc.labNodeId.trim() && Number.isFinite(Number(doc.updatedAt)) ? doc : null;
 }
 
 // Reads the lab's publications and picks the freshest trustworthy source.
@@ -77,21 +78,25 @@ export function readLabLink({ dir = dataDir(), bridge = bridgeDir(), key = bridg
     if (bs || bc) candidates.push({ source: 'bridge', status: bs, champion: bc, freshMs: BRIDGE_FRESH_MS });
   }
   if (!candidates.length) return { connected: false, source: 'none', status: null, champion: null, ageMs: null };
-  // Freshest status wins; a stale source still contributes its champion if nothing fresher has one.
-  candidates.sort((a, b) => Number(b.status?.updatedAt || 0) - Number(a.status?.updatedAt || 0));
+  // Keep status and champion on the same source. A disconnected source has no policy authority.
+  const fresh = candidate => candidate.status && now >= Number(candidate.status.updatedAt) && now - Number(candidate.status.updatedAt) <= candidate.freshMs;
+  candidates.sort((a, b) => Number(!!fresh(b)) - Number(!!fresh(a)) || Number(b.status?.updatedAt || 0) - Number(a.status?.updatedAt || 0));
   const best = candidates[0];
-  const ageMs = best.status ? Math.max(0, now - Number(best.status.updatedAt)) : null;
-  const champion = best.champion || candidates.find(c => c.champion)?.champion || null;
-  return { connected: ageMs != null && ageMs <= best.freshMs, source: best.source, status: best.status, champion, ageMs };
+  const ageMs = best.status ? now - Number(best.status.updatedAt) : null;
+  const connected = ageMs != null && ageMs >= 0 && ageMs <= best.freshMs;
+  const champion = connected && best.champion?.labNodeId === best.status?.labNodeId ? best.champion : null;
+  return { connected, source: best.source, status: best.status, champion, ageMs };
 }
 
 // The evolutionLoop view the dashboard/control plane already understand, built from lab records.
 export function loopViewFromLab(status, championDoc) {
   const st = status || {};
-  const c = championDoc?.champion || st.champion || null;
+  const c = championDoc?.champion || null;
   return {
     enabled: true,
     source: 'evolution-lab',
+    paperPromotionAllowed: championDoc?.paperPromotionAllowed === true,
+    qualificationStage: championDoc?.qualificationStage || st.qualificationStage || 'RESEARCH_ONLY',
     labNodeId: st.labNodeId || championDoc?.labNodeId || null,
     labName: st.labName || championDoc?.labName || null,
     labVersion: st.labVersion || championDoc?.labVersion || null,
@@ -143,10 +148,20 @@ export function syncLabLink(s, opts = {}) {
     status: link.status?.status || null,
     championId: link.champion?.champion?.id || null,
     championPublishedAt: link.champion?.publishedAt || null,
+    paperPromotionAllowed: link.connected && link.champion?.paperPromotionAllowed === true,
+    qualificationStage: link.champion?.qualificationStage || link.status?.qualificationStage || 'RESEARCH_ONLY',
     checkedAt: now,
   };
-  if (!link.status && !link.champion) return false;
-  const key = `${link.status?.updatedAt || 0}:${link.champion?.publishedAt || 0}:${link.champion?.champion?.id || ''}`;
+  if (!link.status && !link.champion) {
+    const changed = !!s.evolutionLoop?.champion;
+    if (s.evolutionLoop) {
+      s.evolutionLoop = { ...s.evolutionLoop, champion: null, status: 'DISCONNECTED' };
+      s.evolution = { ...(s.evolution || {}), loop: s.evolutionLoop };
+    }
+    lastApplied = { key: '', at: now };
+    return changed;
+  }
+  const key = `${link.status?.updatedAt || 0}:${link.champion?.publishedAt || 0}:${link.champion?.champion?.id || ''}:${s.labLink.connected}:${s.labLink.paperPromotionAllowed}`;
   if (key === lastApplied.key) return false;
   lastApplied = { key, at: now };
   s.evolutionLoop = loopViewFromLab(link.status, link.champion);

@@ -339,13 +339,23 @@ function rotateJournalIfNeeded() {
   } catch {}
 }
 
+// scan-candidate rows are ~98% of market.ndjson by volume - measured at ~1 GB a day on
+// WITCHDOCTOR. They are the research dataset the Evolution Lab trains on, so the research
+// machine must keep them. A laptop that only trades gains nothing from the writes and pays for
+// them in SSD wear and battery, so it can opt out with MPO_JOURNAL_SCAN_CANDIDATES=false.
+// Rotation already bounds the footprint (3 x JOURNAL_MAX_BYTES); this bounds the write rate.
+export const JOURNAL_SCAN_CANDIDATES = String(process.env.MPO_JOURNAL_SCAN_CANDIDATES ?? '').trim().toLowerCase() !== 'false';
+const journalKeeps = row => JOURNAL_SCAN_CANDIDATES || row?.type !== 'scan-candidate';
+
 export function appendJournal(row) {
+  if (!journalKeeps(row)) return;
   fs.mkdirSync(dir, { recursive: true });
   rotateJournalIfNeeded();
   fs.appendFileSync(journalFile, `${JSON.stringify({ ...row, ts: row.ts || Date.now() })}\n`);
 }
 
 export function appendJournalBatch(rows = []) {
+  rows = rows.filter(journalKeeps);
   if (!rows.length) return;
   fs.mkdirSync(dir, { recursive: true });
   rotateJournalIfNeeded();
@@ -386,6 +396,7 @@ export function enqueueAction(action) {
   const queued = { id: action.id || randomUUID(), ...action, ts: action.ts || Date.now() };
   const line = `${JSON.stringify(queued)}\n`;
   if (Buffer.byteLength(line) > ACTION_MAX_BYTES) throw new Error(`action ${queued.type || '?'} is ${Buffer.byteLength(line)} bytes; the queue accepts at most ${ACTION_MAX_BYTES}`);
+  if (queued.type === 'evolution-sync') throw new Error('Legacy evolution-sync is retired; use the validated Lab link.');
   fs.appendFileSync(actionFile, line);
   return queued;
 }
@@ -423,15 +434,19 @@ export function drainActions(limit = 1000) {
   } catch {
     return [];
   }
-  try {
-    const lines = fs.readFileSync(drainFile, 'utf8').split('\n').filter(Boolean);
-    const take = lines.slice(0, limit);
-    const remain = lines.slice(limit);
-    if (remain.length) fs.appendFileSync(actionFile, `${remain.join('\n')}\n`);
-    return take.map(x => { try { return JSON.parse(x); } catch { return null; } }).filter(Boolean);
-  } finally {
-    try { fs.rmSync(drainFile, { force: true }); } catch {}
-  }
+  // If anything below throws (e.g. ENOSPC while writing `remain` back), drainFile is left on
+  // disk instead of deleted: it is the only copy of the batch, and cleanupActionDrains only
+  // removes files older than DRAIN_ORPHAN_MS, leaving a window to recover it by hand.
+  const lines = fs.readFileSync(drainFile, 'utf8').split('\n').filter(Boolean);
+  const take = lines.slice(0, limit);
+  const remain = lines.slice(limit);
+  if (remain.length) fs.appendFileSync(actionFile, `${remain.join('\n')}\n`);
+  fs.rmSync(drainFile, { force: true }); // only reached once `remain` is durably persisted
+  return take.map(x => { try { return JSON.parse(x); } catch { return null; } }).filter(Boolean).filter(action => {
+    if (action.type !== 'evolution-sync') return true;
+    try { appendJournal({ type: 'action-rejected', actionType: action.type, actionId: action.id || null, reason: 'Legacy evolution-sync is retired.' }); } catch { /* Rejection diagnostics must not discard unrelated queued actions. */ }
+    return false;
+  });
 }
 
 export function resetPaper(startSol = cfg.paperStartSol, persist = true) {

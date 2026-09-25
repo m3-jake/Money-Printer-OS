@@ -110,6 +110,16 @@ test("live mode never auto-applies a champion and stays safety-gated", () => {
   assert.equal(liveStage.paperCanary.automated, false);
 });
 
+test("a disconnected Lab never appears as an active paper canary", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mpo-disconnected-plane-"));
+  try {
+    const plane = readResearchControlPlane({ dataDir: dir, state: { evolutionLoop: { champion: goodChampion }, labLink: { connected: false } } });
+    assert.equal(plane.activeEvolutionPolicy.applied, false);
+    assert.equal(plane.paperCanary.automated, false);
+    assert.equal(plane.activeEvolutionPolicy.id, 'BASE');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test("furnace activity falls back to profile files when the loop is idle", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mpo-furnace-"));
   fs.writeFileSync(path.join(dir, "research-furnace.json"), JSON.stringify({ enabled: true }));
@@ -175,4 +185,3 @@ test("dashboard snapshot and monitor surfaces keep the control-plane contract", 
   assert.match(engine, /liveExecution:'manual'/);
   assert.doesNotMatch(engine, /cfg\.mode==='live'\?evolutionChampion/);
 });
-

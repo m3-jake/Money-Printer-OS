@@ -285,8 +285,7 @@ async function actions(s) {
       if (raw.visualIntensity != null) patch.visualIntensity = Math.max(0, Math.min(100, Number(raw.visualIntensity) || 0));
       Object.assign(s.runtime, patch);
     } else if (a.type === 'evolution-sync') {
-      if (a.evolutionLoop && typeof a.evolutionLoop === 'object') s.evolutionLoop = a.evolutionLoop;
-      if (a.evolution && typeof a.evolution === 'object') s.evolution = a.evolution;
+      appendJournal({ type: 'action-rejected', actionType: a.type, reason: 'Legacy evolution sync is retired; use the validated Lab link.' });
     } else if (a.type === 'profile') {
       const pr = operatingProfiles[a.profile];
       if (pr) { s.runtime.profile = a.profile; Object.assign(s.runtime, pr); }

@@ -32,7 +32,25 @@ Evolution panel as `NOT LINKED` — that is the expected state, not a bug. See
 - `node src/index.js --dashboard-only` — start just the dashboard server without the trading
   loop.
 - `npm run test:all` — the full test suite (see `package.json` `scripts` for every individual
-  `test:*` target).
+  `test:*` target). `tests/visual-assets.test.mjs` shells out to `python3` with Pillow installed.
+- `npm run test:updater` — the release-channel resolver, the GitHub Releases/redirect fetch path
+  and `scripts/sign-manifest.mjs`, all against local mock servers and a throwaway key.
+
+## Releases and updates
+
+CI (`.github/workflows/ci.yml`) runs the suite, the self-test and the offline doctor on every push
+to `main` and every pull request. A `v*` tag runs `.github/workflows/release.yml`, which builds the
+unified macOS arm64 + Windows x64 packages on a macOS runner (`scripts/build-unified.mjs`) and
+attaches them to a **draft** GitHub Release together with an unsigned updater manifest.
+
+Installed copies update from this repository's GitHub Releases: `desktop/main.cjs` fetches the
+newest published release's `manifest.json` and `app.asar` (`desktop/update-channel.cjs`,
+`desktop/update-fetch.cjs`), verifies the Ed25519 signature with `desktop/update-public-key.pem`,
+then the archive's SHA-256 and size. A release becomes visible to the updater only once bing has
+signed the manifest by hand (`node scripts/sign-manifest.mjs sign`) and published the draft.
+While the repository is private the installed app needs `MONEY_PRINTER_UPDATE_TOKEN` in its
+`.env`. Everything, including `MONEY_PRINTER_UPDATE_URL` for other channels, is in
+`docs/RELEASE-CHANNEL.md`.
 
 ## Paper mode
 

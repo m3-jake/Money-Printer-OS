@@ -88,18 +88,42 @@ export function hourlyBuckets(history=[]){
   return Object.entries(hours).map(([hour,xs])=>({hour,...cohortStats(xs)})).sort((a,b)=>a.sumPnlSol-b.sumPnlSol);
 }
 
-export function diagnoseStalePurge(history=[],{maxHoldMin=25}={}){
+// Compare against the maxHold actually in force, not a hardcoded 25. An evolution champion
+// overrides maxHold (index.js:312 takes it from evolutionChampionPolicy, whose only bound is
+// Math.max(1, ...)), so a champion running a 2-minute hold made this report "hold time does not
+// match SPRINT maxHold 25" forever. researchReport.js gates on that string, and a gate that
+// always fires is a gate nobody reads.
+export function diagnoseStalePurge(history=[],{maxHoldMin=25,maxHoldSource='default'}={}){
   const stale=(history||[]).filter(t=>t.reason==='stale-purge');
   const stats=cohortStats(stale);
   const hold=stats.medianHoldMin;
-  const cause=Math.abs(hold-maxHoldMin)<=2?'SPRINT maxHold 25-min timer':'hold time does not match SPRINT maxHold 25';
+  const matches=Math.abs(hold-maxHoldMin)<=2;
+  const cause=matches
+    ? `maxHold ${maxHoldMin}-min timer (${maxHoldSource})`
+    : `hold time ${r4(hold)} min does not match maxHold ${maxHoldMin} (${maxHoldSource})`;
   return {
     n:stale.length,
     cause,
+    matchesMaxHold:matches,
     maxHoldMin,
+    maxHoldSource,
     ...stats,
     sharePct:r4(history.length?stale.length/history.length*100:0),
   };
+}
+
+// What index.js:312 would actually use: the applied champion's maxHoldMin, else the exit preset,
+// else the MAX_HOLD_MIN default.
+const EXIT_PRESET_MAX_HOLD={ultraScalp:10,sprint:25,scalper:25,runner:120,moonbag:240,yolo:360};
+export function effectiveMaxHold(state={}){
+  const champ=state?.evolutionLoop?.champion;
+  const applied=state?.runtime?.activeEvolutionChampionId;
+  const fromChamp=Number(champ?.variant?.maxHoldMin);
+  if(applied&&champ?.id===applied&&Number.isFinite(fromChamp)&&fromChamp>0)
+    return {maxHoldMin:Math.max(1,fromChamp),maxHoldSource:`champion ${champ.id}`};
+  const preset=String(state?.runtime?.exitPreset||'');
+  if(EXIT_PRESET_MAX_HOLD[preset])return {maxHoldMin:EXIT_PRESET_MAX_HOLD[preset],maxHoldSource:`preset ${preset}`};
+  return {maxHoldMin:25,maxHoldSource:'default'};
 }
 
 export function diagnoseCloses(history=[],meta={}){
@@ -109,7 +133,7 @@ export function diagnoseCloses(history=[],meta={}){
   const liq=liquidityQuartiles(xs);
   const halves=chronologicalHalves(xs);
   const hourly=hourlyBuckets(xs);
-  const stale=diagnoseStalePurge(xs);
+  const stale=diagnoseStalePurge(xs,{maxHoldMin:meta.maxHoldMin??25,maxHoldSource:meta.maxHoldSource??'default'});
   const negativeMedian=overall.medianReturnPct<0;
   return {
     n:xs.length,
@@ -138,7 +162,8 @@ export function loadHistoryFile(file){
   const raw=JSON.parse(fs.readFileSync(file,'utf8'));
   const history=Array.isArray(raw)?raw:(raw.history||[]);
   const profile=raw.runtime?.profile||null;
-  return {history,profile,strategy:history[0]?.strategy||null,source:path.resolve(file)};
+  const {maxHoldMin,maxHoldSource}=effectiveMaxHold(Array.isArray(raw)?{}:raw);
+  return {history,profile,strategy:history[0]?.strategy||null,maxHoldMin,maxHoldSource,source:path.resolve(file)};
 }
 
 function parseArgs(argv){
@@ -167,7 +192,7 @@ function main(){
   const a=parseArgs(process.argv.slice(2));
   const statePath=resolveStatePath(a.state);
   const loaded=loadHistoryFile(statePath);
-  const report=diagnoseCloses(loaded.history,{profile:loaded.profile,strategy:loaded.strategy});
+  const report=diagnoseCloses(loaded.history,{profile:loaded.profile,strategy:loaded.strategy,maxHoldMin:loaded.maxHoldMin,maxHoldSource:loaded.maxHoldSource});
   report.source=loaded.source;
   const out=a.out||path.resolve('reports','research','forensics-closes.json');
   const dest=path.resolve(out);

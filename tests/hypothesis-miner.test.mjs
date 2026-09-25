@@ -5,7 +5,6 @@ import os from 'node:os';
 import path from 'node:path';
 
 const root=fs.mkdtempSync(path.join(os.tmpdir(),'mpo-miner-'));
-test.after(()=>fs.rmSync(root,{recursive:true,force:true}));
 process.env.MONEY_PRINTER_DATA_DIR=root;
 
 const {alphaDb,closeAlphaDb,insertObservation,insertOutcome,insertLatency,updateLatencyStage} = await import('../src/alphaDb.js');
@@ -91,4 +90,6 @@ test('observation funding-cluster identity is retained when x.cluster_id is pres
   assert.equal(observationClusterOf({mint:'MINT-Z'}),'MINT-Z');
 });
 
-test.after(()=>closeAlphaDb());
+// after-hooks run in registration order, so the sqlite handle must be closed before the temp tree is
+// removed; unlinking an open file is fine on POSIX but fails with EPERM on Windows.
+test.after(()=>{closeAlphaDb();fs.rmSync(root,{recursive:true,force:true})});
