@@ -60,6 +60,7 @@ export async function handlePlatformRequest(req,res,url,{json,body,platform=mark
       else if(route==='/lab/replay/start')result=await platform.labReplayStart(input);
       else if(route==='/lab/replay/step')result=platform.labReplayStep(input);
       else if(route==='/whales/label')result=platform.labelWallet(input);
+      else if(route==='/legacy/sync')result=platform.syncLegacyLedger();
       else if(route==='/watchlist')result=platform.watch(input.id,input.on===true);
       else if(route==='/compare/verify')result=platform.verifyPair(input);
       else if(route==='/compare')result=await platform.compare(input);

@@ -30,6 +30,7 @@ import { sportOf,familyOf,buildSportsEvents,mlbLive,nhlLive,attachLive } from '.
 import { parseRss,extractEntities,relatedMarkets,importance,categoriesOf } from '../src/core/wire.js';
 import { tokenGraph,whaleFlow,walletView } from '../src/core/whales.js';
 import { buildEventPages } from '../src/core/correlation.js';
+import { solanaPlan,practicePlan } from '../src/core/legacyImport.js';
 import { StrategyRegistry,promotionCheck,labChampionLifecycle } from '../src/core/strategies.js';
 import { assertGlobalTradingNotHalted } from '../src/core/executionBoundary.js';
 import { localMutationAllowed } from '../src/core/http.js';
@@ -695,4 +696,34 @@ test('Monte Carlo is seeded and reproducible; evidence attaches without promotin
   assert.equal(p.labRuns()[0].strategy,'walkforward:mean-reversion');assert.equal(p.labRuns()[0].seed,'3');
   assert.equal(p.strategies.history('mr').at(-1).reason.startsWith('Market Lab walk-forward'),true);
   p.close();fs.rmSync(dir,{recursive:true,force:true});
+});
+
+test('legacy mirror: Solana book with partial exits reconciles, progresses by deltas, and detects a reset',()=>{
+  // Book: start 1 SOL; one closed trade (-0.01 incl 0.001 fees); one open position 0.1 SOL with half sold (+0.004 realized after 0.002 fees).
+  const book={paperStartSol:1,history:[{id:'c1',mint:'M1',symbol:'A',sizeSol:.05,pnlSol:-.01,feesSol:.001,openedAt:1000,closedAt:2000}],
+    positions:[{id:'o1',mint:'M2',symbol:'B',sizeSol:.1,remainingSol:.05,realizedSol:.004,feesSol:.002,openedAt:3000,priceObservedAt:4000}]};
+  book.cashSol=1-.01-.05+.004;// identity: start + closed pnl - open remaining + open realized
+  const p=new MarketPlatform({providers:new ProviderRegistry()});let s=book;p.setLegacyReaders({solana:()=>s});
+  const r1=p.syncLegacyLedger().find(r=>r.source==='solana');assert.equal(r1.status,'RECONCILED');assert.equal(r1.currency,'SOL');
+  assert.equal(p.syncLegacyLedger().find(r=>r.source==='solana').appended,0);
+  // The open position closes: total pnl +0.006, fees 0.003.
+  s={...book,history:[...book.history,{...book.positions[0],remainingSol:0,pnlSol:.006,feesSol:.003,closedAt:5000}],positions:[],cashSol:1-.01+.006};
+  const r2=p.syncLegacyLedger().find(r=>r.source==='solana');assert.equal(r2.status,'RECONCILED');assert.ok(r2.appended>0);
+  assert.equal(p.ledger.portfolio().accounts.find(a=>a.venue==='solana-paper').positions.length,0);
+  // Reset: empty book at its start balance -> new epoch/account, old mirror kept.
+  s={paperStartSol:2,cashSol:2,history:[],positions:[]};const r3=p.syncLegacyLedger().find(r=>r.source==='solana');
+  assert.equal(r3.account,'legacy-2');assert.equal(r3.status,'RECONCILED');assert.match(r3.notes[0],/reset/);
+  assert.equal(p.ledger.portfolio().accounts.filter(a=>a.venue==='solana-paper').length,2);
+  p.close();
+});
+test('legacy mirror: a book that cannot reconcile is reported, not adjusted; unreadable books and combos stay out',()=>{
+  const p=new MarketPlatform({providers:new ProviderRegistry()});
+  p.setLegacyReaders({solana:()=>({paperStartSol:1,cashSol:.5,history:[],positions:[{id:'x',sizeSol:.1,remainingSol:.1,realizedSol:0,feesSol:0,openedAt:1}]}),robinhoodPracticeBook:()=>{throw new Error('disk');}});
+  const r=p.syncLegacyLedger();
+  const sol=r.find(x=>x.source==='solana');assert.equal(sol.status,'DIFFERENCE');assert.equal(sol.diff,0.4);assert.match(sol.notes.at(-1),/Nothing was booked/);
+  assert.equal(r.find(x=>x.source==='robinhood-practice').status,'UNAVAILABLE');assert.equal(r.find(x=>x.source==='polymarket-us-combos').status,'NOT_MIRRORED');
+  assert.equal(p.ledger.entries().filter(e=>/adjust/i.test(e.reference)).length,0);
+  const pr=practicePlan({startUsd:100,cashUsd:95,createdAt:1,positions:[],history:[{id:'h1',symbol:'BTC-USD',status:'CLOSED',qty:.001,costUsd:10,pnlUsd:-5,exit:{proceedsUsd:5,reason:'stop'},openedAt:2,closedAt:3}]});
+  assert.deepEqual(pr.entries.map(e=>e.kind),['DEPOSIT','BUY','SELL']);assert.equal(pr.expectedCash,95);
+  p.close();
 });

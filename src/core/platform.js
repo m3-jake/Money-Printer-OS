@@ -12,6 +12,7 @@ import { appendProjectJournal } from '../projectJournal.js';
 import { activateExecutionBoundary } from './executionBoundary.js';
 import { StrategyRegistry } from './strategies.js';
 import { legacyCoverage } from './legacyBooks.js';
+import { solanaPlan,practicePlan } from './legacyImport.js';
 import { syncLabChampions } from './labSync.js';
 import { extractTerms,matchTerms,termsFingerprint,candidatePairs } from './contractTerms.js';
 import { describeFeeModel,takerFee } from './fees.js';
@@ -40,6 +41,7 @@ export class MarketPlatform {
   constructor({file=':memory:',dataDir=null,providers=null,stockQuotes=undefined,stockClock=undefined,stockSession=undefined}={}){
     this.store=new CoreDatabase(file);this.ledger=new UnifiedLedger(this.store);this.bus=new MarketEventBus();this.risk=new RiskGovernor(this.store,this.ledger,this.bus);this.strategies=new StrategyRegistry(this.store);this.legacyReaders={};this.replays=new Map();this.fred=new FredSource();this.macroCache=null;this.edgar=new EdgarSource();this.weather=new WeatherSource();this.weatherCache=null;this.sportsCache=null;this.sportsLive=new Map();this.sportsFetch=(url,opt)=>globalThis.fetch(url,opt);this.wireFetch=(url,opt)=>globalThis.fetch(url,opt);this.wireFeeds=new Map();this.whaleSeenTs=Date.now();this.eventsCache=null;
     this.store.db.exec(`CREATE TABLE IF NOT EXISTS wallet_labels(address TEXT PRIMARY KEY, label TEXT NOT NULL, note TEXT NOT NULL, at INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS legacy_sync(source TEXT PRIMARY KEY, epoch INTEGER NOT NULL, synced_at INTEGER NOT NULL, status TEXT NOT NULL, detail TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS integration_milestones(id TEXT PRIMARY KEY, at INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS wallet_label_events(seq INTEGER PRIMARY KEY AUTOINCREMENT, address TEXT NOT NULL, label TEXT, note TEXT NOT NULL, at INTEGER NOT NULL);`);
     this.store.db.exec(`CREATE TABLE IF NOT EXISTS lab_runs(id TEXT PRIMARY KEY, at INTEGER NOT NULL, source TEXT NOT NULL, key TEXT NOT NULL, start_ms INTEGER NOT NULL, end_ms INTEGER NOT NULL,
@@ -55,9 +57,9 @@ export class MarketPlatform {
   }
   snapshot(){
     return {at:Date.now(),risk:this.risk.state(),providers:this.providers.status(),database:this.store.health(),eventBus:this.bus.snapshot(),journalError:this.journalError,
-      strategies:this.strategies.list(),legacy:legacyCoverage(this.legacyReaders),labSync:this.labSync||null,portfolio:this.ledger.portfolio(),livePortfolio:this.ledger.portfolio('LIVE'),ledger:this.ledger.entries(),events:this.store.events(),
+      strategies:this.strategies.list(),legacy:{...legacyCoverage(this.legacyReaders),mirror:this.store.db.prepare('SELECT * FROM legacy_sync').all().map(r=>({...r,detail:JSON.parse(r.detail)}))},labSync:this.labSync||null,portfolio:this.ledger.portfolio(),livePortfolio:this.ledger.portfolio('LIVE'),ledger:this.ledger.entries(),events:this.store.events(),
       watchlist:this.store.db.prepare('SELECT * FROM watchlist ORDER BY added_at DESC').all(),proposals:this.store.db.prepare('SELECT * FROM proposals ORDER BY created_at DESC LIMIT 100').all().map(r=>({...r,payload:JSON.parse(r.payload),decision:JSON.parse(r.decision)})),
-      coverage:{legacyBooks:'READ_ONLY_VIEW_NOT_IN_LEDGER',liveAccounts:'NOT_RECONCILED',riskValuation:'PAPER_COST_BASIS_AND_REALIZED_LOSS',note:'Core accounts are reconstructed from this ledger only. Existing Solana, Robinhood, and US Combo books remain in their original programs; they are shown read-only under Legacy books and are not included in these totals.'}};
+      coverage:{legacyBooks:'MIRRORED_AND_RECONCILED_WHERE_POSSIBLE',liveAccounts:'NOT_RECONCILED',riskValuation:'PAPER_COST_BASIS_AND_REALIZED_LOSS',note:'Core accounts are reconstructed from this ledger only. The Solana paper book (SOL) and the Robinhood practice book are mirrored into this ledger and reconciled against their own cash; US combos stay read-only (no readable account balance).'}};
   }
   async markets(venue,query={}){
     const result=await this.providers.get(venue).markets(query);
@@ -162,6 +164,43 @@ export class MarketPlatform {
     if(!labLinkDir)return [];
     const out=syncLabChampions(this.strategies,labLinkDir,{transition:(id,to,{reason,evidence})=>this.transitionStrategy({id,to,reason,evidence})});
     this.labSync={at:Date.now(),results:out};return out;
+  }
+  // Mirror legacy books into the ledger and reconcile (legacyImport.js). Safe to run repeatedly.
+  mirroredFor(venue,account){
+    const m=new Map();
+    for(const r of this.store.db.prepare('SELECT kind,instrument_id,quantity_units,gross_units FROM ledger WHERE mode=? AND venue=? AND account=?').iterate('PAPER',venue,account)){
+      if(!r.instrument_id)continue;const x=m.get(r.instrument_id)||{bought:0,sold:0,soldGross:0,fees:0};
+      if(r.kind==='BUY')x.bought+=Number(r.quantity_units)/1e8;else if(r.kind==='SELL'){x.sold+=Number(r.quantity_units)/1e8;x.soldGross+=Number(r.gross_units)/1e6;}else if(r.kind==='FEE')x.fees+=Number(r.gross_units)/1e6;
+      m.set(r.instrument_id,x);
+    }
+    for(const x of m.values()){x.bought=Math.round(x.bought*1e8)/1e8;x.sold=Math.round(x.sold*1e8)/1e8;x.soldGross=Math.round(x.soldGross*1e6)/1e6;x.fees=Math.round(x.fees*1e6)/1e6;}
+    return m;
+  }
+  syncLegacyLedger(){
+    const results=[],now=Date.now();
+    const run=(source,venue,read,plan,isReset)=>{
+      let book;try{book=read();}catch(e){results.push({source,status:'UNAVAILABLE',reason:`Read failed: ${e.message}`});return;}
+      if(!book){results.push({source,status:'UNAVAILABLE',reason:'Book not loaded'});return;}
+      let row=this.store.db.prepare('SELECT * FROM legacy_sync WHERE source=?').get(source)||{source,epoch:1};
+      let account=`legacy-${row.epoch}`,mirrored=this.mirroredFor(venue,account);
+      const notes=[];
+      if(mirrored.size&&isReset(book)){row={...row,epoch:row.epoch+1};account=`legacy-${row.epoch}`;mirrored=new Map();notes.push(`Book reset detected; mirroring into a new account (${account}).`);}
+      const p=plan(book,{epoch:row.epoch,mirrored,venue,account});notes.push(...p.notes);
+      let appended=0,failed=null;
+      for(const e of p.entries.sort((a,b)=>a.at-b.at||(['DEPOSIT','SELL','FEE','BUY'].indexOf(a.kind)-['DEPOSIT','SELL','FEE','BUY'].indexOf(b.kind)))){
+        try{if(this.ledger.append(e).appended)appended++;}catch(err){failed=`${e.sourceKey}: ${err.message}`;break;}
+      }
+      const acct=this.ledger.portfolio('PAPER').accounts.find(a=>a.venue===venue&&a.account===account),ledgerCash=acct?Number(acct.cash):null;
+      const diff=ledgerCash===null?null:Math.round((ledgerCash-p.expectedCash)*1e6)/1e6,tol=1e-6*(p.entries.length+1)+1e-6;
+      const status=failed?'FAILED':diff!==null&&Math.abs(diff)<=tol?'RECONCILED':'DIFFERENCE';
+      if(status==='DIFFERENCE')notes.push('Ledger cash differs from the book. Older history may have been compacted out of the book, or the book changed outside its normal flow. Nothing was booked to hide it.');
+      this.store.db.prepare('INSERT INTO legacy_sync VALUES(?,?,?,?,?) ON CONFLICT(source) DO UPDATE SET epoch=excluded.epoch,synced_at=excluded.synced_at,status=excluded.status,detail=excluded.detail').run(source,row.epoch,now,status,JSON.stringify({ledgerCash,bookCash:p.expectedCash,diff,appended,failed,notes}));
+      results.push({source,venue,account,currency:p.currency,status,appended,ledgerCash,bookCash:p.expectedCash,diff,failed,notes});
+    };
+    run('solana','solana-paper',()=>this.legacyReaders.solana?.(),solanaPlan,s=>!(s.positions||[]).length&&!(s.history||[]).length);
+    run('robinhood-practice','robinhood-practice',()=>{const x=this.legacyReaders.robinhoodPracticeBook?.();return x||null;},practicePlan,b=>!(b.positions||[]).length&&!(b.history||[]).length);
+    results.push({source:'polymarket-us-combos',status:'NOT_MIRRORED',reason:'Real venue orders; no readable account balance (Polymarket US auth), so they cannot be reconciled. Shown read-only.'});
+    this.legacySync={at:now,results};return results;
   }
   // Sync, read-only accessors supplied by the host (dashboard). Keys: solana, robinhoodPractice, usCombos.
   setLegacyReaders(readers={}){this.legacyReaders={...readers};}

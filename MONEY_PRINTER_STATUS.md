@@ -1108,3 +1108,17 @@ Kalshi and Robinhood event contracts are already covered by the MPOS core platfo
 - **Phase 6:** walk-forward, Monte Carlo, evidence to the gate.
 - **Phase 7:** icons, diagnostics, strategy actions, docs.
 - **Needs bing** (optional keys): Alpaca, FRED, SEC_USER_AGENT; and the Evolution Lab candle look-ahead fix (side task offered). Real-money execution stays off by policy.
+
+## Batch AG (2026-09-26): legacy books mirrored into the unified ledger and reconciled
+
+- bing: "do all of it" (the remaining list). **Real-money order code is still not written:** there are no working venue credentials to certify against (Kalshi has no keys, Polymarket US returns keyNotFound), and real-money actions need bing's explicit go-ahead at the time they're used. The read-only reconciliation that live trading would depend on now exists for the paper books; venue account reconciliation needs the credentials.
+- **New `src/core/legacyImport.js` + `syncLegacyLedger()`** (runs on start and every minute; `POST /api/platform/legacy/sync`):
+  - **Solana paper book → ledger venue `solana-paper`, currency SOL.** The cash identity was verified on real data: `cashSol = start + Σ closed pnlSol − Σ open remainingSol + Σ open realizedSol`. Each trade is mirrored in units of entry SOL: BUY size; SELL for sold units at gross proceeds (sold + realized + fees); FEE entries for fees. Partial exits and later closes post **deltas** against what the ledger already holds, so syncs are idempotent.
+  - **Robinhood practice book → `robinhood-practice`, USD:** deposit = budget; BUY cost at open; SELL proceeds at close.
+  - **Reconciliation after each sync:** ledger cash vs the book's own cash → RECONCILED / DIFFERENCE / FAILED, with the difference and reason. **Nothing is booked to hide a difference.**
+  - **Book reset:** an empty book at its start balance starts a new mirror account (`legacy-2`); the old one is kept.
+  - **Polymarket US combos:** NOT_MIRRORED (real orders, no readable balance), with the reason shown.
+- **Effect:** the mirrored accounts are now inside the Risk Governor's view (USD accounts count toward totals/drawdown), as the brief asks ("sees all exposure").
+- **UI:** Command Center ledger accounts show currency (SOL is no longer printed as dollars) and mark mirrored legacy accounts. The Legacy books section adds a Ledger mirror table (status, book vs ledger cash, difference, last sync, notes) and "Sync legacy books now".
+- **Live (isolated data):** Solana 111 entries, RECONCILED (ledger 0.641811 vs book 0.641820 SOL, a −0.000009 rounding difference across 111 entries); 6 open positions match; second sync appends 0. Robinhood practice RECONCILED at $500.
+- Tests: 2 new (partial exit → close by deltas, reset → new epoch, unreconcilable book reported and never adjusted, unreadable book, practice plan). `market-core` 59.

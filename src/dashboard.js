@@ -25,7 +25,7 @@ import { productEconomics, productIngestionAuthorized, productReadAuthorized } f
 import updateChannel from '../desktop/update-channel.cjs';
 import { handlePlatformRequest } from './core/http.js';
 import { marketPlatform, closeMarketPlatform } from './core/platform.js';
-import { practiceSnapshot } from './robinhoodPractice.js';
+import { practiceSnapshot,loadPracticeBook } from './robinhoodPractice.js';
 import { comboPerformance } from './core/comboPerformance.js';
 import { alphaDb } from './alphaDb.js';
 import { JOURNAL_FILE as RH_JOURNAL_FILE } from './robinhoodJournal.js';
@@ -379,11 +379,12 @@ function snapshot() {
 }
 
 export function startDashboard() {
-  marketPlatform().setLegacyReaders({solana:loadStateCached,robinhoodPractice:()=>practiceSnapshot({dataDir:path.dirname(RH_JOURNAL_FILE)}),usCombos:usComboJournalView,
+  marketPlatform().setLegacyReaders({solana:loadStateCached,robinhoodPractice:()=>practiceSnapshot({dataDir:path.dirname(RH_JOURNAL_FILE)}),robinhoodPracticeBook:()=>loadPracticeBook(path.dirname(RH_JOURNAL_FILE)),usCombos:usComboJournalView,
     solanaResearch:()=>loadStateCached().research,walletScorecard:()=>walletScorecardView(),
     txEvents:({since,limit})=>alphaDb().prepare('SELECT signature,event_index eventIndex,ts,slot,mint,wallet,side,token_delta tokenDelta,sol_delta solDelta FROM tx_events WHERE ts>=? ORDER BY ts DESC LIMIT ?').all(since,limit)});
   // Lab champions -> strategy registry, once now and every minute. Failures stay in the snapshot, never thrown.
-  const syncLab=()=>{try{marketPlatform().syncLab();}catch{}};syncLab();const labSyncTimer=setInterval(syncLab,60_000);labSyncTimer.unref();
+  // Lab champions -> registry and legacy books -> ledger mirror, now and every minute.
+  const syncLab=()=>{try{marketPlatform().syncLab();}catch{}try{marketPlatform().syncLegacyLedger();}catch{}};syncLab();const labSyncTimer=setInterval(syncLab,60_000);labSyncTimer.unref();
   const server = http.createServer(async (req, res) => {
     try {
       const u = new URL(req.url, 'http://127.0.0.1');
