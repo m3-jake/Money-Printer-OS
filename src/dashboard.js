@@ -575,7 +575,7 @@ export function startDashboard() {
   fitnessTimer.unref?.(); fitnessFirst.unref?.();
   server.on('close', () => { clearInterval(fitnessTimer); clearTimeout(fitnessFirst); });
   // Daily self-report: rewritten hourly; the first run on a new day finalizes yesterday's and journals it.
-  const writeReport = () => fitnessNow().then(fitness => { const r = runSelfReport({ dataDir: DATA_DIR, fitness, state: loadStateCached() }); if (r.error) console.log(`[self-report] ${r.error}`); }).catch(() => {});
+  const writeReport = () => fitnessNow().then(fitness => { const r = runSelfReport({ dataDir: DATA_DIR, fitness, state: { ...loadStateCached(), mode: cfg.mode } }); if (r.error) console.log(`[self-report] ${r.error}`); }).catch(() => {});
   const reportTimer = setInterval(writeReport, 60 * 60000), reportFirst = setTimeout(writeReport, 60000);
   reportTimer.unref?.(); reportFirst.unref?.();
   server.on('close', () => { clearInterval(reportTimer); clearTimeout(reportFirst); });
