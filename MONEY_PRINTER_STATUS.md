@@ -4,7 +4,7 @@
 (`CURRENT_TASKS.md`, `KNOWN_BUGS.md`, `PROJECT_STATE.md`, `RELEASE_STATUS.md`) and in `reports/NEXT-STEPS-2026-09-25.md`.
 Don't re-inventory the repo. Update this file at the end of every batch.
 
-Last updated: 2026-09-26, batch 15. Branch `feature/polymarket-combo-only`, version `0.5.0-alpha.56`.
+Last updated: 2026-09-26, batches 16–18 (Solana fair test, Robinhood visible paper, charts). Branch `feature/polymarket-combo-only`, version `0.5.0-alpha.56`.
 
 ## Architecture (inventoried once)
 
@@ -310,6 +310,55 @@ Last updated: 2026-09-26, batch 15. Branch `feature/polymarket-combo-only`, vers
 - **Trade-off:** a crash can lose up to a minute of research, never account data.
 - **Tests:** `store-recovery` 23/0 (+4: split, migration, torn file, throttle). `test:all` **554 pass, 0 fail**. SELFTEST PASS, and doctor still reads `autonomyLevel`.
 
+## Batch 16 (2026-09-26): Solana, a fair test instead of a guaranteed loser
+
+- **Cost gate** (`src/solanaEconomics.js`, wired into `enter()` in `src/index.js` before the SPRINT gates):
+  - An entry is refused unless tp1 ≥ 3 × the modeled round trip for that pick at that size. The round trip is 2 × fee bps plus entry and exit simulated slippage, with exit modeled at the take-profit notional.
+  - A refusal is recorded as `stats.skipReasons.costGate`, `stats.lastCostGate` and journal `entry-skip` / `costGate`.
+  - The floor round trip is 2.1 %, so SPRINT (tp1 4 %) is refused on every entry. That is intended.
+- **FAIR:** new exit preset `fair` (tp1 12, tp2 30, stop 8, trail 7, maxHold 90) and profile FAIR. It is the default for new installs; existing installs keep their saved profile.
+- **HUD Solana card:**
+  - Shows trades, hit rate, profit factor, net P/L after costs, the break-even hit rate for the active preset, and costGate skips.
+  - One-click FAIR / SPRINT switch; FAIR also added to the Control Bay list.
+  - A SPRINT warning shows its break-even rate.
+- **Break-even (tp1 vs stop, cost both legs):**
+  - FAIR: **50.5 %** at the 2.1 % floor, 52.5 % at 2.5 %, and ≤ 60 % at the worst cost the gate admits.
+  - SPRINT: 79–83 %.
+- **Tests:** new `solana-fair` 6/0 (`npm run test:solana`, in `test:all`).
+
+## Batch 17 (2026-09-26): Robinhood paper that runs and shows its reasoning
+
+- **Always-on quotes:**
+  - The tick samples quotes every 15 s while the app runs, even with both autopilots off. Without keys it uses the public Coinbase book; tape rows keep `src`.
+  - `ROBINHOOD_AUTOSTART` no longer falls back to `POLYMARKET_AUTOSTART`, which had silently stopped Robinhood whenever Polymarket autostart was off. The collector child never imports the module.
+  - `ROBINHOOD_COLLECT_QUOTES=false` restores the idle tick.
+- **Warm start** (`src/robinhoodWarmStart.js`, `warmStartRobinhood`):
+  - On boot the tape is refilled from `robinhood-tape/`, then holes (a short tape or restart gaps) are filled from public 1-minute candles. The candles are expanded to the 15 s grid and tagged `src:'coinbase-candles'`.
+  - Live check (isolated data dir, no keys): **720/120 samples per symbol within ~6 s of boot.**
+  - `rh-tape-stats` keeps candle rows out of the spread quantiles.
+- **Exploration book:**
+  - `robinhood-paper-explore.json`: $1,000, costMultiple 0.5, lookback 40, maxHold 120, and the same fees, spread and fills.
+  - `placedBy:'explore-autopilot'`, which qualification never counts. It is not passed to evolve or apply, and the HUD labels it EXPLORATION (NOT A STRATEGY).
+  - The strict book is unchanged; its autopilot is still off by default.
+- **Gauge:** `snapshot.gauges.{strict,explore}[symbol]` gives warm-up, spread vs cap, expected vs required move (bar with a required-move tick), breakout distance, trend and the blocking reason.
+- **Live reading (isolated run, 02:13):** every symbol was blocked by "expected move below required move". Examples: BTC 0.45 % vs 2.70 % (strict) and vs 0.90 % (exploration); SOL 1.33 % vs 2.71 % / 0.90 %, then "no Donchian breakout". The vol gate is the binding constraint, as batch 12 predicted.
+- **Tests:** new `robinhood-explore` 8/0. Existing tests were updated for the new contract: snapshot keys gain `explore` and `gauges`, and the idle tick only happens with collection off.
+
+## Batch 18 (2026-09-26): charts
+
+- **Route:** `GET /api/robinhood/chart?symbol=&range=1h|6h|24h` (`src/robinhoodChart.js`) is read-only (no network, no writes). It reads the tape tail (`loadTapeSince`), not the 45-day file.
+  - Points: at most 800, keeping each bucket's bid/ask envelope.
+  - Indicators: the strategy's own Donchian and EMA 12/48.
+  - Markers for both books (at most 400), stop/take/trail lines, equity per book (net and before-fee), and trades (at most 100: entry, exit, reason, hold, gross, fees, net).
+- **Panel:** inline SVG with a 1h / 6h / 24h toggle. Strict markers are filled triangles; exploration markers are hollow circles and squares. The fee drag is shaded, and narrow screens get a narrower viewBox. There are no libraries.
+- **Checked in the running app** (browser pane plus headless renders at 1440 px and 375 px): no page-level horizontal scroll at 375 px.
+  - No markers yet, because neither book traded during the short run.
+  - The 6 h view is half empty, because the warm start fills 3 h (the 720-sample cap).
+- **Tests:** new `robinhood-chart` 6/0, plus a HUD render test.
+- **Housekeeping:** the unpushed batch commits were rewritten to fix line endings. Python on this machine had written several LF files as CRLF.
+
+**Batches 16–18 totals:** `npm run test:all` **576 pass, 0 fail** (was 554). SELFTEST PASS.
+
 ## Next recommended batch (priority order)
 
 0. **bing:**
@@ -333,7 +382,8 @@ Verdicts:
 Batches 11–14 are built. The Evolution Lab is retired, so nothing waits on it. What remains:
 
 1. **bing:** install the newest build over the installed app. The permission check blocks this for Claude as a production deploy.
-2. **bing:** take the Solana profile off SPRINT and stop it in the HUD. Done when there are no new `history` rows for 24 h.
+2. **bing:** after installing the batch 16–18 build, click **FAIR** on the Solana card (the installed state keeps SPRINT; the cost gate now refuses SPRINT's entries anyway). Watch hit rate against the 50.5 % break-even.
+2a. **bing:** leave the app running. The exploration book generates Robinhood trades; judge it only as data, never as a strategy. After about 7 days, compare the exploration book's net after fees with the gauge's lowVol share.
 3. **bing:** run the Robinhood paper loop continuously with read-only credentials, so the tape is Robinhood's own quotes. Done when `npm run rh-tape-stats` shows at least 7 days of `robinhood` rows.
 4. After 7 days, record the verdict here: can the strategy trade at all at Robinhood's costs (vol gate open %, trades per day)? Only then consider `ROBINHOOD_EVOLVE_ENABLED=true`.
 5. (done in batch 15) `state.research` split.

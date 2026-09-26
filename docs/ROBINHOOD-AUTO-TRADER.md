@@ -237,7 +237,7 @@ Real autopilot (`setRobinhoodAutopilot(patch)`): turning on requires `patch.conf
 
 Parameter changes: `setRobinhoodPaperAutopilot({params})` recomputes `paper.paramsHash`; when the hash actually changes while real autopilot is enabled it is disabled immediately with `disabledReason:'paramsChanged'` (persisted), not at the next pass. This covers manual edits in the HUD and evolution APPLY / autopromote (section 22). A paper reset while real autopilot is enabled disables it with `disabledReason:'paperReset'`.
 
-Loop (`startRobinhoodLoops()`): `if (loopTimer || !AUTOSTART()) return; loopTimer = setInterval(() => tick().catch(() => {}), TICK_MS); loopTimer.unref?.()` where `AUTOSTART = () => String(process.env.ROBINHOOD_AUTOSTART ?? process.env.POLYMARKET_AUTOSTART ?? 'true').toLowerCase() !== 'false'` (the existing suites and the collector child that set `POLYMARKET_AUTOSTART='false'` stay inert). `tick()`: return unless `needsQuotes() && credentialsReady`; one batched `best_bid_ask`; `appendTape`; account refresh every 10 min; `reconcileRobinhood()` when `open.length`; paper pass; real pass; tape flush when due. Every stage is try/caught into `lastError = {at, stage, code, message}`. `stopRobinhoodLoops()` clears the timer and flushes the tape. No network at import; an idle tick makes no request.
+Loop (`startRobinhoodLoops()`): `if (loopTimer || !AUTOSTART()) return; loopTimer = setInterval(() => tick().catch(() => {}), TICK_MS); loopTimer.unref?.()` where `AUTOSTART = () => String(process.env.ROBINHOOD_AUTOSTART ?? 'true').toLowerCase() !== 'false'`. Since §23 it no longer falls back to `POLYMARKET_AUTOSTART`; the collector child never imports this module, and test suites set `ROBINHOOD_AUTOSTART='false'`. `tick()`: return unless `needsQuotes() && credentialsReady`; one batched `best_bid_ask`; `appendTape`; account refresh every 10 min; `reconcileRobinhood()` when `open.length`; paper pass; real pass; tape flush when due. Every stage is try/caught into `lastError = {at, stage, code, message}`. `stopRobinhoodLoops()` clears the timer and flushes the tape. No network at import; an idle tick makes no request.
 
 ## 10. Reconcile and P/L rules
 
@@ -302,7 +302,10 @@ All read at call time; `.env.example` ships every key commented out with its def
 | `ROBINHOOD_API_KEY` | — | `rh-api-<uuid>`; written by `config` via `rewriteEnv` |
 | `ROBINHOOD_PRIVATE_KEY` | — | base64 32-byte Ed25519 seed; 64-byte values rejected |
 | `ROBINHOOD_REAL_ENABLED` | `false` | must be exactly `true` to arm or place real orders |
-| `ROBINHOOD_AUTOSTART` | unset -> `POLYMARKET_AUTOSTART` -> `true` | `false` keeps the loop inert |
+| `ROBINHOOD_AUTOSTART` | `true` | `false` keeps the loop inert (no longer follows `POLYMARKET_AUTOSTART`, §23) |
+| `ROBINHOOD_COLLECT_QUOTES` | `true` | §23: sample quotes every tick even with both autopilots off; `false` restores the idle tick |
+| `ROBINHOOD_WARM_START` | `true` | §23: refill the tape on boot and backfill holes from public candles |
+| `ROBINHOOD_EXPLORE_ENABLED` | `true` | §23: run the exploration book |
 | `ROBINHOOD_API` | `https://trading.robinhood.com` | base URL override for tests |
 | `ROBINHOOD_ORDER_API` | `v2` | `v1` only if the key lacks the fee-tier orders scope (no `time_in_force` sent) |
 | `ROBINHOOD_MAX_ORDER_USD` | 25 | ceiling per real order |
@@ -570,4 +573,29 @@ The trader carries a miniature of the Evolution Lab's evolve -> score -> promote
 - `applyRobinhoodEvolution({paramsHash})` (HTTP `POST /api/robinhood/evolve/apply {paramsHash}`) requires the hash to equal the ledger champion, re-checks the bounds, then calls `setRobinhoodPaperAutopilot({params: champion.params})`: the paper `paramsHash` changes, qualification restarts from zero closes for the new hash (section 9), and a real autopilot that was enabled is disabled with `disabledReason:'paramsChanged'`. Real autopilot settings, the real journal and `ROBINHOOD_REAL_ENABLED` are never touched. The ledger records `applied` and an `applied` event. With `ROBINHOOD_EVOLVE_AUTOPROMOTE=true` the run applies the champion itself (`by:'autopromote'`, `history[0].promoted:true`); the default is propose-only, matching the Lab's `paperPromotionAllowed:false` posture.
 - Snapshot: `evolve: { enabled, running, generation, champion, proposed, incumbent, applied, currentParamsHash, tapeDays:{symbol: days}, minTapeDays, lastRunAt, nextRunAt, intervalMin, candidates, minGainPct, autopromote, history[10], events[10], lastError, tape }` (also `GET /api/robinhood/evolve`). `proposed` is the champion while its hash differs from the current paper hash.
 - Invariants kept: no network in any evolution path (the replay reads files only), nothing is signed, `sessionArmed` is untouched, and the evolution never writes to `robinhood-auto-trader.json` except through the existing `disableAutopilot('paramsChanged')` path.
+
+## 23. Always-on collection, warm start, exploration book and the gauge (2026-09-26)
+
+**Always-on quotes.** Every tick (15 s, unchanged cadence and rate limits) samples quotes for `ROBINHOOD_SYMBOLS`, both books' autopilot symbols and open positions, even when both autopilots are off. Without credentials the public Coinbase book is used, exactly as before, and tape rows keep their `src` tag. `ROBINHOOD_COLLECT_QUOTES=false` restores the old idle tick. No new authenticated endpoint is called.
+
+**Warm start** (`warmStartRobinhood`, `src/robinhoodWarmStart.js`). On boot, before the first tick, the in-memory tape (720 samples) is rebuilt from the in-memory book plus `robinhood-tape/<SYMBOL>.ndjson`. Any hole longer than 2 x the sample interval (a short tape or a restart gap) is filled from Coinbase's public, unauthenticated 1-minute candles (one GET per symbol, at most 300 bars). Each candle becomes four samples on the 15 s grid (open, first extreme, second extreme, close) with bid = ask, tagged `src:'coinbase-candles'`; the live quote supplies the spread. Real rows always win: a candle sample within 0.75 x the interval of a real row is dropped, so seams stay under the gap threshold. The candle rows are also written to the durable tape (tagged), where `rh-tape-stats` keeps them out of the spread quantiles and the evolve holdout's ≥ 90 % Robinhood-quote gate still counts them as non-Robinhood. The strategy is warm within seconds of boot instead of 30 minutes.
+
+**Exploration book** (`robinhood-paper-explore.json`). It is a second paper book with its own $1,000 and looser, bounded params: the strict params with `costMultiple 0.5`, `lookbackSamples 40` and `maxHoldMin 120` (`EXPLORE_OVERRIDES`). It uses the same fees, spread, slippage and fill model, and it reads the strict book's tape and quotes. It trades more, to generate data.
+- It never counts toward qualification or promotion. Its positions are `placedBy:'explore-autopilot'`, which `evaluateQualification` never counts, and its own qualification is fixed to not qualified. It is never passed to evolve, apply or the real autopilot.
+- The HUD labels it **EXPLORATION (NOT A STRATEGY)** and offers no promotion control for it.
+- The strict book, its params and its qualification are unchanged.
+
+**Gauge** (`snapshot.gauges.{strict,explore}[symbol]`, `src/robinhoodGauge.js`). The fields are `warmup{n,need,pct}`, `spread{bps,capBps,ok}`, `move{expectedPct,requiredPct,ratio,ok}`, `breakout{mid,level,distancePct,ok}`, `trend{ok,…}`, `cooldownUntil`, `blocking`, `blockingText` and `ready`. The blocking order is: holding, then the entry-signal reason (warmup, stale, gaps, spread, lowVol, noBreakout, noTrend), then cooldown, then autopilot off. Snapshot keys are now `… evolve, explore, gauges, lastError`.
+
+## 24. Charts (2026-09-26)
+
+`GET /api/robinhood/chart?symbol=BTC-USD&range=1h|6h|24h` is read-only: no network and no writes. It reads the durable tape's tail (`loadTapeSince`, which reads backwards in chunks rather than the whole 45-day file) plus the in-memory tape, with warm-up context before the range. It returns:
+- `points`: at most 800. Each bucket keeps its last mid and indicators plus the lowest bid and highest ask, so a spike is never hidden. The indicators are the strategy's own: Donchian over the previous `lookbackSamples` mids, and EMA fast/slow.
+- `markers`: entries and exits of both books, at most 400.
+- `lines`: stop, take and trail of open positions.
+- `equity`: per book, realized net and before-fee lines. The gap between them is the fee drag.
+- `trades`: at most 100, with entry, exit, reason, hold, gross, fees and net.
+- `sources` and `caps`.
+
+The panel draws it as inline SVG. The strict book's markers are filled triangles; the exploration book's are hollow circles and squares. The fee drag is shaded red. The 1h / 6h / 24h toggle refetches at most every 15 s, and narrow screens get a narrower viewBox. There are no chart libraries.
 
