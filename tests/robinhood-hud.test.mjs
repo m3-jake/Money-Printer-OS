@@ -25,7 +25,7 @@ test('confirmation phrases appear verbatim, are typed by the operator and never 
  assert.match(panel,/placeholder="Type PLACE REAL CRYPTO ORDER"/);assert.match(panel,/placeholder="Type ENABLE REAL CRYPTO AUTOPILOT"/);
  assert.match(panel,/confirmation==='RESET PAPER'/);assert.match(panel,/does NOT cancel anything on Robinhood; the coin stays in your account/);
  assert.match(panel,/confirm\.value===RH_PHRASES\.place/,'the Place button gates on the exact phrase client-side too');
- assert.doesNotMatch(panel,/localStorage|sessionStorage/);
+ assert.doesNotMatch(panel,/sessionStorage/);assert.deepEqual([...panel.matchAll(/rhSave\('([^']+)'/g)].map(m=>m[1]).sort(),['mpo-rh-chart','mpo-rh-view']);assert.equal((panel.match(/localStorage\.setItem/g)||[]).length,1);assert.match(panel,/rhSave\('mpo-rh-chart',\{range:rhChart.range,symbol:rhChart.symbol\}\)/);assert.match(panel,/rhSave\('mpo-rh-view',rhView\)/);
 });
 test('required controls, fieldsets and routes are present',()=>{
  for(const id of ['rhApiKey','rhSecret','rhConfigure','rhArm','rhRealSymbol','rhRealUsd','rhRealType','rhPreviewBtn','rhPreviewOut','rhConfirm','rhPlace','rhCancelAll','rhReconcile','rhApOrderUsd','rhApMaxOpen','rhApLossCap','rhApSymbols','rhAutoConfirm','rhApEnable','rhApDisable','rhApRun','rhSymbol','rhUsd','rhBuy','rhSymbols','rhOrderUsd','rhMaxOpen','rhSave','rhToggle','rhTick','rhParams','rhBank','rhResetConfirm','rhReset','rhEvolveRun','rhEvolveApply'])assert.match(panel,new RegExp('id="'+id+'"'),id);
