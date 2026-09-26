@@ -821,3 +821,24 @@ bing pasted the full MPOS unification brief (35 sections, phases 0–7). Phase 0
 - **Wiring:** the dashboard syncs on start and every 60 s (the timer is cleared on server close, so tests don't reopen SQLite). There is also `POST /api/platform/strategies/sync-lab`, and `labSync` is in `/api/platform/status`. The Command Center strategies table shows Lab state and gate blockers.
 - **Tests:** 1 new test in `market-core` (22 pass). `npm run test:all`: **730 pass, 0 fail**. Browser check (isolated engine; copied the installed app's Solana `champion.json`, which may be the stale MSIX copy): `lab-solana` BACKTESTING (Lab SHADOW), version = champion id; no ".EXE" anywhere on the page.
 - **Known gap:** the Solana champion record has no fold-share and no fee flag, and module champions have no fold-share. So no Lab champion can reach PAPER in the registry yet. That is intentional (fail closed). The fix belongs in the Lab: publish `positiveFoldShare` and `feesModeled`.
+
+## Batch Q (2026-09-26): Robinhood daily bars (trader side of Lab 0fa2673)
+
+- **Daily crypto paper book** (`src/robinhoodDailyBook.js`): a new book inside the Robinhood module, with a "Daily bars" HUD tab, `GET /api/robinhood/daily`, `POST daily/run` and `daily/reset` (typed `RESET DAILY`), and `snapshot.daily`.
+  - Data: Coinbase public daily candles, one request per symbol per closed UTC day.
+  - One decision per closed bar, persisted before any fill, so a restart never repeats it. Missed days are counted and never decided afterwards.
+  - Fills at the next open: a Robinhood quote if one arrives within 30 min of the open, otherwise the Coinbase open. Holds last as many days as the signal says.
+  - Costs: max(0.95%, account fee) per side plus 5 bps slippage. The signal code is the Lab's own, and a parity test checks it against the Lab replay.
+  - Paper only: the book imports no transport, signer or journal, and `liveEligible` is always false.
+- **Which strategy it runs:** `daily.proposal`, but only when `championPaperAllowed` clears it, it claims no live flags and its params are in bounds. Otherwise it runs the Lab default `trend` SMA200 with a 2% band, labelled "LAB DEFAULT DAILY FAMILY · NOT A QUALIFIED STRATEGY". **Gap:** the Lab publishes `daily.proposal` without `state`/`stateSchema`, so today it reads SHADOW and is never cleared. The Lab needs to add `state: 'PAPER'` when it passes.
+- **Qualification** (paper evidence only; it never unlocks live). All of these must hold inside a 365-day window, counting only trades under the current params:
+  - at least 10 closed round trips and at least 180 paper days;
+  - return above cash and above buy-and-hold (the same sleeves with the same costs);
+  - drawdown no deeper than buy-and-hold;
+  - profit factor at least 1.2.
+- **Lab pass-through:** `robinhoodEvolveView` passes `lab.daily` through (null otherwise), and the Evolution panel shows a daily-verdict line. `labModuleStatuses` includes `robinhood-equities`.
+- **Equities:**
+  - `robinhoodEquities.js` applies `lab-link/robinhood-equities-champion.json` only when `championPaperAllowed` clears it and all of these hold: strategy `tactical-a`, bounded params in range (never clamped), every other param equal to its default, and the trader's own hash. Otherwise the defaults run. `snapshot.strategy.lab` says which.
+  - Alpaca history now goes back 7 years (`ROBINHOOD_EQUITIES_LOOKBACK_DAYS`, minimum 6 years), and weekday bars from before the NYSE table are kept. A store from before this change refetches once. Before 2024, month-ends come from the data.
+  - A successful fetch also writes `lab-link/robinhood-equities-bars.json`. Lab parity still holds: its equities-research test passes 7/7 against this tree.
+- **Tests:** new `tests/robinhood-daily-book.test.mjs` (9) in `test:robinhood` and `tests/robinhood-equities-lab.test.mjs` (5) in `test:robinhood-equities`. Snapshot key pins now include `daily`. `npm run test:all`: **746 pass, 0 fail**.

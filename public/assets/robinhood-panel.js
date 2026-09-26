@@ -5,12 +5,12 @@ let rhState=null,rhSubmitting=false,rhRefreshBusy=false,rhMessage='',rhDraft={},
 const rhPref=(k,d)=>{try{const v=JSON.parse(localStorage.getItem(k));return v??d}catch{return d}};
 const rhSave=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}};
 let rhView=rhPref('mpo-rh-view','paper');
-const RH_VIEWS={paper:['head','cryptohead','live','order','autopilot','qual','positions','closes'],why:['head','cryptohead','live','signals','gauges'],charts:['head','cryptohead','charts'],explore:['head','cryptohead','explore'],stocks:['head','stocks'],practice:['head','practice'],more:['head','cryptohead','connection','evolution','real','reset']};
+const RH_VIEWS={paper:['head','cryptohead','live','order','autopilot','qual','positions','closes'],why:['head','cryptohead','live','signals','gauges'],charts:['head','cryptohead','charts'],explore:['head','cryptohead','explore'],daily:['head','cryptohead','daily'],stocks:['head','stocks'],practice:['head','practice'],more:['head','cryptohead','connection','evolution','real','reset']};
 if(!RH_VIEWS[rhView])rhView='paper';
 // Each view fits the window without scrolling; nothing is deleted, other views' parts are just not shown.
 // Multi-asset suite: crypto (strict book + its views), stocks & ETFs (§25 paper lane), and the isolated practice sandbox.
-const RH_VIEW_LABELS={paper:'Crypto paper',why:'Why not trading',charts:'Charts',explore:'Exploration',stocks:'Stocks & ETFs',practice:'Practice',more:'More'};
-const RH_VIEW_SUB={stocks:'STOCKS & ETFS · PAPER · ALPACA DATA',practice:'CRYPTO PRACTICE SANDBOX · NEVER COUNTS'};
+const RH_VIEW_LABELS={paper:'Crypto paper',why:'Why not trading',charts:'Charts',explore:'Exploration',daily:'Daily bars',stocks:'Stocks & ETFs',practice:'Practice',more:'More'};
+const RH_VIEW_SUB={daily:'CRYPTO · DAILY BARS · PAPER ONLY',stocks:'STOCKS & ETFS · PAPER · ALPACA DATA',practice:'CRYPTO PRACTICE SANDBOX · NEVER COUNTS'};
 function rhViewTabs(){return `<div class="rh-tabs">${Object.keys(RH_VIEWS).map(v=>`<button class="btn ${v===rhView?'on':''}" data-rh-view="${v}">${RH_VIEW_LABELS[v]}</button>`).join('')}</div>`}
 // Stocks & ETFs lane: read-only GET /api/robinhood-equities (§25), at most once a minute unless forced.
 let rhEq=null,rhEqAt=0,rhEqBusy=false,rhEqError=null;
@@ -30,15 +30,15 @@ function rhEqStatusHtml(e){
  const d=e?.data||{},s=d.status||'NO_DATA',needKey=s==='NO_DATA'&&!d.configured;
  return `<span class="mpo-badge" id="rhEqStatus"><b class="${RH_EQ_TONE[s]||''}">${needKey?'NO DATA · ADD A FREE ALPACA KEY':polyEscape(s.replace('_',' '))}</b></span>`;
 }
-function rhEqCurveSvg(daily){
- const pts=(daily||[]).filter(p=>Number.isFinite(p.equityUsd));
- if(pts.length<2)return `<div class="mpo-empty" id="rhEqCurve">The equity curve starts at the first marked session close${pts.length?' (1 so far)':''}; it is drawn next to buy-and-hold SPY and cash from that day.</div>`;
+function rhEqCurveSvg(daily,o={}){
+ const pts=(daily||[]).filter(p=>Number.isFinite(p.equityUsd)),cid=o.id||'rhEqCurve';
+ if(pts.length<2)return `<div class="mpo-empty" id="${cid}">${o.empty||'The equity curve starts at the first marked session close'}${pts.length?' (1 so far)':''}; it is drawn next to ${o.bench||'buy-and-hold SPY'} and cash from that day.</div>`;
  const W=460,H=190,pl=6,pr=62,pt=10,pb=18,vals=pts.flatMap(p=>[p.equityUsd,p.benchUsd,p.cashUsd]).filter(Number.isFinite);
  let lo=Math.min(...vals),hi=Math.max(...vals);const pad=Math.max(0.5,(hi-lo)*0.1);lo-=pad;hi+=pad;
  const x=i=>pl+i/Math.max(1,pts.length-1)*(W-pl-pr),y=v=>pt+(hi-v)/(hi-lo)*(H-pt-pb);
  const line=k=>pts.map((p,i)=>Number.isFinite(p[k])?(i?'L':'M')+x(i).toFixed(1)+' '+y(p[k]).toFixed(1):'').join('');
  const tag=(k,c)=>{const v=pts.at(-1)[k];return Number.isFinite(v)?`<text x="${W-pr+4}" y="${(y(v)+4).toFixed(1)}" fill="${c}" font-size="11">${rhMoney(v)}</text>`:''};
- return `<svg id="rhEqCurve" viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Stocks and ETFs paper equity vs buy-and-hold SPY and cash" style="display:block;background:#0d1419;border:1px solid ${RH_C.grid}">
+ return `<svg id="${cid}" viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${o.aria||'Stocks and ETFs paper equity vs buy-and-hold SPY and cash'}" style="display:block;background:#0d1419;border:1px solid ${RH_C.grid}">
  <path class="rh-eq-cash" d="${line('cashUsd')}" fill="none" stroke="${RH_C.text}" stroke-width="1" stroke-dasharray="4 3"/>
  <path class="rh-eq-spy" d="${line('benchUsd')}" fill="none" stroke="#00c8ff" stroke-width="1.4"/>
  <path class="rh-eq-strategy" d="${line('equityUsd')}" fill="none" stroke="${RH_C.ef}" stroke-width="2"/>
@@ -70,6 +70,39 @@ function rhStocksSection(e){
  <small>$0 commission + ${polyEscape(String(b.costs?.slippageBps??'--'))} bps slippage + SEC/FINRA sell fees · ${polyEscape(b.costs?.settlement||'T+1')} · long-only, no margin.</small>
  </div></div>
  <p><small>${polyEscape(e.readiness?.text||'')}</small></p></fieldset>`;
+}
+// Daily-bar crypto book (src/robinhoodDailyBook.js): one decision per closed UTC bar, fills at the next open,
+// paper only. rhDailyVerdictLine reads the Lab's raw `daily` block that robinhoodEvolveView passes through.
+const rhSignedPct=v=>v==null||!Number.isFinite(Number(v))?'--':(v>0?'+':'')+fmt(Number(v),2)+'%';
+const RH_DAILY_TONE={PAPER_REVIEW_READY:'green',NO_EDGE:'amber',INSUFFICIENT_HISTORY:'amber',NO_DATA:'red',ERROR:'red'};
+function rhDailyVerdictLine(d){
+ if(!d)return '<p class="muted" id="rhDailyVerdict"><small>Daily bars (Lab): no verdict published yet.</small></p>';
+ const l=d.leader,h=l?.holdout,ph=String(d.phase||'--');
+ const parts=[l?'leader '+polyEscape(l.id||l.family||'--'):'no leader',h?'holdout '+rhSignedPct(h.strategy?.totalReturnPct)+' vs buy-and-hold '+rhSignedPct(h.buyHold?.totalReturnPct):null,d.proposal?'proposal '+polyEscape(d.proposal.id)+' (paper review)':'no proposal',d.blockers?.length?polyEscape(d.blockers[0]):null].filter(Boolean);
+ return `<p id="rhDailyVerdict"><small>Daily bars (Lab): <b class="${RH_DAILY_TONE[ph]||''}">${polyEscape(ph.replace(/_/g,' '))}</b> · ${parts.join(' · ')}</small></p>`;
+}
+function rhDailySection(dy,labDaily){
+ if(!dy)return '<fieldset class="mpo-fieldset" id="rhDaily"><legend>Daily bars · crypto paper book</legend><p>Loading the daily-bar book...</p></fieldset>';
+ const b=dy.book||{},src=dy.source||{},q=dy.qualification||{},qm=q.metrics||{},dec=b.lastDecision,metric=(label,value,cls='')=>`<div class="mpo-metric"><label>${label}</label><strong class="${cls}">${value}</strong></div>`;
+ const params=Object.entries(src.params||{}).map(([k,v])=>k+' '+v).join(', ');
+ return `<fieldset class="mpo-fieldset" id="rhDaily"><legend>Daily bars · crypto paper book</legend>
+ <p><span class="mpo-badge" id="rhDailyLabel"><b class="${src.kind==='lab-proposal'?'green':'amber'}">${polyEscape(dy.label||src.label||'')}</b></span> <span class="mpo-badge">PAPER ONLY · NEVER LIVE</span> <small>${polyEscape(src.family||'--')} (${polyEscape(params||'--')}) · hash ${polyEscape(src.paramsHash||'--')}</small></p>
+ ${src.kind!=='lab-proposal'&&src.reasons?.length?`<p class="muted" id="rhDailyWhyDefault"><small>Not on a Lab proposal: ${polyEscape(src.reasons.join('; '))}</small></p>`:''}
+ ${rhDailyVerdictLine(labDaily)}
+ ${b.recoveryRequired?`<div class="mpo-error">DAILY BOOK RECOVERY REQUIRED: ${polyEscape(b.recoveryReason||'review the book file')}</div>`:''}
+ ${dy.lastError||dy.data?.lastError?`<div class="mpo-error">${polyEscape(String(dy.lastError?.message||dy.data?.lastError?.message||''))}</div>`:''}
+ <div class="metric-grid">${metric('Paper equity',rhMoney(b.equityUsd))}${metric('Return',rhSignedPct(b.returnPct),(b.returnPct||0)>=0?'green':'red')}${metric('Buy-and-hold',b.buyHoldUsd==null?'--':rhMoney(b.buyHoldUsd)+' ('+rhSignedPct(b.buyHoldReturnPct)+')')}${metric('Last decided bar',polyEscape(b.lastDecidedDay||'--'))}${metric('Missed days',polyEscape(String(b.missedDays||0)))}${metric('Qualification',q.qualified?'QUALIFIED (paper)':'NOT QUALIFIED',q.qualified?'green':'')}</div>
+ <div class="mpo-split"><div>
+ ${rhEqCurveSvg(b.equityDaily,{id:'rhDailyCurve',aria:'Daily-bar crypto paper equity vs buy-and-hold and cash',empty:'The daily curve starts at the first marked UTC close',bench:'buy-and-hold'})}
+ <div style="font-size:11px;margin:4px 0;color:${RH_C.text}"><span style="color:${RH_C.ef}">— daily book</span> · <span style="color:#00c8ff">— buy-and-hold (same sleeves, same costs)</span> · <span>- - cash (0%)</span> · marked at each UTC close</div>
+ <p id="rhDailyQual"><small><b>${q.qualified?'Qualified on paper':'Not qualified'}:</b> ${polyEscape((q.reasons||[]).join('; ')||'all gates pass')} · rules: ${polyEscape(String(q.rules?.minClosedTrades??'--'))}+ closed round trips and ${polyEscape(String(q.rules?.minRunDays??'--'))}+ paper days in a ${polyEscape(String(q.rules?.windowDays??'--'))}-day window, return above cash and above buy-and-hold, drawdown no deeper than buy-and-hold, profit factor ${polyEscape(String(q.rules?.minProfitFactor??'--'))}+ · ${polyEscape(String(qm.closedTrades??0))} trades, ${polyEscape(String(qm.runDays??0))} days · never unlocks live.</small></p>
+ </div><div>
+ <table class="mpo-table" id="rhDailyPositions"><thead><tr><th>Pair</th><th>State</th><th>Entry</th><th>Last close</th><th>Value</th><th>Open P/L</th></tr></thead><tbody>${(b.positions||[]).map(p=>`<tr><td>${polyEscape(p.symbol)}</td><td class="${p.long?'green':''}">${p.long?'LONG':'FLAT'}</td><td>${p.entry?polyEscape(p.entry.day)+' @ '+rhMoney(p.entry.fillPrice):'--'}</td><td>${rhMoney(p.lastClose)}</td><td>${rhMoney(p.valueUsd)}</td><td>${rhMoney(p.unrealizedUsd)}</td></tr>`).join('')||'<tr><td colspan="6">No sleeves yet.</td></tr>'}</tbody></table>
+ <p id="rhDailyDecision"><b>Last decision:</b> ${dec?polyEscape(dec.day+' close · '+Object.entries(dec.bySymbol||{}).map(([s,x])=>s.replace('-USD','')+' '+x.action).join(', ')):'none yet'}${(b.pending||[]).length?' · <b>pending</b> '+polyEscape(b.pending.map(o=>o.side+' '+o.symbol+' at the '+o.fillDay+' open').join(', ')):''}</p>
+ <small>${polyEscape(dy.rules||'')} Costs: ${fmt((b.costs?.feeRatio??0.0095)*100,2)}%/side + ${polyEscape(String(b.costs?.slipBps??'--'))} bps slippage.</small>
+ <table class="mpo-table" id="rhDailyTrades"><thead><tr><th>Pair</th><th>Entry</th><th>Exit</th><th>Days</th><th>Net</th><th>Exit price from</th></tr></thead><tbody>${(b.history||[]).slice(0,8).map(t=>`<tr><td>${polyEscape(t.symbol)}</td><td>${polyEscape(t.entryDay||'--')}</td><td>${polyEscape(t.exitDay)}</td><td>${polyEscape(String(t.holdDays??'--'))}</td><td class="${(t.pnlUsd||0)>=0?'green':'red'}">${rhMoney(t.pnlUsd)}</td><td><small>${polyEscape(t.priceSource?.exit||'--')}</small></td></tr>`).join('')||'<tr><td colspan="6">No closed daily trades yet (expect one or two a month).</td></tr>'}</tbody></table>
+ <div><button id="rhDailyRun">Run daily pass</button><button id="rhDailyReset">Reset daily book…</button></div>
+ </div></div></fieldset>`;
 }
 // Isolated practice sandbox (src/robinhoodPractice.js): its own ledger; never counts toward qualification, promotion or real authority.
 function rhPracticeSection(pr){
@@ -277,6 +310,7 @@ function renderRobinhood(force=false){
 <div data-rh-part="charts"> ${rhChartSection(rhState)}</div>
 <div data-rh-part="gauges"> ${rhGaugeSection(rhState)}</div>
 <div data-rh-part="explore"> ${rhExploreSection(rhState)}</div>
+<div data-rh-part="daily" style="grid-column:1/-1"> ${rhView==='daily'?rhDailySection(rhState.daily,ev.daily):''}</div>
 <div data-rh-part="stocks" style="grid-column:1/-1"> ${rhView==='stocks'?rhStocksSection(rhEq):''}</div>
 <div data-rh-part="practice" style="grid-column:1/-1"> ${rhView==='practice'?rhPracticeSection(rhState.practice):''}</div>
 <div data-rh-part="qual"> <fieldset class="mpo-fieldset"><legend>Paper research qualification</legend>
@@ -290,6 +324,7 @@ function renderRobinhood(force=false){
 <div data-rh-part="evolution"><details class="rh-more evolution-lab-panel"><summary>Evolution Lab (paper-only research)</summary> <fieldset class="mpo-fieldset"><legend>Evolution Lab · Robinhood research lane</legend>
  <p><span class="mpo-badge">GEN ${polyEscape(String(ev.generation||0))}</span> <span class="mpo-badge">${evLab?'EVOLUTION LAB':(ev.enabled?'LOCAL FALLBACK':'DISABLED')}</span> <span class="mpo-badge">${polyEscape(String(ev.phase||'RESEARCH'))}</span> ${ev.running?'<span class="mpo-badge">RUNNING</span>':''} ${evLab?`<span class="mpo-badge">${evReady?'PAPER REVIEW READY':'RESEARCH ONLY'}</span>`:''} <small>${evLab?'parallel Lab worker':`every ${polyEscape(String(ev.intervalMin||'--'))} min`} · last run ${ev.lastRunAt?rhAge(Date.now()-ev.lastRunAt)+' ago':'never'}</small></p>
  <p>Tape coverage: ${Object.entries(ev.tapeDays||{}).map(([s,d])=>polyEscape(s)+' '+polyEscape(String(d))+'d').join(' · ')||'--'} (needs ${polyEscape(String(ev.minTapeDays||3))}d on the primary pair)${(()=>{const src=Object.values(ev.tapeSources||{}).reduce((a,x)=>{for(const [k,n] of Object.entries(x||{}))a[k]=(a[k]||0)+n;return a},{});const keys=Object.keys(src);return keys.length?' · quotes: '+keys.map(k=>polyEscape(k)+' '+polyEscape(String(src[k]))).join(' · '):''})()}${ev.lastError?' | <span class="mpo-error">'+polyEscape(ev.lastError.stage+': '+ev.lastError.message)+'</span>':''}</p>
+ ${rhDailyVerdictLine(ev.daily)}
  <table class="mpo-table"><thead><tr><th>Split test</th><th>Hash</th><th>Score</th><th>Closes</th><th>Hit</th><th>PF</th><th>Net P/L</th><th>Drawdown</th><th>Trades/day</th></tr></thead><tbody>
  ${evRow('Incumbent',ev.incumbent)}${evRow(ev.proposed?'Champion (proposed)':'Champion',ev.champion)}</tbody></table>
  <button id="rhEvolveRun" ${evLab?'disabled':(disabled||(ev.running?'disabled':''))}>${evLab?'Lab runs automatically':'Run local fallback'}</button><button id="rhEvolveApply" ${disabled||(!ev.proposed||!evReady?'disabled':'')}>Apply Lab candidate to paper</button>
@@ -343,6 +378,9 @@ function renderRobinhood(force=false){
  el('rhPrBuy').onclick=()=>rhAction('practice/order',{symbol:el('rhPrSymbol').value},'Practice buy filled in the sandbox.');
  root.querySelectorAll('[data-rh-pr-close]').forEach(b=>b.onclick=()=>rhAction('practice/close',{id:b.dataset.rhPrClose},'Practice position closed.'));
  el('rhPrReset').onclick=()=>{const confirmation=rhPrompt('RESET PRACTICE','Reset the practice sandbox? Its positions and history are cleared and its autopilot stops. The strict book is untouched.');if(confirmation===null)return;if(confirmation==='RESET PRACTICE')rhAction('practice/reset',{budgetUsd:Number(el('rhPrBudget').value)},'Practice sandbox reset.');else{rhMessage='Type RESET PRACTICE to confirm.';renderRobinhood(true)}};
+ // Daily-bar book: run one pass (still one decision per closed bar) or reset with a typed phrase. Paper only.
+ el('rhDailyRun').onclick=()=>rhAction('daily/run',{},'Daily pass ran.');
+ el('rhDailyReset').onclick=()=>{const confirmation=rhPrompt('RESET DAILY','Reset the daily-bar paper book? Its sleeves, trades and curve are cleared. Other books are untouched.');if(confirmation===null)return;if(confirmation==='RESET DAILY')rhAction('daily/reset',{confirmation},'Daily book reset.');else{rhMessage='Type RESET DAILY to confirm.';renderRobinhood(true)}};
  root.querySelectorAll('[data-rh-chart-symbol]').forEach(b=>b.onclick=()=>{rhChart.symbol=b.dataset.rhChartSymbol;rhChart.data=null;rhSaveChart();rhLoadChart(true);renderRobinhood(true)});
  root.querySelectorAll('[data-rh-chart-range]').forEach(b=>b.onclick=()=>{rhChart.range=b.dataset.rhChartRange;rhSaveChart();rhLoadChart(true);renderRobinhood(true)});
  el('rhBuy').onclick=()=>rhAction('paper-order',{symbol:el('rhSymbol').value,usd:Number(el('rhUsd').value)});

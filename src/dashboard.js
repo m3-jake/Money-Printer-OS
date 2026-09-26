@@ -78,7 +78,7 @@ function requestUpdater(action){
 }
 
 function researchCaptureStatus(){try{return JSON.parse(fs.readFileSync(RESEARCH_CAPTURE_STATUS_FILE,'utf8'))}catch{return {schema:'mpo.research-capture-status.v1',updatedAt:null}}}
-function labModuleStatuses(){const out={};for(const id of ['robinhood','polymarket','polymarket-combo']){try{const v=JSON.parse(fs.readFileSync(path.join(DATA_DIR,'lab-link','modules',`${id}.json`),'utf8'));if(v&&v.module===id)out[id]=v}catch{}}return out}
+function labModuleStatuses(){const out={};for(const id of ['robinhood','robinhood-equities','polymarket','polymarket-combo']){try{const v=JSON.parse(fs.readFileSync(path.join(DATA_DIR,'lab-link','modules',`${id}.json`),'utf8'));if(v&&v.module===id)out[id]=v}catch{}}return out}
 function researchPlane(s = loadStateCached(), opts = {}){
   return readResearchControlPlane({dataDir:DATA_DIR,journalLimit:300,state:s,mode:cfg.mode,...opts});
 }
