@@ -55,7 +55,7 @@ export function solanaRunningPolicy(runtime = {}, config = {}) {
   return { ...policy, hash: policyHash(policy) };
 }
 
-export function solanaFitnessParts(state = {}, config = {}, { now = Date.now() } = {}) {
+export function solanaFitnessParts(state = {}, config = {}, { now = Date.now(), jupiter = null } = {}) {
   const policy = solanaRunningPolicy(state.runtime, config), history = Array.isArray(state.history) ? state.history : [];
   const running = history.filter(h => !policy.exitPreset || h?.exitPreset === policy.exitPreset);
   const rows = running.map(h => ({ pnl: h.pnlSol, closedAt: h.closedAt }));
@@ -65,9 +65,9 @@ export function solanaFitnessParts(state = {}, config = {}, { now = Date.now() }
     running: { hash: policy.hash, params: policy, since: fin(state.runtime?.profileChangedAt) ?? null, source: champion && champion !== 'BASE' ? 'lab-auto' : 'operator' },
     paperRecord: paperRecordFrom(rows, { unit: 'SOL', startBalance: fin(state.portfolio?.startSol ?? state.portfolio?.startingSol), now }),
     // Paper fills are simulated from marks; there is no executable Jupiter quote tape yet (plan batch F item 5).
-    evidence: { executablePrices: false, spanDays: rows.length > 1 ? ((fin(rows.at(-1).closedAt) ?? 0) - (fin(rows[0].closedAt) ?? 0)) / DAY_MS : 0, closes: rows.length, venueShare: null, syntheticShare: null, quoteSources: { 'simulated-marks': rows.length } },
+    evidence: { executablePrices: false, spanDays: rows.length > 1 ? ((fin(rows.at(-1).closedAt) ?? 0) - (fin(rows[0].closedAt) ?? 0)) / DAY_MS : 0, closes: rows.length, venueShare: null, syntheticShare: null, quoteSources: { 'simulated-marks': rows.length, ...(jupiter ? { 'jupiter-quote': fin(jupiter.rowsTotal) ?? 0 } : {}) } },
     park: fair.verdict === 'PARK' ? `FAIR: upper 95% hit rate ${round(fair.hitRate95?.high, 3)} < break-even ${round(fair.breakEvenHitRate, 3)} after ${fair.closes} closes` : null,
-    blockers: ['Solana stays research-only until an executable Jupiter quote tape exists'],
+    blockers: [jupiter && fin(jupiter.rowsTotal) ? `Jupiter quote tape collecting (${jupiter.rowsTotal} rows, latest median round trip ${fin(jupiter.medianRoundTripPct) ?? 'n/a'}%); no executable-price replay yet, so Solana stays research-only` : 'Solana stays research-only until an executable Jupiter quote tape exists'],
   };
 }
 
