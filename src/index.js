@@ -28,9 +28,9 @@ import { dailyPnl, recentPnl, bookClosedPnl, unrealizedPnl, equity, updatePortfo
 import { startAlphaWorker, stopAlphaWorker } from './alphaWorkerManager.js';
 // With the alpha worker off (the default since batch 11) nothing drains alpha-queue.ndjson, so don't write it.
 const enqueueAlphaEvent = row => { if (cfg.alphaWorkerEnabled) enqueueAlphaRaw(row); };
-// The Evolution Lab is no longer used (2026-09-26). MPO_LAB_LINK=true restores the link; off, the engine neither
-// reads lab files nor exports the ~0.7 MB dataset every minute.
-const LAB_LINK = String(process.env.MPO_LAB_LINK ?? 'false').toLowerCase() === 'true';
+// Evolution Lab is the separate research backend for Money Printer OS. The link is on by default;
+// champions are still re-validated locally and can only affect paper mode. Set MPO_LAB_LINK=false to isolate it.
+const LAB_LINK = String(process.env.MPO_LAB_LINK ?? 'true').toLowerCase() === 'true';
 import { solanaCostGate } from './solanaEconomics.js';
 import { exitSimulation, paperExitQuote, reviewPositionPrice, entrySizing, paperEntryRejection } from './positionExecution.js';
 import { apiUnitEconomicsSnapshot, persistApiUnitEconomics, attributeScanCycle, strategyNetPnlAfterDataCost } from './apiUnitEconomics.js';

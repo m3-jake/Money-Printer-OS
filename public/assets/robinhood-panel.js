@@ -1,4 +1,4 @@
-// Robinhood Auto Trader panel. This release is paper-only: API credentials feed authenticated market data,
+// Robinhood panel. This release is paper-only: API credentials feed authenticated market data,
 // while the backend hard-rejects Robinhood real-order, cancel, reconcile and real-autopilot mutations.
 let rhState=null,rhSubmitting=false,rhRefreshBusy=false,rhMessage='',rhDraft={},rhPreview=null;
 let rhView='paper';
@@ -122,7 +122,7 @@ function rhChartSection(st){
 function renderRobinhood(force=false){
  const root=document.getElementById('body-robinhood');if(!root)return;
  if(!force&&rhTyping())return;rhCapture();
- if(!rhState){setBody('robinhood',`<div class="mpo-surface-dark"><h2>ROBINHOOD AUTO TRADER</h2><p>${polyEscape(rhMessage||'Loading...')}</p></div>`);return}
+ if(!rhState){setBody('robinhood',`<div class="mpo-surface-dark"><h2>ROBINHOOD</h2><p>${polyEscape(rhMessage||'Loading...')}</p></div>`);return}
  const r=rhState.readiness||{},p=rhState.paper||{},a=p.autopilot||{},q=p.qualification||{},j=rhState.journal||{},ap=j.autopilot||{},lim=rhState.limits||{},prim=(rhState.strategy||{}).primary||{},paperLocked=r.paperOnlyBuild===true,disabled=rhSubmitting?'disabled':'',liveDisabled=(rhSubmitting||paperLocked)?'disabled':'';
  const positions=p.positions||[],history=p.history||[],quoteMap=Object.fromEntries((rhState.quotes||[]).map(q=>[q.symbol,q]));
  const symbol=rhVal('rhSymbol','BTC-USD'),usd=rhVal('rhUsd',10),maxOpen=rhVal('rhMaxOpen',a.maxOpen||3),orderUsd=rhVal('rhOrderUsd',a.orderUsd||25),watch=rhVal('rhSymbols',(a.symbols||['BTC-USD','ETH-USD']).join(','));
@@ -136,7 +136,7 @@ function renderRobinhood(force=false){
  const ev=rhState.evolve||{},evNum=(v,d)=>typeof v==='number'&&Number.isFinite(v)?fmt(v,d):v==='infinity'?'inf':'--';
  const evRow=(label,c)=>{const m=(c&&c.metrics)||{};return `<tr><td>${label}</td><td>${polyEscape(c?c.paramsHash:'--')}</td><td>${evNum(c?c.score:null,3)}</td><td>${polyEscape(String(m.closes??'--'))}</td><td>${rhPct(m.hitRate)}</td><td>${evNum(m.profitFactor,2)}</td><td>${rhMoney(m.pnlUsd)}</td><td>${rhMoney(m.maxDrawdownUsd)}</td><td>${evNum(m.tradesPerDay,2)}</td></tr>`};
  setBody('robinhood',`<div class="mpo-surface-dark rh-v-${rhView}" style="padding:10px">
-<div data-rh-part="head"> <h2>ROBINHOOD AUTO TRADER <small> / CRYPTO · BITCOIN PRIMARY</small></h2>
+<div data-rh-part="head"> <h2>ROBINHOOD <small> / CRYPTO · BITCOIN PRIMARY</small></h2>
  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><span class="mpo-badge">${r.credentialsReady?'RH KEYS PRESENT':'RH KEYS OPTIONAL FOR PAPER'}</span><span class="mpo-badge">${paperLocked?'PAPER ONLY · LIVE LOCKED':(r.realEnabled?'REAL ENABLED':'REAL DISABLED')}</span><span class="mpo-badge">PAPER FEED · ${polyEscape(r.paperQuoteSource||'CONNECTING')}</span><span class="mpo-badge">${a.enabled?'PAPER AUTOPILOT ON':'PAPER AUTOPILOT OFF'}</span>${r.recoveryRequired?'<span class="mpo-badge">RECOVERY</span>':''}<button id="rhRefresh" ${disabled}>Refresh</button></div>
  <div class="metric-grid">${metric('Buying power',rhMoney(rhState.account?.buyingPowerUsd))}${metric('Fee tier',rhPct(rhState.account?.feeRatio))}${metric('Paper equity',rhMoney(p.equityUsd))}${metric('Paper P/L',rhMoney(p.stats?.pnlUsd))}${metric('Real open / unverified',(openReal.length)+' / '+(j.stats?.unverified||0))}${metric('Realized today / cap',rhMoney(j.realizedTodayUsd)+' / '+rhMoney(lim.dailyLossCapUsd))}</div>
  <p role="status" id="rhMessage">${polyEscape(rhMessage)}</p>

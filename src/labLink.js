@@ -184,30 +184,31 @@ export function traderStatusRecord(s, { nodeId = traderNodeId(), name = traderNo
 // Publishes the labeled dataset and a small status line for the lab, throttled and only when
 // the dataset changed. Never blocks trading on a failed write.
 export function publishLabFeed(s, { dir = dataDir(), bridge = bridgeDir(), key = bridgeKey(), now = Date.now(), mode = 'paper', force = false, version } = {}) {
-  const out = { datasetLocal: false, datasetBridge: false, status: false };
-  try {
-    const outcomes = s?.research?.learner?.outcomes || [];
-    const sig = `${outcomes.length}:${Number(outcomes[0]?.ts || 0)}`;
-    const changed = sig !== outbound.datasetSig;
-    const nodeId = traderNodeId(), name = traderNodeName();
-    if ((force || (changed && now - outbound.datasetLocalAt >= DATASET_LOCAL_MS))) {
+  const out = { datasetLocal: false, datasetBridge: false, status: false, errors: [] };
+  const outcomes = s?.research?.learner?.outcomes || [];
+  const sig = `${outcomes.length}:${Number(outcomes[0]?.ts || 0)}`;
+  const changed = sig !== outbound.datasetSig;
+  const nodeId = traderNodeId(), name = traderNodeName();
+  if (force || (changed && now - outbound.datasetLocalAt >= DATASET_LOCAL_MS)) {
+    try {
       const doc = datasetRecord(s, { nodeId, name, version, now });
       if (doc.rows.length) { writeJsonAtomic(path.join(dir, 'lab-link', 'dataset.json'), doc); outbound.datasetLocalAt = now; outbound.datasetSig = sig; out.datasetLocal = true; }
-    }
-    // The bridge copy has its own change marker so it catches up with the local file once its
-    // (longer) window opens, instead of missing a change that happened between two windows.
-    if (bridge && key && (force || (sig !== outbound.bridgeSig && now - outbound.datasetBridgeAt >= DATASET_BRIDGE_MS))) {
+    } catch (e) { out.errors.push(`dataset-local:${String(e?.code || e?.message || e)}`); }
+  }
+  if (bridge && key && (force || (sig !== outbound.bridgeSig && now - outbound.datasetBridgeAt >= DATASET_BRIDGE_MS))) {
+    try {
       const doc = datasetRecord(s, { nodeId, name, version, now });
       if (doc.rows.length) { writeJsonAtomic(path.join(bridge, 'lab-feed', `${nodeId}.dataset.json`), signRecord(doc, key)); outbound.datasetBridgeAt = now; outbound.bridgeSig = sig; out.datasetBridge = true; }
-    }
-    if (force || now - outbound.statusAt >= TRADER_STATUS_MS) {
+    } catch (e) { out.errors.push(`dataset-bridge:${String(e?.code || e?.message || e)}`); }
+  }
+  if (force || now - outbound.statusAt >= TRADER_STATUS_MS) {
+    try {
       const st = traderStatusRecord(s, { nodeId, name, version, mode, now });
       writeJsonAtomic(path.join(dir, 'lab-link', 'trader-status.json'), st);
       if (bridge && key) writeJsonAtomic(path.join(bridge, 'lab-feed', `${nodeId}.trader-status.json`), signRecord(st, key));
       outbound.statusAt = now; out.status = true;
-    }
-  } catch (e) {
-    out.error = String(e?.code || e?.message || e);
+    } catch (e) { out.errors.push(`status:${String(e?.code || e?.message || e)}`); }
   }
+  if (out.errors.length) out.error = out.errors.join('; ');
   return out;
 }

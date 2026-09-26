@@ -39,8 +39,8 @@ test('required controls, fieldsets and routes are present',()=>{
  assert.doesNotMatch(panel,/#ff7a3d|#1a0e06|mpo-brand-title/);
 });
 test('desktop shell registers the window, keeps the layout version and leaves Polymarket modules alone',()=>{
- assert.match(html,/\['robinhood','Robinhood Auto Trader','RH','dark'\]/);assert.match(html,/robinhood:\{x:200,y:90,w:880,h:620\}/);
- assert.match(html,/LAYOUT_VERSION='2026-09-14-alpha40-consolidated'/);assert.match(html,/DEFAULT_OPEN=\['trade','sportsbook','system'\]/);
+ assert.match(html,/\['robinhood','Robinhood','RH','dark'\]/);assert.match(html,/robinhood:\{x:200,y:90,w:880,h:620\}/);
+ assert.match(html,/LAYOUT_VERSION='2026-09-26-alpha56-clean-shell'/);assert.match(html,/DEFAULT_OPEN=\['trade','sportsbook','system'\]/);
  assert.match(html,/const POLY_MODS=\['combos'\]/);assert.match(html,/windowVisible\('robinhood'\)\)refreshRobinhood\(\)/);
  assert.equal((html.match(/mpo-brand-title/g)||[]).length,2,'brand title count unchanged');
 });

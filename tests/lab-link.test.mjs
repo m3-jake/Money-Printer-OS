@@ -158,6 +158,17 @@ test('the trader publishes only usable 5m rows, throttled, plus a signed bridge 
   assert.equal(out.datasetBridge, true);
 });
 
+test('trader status still refreshes when the bulky local dataset write fails', () => {
+  resetLabLinkMemory();
+  const dir=path.join(DIR,'status-survives-dataset-failure');
+  fs.mkdirSync(path.join(dir,'lab-link','dataset.json'),{recursive:true});
+  const s={research:{learner:{outcomes:[{ts:10,entryTs:5,sampleKey:'M1:0',mint:'M1',horizonMin:5,returnPct:1,features:{edge:.2}}]}},portfolio:{equitySol:1},positions:[],runtime:{activeEvolutionChampionId:'BASE'},system:{activeEvolutionPolicy:{stage:'BASE'}}};
+  const out=publishLabFeed(s,{dir,bridge:'',now:3_000_000,mode:'paper',force:true});
+  assert.equal(out.datasetLocal,false);assert.equal(out.status,true);assert.ok(out.errors.some(x=>x.startsWith('dataset-local:')));
+  const st=JSON.parse(fs.readFileSync(path.join(dir,'lab-link','trader-status.json'),'utf8'));
+  assert.equal(st.equitySol,1);assert.equal(st.openPositions,0);assert.equal(st.mode,'paper');
+});
+
 test('engine wiring: the lab link runs every cycle, the feed is published, and no scorer ships', () => {
   const src = fs.readFileSync(path.join(ROOT, 'src', 'index.js'), 'utf8');
   assert.match(src, /import \{ syncLabLink, publishLabFeed \} from '\.\/labLink\.js'/);

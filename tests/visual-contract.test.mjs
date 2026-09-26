@@ -150,12 +150,14 @@ test('shared workstation recipes ship on laggard panes', () => {
   assert.match(html, /HIVE EQUITY/);
 });
 
-test('chrome stays opaque; glass is opt-in; layout version unchanged', () => {
+test('chrome stays opaque and the simplified alpha56 shell contract is pinned', () => {
   assert.match(css, /\.titlebar\s*\{[^}]*background:\s*var\(--mpo-navy\)/);
   assert.match(css, /\.taskbar\s*\{[^}]*z-index:\s*100/);
   assert.match(css, /\.brand\s*\{[^}]*z-index:\s*6/);
   assert.match(css, /\.boot\s*\{[^}]*background:\s*#008080/);
-  assert.match(html, /LAYOUT_VERSION='2026-09-14-alpha40-consolidated'/);
+  assert.match(html, /LAYOUT_VERSION='2026-09-26-alpha56-clean-shell'/);
+  assert.match(html, /\['trade','Pump\.fun'/);assert.match(html, /\['robinhood','Robinhood'/);assert.match(html, /\['researchmon','Lab Monitor','LAB','dark','trade'/);
+  assert.doesNotMatch(html, /<div class="menu" title="Menus are not wired">/);
   assert.doesNotMatch(html, /mpo-surface-(dark|light)[\s\S]{0,80}poly-strip|poly-strip[\s\S]{0,80}mpo-surface/);
 });
 
