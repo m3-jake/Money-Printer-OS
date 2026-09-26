@@ -25,11 +25,11 @@ test('embedded dashboard script parses as JavaScript', () => {
 });
 
 test('confirmation phrases remain exact in UI and backends', () => {
-  const phrases = [
-    'PLACE REAL COMBO', 'PLACE REAL ORDER', 'CLOSE REAL POSITION',
-    'CANCEL REAL ORDER', 'CANCEL REAL ORDERS',
-  ];
-  for (const p of phrases) assert.match(html, rx(p));
+  // One Polymarket panel (renovation step 7): only the combo phrase and FORGET remain in the UI.
+  assert.match(html, rx('PLACE REAL COMBO'));
+  for (const gone of ['PLACE REAL ORDER', 'CLOSE REAL POSITION', 'CANCEL REAL ORDER']) assert.doesNotMatch(html, rx(gone));
+  // The phrase field is typed by the operator, never pre-filled from code.
+  assert.match(html, rx("input.value='';input.placeholder='Type '+phrase"));
   assert.match(us, /PLACE REAL ORDER/);
   assert.match(us, /CLOSE REAL POSITION/);
   assert.match(us, /CANCEL REAL ORDER/);

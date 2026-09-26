@@ -41,7 +41,7 @@ test('required controls, fieldsets and routes are present',()=>{
 test('desktop shell registers the window, keeps the layout version and leaves Polymarket modules alone',()=>{
  assert.match(html,/\['robinhood','Robinhood Auto Trader','RH','dark'\]/);assert.match(html,/robinhood:\{x:200,y:90,w:880,h:620\}/);
  assert.match(html,/LAYOUT_VERSION='2026-09-14-alpha40-consolidated'/);assert.match(html,/DEFAULT_OPEN=\['trade','sportsbook','system'\]/);
- assert.match(html,/const POLY_MODS=\['combos','us'\]/);assert.match(html,/windowVisible\('robinhood'\)\)refreshRobinhood\(\)/);
+ assert.match(html,/const POLY_MODS=\['combos'\]/);assert.match(html,/windowVisible\('robinhood'\)\)refreshRobinhood\(\)/);
  assert.equal((html.match(/mpo-brand-title/g)||[]).length,2,'brand title count unchanged');
 });
 test('automatic refresh never replaces a focused input or a typed secret',()=>{

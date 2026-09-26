@@ -19,7 +19,7 @@
   <div id="windows"></div>
   <div class="startmenu" id="startMenu"><div class="rail">MONEY PRINTER OS</div><div class="menuitems" id="startItems"></div></div>
   <div class="taskbar"><button class="start" id="startBtn"><img class="tico" src="/assets/icons/money.png" alt=""> Start</button><div class="tasks" id="tasks"></div><div class="tray"><span class="led" id="feedLed"></span><span class="mpo-badge mpo-badge--paper" id="trayMode">PAPER</span><span id="clock"></span></div></div>
-  <div class="dialog-layer" id="dialogLayer"><div class="dialog hidden" id="dialog"><div class="titlebar"><div class="title" id="dialogTitle">Money Printer OS</div><div class="win-buttons"><button type="button" id="dialogX">×</button></div></div><div class="msg"><div class="mpo-dialog-ico" aria-hidden="true">!</div><div><b id="dialogHead"></b><p id="dialogText"></p><button class="btn" id="dialogOk">OK</button></div></div></div></div>
+  <div class="dialog-layer" id="dialogLayer"><div class="dialog hidden" id="dialog"><div class="titlebar"><div class="title" id="dialogTitle">Money Printer OS</div><div class="win-buttons"><button type="button" id="dialogX">×</button></div></div><div class="msg"><div class="mpo-dialog-ico" aria-hidden="true">!</div><div><b id="dialogHead"></b><p id="dialogText"></p><button class="btn" id="dialogOk">OK</button></div></div></div><div class="dialog mpo-dialog hidden" id="polyConfirm" role="dialog" aria-modal="true"><div class="titlebar"><div class="title" id="polyConfirmTitle">Confirm</div><div class="win-buttons"><button type="button" id="polyConfirmX">×</button></div></div><div class="msg"><span class="mpo-dialog-ico" aria-hidden="true">!</span><div><b id="polyConfirmHead"></b><div id="polyConfirmBody"></div><p id="polyConfirmCountdown"></p><input class="field" id="polyConfirmPhrase" autocomplete="off" spellcheck="false"><div class="toolbar"><button class="btn" id="polyConfirmRequote" hidden>Re-quote</button><button class="btn" id="polyConfirmCancel">Cancel</button><button class="btn" id="polyConfirmOk" disabled>Confirm</button></div></div></div></div></div>
   <div class="boot" id="boot"><div class="bootbox"><div class="titlebar"><div class="title">Money Printer OS</div></div><div class="bootbody dark terminal"><img class="bootmark" src="/assets/money-printer-logo.png" alt="" width="64" height="64"><div class="bootlogo">MONEY <span>PRINTER</span> OS</div><div class="bootline" id="bootText">Starting system services...</div><div class="progress bootprog"><i id="bootBar"></i></div></div></div></div>
 </div>
 <script>
@@ -176,7 +176,7 @@ const fmt=(n,d=2)=>Number.isFinite(Number(n))?Number(n).toFixed(d):'—';
 const money=n=>Number.isFinite(Number(n))?'$'+Number(n).toLocaleString(undefined,{maximumFractionDigits:2}):'—';
 const age=ts=>!ts?'—':Math.max(0,Math.round((Date.now()-ts)/1000))+'s';
 const fmtSol=v=>Number.isFinite(Number(v))?Number(v).toFixed(3)+' SOL':'—';
-let state=null,journal=[],projectJournal={rows:[]},networkState={peers:[],messages:[]},polyUSState={opportunities:[],readiness:{}},polyUSComboState={},updateState={status:'IDLE'},researchMonitor={status:'idle',running:[],leaderboard:[],rejections:{}},journalFilter='all',journalQuery='',z=20,selectedIcon=null;
+let state=null,journal=[],projectJournal={rows:[]},networkState={peers:[],messages:[]},polyUSComboState={},updateState={status:'IDLE'},researchMonitor={status:'idle',running:[],leaderboard:[],rejections:{}},journalFilter='all',journalQuery='',z=20,selectedIcon=null;
 let chartView={range:'session',zoom:1,pan:0,dragging:false,lastX:0,hoverX:null};let fxSig='',fxBurstTimer=null,fxBurstUntil=0,fxLastRealizedSol=null,fxComboPrimed=false;const fxSeenComboSettlements=new Set();
 const renderSig=new Map();
 const perf={stateKB:0,renderMs:0,refreshMs:0,lastStateAt:0};
@@ -190,7 +190,7 @@ const APPS=[
 ['risk','Risk Radar','!','dark','trade'],
 ['archive','Archive','DB','light','trade'],
 ['control','Control Bay','CTL','light','trade'],
-['sportsbook','Polymarket Suite','PM','dark'],
+['sportsbook','Polymarket US','PM','dark'],
 ['robinhood','Robinhood Auto Trader','RH','dark'],
 ['researchmon','Experiment Monitor','LAB','dark'],
 ['journal','Journal','JRN','dark'],
@@ -235,7 +235,7 @@ function persist(){
  saved=o;
  localStorage.setItem('mpo-layout',JSON.stringify(o)); localStorage.setItem('mpo-open',JSON.stringify([...openSet])); localStorage.setItem('mpo-tabs',JSON.stringify(activeTab));
 }
-// Scroll preservation: every innerHTML render path goes through setBody/renderPolyModule so a
+// Scroll preservation: every innerHTML render path goes through setBody/renderSportsbook so a
 // 1.5s refresh never throws the operator back to the top of a table, log or feed.
 function captureScroll(root){const list=[];if(!root)return list;const cands=[root,...root.querySelectorAll('*')].filter(e=>e.scrollHeight>e.clientHeight+1||e.scrollWidth>e.clientWidth+1);cands.forEach((e,i)=>{if(e.scrollTop||e.scrollLeft)list.push({key:e.dataset?.scroll||null,i,top:e.scrollTop,left:e.scrollLeft,pinned:e.scrollHeight-e.scrollTop-e.clientHeight<24})});return list}
 function restoreScroll(root,list){if(!root||!list||!list.length)return;const cands=[root,...root.querySelectorAll('*')].filter(e=>e.scrollHeight>e.clientHeight+1||e.scrollWidth>e.clientWidth+1);for(const s of list){const el=(s.key&&(root.matches&&root.matches(`[data-scroll="${s.key}"]`)?root:root.querySelector(`[data-scroll="${s.key}"]`)))||cands[s.i];if(!el)continue;if(el.dataset?.pin==='bottom'&&s.pinned)el.scrollTop=el.scrollHeight;else{el.scrollTop=s.top;el.scrollLeft=s.left}}}
@@ -448,8 +448,8 @@ function renderControl(){
  $$('.test-reset').forEach(b=>b.onclick=async()=>{await post('/api/reset',{amountSol:Number(b.dataset.sol)});showDialog('Money Printer OS','Paper wallet reset',`Testing bankroll queued at ${b.dataset.sol} SOL.`)}); $('#testPause')?.addEventListener('click',()=>post('/api/pause',{})); $('#testKill')?.addEventListener('click',()=>post('/api/kill',{})); $('#applyCtl')?.addEventListener('click',async()=>{await post('/api/profile',{profile:$('#profile').value});await post('/api/runtime',{aggression:Number($('#aggr').value)});showDialog('Money Printer OS','Settings queued','Profile and runtime settings were sent to the trading engine.')});
 }
 
-// Fast Combos (Polymarket US real execution).
-let usComboSelected=new Set(),usComboAutoSeedKey='',usComboStakeValue='',usComboModeValue='rfq',usComboSubmitting=false,usComboBuildState=null,usComboBuildTimer=null,usComboCountdownTimer=null,usComboRefreshBusy=false;
+// Polymarket US combos (real execution): selection, stake and the in-flight build.
+let usComboSelected=new Set(),usComboStakeValue='',usComboSubmitting=false,usComboBuildState=null,usComboBuildTimer=null,usComboRefreshBusy=false,usComboSettingsDraft={};
 const polyEscape=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function researchParamLine(p={}){const keys=[['aggression','agg'],['tp','tp'],['stop','stop'],['trail','trail'],['maxHold','hold'],['cooldown','cool'],['filter','filter'],['entry','in'],['exit','out']];return keys.filter(([k])=>p[k]!=null).map(([k,l])=>`${l} ${p[k]}`).join(' · ')||'default profile'}
 function monNum(v){const n=Number(v);return Number.isFinite(n)?n:null}
@@ -548,197 +548,168 @@ const polyCents=(v,d=1)=>polyNum(v)==null?'—':fmt(Number(v)*100,d)+'¢';
 const polyUsd=(v,d=2)=>polyNum(v)==null?'—':'$'+fmt(v,d);
 const polyAgeS=ms=>polyNum(ms)==null?'—':Math.max(0,Math.round(Number(ms)/1000))+'s';
 const polyTime=t=>{const n=Number(t),d=new Date(n);return Number.isFinite(n)&&n>0&&!Number.isNaN(d.getTime())?d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}):'—'};
-// Any input/select the operator can be typing into must suppress the 5s re-render.
-const POLY_FOCUS_IDS=['usKeyId','usSecret','usSlug','usIntent','usPrice','usQty','usConfirm','usComboStake','usComboMode','usComboConfirm'];
-// ---- Polymarket Suite: independent modules (combos / us) ------------------
-let polyModules=(()=>{const d={combos:{visible:true,open:true},us:{visible:true,open:true}};try{const s=JSON.parse(localStorage.getItem('mpo-poly-modules')||'null');if(s&&typeof s==='object')for(const k of Object.keys(d))if(s[k]&&typeof s[k]==='object')d[k]={visible:s[k].visible!==false,open:s[k].open!==false}}catch{}return d})();
-const polyModuleSig=new Map();
-const POLY_MODS=['combos','us'];
-const POLY_MOD_TITLE={combos:'FAST COMBOS · POLYMARKET US · REAL',us:'POLYMARKET US · FULL SUITE'};
-const POLY_MOD_SHORT={combos:'Fast Combos',us:'US Suite'};
-function persistPolyModules(){try{localStorage.setItem('mpo-poly-modules',JSON.stringify(polyModules))}catch{}}
+// Any input the operator can be typing into must suppress the 5s re-render.
+const POLY_FOCUS_IDS=['usKeyId','usSecret','usComboStake','usSetFloor','usSetMinutes','usSetLegs'];
+// ---- Polymarket: one module. Live games near the end -> tick up to maxLegs -> one confirmed combo.
+const POLY_MODS=['combos'];
+let polyModuleSig='';
 function polyShellHtml(){
- return `<div class="poly-strip" id="polyStatus"></div><div class="poly-bar">MODULES:${POLY_MODS.map(m=>`<label><input type="checkbox" class="polyModShow" data-mod="${m}" ${polyModules[m].visible?'checked':''}> ${POLY_MOD_SHORT[m]}</label>`).join('')}</div>`
-  +POLY_MODS.map(m=>`<section class="poly-mod" data-mod="${m}"><header><span>${POLY_MOD_TITLE[m]}</span><button class="btn polyModCollapse" data-mod="${m}" title="Collapse or expand this module">–</button></header><div class="poly-body" id="poly-${m}" data-scroll="poly-${m}"></div></section>`).join('');
-}
-function applyPolyModuleState(){
- for(const m of POLY_MODS){
-  const sec=$(`.poly-mod[data-mod="${m}"]`);if(!sec)continue;
-  sec.hidden=!polyModules[m].visible;
-  sec.classList.toggle('closed',!polyModules[m].open);
-  const btn=sec.querySelector('.polyModCollapse');if(btn)btn.textContent=polyModules[m].open?'–':'+';
-  const cb=$(`.polyModShow[data-mod="${m}"]`);if(cb&&cb.checked!==polyModules[m].visible)cb.checked=polyModules[m].visible;
- }
-}
-function bindPolyBar(){
- $$('.polyModShow').forEach(cb=>cb.onchange=()=>{const m=cb.dataset.mod;polyModules[m].visible=cb.checked;persistPolyModules();polyModuleSig.delete(m);applyPolyModuleState();renderSportsbook()});
- $$('.polyModCollapse').forEach(b=>b.onclick=()=>{const m=b.dataset.mod;polyModules[m].open=!polyModules[m].open;persistPolyModules();polyModuleSig.delete(m);applyPolyModuleState();renderSportsbook()});
-}
-// Same guarantees as the old whole-window guard, but scoped to one module: typing in the US
-// suite no longer freezes the combos module and vice versa.
-function renderPolyModule(mod,sig,fn){
- const m=polyModules[mod];if(!m||!m.visible||!m.open)return;
- const box=document.getElementById('poly-'+mod);if(!box)return;
- const ae=document.activeElement;
- if(ae&&box.contains(ae)&&POLY_FOCUS_IDS.includes(ae.id))return;
- if(mod==='combos'&&usComboSubmitting)return;
- const key=JSON.stringify(sig);if(polyModuleSig.get(mod)===key)return;
- polyModuleSig.set(mod,key);
- // Anchor the whole suite body too: a module changing height must not shift the outer scroll.
- const outer=document.getElementById('body-sportsbook')||box;
- const keep=captureScroll(outer);
- try{fn(box)}catch(err){box.innerHTML=`<div class="mpo-error"><b>Module render error</b> — ${polyEscape(err&&err.message||String(err))}</div>`}
- restoreScroll(outer,keep);
+ return `<div class="poly-strip" id="polyStatus"></div><section class="poly-mod" data-mod="combos"><header><span>POLYMARKET US · LIVE COMBOS · REAL MONEY</span></header><div class="poly-body" id="poly-combos" data-scroll="poly-combos"></div></section>`;
 }
 function renderSportsbook(){
  const body=$('#body-sportsbook');if(!body)return;
- if(body.dataset.shell!=='1'){const keep=captureScroll(body);body.innerHTML=polyShellHtml();body.dataset.shell='1';bindPolyBar();restoreScroll(body,keep)}
- applyPolyModuleState();
+ if(body.dataset.shell!=='2'){const keep=captureScroll(body);body.innerHTML=polyShellHtml();body.dataset.shell='2';polyModuleSig='';restoreScroll(body,keep)}
  const ucf=(polyUSComboState||{}).feed||{};
  const strip=$('#polyStatus');
- if(strip)strip.innerHTML=`<div style="display:flex;justify-content:space-between;gap:8px"><div><div class="green" style="font-size:22px">POLYMARKET US</div><div class="muted">Live games near the end · manual combos</div></div><div style="text-align:right"><b>${ucf.ok===false?'FEED DOWN':'LIVE FEED'}</b><br><span class="${ucf.ok===false?'red':'green'}">${ucf.ok===false?polyEscape(ucf.error||'offline'):`${Number(ucf.eventsLive||0)} live games · ${Number(ucf.candidates||0)} candidates`}</span></div></div>`;
- renderPolyModule('combos',[polyUSComboState,[...usComboSelected],usComboBuildState],renderPolyCombos);
- renderPolyModule('us',[polyUSState],renderPolyUS);
+ if(strip)strip.innerHTML=`<div style="display:flex;justify-content:space-between;gap:8px"><div><div class="green" style="font-size:22px">POLYMARKET US</div><div class="muted">Live games about to end · tick up to ${Number((polyUSComboState||{}).settings?.maxLegs||3)} · one confirmed combo</div></div><div style="text-align:right"><b>${ucf.ok===false?'FEED DOWN':'LIVE FEED'}</b><br><span class="${ucf.ok===false?'red':'green'}">${ucf.ok===false?polyEscape(ucf.error||'offline'):`${Number(ucf.eventsLive||0)} live games · ${Number(ucf.candidates||0)} candidates`}</span></div></div>`;
+ const box=$('#poly-combos');if(!box)return;
+ // Never rebuild under the operator's cursor or mid-placement.
+ const ae=document.activeElement;
+ if(ae&&box.contains(ae)&&POLY_FOCUS_IDS.includes(ae.id))return;
+ if(usComboSubmitting)return;
+ const key=JSON.stringify([polyUSComboState,[...usComboSelected],usComboBuildState]);if(polyModuleSig===key)return;
+ polyModuleSig=key;
+ const keep=captureScroll(body);
+ try{renderPolyCombos(box)}catch(err){box.innerHTML=`<div class="mpo-error"><b>Polymarket render error</b> — ${polyEscape(err&&err.message||String(err))}</div>`}
+ restoreScroll(body,keep);
 }
 function renderPolyCombos(box){
- // Fast Combos · Polymarket US · REAL — snapshot contract per .workflow/scratch/SPEC-fast-combos.md. Every field is optional so an
- // undefined/empty/error snapshot still renders (no throws) while the backend worker builds src/polymarketUSCombos.js in parallel.
- const ucs=polyUSComboState||{},ucReady=ucs.readiness||{},ucFeed=ucs.feed||{},ucCandidates=Array.isArray(ucs.candidates)?ucs.candidates:[],ucSuggested=ucs.suggested||{},ucQuote=ucs.quote||null,ucJournal=ucs.journal||{},ucOpen=Array.isArray(ucJournal.open)?ucJournal.open:[],ucHistory=Array.isArray(ucJournal.history)?ucJournal.history:[],ucStats=ucJournal.stats||{},ucBeta=ucs.betaAccess||'unknown',ucErr=ucs.error||ucs.lastError||null;
- const ucSuggestedLegs=Array.isArray(ucSuggested.legs)?ucSuggested.legs.map(String):[],ucSeedKey=ucSuggestedLegs.join('|');
- if(ucSeedKey&&!usComboSelected.size&&usComboAutoSeedKey!==ucSeedKey){ucSuggestedLegs.forEach(k=>usComboSelected.add(k));usComboAutoSeedKey=ucSeedKey;scheduleUSComboBuild()}
- const ucChosenKeys=[...usComboSelected];
- // A quote is only placeable for exactly the legs it was requested for (server enforces this too).
- const ucQuoteKeys=ucQuote&&Array.isArray(ucQuote.legs)?ucQuote.legs.map(l=>String((l&&l.key)||((l&&l.symbol)+'|'+(l&&l.side)))).sort().join('|'):'';
- const ucQuoteMatches=!!ucQuote&&ucQuoteKeys===ucChosenKeys.slice().sort().join('|');
- const ucRows=ucCandidates.slice(0,12).map(m=>{
-  const ls=m.liveState||{},key=String(m.key||''),clock=[ls.period,ls.elapsed,ls.score].filter(Boolean).join(' · ')||'—';
-  return `<tr><td><input type="checkbox" class="usComboLeg" data-key="${polyEscape(key)}" ${usComboSelected.has(key)?'checked':''}></td>`
-   +`<td style="white-space:normal;min-width:170px"><b>${polyEscape(m.event||'—')}</b><br><span class="muted" style="font-size:10px">${polyEscape(String(m.league||'').toUpperCase())} · ${polyEscape(m.marketType||'')}</span></td>`
-   +`<td style="font-size:10px;white-space:normal">${polyEscape(clock)}</td>`
-   +`<td>${polyEscape(m.side||'—')}<br><span class="muted" style="font-size:10px;white-space:normal">${polyEscape(m.outcome||'')}</span></td>`
-   +`<td>${polyPct(m.price)}<br><span class="muted" style="font-size:10px">net ${polyPct(m.netPrice)}</span></td>`
-   +`<td>${polyNum(m.etaMinutes)==null?'—':'~'+Math.round(Number(m.etaMinutes))+'m'}<br><span class="muted" style="font-size:10px;white-space:normal">${polyEscape(m.lateReason||'')}</span></td>`
-   +`<td>${polyCents(m.spread)}</td></tr>`;
+ const ucs=polyUSComboState||{},rd=ucs.readiness||{},fd=ucs.feed||{},jr=ucs.journal||{},stats=jr.stats||{},beta=ucs.betaAccess||'unknown',err=ucs.error||ucs.lastError||null;
+ const open=Array.isArray(jr.open)?jr.open:[],hist=Array.isArray(jr.history)?jr.history:[];
+ const cands=(Array.isArray(ucs.candidates)?ucs.candidates:[]).slice().sort((a,b)=>(polyNum(a.etaMinutes)??1e9)-(polyNum(b.etaMinutes)??1e9));
+ const st={priceMin:0.8,maxMinutesLeft:15,maxLegs:3,...(ucs.settings||{})},bounds=ucs.settingsBounds||{},sd={...st,...usComboSettingsDraft};
+ const bound=(k,f,d)=>polyNum(bounds[k]?.[f])??d;
+ const maxLegs=Number(st.maxLegs)||3;
+ // A tick on a game that left the live list can no longer be priced; drop it rather than keep a stale leg.
+ if(ucs.candidates){const live=new Set(cands.map(c=>String(c.key)));let dropped=false;for(const k of [...usComboSelected])if(!live.has(k)){usComboSelected.delete(k);dropped=true}if(dropped)scheduleUSComboBuild()}
+ const chosen=[...usComboSelected];
+ const keyBad=rd.authCode==='keyNotFound',needKeys=!rd.credentialsReady||keyBad;
+ const keyText=keyBad?'KEY REJECTED':rd.credentialsReady?'CONNECTED':'KEYS NEEDED',keyCls=keyBad?'red':rd.credentialsReady?'green':'amber';
+ const betaDenied=beta==='denied';
+ const betaText=beta==='enabled'?'COMBOS ENABLED':betaDenied?'BETA PENDING':'NOT YET TESTED',betaCls=beta==='enabled'?'green':betaDenied?'amber':'muted';
+ const status=`<div class="metric-grid"><div class="metric"><label>KEY</label><b class="${keyCls}">${keyText}</b><label>${keyBad?'regenerate at polymarket.us/developer':'polymarket.us account'}</label></div><div class="metric"><label>COMBOS</label><b class="${betaCls}">${betaText}</b><label>${betaDenied?'Polymarket has not enabled combos here':'shown after the first combo call'}</label></div><div class="metric"><label>SESSION</label><b class="${rd.sessionArmed?'red':'amber'}">${rd.sessionArmed?'ARMED':'SAFE'}</b>${rd.credentialsReady&&!keyBad?`<button class="btn" id="usArm">${rd.sessionArmed?'Disarm':'Arm real money'}</button>`:'<label>connect a key to arm</label>'}</div><div class="metric"><label>FEED</label><b class="${fd.ok===false?'red':'green'}">${Number(fd.eventsLive||0)} live</b><label>age ${polyAgeS(fd.ageMs)}</label></div></div>`;
+ const keyForm=needKeys?`<div class="inset" style="padding:6px;margin:6px 0"><b>${keyBad?'Replace your Polymarket US key':'Connect your Polymarket US account'}</b><div class="formrow"><input class="field" id="usKeyId" autocomplete="off" spellcheck="false" placeholder="Key ID"><button class="btn usPaste" data-target="usKeyId">Paste</button><input class="field" id="usSecret" type="password" autocomplete="off" spellcheck="false" placeholder="Secret key (stored locally)"><button class="btn usPaste" data-target="usSecret">Paste</button><button class="btn" id="usSaveKeys">Connect</button></div><span class="muted">Generate these at polymarket.us/developer. The secret is never shown again.</span></div>`:'';
+ const floorPct=v=>(Number(v)*100).toFixed(1);
+ const settings=`<div class="toolbar" style="margin:6px 0;flex-wrap:wrap;gap:8px"><label>Win % from <input class="field" id="usSetFloor" type="number" min="${floorPct(bound('priceMin','min',.6))}" max="${floorPct(bound('priceMin','max',.985))}" step="0.5" value="${floorPct(sd.priceMin)}" style="width:70px"></label><label>Max minutes left <input class="field" id="usSetMinutes" type="number" min="${bound('maxMinutesLeft','min',1)}" max="${bound('maxMinutesLeft','max',30)}" step="1" value="${Number(sd.maxMinutesLeft)}" style="width:60px"></label><label>Max legs <select class="field" id="usSetLegs">${[2,3].map(v=>`<option value="${v}" ${Number(sd.maxLegs)===v?'selected':''}>${v}</option>`).join('')}</select></label><button class="btn" id="usSetSave" ${Object.keys(usComboSettingsDraft).length?'':'disabled'}>Save settings</button></div>`;
+ const rows=cands.map(c=>{
+  const k=String(c.key||''),on=usComboSelected.has(k),full=!on&&chosen.length>=maxLegs,ls=c.liveState||{};
+  const eta=polyNum(c.etaMinutes)==null?'—':'~'+Math.max(1,Math.round(Number(c.etaMinutes)))+'m';
+  return `<tr><td style="white-space:normal;min-width:160px"><b>${polyEscape(c.event||'—')}</b><br><span class="muted" style="font-size:10px">${polyEscape(String(c.league||'').toUpperCase())}</span></td><td style="font-size:10px;white-space:normal">${polyEscape([ls.period,ls.elapsed,ls.score].filter(Boolean).join(' · ')||'—')}</td><td style="white-space:normal">${polyEscape(c.outcome||c.side||'—')}</td><td><b>${polyPct(c.price)}</b></td><td>${eta}</td><td><input type="checkbox" class="usComboLeg" data-key="${polyEscape(k)}" ${on?'checked':''} ${full?`disabled title="Max ${maxLegs} legs"`:''}></td></tr>`;
  }).join('');
- const ucBuild=usComboBuildState&&!usComboBuildState.error?usComboBuildState:null,ucBuildErr=usComboBuildState&&usComboBuildState.error?usComboBuildState.error:null;
- const ucLegCount=Array.isArray(ucBuild&&ucBuild.legs)?ucBuild.legs.length:ucChosenKeys.length;
- const ucEstLine=ucBuild?`${ucLegCount} leg${ucLegCount===1?'':'s'} · est. price ${polyCents(ucBuild.price)} · ${fmt(ucBuild.decimalOdds,2)}× · qty ${fmt(ucBuild.quantity,2)} · fee ${polyUsd(ucBuild.feeUsd)} · pays ${polyUsd(ucBuild.payoutUsd)}`:(ucChosenKeys.length?'Pricing this combo…':'Check 2+ candidates to build a real combo.');
- const ucRow=(e,isOpen=false)=>{
-  const legs=Array.isArray(e.legs)?e.legs:[],legsSummary=legs.slice(0,2).map(l=>polyEscape((l&&l.outcome)||(l&&l.event)||(l&&l.symbol)||'leg')).join(' + ')+(legs.length>2?' +'+(legs.length-2):'');
-  const sym=String(e.symbol||'—'),symShort=sym.length>18?sym.slice(0,18)+'…':sym,pnl=polyNum(e.pnlUsd),status=String(e.status||'—'),statusCls=status==='WON'?'green':status==='LOST'?'red':status==='CANCELLED'?'muted':'amber';
-  return `<tr><td title="${polyEscape(sym)}">${polyEscape(symShort)}</td><td style="white-space:normal;min-width:130px">${legsSummary||'—'}</td><td>${polyNum(e.fillPrice??e.estPrice)==null?'—':polyCents(e.fillPrice??e.estPrice)} × ${fmt(e.quantity,2)}</td><td>${polyUsd(e.stakeUsd)}</td><td><b class="${statusCls}">${polyEscape(status)}</b>${isOpen?`${e.fillVerified?'':'<br><span class="muted" style="font-size:10px">unverified fill</span>'}<br><button class="btn usComboForget" data-id="${polyEscape(String(e.id||''))}" style="font-size:10px">Forget…</button>`:''}</td><td class="${pnl==null?'':pnl>=0?'green':'red'}">${pnl==null?'—':(pnl>=0?'+':'')+'$'+fmt(pnl,2)}</td></tr>`;
+ const rej=Object.entries(fd.rejections||{}).sort((a,b)=>Number(b[1])-Number(a[1])).slice(0,6).map(([k,v])=>`${polyEscape(k)} ${Number(v)}`).join(' · ');
+ const empty=fd.ok===false?`Feed down: ${polyEscape(fd.error||'offline')}`:`No live game within ${Number(st.maxMinutesLeft)} min of the end with a side at ${floorPct(st.priceMin)}% or better.`;
+ const bs=usComboBuildState,bErr=bs&&bs.error?bs.error:null,bOk=bs&&!bs.error&&Array.isArray(bs.legs)?bs:null;
+ const buildLine=chosen.length<2?`Tick 2${maxLegs>2?' or '+maxLegs:''} games to build a combo.`:bErr?`<span class="red">${polyEscape(bErr)}</span>`:bOk?`<b>${bOk.legs.length} legs · pays ${polyUsd(bOk.payoutUsd)}</b> <span class="muted">if every leg wins · est. ${polyCents(bOk.price)} · fees ${polyUsd(bOk.feeUsd)} · profit ${polyUsd(bOk.profitUsd)}</span>`:'Pricing…';
+ const canPlace=rd.sessionArmed&&!needKeys&&!betaDenied&&chosen.length>=2&&chosen.length<=maxLegs&&!!bOk;
+ const placeHint=needKeys?(keyBad?'Key rejected: replace it above.':'Connect your key first.'):!rd.sessionArmed?'Arm the session to place.':betaDenied?'Combos beta pending: Polymarket has not enabled combos for this account yet.':'Place gets a live quote first; nothing is sent until you type the phrase.';
+ const entryRow=(e,isOpen)=>{
+  const legs=Array.isArray(e.legs)?e.legs:[],names=legs.map(l=>polyEscape((l&&l.outcome)||(l&&l.event)||(l&&l.symbol)||'leg')).join(' + ')||'—';
+  const pnl=polyNum(e.pnlUsd),status=String(e.status||'—'),cls=status==='WON'?'green':status==='LOST'?'red':status==='CANCELLED'||status==='FORGOTTEN'?'muted':'amber';
+  const flags=[e.acceptUncertain?'accept unconfirmed':'',e.confirmError?'confirm failed':''].filter(Boolean).join(' · ');
+  return `<tr><td style="white-space:normal;min-width:150px">${names}</td><td>${polyNum(e.fillPrice??e.estPrice)==null?'—':polyCents(e.fillPrice??e.estPrice)} × ${fmt(e.quantity,2)}</td><td>${polyUsd(e.stakeUsd)}</td><td><b class="${cls}">${polyEscape(status)}</b><br><span class="${e.fillVerified?'green':'amber'}" style="font-size:10px">${e.fillVerified?'fill verified':'fill unverified'}</span>${flags?`<br><span class="amber" style="font-size:10px">${polyEscape(flags)}</span>`:''}</td><td class="${pnl==null?'':pnl>=0?'green':'red'}">${pnl==null?'—':(pnl>=0?'+':'')+'$'+fmt(pnl,2)}</td>${isOpen?`<td><button class="btn usComboForget" data-id="${polyEscape(String(e.id||''))}" style="font-size:10px">Forget…</button></td>`:''}</tr>`;
  };
- const ucOpenRows=ucOpen.slice(0,12).map(e=>ucRow(e,true)).join('')||'<tr><td colspan=6>No open real combos.</td></tr>';
- const ucHistRows=ucHistory.slice(0,8).map(ucRow).join('')||'<tr><td colspan=6>No settled real combos yet.</td></tr>';
- const ucKeyBadClass=ucReady.authCode==='keyNotFound'?'red':ucReady.credentialsReady?'green':'amber';
- const ucKeyText=ucReady.authCode==='keyNotFound'?'KEY REJECTED — regenerate at polymarket.us/developer':(ucReady.credentialsReady?'CONNECTED':'KEYS NEEDED');
- const ucBetaLabel=ucBeta==='enabled'?'COMBO API: ENABLED':(ucBeta==='denied'?'COMBO API: DENIED → MANUAL COPY MODE':'COMBO API: UNKNOWN');
- const usComboPanel=`<fieldset class="mpo-danger-fieldset" style="margin-top:6px"><legend>FAST COMBOS · POLYMARKET US · REAL</legend>
-  <div class="metric-grid"><div class="metric"><label>FEED</label><b class="${ucFeed.ok?'green':'red'}">${Number(ucFeed.eventsLive||0)} live</b><label>${Number(ucFeed.candidates??ucCandidates.length)} candidates · age ${polyAgeS(ucFeed.ageMs)}${Number(ucStats.unverified||0)?` · <span class="amber">${Number(ucStats.unverified)} unverified</span>`:''}</label></div><div class="metric"><label>KEY</label><b class="${ucKeyBadClass}">${polyEscape(ucKeyText)}</b></div><div class="metric"><label>BETA</label><b class="${ucBeta==='enabled'?'green':(ucBeta==='denied'?'amber':'muted')}">${ucBetaLabel}</b></div><div class="metric"><label>EXECUTION</label><b class="${ucReady.sessionArmed?'red':'amber'}">${ucReady.sessionArmed?'ARMED':'SAFE'}</b><label>manual confirm only</label></div></div>
-  ${ucErr?`<div class="mpo-error"><b>Fast combos error</b> — ${polyEscape(ucErr)}</div>`:''}
-  <div data-scroll="combo-cands" style="overflow:auto;max-height:200px"><table class="table terminal"><thead><tr><th></th><th>Event / League / Type</th><th>Clock</th><th>Side / Outcome</th><th>Ask (net)</th><th>ETA / reason</th><th>Spread</th></tr></thead><tbody>${ucRows||'<tr><td colspan=7>No near-settlement real candidates right now.</td></tr>'}</tbody></table></div>
-  <div class="inset" style="padding:6px;margin-top:6px"><b>Real combo builder</b><div class="formrow" style="grid-template-columns:90px 1fr 150px"><label>Stake $</label><input class="field" id="usComboStake" type="number" min="1" step="0.5" value="${polyEscape(usComboStakeValue||5)}"><select class="field" id="usComboMode"><option value="rfq" ${usComboModeValue==='rfq'?'selected':''}>RFQ</option><option value="limit" ${usComboModeValue==='limit'?'selected':''}>Limit @ est. price</option></select></div>
-  <div class="muted" style="font-size:11px;margin:4px 0">${ucBuildErr?`<span class="red">${polyEscape(ucBuildErr)}</span>`:polyEscape(ucEstLine)}</div>
-  <div class="toolbar"><button class="btn" id="usComboGetQuote" ${ucChosenKeys.length<2?'disabled':''}>Get quote</button>${ucQuote?`<span>Quote ${polyCents(ucQuote.buyPrice)} × ${fmt(ucQuote.buyQtyDecimal,2)} · expires in <b id="usComboQuoteCountdown">—</b>${ucQuoteMatches?'':' · <b class="red">legs changed — re-quote</b>'}</span>`:'<span class="muted">No active quote.</span>'}<button class="btn" id="usComboCancelQuote" ${ucQuote&&ucQuote.rfqId?'':'disabled'}>Cancel quote</button><button class="btn" id="usComboCopyLegs" ${ucChosenKeys.length?'':'disabled'}>Copy legs</button></div>
-  <div class="toolbar"><input class="field" id="usComboConfirm" placeholder="Type PLACE REAL COMBO" style="width:200px"><button class="btn" id="usComboPlace" ${ucReady.sessionArmed?'':'disabled'}>Place combo</button></div></div>
-  <div class="grid2" style="margin-top:6px"><fieldset><legend>Open real combos · ${ucOpen.length}</legend><div class="toolbar" style="margin-bottom:4px"><button class="btn" id="usComboSettle">Check settlement</button></div><div data-scroll="combo-open" style="overflow:auto;max-height:160px"><table class="table terminal"><thead><tr><th>Symbol</th><th>Legs</th><th>Price × Qty</th><th>Stake</th><th>Status</th><th>P/L</th></tr></thead><tbody>${ucOpenRows}</tbody></table></div></fieldset><fieldset><legend>Last 8 combos journal</legend><div data-scroll="combo-hist" style="overflow:auto;max-height:160px"><table class="table terminal"><thead><tr><th>Symbol</th><th>Legs</th><th>Price × Qty</th><th>Stake</th><th>Status</th><th>P/L</th></tr></thead><tbody>${ucHistRows}</tbody></table></div><div class="muted" style="font-size:10px;margin-top:3px">${Number(ucStats.placed||0)} placed · ${Number(ucStats.won||0)} won · ${Number(ucStats.lost||0)} lost · P/L ${polyUsd(ucStats.pnlUsd)} · hit rate ${ucStats.hitRate==null?'—':polyPct(ucStats.hitRate)}</div></fieldset></div>
- </fieldset>`;
- box.innerHTML=`<div class="dark terminal" style="padding:8px">`+usComboPanel+`</div>`;
- // Fast Combos · Polymarket US · REAL — wiring for the fieldset injected above.
- const updateUsComboPlaceGate=()=>{
-  const btn=$('#usComboPlace');if(!btn)return;
-  const mode=$('#usComboMode')?.value||usComboModeValue;
-  const confirmed=($('#usComboConfirm')?.value||'')==='PLACE REAL COMBO';
-  btn.disabled=!(ucReady.sessionArmed&&((!!ucQuote&&ucQuoteMatches)||mode==='limit')&&confirmed);
- };
- updateUsComboPlaceGate();
- $$('.usComboLeg').forEach(el=>el.onchange=()=>{const key=el.dataset.key;if(!key)return;if(el.checked)usComboSelected.add(key);else usComboSelected.delete(key);scheduleUSComboBuild();polyModuleSig.delete('combos');renderSportsbook()});
+ const openRows=open.map(e=>entryRow(e,true)).join('')||'<tr><td colspan=6>No open combos.</td></tr>';
+ const histRows=hist.slice(0,8).map(e=>entryRow(e,false)).join('')||'<tr><td colspan=5>No settled combos yet.</td></tr>';
+ box.innerHTML=`<div class="dark terminal" style="padding:8px"><fieldset class="mpo-danger-fieldset" style="margin-top:6px"><legend>LIVE COMBOS · POLYMARKET US · REAL</legend>
+  ${status}${keyForm}${err?`<div class="mpo-error"><b>Polymarket US</b> — ${polyEscape(err)}</div>`:''}${settings}
+  <div data-scroll="combo-cands" style="overflow:auto;max-height:240px"><table class="table terminal"><thead><tr><th>Event</th><th>Clock / score</th><th>Side</th><th>Win %</th><th>Left</th><th></th></tr></thead><tbody>${rows||`<tr><td colspan=6>${empty}</td></tr>`}</tbody></table></div>
+  <div class="muted" style="font-size:10px;margin:3px 0">${rej?'Filtered out: '+rej:'&nbsp;'}</div>
+  <div class="inset" style="padding:6px;margin-top:6px"><div class="toolbar" style="flex-wrap:wrap;gap:8px"><label>Stake $ <input class="field" id="usComboStake" type="number" min="1" max="${Number(ucs.limits?.maxStakeUsd||25)}" step="0.5" value="${polyEscape(usComboStakeValue||5)}" style="width:70px"></label><span style="font-size:11px">${buildLine}</span></div>
+  <div class="toolbar" style="margin-top:4px"><button class="btn" id="usComboPlace" ${canPlace?'':'disabled'}>${betaDenied?'Place (combos beta pending)':'Place combo…'}</button><span class="muted" style="font-size:10px">${polyEscape(placeHint)}</span></div></div>
+  <div class="grid2" style="margin-top:6px"><fieldset><legend>Open combos · ${open.length}</legend><div class="toolbar" style="margin-bottom:4px"><button class="btn" id="usComboSettle">Check settlement</button></div><div data-scroll="combo-open" style="overflow:auto;max-height:160px"><table class="table terminal"><thead><tr><th>Legs</th><th>Price × Qty</th><th>Stake</th><th>Status</th><th>P/L</th><th></th></tr></thead><tbody>${openRows}</tbody></table></div></fieldset><fieldset><legend>History</legend><div data-scroll="combo-hist" style="overflow:auto;max-height:160px"><table class="table terminal"><thead><tr><th>Legs</th><th>Price × Qty</th><th>Stake</th><th>Status</th><th>P/L</th></tr></thead><tbody>${histRows}</tbody></table></div><div class="muted" style="font-size:10px;margin-top:3px">${Number(stats.placed||0)} placed · ${Number(stats.won||0)} won · ${Number(stats.lost||0)} lost · P/L ${polyUsd(stats.pnlUsd)} · hit rate ${stats.hitRate==null?'—':polyPct(stats.hitRate)}</div></fieldset></div>
+ </fieldset></div>`;
+ const rerender=()=>{polyModuleSig='';renderSportsbook()};
+ $$('.usComboLeg').forEach(el=>el.onchange=()=>{const k=el.dataset.key;if(!k)return;if(el.checked&&usComboSelected.size>=maxLegs){el.checked=false;return}if(el.checked)usComboSelected.add(k);else usComboSelected.delete(k);scheduleUSComboBuild();rerender()});
  $('#usComboStake')?.addEventListener('input',e=>{usComboStakeValue=e.target.value;scheduleUSComboBuild()});
- $('#usComboMode')?.addEventListener('change',e=>{usComboModeValue=e.target.value;updateUsComboPlaceGate()});
- $('#usComboConfirm')?.addEventListener('input',updateUsComboPlaceGate);
- if(usComboCountdownTimer){clearInterval(usComboCountdownTimer);usComboCountdownTimer=null}
- if(ucQuote?.expiresAt){
-  const tickUsComboCountdown=()=>{const el=$('#usComboQuoteCountdown');if(!el){if(usComboCountdownTimer){clearInterval(usComboCountdownTimer);usComboCountdownTimer=null}return}const ms=Number(ucQuote.expiresAt)-Date.now();el.textContent=ms>0?Math.ceil(ms/1000)+'s':'expired';if(ms<=0&&usComboCountdownTimer){clearInterval(usComboCountdownTimer);usComboCountdownTimer=null}};
-  tickUsComboCountdown();usComboCountdownTimer=setInterval(tickUsComboCountdown,1000);
- }
- $('#usComboGetQuote')?.addEventListener('click',async()=>{
-  if(usComboSubmitting)return;
-  const legKeys=ucChosenKeys.slice();
-  if(legKeys.length<2)return showDialog('Fast Combos','Select at least 2 legs','Check two or more candidate rows before requesting a quote.');
-  usComboSubmitting=true;
-  try{const r=await post('/api/polymarket-us/combos/quote',{legKeys,stakeUsd:Number(usComboStakeValue)||5});
-   if(!r?.ok)showDialog('Fast Combos','Quote failed',r?.error||'Polymarket US rejected the quote request.');
-  }catch(e){showDialog('Fast Combos','Quote failed',e.message||'Unknown error')}
-  finally{usComboSubmitting=false;await refreshUSComboSnapshot()}
+ const draft=(id,k,conv)=>$('#'+id)?.addEventListener(id==='usSetLegs'?'change':'input',e=>{usComboSettingsDraft[k]=conv(e.target.value);const b=$('#usSetSave');if(b)b.disabled=false});
+ draft('usSetFloor','priceMin',v=>Number(v)/100);draft('usSetMinutes','maxMinutesLeft',Number);draft('usSetLegs','maxLegs',Number);
+ $('#usSetSave')?.addEventListener('click',async()=>{
+  const r=await post('/api/polymarket-us/combos/settings',{...usComboSettingsDraft}).catch(e=>({ok:false,error:e.message}));
+  if(!r?.ok)return showDialog('Polymarket US','Settings not saved',r?.error||'The server rejected the settings.');
+  usComboSettingsDraft={};
+  while(usComboSelected.size>Number(r.settings?.maxLegs||maxLegs))usComboSelected.delete([...usComboSelected].pop());
+  scheduleUSComboBuild();await refreshUSComboSnapshot();
  });
- $('#usComboCancelQuote')?.addEventListener('click',async()=>{
-  const rfqId=ucQuote?.rfqId;if(!rfqId)return;
-  try{const r=await post('/api/polymarket-us/combos/cancel-rfq',{rfqId});if(!r?.ok)showDialog('Fast Combos','Cancel failed',r?.error||'Could not cancel the RFQ.');}
-  catch(e){showDialog('Fast Combos','Cancel failed',e.message||'Unknown error')}
+ $$('.usPaste').forEach(b=>b.onclick=async()=>{const el=$('#'+b.dataset.target);if(!el)return;try{const text=await navigator.clipboard.readText();if(!text)throw new Error('Clipboard is empty');el.value=text.trim();el.focus()}catch{el.focus();showDialog('Paste','Clipboard could not be read automatically','The field is focused now. Press Ctrl+V, or right-click the field and choose Paste.')}});
+ $('#usSaveKeys')?.addEventListener('click',async()=>{const r=await post('/api/polymarket-us/config',{keyId:$('#usKeyId')?.value,secretKey:$('#usSecret')?.value,realEnabled:true}).catch(e=>({ok:false,error:e.message}));if(!r?.ok)return showDialog('Polymarket US','Connection failed',r?.error||'Could not save credentials.');showDialog('Polymarket US','Key saved','Stored locally with restricted file permissions. Placing still needs an armed session and the typed phrase.');await refreshUSComboSnapshot()});
+ $('#usArm')?.addEventListener('click',async()=>{const r=await post('/api/polymarket-us/arm',{armed:!rd.sessionArmed}).catch(e=>({ok:false,error:e.message}));if(!r?.ok)return showDialog('Polymarket US','Arm failed',r?.error||'Could not change the session state.');await refreshUSComboSnapshot()});
+ $('#usComboPlace')?.addEventListener('click',()=>usComboPlaceFlow(chosen.slice(),Number(usComboStakeValue)||5));
+ $('#usComboSettle')?.addEventListener('click',async()=>{
+  try{const r=await post('/api/polymarket-us/combos/settle',{});if(!r?.ok)showDialog('Polymarket US','Settlement check failed',r?.error||'Could not check settlement.')}
+  catch(e){showDialog('Polymarket US','Settlement check failed',e.message||'Unknown error')}
   finally{await refreshUSComboSnapshot()}
- });
- $('#usComboCopyLegs')?.addEventListener('click',async()=>{
-  const legs=ucCandidates.filter(m=>usComboSelected.has(String(m.key)));
-  if(!legs.length)return showDialog('Fast Combos','Nothing to copy','Select at least one candidate leg first.');
-  const text=legs.map(m=>`${m.symbol||''} · ${m.side||''} · ${m.outcome||''} · ${m.event||''} · ${polyNum(m.price)==null?'':fmt(m.price,3)}`).join('\n');
-  try{await navigator.clipboard.writeText(text);showDialog('Fast Combos','Legs copied',`${legs.length} leg${legs.length===1?'':'s'} copied — paste into polymarket.us to place manually while beta access is pending.`);}
-  catch(e){showDialog('Fast Combos','Copy failed','Could not access the clipboard. '+(e.message||''))}
- });
- $('#usComboPlace')?.addEventListener('click',async()=>{
-  if(usComboSubmitting)return;
-  const legKeys=ucChosenKeys.slice(),mode=$('#usComboMode')?.value||usComboModeValue,confirmation=$('#usComboConfirm')?.value||'';
-  if(confirmation!=='PLACE REAL COMBO')return showDialog('Fast Combos','Confirmation required','Type PLACE REAL COMBO exactly to place a real combo.');
-  if(!ucReady.sessionArmed)return showDialog('Fast Combos','Session not armed','Arm the Polymarket US session before placing a real combo.');
-  if(mode==='rfq'&&!ucQuote)return showDialog('Fast Combos','No active quote','Get a quote first, or switch to Limit mode.');
-  if(mode==='rfq'&&!ucQuoteMatches)return showDialog('Fast Combos','Quote is for different legs','The selected legs changed after the quote was requested. Get a new quote.');
-  usComboSubmitting=true;
-  try{
-   const body={legKeys,stakeUsd:Number(usComboStakeValue)||5,mode,confirmation};
-   if(mode==='rfq'){body.rfqId=ucQuote?.rfqId;body.quoteId=ucQuote?.quoteId}
-   else{body.limitPrice=polyNum(ucBuild?.price)??polyNum(ucSuggested.price)}
-   const r=await post('/api/polymarket-us/combos/place',body);
-   if(!r?.ok)return showDialog('Fast Combos','Combo not placed',r?.error||'Polymarket US rejected the order.');
-   showDialog('Fast Combos','Real combo placed',`${legKeys.length} legs · ${polyUsd(r.entry?.stakeUsd)} stake · status ${polyEscape(r.entry?.status||'SUBMITTED')}`);
-   usComboSelected.clear();usComboAutoSeedKey='';usComboBuildState=null;const cf=$('#usComboConfirm');if(cf)cf.value='';
-  }catch(e){showDialog('Fast Combos','Combo not placed',e.message||'Unknown error')}
-  finally{usComboSubmitting=false;await refreshUSComboSnapshot()}
  });
  $$('.usComboForget').forEach(b=>b.onclick=async()=>{
   const id=b.dataset.id;if(!id)return;
-  const confirmation=window.prompt('Type FORGET to drop this entry from the local open book. This does NOT cancel or close anything on Polymarket US — check your real positions there first.','');
+  const confirmation=await polyConfirm({title:'Forget combo',head:'Drop this entry from the local book?',
+   html:'<p>This does <b>not</b> cancel or close anything on Polymarket US. Check your real positions there first. It books no P/L and starts no cooldown.</p>',
+   phrase:'FORGET',confirmLabel:'Forget entry'});
   if(confirmation!=='FORGET')return;
-  try{const r=await post('/api/polymarket-us/combos/forget',{id,confirmation});if(!r?.ok)showDialog('Fast Combos','Entry not dropped',r?.error||'Server refused.');}
-  catch(e){showDialog('Fast Combos','Entry not dropped',e.message||'Unknown error')}
-  finally{await refreshUSComboSnapshot()}
- });
- $('#usComboSettle')?.addEventListener('click',async()=>{
-  try{const r=await post('/api/polymarket-us/combos/settle',{});if(!r?.ok)showDialog('Fast Combos','Settlement check failed',r?.error||'Could not check settlement.');}
-  catch(e){showDialog('Fast Combos','Settlement check failed',e.message||'Unknown error')}
+  try{const r=await post('/api/polymarket-us/combos/forget',{id,confirmation});if(!r?.ok)showDialog('Polymarket US','Entry not dropped',r?.error||'Server refused.')}
+  catch(e){showDialog('Polymarket US','Entry not dropped',e.message||'Unknown error')}
   finally{await refreshUSComboSnapshot()}
  });
 }
-function renderPolyUS(box){
- const us=polyUSState||{},ur=us.readiness||{},ua=us.auth||{},uops=Array.isArray(us.opportunities)?us.opportunities:[];
- const ubals=ua.balances?.balances||[],ubal=ubals[0]||{},upos=ua.positions?.positions||[],uorders=ua.orders?.orders||[];
- const upRows=upos.slice(0,8).map((p,i)=>`<tr><td>${polyEscape(p.marketSlug||p.market?.slug||p.slug||'—')}</td><td>${polyEscape(p.side||p.positionSide||p.intent||'—')}</td><td>${fmt(p.quantity||p.qty||p.size,0)}</td><td>${polyUsd(p.marketValue||p.value||p.currentValue)}</td><td><button class="btn usClosePos" data-i="${i}">Close…</button></td></tr>`).join('');
- const uorderRows=uorders.slice(0,8).map((o,i)=>`<tr><td>${polyEscape(o.marketSlug||o.market?.slug||o.slug||'—')}</td><td>${polyEscape(o.intent||o.side||'—')}</td><td>${polyUsd(o.price?.value??o.price)} × ${fmt(o.quantity||o.qty,0)}</td><td>${polyEscape(o.status||o.state||'OPEN')}</td><td><button class="btn usCancelOrder" data-i="${i}">Cancel…</button></td></tr>`).join('');
- const urows=uops.slice(0,12).map((m,i)=>`<tr><td><button class="btn usStage" data-i="${i}">Stage</button></td><td style="white-space:normal;min-width:180px"><b>${polyEscape(m.title||m.question||m.slug)}</b><br><span class="muted">${polyEscape(m.opportunityType||'WATCH')} · score ${fmt(m.opportunityScore,0)}</span></td><td>${m.bid?fmt(m.bid*100,1)+'¢':'—'} / ${m.ask?fmt(m.ask*100,1)+'¢':'—'}</td><td>${m.spread?fmt(m.spread*100,1)+'¢':'—'}</td><td>${m.makerEdgePerContract?fmt(m.makerEdgePerContract*100,2)+'¢':'—'}</td><td>${fmt(m.executionScore,0)}</td><td>${fmt(m.openInterest||m.liquidity,0)}</td><td>${m.rewardPool?'$'+fmt(m.rewardPool,0):'—'}</td></tr>`).join('');
- const usPanel=`<fieldset style="border-color:#2f70ff;background:#06101f"><legend style="color:#7fb0ff">POLYMARKET US · FULL SUITE</legend><div class="metric-grid"><div class="metric"><label>API</label><b class="${ur.credentialsReady?'green':'amber'}">${ur.credentialsReady?'CONNECTED':'KEYS NEEDED'}</b></div><div class="metric"><label>BALANCE</label><b>${ur.credentialsReady?polyUsd(ubal.currentBalance?.value??ubal.currentBalance):'—'}</b><label>Buying power ${ur.credentialsReady?polyUsd(ubal.buyingPower?.value??ubal.buyingPower):'—'}</label></div><div class="metric"><label>POSITIONS / ORDERS</label><b>${upos.length} / ${uorders.length}</b></div><div class="metric"><label>MARKETS SCANNED</label><b>${Number(us.counts?.total||0)}</b><label>${Number(us.counts?.incentive||0)} incentive · ${Number(us.counts?.spreadMaker||0)} maker</label></div><div class="metric"><label>REAL EXECUTION</label><b class="${ur.sessionArmed?'red':'amber'}">${ur.sessionArmed?'ARMED':'SAFE'}</b><label>manual confirm only</label></div></div>
- ${ur.credentialsReady?'':`<div class="inset" style="padding:6px;margin:6px 0"><b>Connect your Polymarket US account</b><div class="formrow"><input class="field" id="usKeyId" autocomplete="off" spellcheck="false" placeholder="Polymarket US Key ID"><button class="btn usPaste" data-target="usKeyId">Paste</button><input class="field" id="usSecret" type="password" autocomplete="off" spellcheck="false" placeholder="Secret Key (stored locally)"><button class="btn usPaste" data-target="usSecret">Paste</button><button class="btn" id="usSaveKeys">Connect</button></div><span class="muted">Generate these at polymarket.us/developer. The secret is never rendered back into the UI.</span></div>`}
- <div data-scroll="us-ops" style="overflow:auto;max-height:230px"><table class="table terminal"><thead><tr><th></th><th>Opportunity</th><th>Bid / Ask</th><th>Spread</th><th>Maker edge</th><th>Exec</th><th>OI</th><th>Program pool*</th></tr></thead><tbody>${urows||'<tr><td colspan=8>Scanning Polymarket US…</td></tr>'}</tbody></table></div>
- ${ur.credentialsReady?`<div class="grid2" style="margin-top:6px"><fieldset><legend>Real positions</legend><table class="table terminal"><thead><tr><th>Market</th><th>Side</th><th>Qty</th><th>Value</th><th></th></tr></thead><tbody>${upRows||'<tr><td colspan=5>No open positions.</td></tr>'}</tbody></table></fieldset><fieldset><legend>Open real orders</legend><table class="table terminal"><thead><tr><th>Market</th><th>Intent</th><th>Price × Qty</th><th>Status</th><th></th></tr></thead><tbody>${uorderRows||'<tr><td colspan=5>No open orders.</td></tr>'}</tbody></table><button class="btn" id="usCancelAll" ${uorders.length?'':'disabled'}>Cancel all…</button></fieldset></div>`:''}
- <div class="inset" style="padding:6px;margin-top:6px"><b>Order staging</b><div class="formrow" style="grid-template-columns:2fr 1fr 80px 70px"><input class="field" id="usSlug" placeholder="market slug"><select class="field" id="usIntent"><option>ORDER_INTENT_BUY_LONG</option><option>ORDER_INTENT_BUY_SHORT</option><option>ORDER_INTENT_SELL_LONG</option><option>ORDER_INTENT_SELL_SHORT</option></select><input class="field" id="usPrice" type="number" min=.001 max=.999 step=.001 placeholder="price"><input class="field" id="usQty" type="number" min=1 step=1 value=1></div><div class="toolbar"><label><input type="checkbox" id="usMaker" checked> maker-only</label><button class="btn" id="usPreview">Preview</button>${ur.credentialsReady?`<button class="btn" id="usArm">${ur.sessionArmed?'Disarm real':'Arm real this session'}</button>`:''}<input class="field" id="usConfirm" placeholder="Type PLACE REAL ORDER" style="width:155px"><button class="btn" id="usPlace" ${ur.sessionArmed?'':'disabled'}>Place real order</button></div><div id="usPreviewOut" class="muted" style="font-size:10px">Preview validates the order with Polymarket US before anything can be submitted. *Reward pool is shared across a program's qualifying markets; it is not a per-market payout.</div></div></fieldset>`;
- box.innerHTML=`<div class="dark terminal" style="padding:8px">`+usPanel+`</div>`;
- $$('.usStage').forEach(b=>b.onclick=()=>{const m=uops[Number(b.dataset.i)];if(!m)return;$('#usSlug').value=m.slug||'';$('#usPrice').value=(m.ask||m.mid||.5).toFixed(3);$('#usQty').value=1;$('#usPreviewOut').textContent=`Staged ${m.title||m.question||m.slug} · ${m.opportunityType||'WATCH'} · spread ${fmt((m.spread||0)*100,2)}¢`;});
- $$('.usPaste').forEach(b=>b.onclick=async()=>{const el=$('#'+b.dataset.target);if(!el)return;try{const text=await navigator.clipboard.readText();if(!text)throw new Error('Clipboard is empty');el.value=text.trim();el.focus();}catch(e){el.focus();showDialog('Paste','Clipboard button could not read automatically','The field is focused now. Press ⌘V, or right-click the field and choose Paste.');}});
- $('#usSaveKeys')?.addEventListener('click',async()=>{const r=await post('/api/polymarket-us/config',{keyId:$('#usKeyId')?.value,secretKey:$('#usSecret')?.value,realEnabled:true}).catch(e=>({ok:false,error:e.message}));if(!r?.ok)return showDialog('Polymarket US','Connection failed',r?.error||'Could not save credentials.');showDialog('Polymarket US','API connected','Credentials were stored locally with restricted file permissions. Real orders still require a session arm and explicit confirmation.');await refreshPolymarketUS();});
- $('#usArm')?.addEventListener('click',async()=>{const r=await post('/api/polymarket-us/arm',{armed:!ur.sessionArmed}).catch(e=>({ok:false,error:e.message}));if(!r?.ok)return showDialog('Polymarket US','Arm failed',r?.error||'Could not change session state.');await refreshPolymarketUS();});
- const usOrder=()=>({marketSlug:$('#usSlug')?.value,intent:$('#usIntent')?.value,price:Number($('#usPrice')?.value),quantity:Number($('#usQty')?.value),makerOnly:$('#usMaker')?.checked!==false});
- $('#usPreview')?.addEventListener('click',async()=>{const out=$('#usPreviewOut');if(out)out.textContent='Validating with Polymarket US…';const r=await post('/api/polymarket-us/preview',usOrder()).catch(e=>({ok:false,error:e.message}));if(!r?.ok){if(out)out.textContent='Preview failed: '+(r?.error||'unknown error');return}if(out)out.textContent='VALID PREVIEW · '+JSON.stringify(r.preview).slice(0,420);});
- $('#usPlace')?.addEventListener('click',async()=>{const req={...usOrder(),confirmation:$('#usConfirm')?.value};const r=await post('/api/polymarket-us/order',req).catch(e=>({ok:false,error:e.message}));if(!r?.ok)return showDialog('Polymarket US','Real order not placed',r?.error||'Exchange rejected the order.');showDialog('Polymarket US','Real order submitted',JSON.stringify(r.order).slice(0,700));$('#usConfirm').value='';await refreshPolymarketUS();});
- $$('.usClosePos').forEach(b=>b.onclick=async()=>{const p=upos[Number(b.dataset.i)]||{},slug=p.marketSlug||p.market?.slug||p.slug;if(!slug)return showDialog('Polymarket US','Cannot close position','No market slug was returned for this position.');const confirmation=window.prompt('Type CLOSE REAL POSITION to close the entire position:','');if(confirmation!=='CLOSE REAL POSITION')return;const r=await post('/api/polymarket-us/close',{marketSlug:slug,confirmation}).catch(e=>({ok:false,error:e.message}));if(!r?.ok)return showDialog('Polymarket US','Close failed',r?.error||'Exchange rejected the close.');showDialog('Polymarket US','Position close submitted',JSON.stringify(r.result).slice(0,650));await refreshPolymarketUS();});
- $$('.usCancelOrder').forEach(b=>b.onclick=async()=>{const o=uorders[Number(b.dataset.i)]||{},orderId=o.id||o.orderId,marketSlug=o.marketSlug||o.market?.slug||o.slug;const confirmation=window.prompt('Type CANCEL REAL ORDER to cancel this order:','');if(confirmation!=='CANCEL REAL ORDER')return;const r=await post('/api/polymarket-us/cancel',{orderId,marketSlug,confirmation}).catch(e=>({ok:false,error:e.message}));if(!r?.ok)return showDialog('Polymarket US','Cancel failed',r?.error||'Exchange rejected the cancellation.');await refreshPolymarketUS();});
- $('#usCancelAll')?.addEventListener('click',async()=>{const confirmation=window.prompt('Type CANCEL REAL ORDERS to cancel all open orders:','');if(confirmation!=='CANCEL REAL ORDERS')return;const r=await post('/api/polymarket-us/cancel-all',{confirmation}).catch(e=>({ok:false,error:e.message}));if(!r?.ok)return showDialog('Polymarket US','Cancel all failed',r?.error||'Exchange rejected the cancellation.');await refreshPolymarketUS();});
+// In-page confirmation (Electron has no window.prompt). Resolves to the typed phrase, or null when dismissed.
+// The phrase field is never pre-filled; with an expiry, confirm locks at zero and Re-quote is offered.
+function polyConfirm({title,head,html,phrase,confirmLabel='Confirm',expiresAt=null,requote=null}){
+ return new Promise(resolve=>{
+  const dlg=$('#polyConfirm'),layer=$('#dialogLayer'),input=$('#polyConfirmPhrase'),ok=$('#polyConfirmOk'),rq=$('#polyConfirmRequote'),cd=$('#polyConfirmCountdown'),bodyEl=$('#polyConfirmBody');
+  $('#polyConfirmTitle').textContent=title;$('#polyConfirmHead').textContent=head;bodyEl.innerHTML=html;
+  input.value='';input.placeholder='Type '+phrase;ok.textContent=confirmLabel;
+  let exp=expiresAt,busy=false,timer=null;
+  const expired=()=>exp!=null&&Date.now()>=exp;
+  const sync=()=>{
+   if(exp==null)cd.textContent='';
+   else{const left=Math.max(0,Math.ceil((exp-Date.now())/1000));cd.textContent=left>0?`Quote expires in ${left}s`:'Quote expired: re-quote to continue.';cd.className=left>0?'':'red'}
+   ok.disabled=busy||input.value!==phrase||expired();
+   rq.hidden=!(requote&&expired());rq.disabled=busy;
+  };
+  const close=v=>{clearInterval(timer);dlg.classList.add('hidden');layer.classList.remove('mpo-modal-open');input.oninput=ok.onclick=rq.onclick=null;$('#polyConfirmCancel').onclick=$('#polyConfirmX').onclick=null;resolve(v)};
+  input.oninput=sync;
+  ok.onclick=()=>{if(input.value===phrase&&!expired())close(input.value)};
+  $('#polyConfirmCancel').onclick=$('#polyConfirmX').onclick=()=>close(null);
+  rq.onclick=async()=>{
+   busy=true;sync();
+   try{const next=await requote();bodyEl.innerHTML=next.html;exp=next.expiresAt}
+   catch(e){bodyEl.insertAdjacentHTML('beforeend',`<p class="red">Re-quote failed: ${polyEscape(e&&e.message||e)}</p>`)}
+   finally{busy=false;sync()}
+  };
+  dlg.classList.remove('hidden');layer.classList.add('mpo-modal-open');
+  timer=setInterval(sync,250);sync();setTimeout(()=>input.focus(),0);
+ });
+}
+async function usComboQuote(legKeys,stakeUsd){
+ const r=await post('/api/polymarket-us/combos/quote',{legKeys,stakeUsd});
+ if(!r?.ok)throw new Error(r?.error||'Polymarket US returned no quote.');
+ return r.quote;
+}
+function usQuoteHtml(q,stakeUsd){
+ const legs=Array.isArray(q?.legs)?q.legs:[],qty=polyNum(q?.buyQtyDecimal),price=polyNum(q?.buyPrice);
+ const list=legs.map(l=>`<li>${polyEscape(l.event||l.symbol||'leg')}: <strong>${polyEscape(l.outcome||l.side||'')}</strong> @ ${polyPct(l.price)}</li>`).join('');
+ return `<ul style="margin:4px 0 6px 16px;padding:0">${list}</ul><p>Stake <strong>${polyUsd(stakeUsd)}</strong> (fees included) · quoted price <strong>${polyCents(price)}</strong> for ${qty==null?'—':fmt(qty,2)} contracts.</p><p>Pays <strong>${qty==null?'—':polyUsd(qty)}</strong> only if every leg wins. One losing leg loses the whole stake.</p>`;
+}
+async function usComboPlaceFlow(legKeys,stakeUsd){
+ if(usComboSubmitting||legKeys.length<2)return;
+ usComboSubmitting=true;
+ let quote=null;
+ try{
+  try{quote=await usComboQuote(legKeys,stakeUsd)}
+  catch(e){return showDialog('Polymarket US','No quote',e.message||'Unknown error')}
+  const phrase=await polyConfirm({title:'Place real combo',head:`${legKeys.length} legs · ${polyUsd(stakeUsd)} stake · REAL MONEY`,html:usQuoteHtml(quote,stakeUsd),
+   phrase:'PLACE REAL COMBO',confirmLabel:'Place real combo',expiresAt:polyNum(quote.expiresAt),
+   requote:async()=>{
+    try{await post('/api/polymarket-us/combos/cancel-rfq',{rfqId:quote.rfqId})}catch{}
+    quote=await usComboQuote(legKeys,stakeUsd);
+    return {html:usQuoteHtml(quote,stakeUsd),expiresAt:polyNum(quote.expiresAt)};
+   }});
+  if(phrase!=='PLACE REAL COMBO'){try{await post('/api/polymarket-us/combos/cancel-rfq',{rfqId:quote.rfqId})}catch{}return}
+  const r=await post('/api/polymarket-us/combos/place',{legKeys,stakeUsd,mode:'rfq',rfqId:quote.rfqId,quoteId:quote.quoteId,confirmation:phrase});
+  if(!r?.ok)return showDialog('Polymarket US','Combo not placed',r?.error||'Polymarket US rejected the combo.');
+  showDialog('Polymarket US','Combo submitted',`${legKeys.length} legs · ${polyUsd(r.entry?.stakeUsd)} stake · ${r.entry?.status||'SUBMITTED'}. The fill is checked against the exchange before any P/L is booked.`);
+  usComboSelected.clear();usComboBuildState=null;
+ }catch(e){showDialog('Polymarket US','Combo not placed',e.message||'Unknown error')}
+ finally{usComboSubmitting=false;polyModuleSig='';await refreshUSComboSnapshot()}
 }
 function renderNetwork(){
  const n=networkState||{},self=n.self||{},peers=n.peers||[],online=peers.filter(p=>p.online),msgs=n.messages||[],events=n.events||[];
@@ -815,7 +786,7 @@ function renderProductEconomics(){
 function renderAll(force=false){
  if(force)renderSig.clear(); const s=state||{},m=s.system?.metrics||{},e=s.evolutionLoop||{},p=s.portfolio||{}; const t0=performance.now();
  renderChanged('trade',[p.equitySol,p.cashSol,s.dailyPnlSol,s.system?.health,s.watchlist,s.positions],renderTrade);
- renderChanged('sportsbook',[polyUSComboState,polyUSState],renderSportsbook);
+ renderChanged('sportsbook',polyUSComboState,renderSportsbook);
  renderChanged('robinhood',rhState,renderRobinhood);
  renderChanged('researchmon',researchMonitor,renderResearchMonitor);
  renderChanged('journal',[projectJournal,journal,journalFilter,journalQuery],renderJournal);
@@ -846,7 +817,6 @@ async function refreshState(){
    perf.refreshMs=performance.now()-t0;trackRealizedProfitBurst();updateDesktopEffects();renderAll();
  }catch(e){const led=$('#feedLed');if(led){led.classList.add('bad');led.style.background='var(--mpo-led-bad)'}if(!state)showDialog('Money Printer OS','Backend connection lost','The desktop is running, but the local trading service is unavailable. Money Printer OS will keep retrying automatically.')}
 }
-async function refreshPolymarketUS(){try{const r=await fetch('/api/polymarket-us',{cache:'no-store',signal:AbortSignal.timeout(30000)});if(r.ok)polyUSState=await r.json();else polyUSState={...polyUSState,error:'US API '+r.status}}catch(e){polyUSState={...polyUSState,error:e.message||'Polymarket US unavailable'}}renderSig.delete('sportsbook');renderAll()}
 function scheduleUSComboBuild(){
  if(usComboBuildTimer)clearTimeout(usComboBuildTimer);
  usComboBuildTimer=setTimeout(async()=>{
@@ -891,12 +861,11 @@ function boot(){
  let i=0;
  const tick=()=>{if(i>=steps.length){setTimeout(()=>$('#boot').classList.add('hide'),250);return}$('#bootText').textContent=steps[i][0];$('#bootBar').style.width=steps[i][1]+'%';i++;setTimeout(tick,180)};tick();
 }
-buildIcons();buildWindows();buildStart();boot();refreshRobinhood();refreshJournal();refreshProjectJournal();refreshNetwork();refreshPolymarketUS();refreshUSComboSnapshot();refreshUpdater();refreshResearchMonitor();refreshState();
+buildIcons();buildWindows();buildStart();boot();refreshRobinhood();refreshJournal();refreshProjectJournal();refreshNetwork();refreshUSComboSnapshot();refreshUpdater();refreshResearchMonitor();refreshState();
 refreshProductEconomics();
 setInterval(()=>{if(!document.hidden)refreshState()},1500);
 setInterval(()=>{if(!document.hidden)refreshNetwork()},5000);
-setInterval(()=>{if(!document.hidden&&windowVisible('sportsbook')&&polyModules.us.visible&&polyModules.us.open)refreshPolymarketUS()},15000);
-setInterval(()=>{if(!document.hidden&&windowVisible('sportsbook')&&polyModules.combos.visible&&polyModules.combos.open)refreshUSComboSnapshot()},5000);
+setInterval(()=>{if(!document.hidden&&windowVisible('sportsbook'))refreshUSComboSnapshot()},5000);
 setInterval(()=>{if(!document.hidden)refreshUpdater()},15000);
 setInterval(()=>{if(!document.hidden&&windowVisible('economics'))refreshProductEconomics()},15000);
 setInterval(()=>{if(!document.hidden&&windowVisible('researchmon'))refreshResearchMonitor()},3000);

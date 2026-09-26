@@ -8,7 +8,8 @@ import { cfg } from './config.js';
 import { readEvidenceMonitor } from './researchEvidenceStore.js';
 import { readResearchControlPlane, attachControlPlaneToMonitor, leaderboardRows, championPublicationView } from './researchControlPlane.js';
 import { saveResourcePolicy, resourceSnapshot, systemTelemetry } from './resourcePolicy.js';
-import { polymarketUSSnapshot, usReadiness, configurePolymarketUS, armPolymarketUS, previewPolymarketUSOrder, submitPolymarketUSOrder, closePolymarketUSPosition, cancelPolymarketUSOrder, cancelAllPolymarketUS } from './polymarketUS.js';
+// polymarketUS.js is parked except for credentials and the session arm: its scanner and single-order routes are not served.
+import { usReadiness, configurePolymarketUS, armPolymarketUS } from './polymarketUS.js';
 import { usComboSnapshot, buildUSCombo, quoteUSCombo, placeUSCombo, cancelUSRfq, setUSComboSettings, settleUSCombos, forgetUSCombo, startUSComboLoops } from './polymarketUSCombos.js';
 import { readApiUnitEconomics } from './apiUnitEconomics.js';
 import { productEconomics, productIngestionAuthorized, productReadAuthorized } from './productEconomics.js';
@@ -424,7 +425,6 @@ export function startDashboard() {
         if (!productReadAuthorized(req)) return json(res, {ok:false,error:'Product reporting requires localhost or a server token'}, 403);
         return json(res, productEconomics().summary());
       }
-      if (req.method === 'GET' && u.pathname === '/api/polymarket-us') return json(res, await polymarketUSSnapshot());
       if (req.method === 'GET' && u.pathname === '/api/polymarket-us/readiness') return json(res, usReadiness());
       if (req.method === 'GET' && u.pathname === '/api/polymarket-us/combos') return json(res, await usComboSnapshot());
       if (req.method === 'GET' && u.pathname === '/api/update') return json(res, updaterState());
@@ -460,11 +460,6 @@ export function startDashboard() {
       if (u.pathname === '/api/resources/sync') return json(res,{ok:true,policy:saveResourcePolicy({},'hive')});
       if (u.pathname === '/api/polymarket-us/config') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); try{return json(res,{ok:true,readiness:configurePolymarketUS(b)})}catch(e){return json(res,{ok:false,error:String(e.message||e)},400)} }
       if (u.pathname === '/api/polymarket-us/arm') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); try{return json(res,{ok:true,readiness:armPolymarketUS(!!b.armed)})}catch(e){return json(res,{ok:false,error:String(e.message||e)},400)} }
-      if (u.pathname === '/api/polymarket-us/preview') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); try{return json(res,{ok:true,preview:await previewPolymarketUSOrder(b)})}catch(e){return json(res,{ok:false,error:String(e.message||e)},400)} }
-      if (u.pathname === '/api/polymarket-us/order') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); try{return json(res,{ok:true,order:await submitPolymarketUSOrder(b)})}catch(e){return json(res,{ok:false,error:String(e.message||e)},400)} }
-      if (u.pathname === '/api/polymarket-us/close') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); try{return json(res,{ok:true,result:await closePolymarketUSPosition(b)})}catch(e){return json(res,{ok:false,error:String(e.message||e)},400)} }
-      if (u.pathname === '/api/polymarket-us/cancel') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); try{return json(res,{ok:true,result:await cancelPolymarketUSOrder(b)})}catch(e){return json(res,{ok:false,error:String(e.message||e)},400)} }
-      if (u.pathname === '/api/polymarket-us/cancel-all') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); try{return json(res,{ok:true,result:await cancelAllPolymarketUS(b)})}catch(e){return json(res,{ok:false,error:String(e.message||e)},400)} }
       if (u.pathname.startsWith('/api/polymarket-us/combos/')) {
         const b = await body(req); if (b.__error) return json(res, { ok:false, error:b.__error }, 400);
         const comboFail = e => json(res, { ok:false, error:String(e.message||e), code:e.code||'unknown' }, 400);

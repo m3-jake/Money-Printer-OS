@@ -845,7 +845,8 @@ export async function usComboSnapshot({force=false}={}){
     lastAuthError:readiness.lastAuthError??null,authCode:readiness.authCode??null,developerPortal:'https://polymarket.us/developer'},
    feed:{ok:!feedErr,error:feedErr,ageMs:feed.at?Math.max(0,Date.now()-feed.at):null,eventsInPlay:feed.inPlay,eventsLive:feed.live,
     candidates:candidates.length,rejections},
-   candidates:candidates.slice(0,12),
+   // The panel lists games by time left, soonest first.
+   candidates:[...candidates].sort((a,b)=>num(a.etaMinutes)-num(b.etaMinutes)||b.rank-a.rank).slice(0,20),
    suggested,
    quote:lastQuote,
    journal:{open:j.open,history:j.history.slice(0,8),stats:{...j.stats,unverified:j.open.filter(x=>x.fillVerified!==true).length}},

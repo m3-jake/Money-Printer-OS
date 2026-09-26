@@ -4,7 +4,7 @@
 (`CURRENT_TASKS.md`, `KNOWN_BUGS.md`, `PROJECT_STATE.md`, `RELEASE_STATUS.md`) and in `reports/NEXT-STEPS-2026-09-25.md`.
 Don't re-inventory the repo. Update this file at the end of every batch.
 
-Last updated: 2026-09-25, batch 8. Branch `feature/polymarket-combo-only`, version `0.5.0-alpha.56`.
+Last updated: 2026-09-26, batch 9. Branch `feature/polymarket-combo-only`, version `0.5.0-alpha.56`.
 
 ## Architecture (inventoried once)
 
@@ -170,9 +170,38 @@ Last updated: 2026-09-25, batch 8. Branch `feature/polymarket-combo-only`, versi
   - `test:all` **543 / 0**.
 - Next: step 6 (singles fallback) is **skipped, because preflight saw 401, not 403**. So step 7 is next: the single-panel UI.
 
+## Batch 9 (2026-09-26): combo renovation step 7, single Polymarket panel
+
+- **The window** is now "Polymarket US" with one `.poly-mod` (`POLY_MODS=['combos']`). There's no module bar and no US suite. It has one 5 s poll of `/api/polymarket-us/combos`, and only while the window is visible.
+- **The panel, top to bottom:**
+  - Status row: key, combos beta, arm and feed. The key form shows whenever the key is missing **or rejected**.
+  - Settings row: win-% floor, minutes left and max legs, saved via `/combos/settings`.
+  - Candidate table: soonest-ending first, nothing pre-ticked, extra ticks disabled at `maxLegs`, and `feed.rejections` shown under it.
+  - Stake input and a live "N legs · pays $X" line from `/combos/build`.
+  - One **Place combo…** button. It gets a quote, then opens an in-page confirm dialog (`#polyConfirm`) showing the legs, the stake, the quoted price and payout, and an expiry countdown.
+    - The `PLACE REAL COMBO` field is never pre-filled.
+    - Confirm locks at zero, and Re-quote runs cancel-RFQ, then a fresh quote for the same legs and stake.
+    - Dismissing the dialog cancels the RFQ.
+    - When `betaAccess==='denied'`, the button reads "combos beta pending" and is disabled (step 6 not built).
+  - Open combos with fill-verified / unverified status, the accept-unconfirmed and confirm-failed flags, and P/L. Check settlement, history, and an in-page `FORGET` dialog. `window.prompt` is gone from the Polymarket code.
+- **Server:**
+  - The routes are exactly the spec's keep-list. `GET /api/polymarket-us` (scanner) and preview/order/close/cancel/cancel-all are removed, and `polymarketUS.js` is otherwise parked.
+  - The snapshot sorts candidates by `etaMinutes` (up to 20).
+  - Limit mode still exists server-side but isn't offered in the UI.
+- **Tests:**
+  - `visual-contract`: `PLACE REAL COMBO` present; the single-order phrases absent from the HTML (the backend file still has them); the phrase field is never pre-filled.
+  - `robinhood-hud` pins `POLY_MODS=['combos']`.
+  - `test:all` **543 / 0**.
+- **Live smoke** against a temp data dir with no keys, so there were no signed calls:
+  - The real public feed showed 2 to 3 candidates. The build line read "2 legs · pays $5.69".
+  - The confirm dialog passed: empty field, partial phrase keeps it disabled, lock at expiry, Re-quote re-enables.
+  - A 60% floor saved and persisted. Removed routes return 404.
+  - Fixed along the way: `.mpo-dialog .msg > div {flex:1}` stretched the dialog icon, so the icon is now a `<span>` and the quote text uses `<strong>`.
+- Next: step 8 (docs).
+
 ## Next recommended batch (priority order)
 
-0. Combo renovation step 7: single-panel UI (step 6 skipped until a 403 is observed; see batch 8).
+0. Combo renovation step 8: docs (`.env.example`, `docs/POLYMARKET-COMBOS.md`, KNOWN_BUGS, this ledger), then bing builds/installs and runs the owner check with a regenerated key.
 
 1. **bing:** run the two merge commands (batch 2), then say whether to push. Schedule `npm run collector -- --data "%APPDATA%\Money Printer OS\data"` at logon, and disable `MoneyPrinterReplayWorkhorse`.
 2. Re-run the Lab's three Polymarket sandbox searches with the committed fee model (report section 2.3: `node scripts/polymarket-research.mjs --mode search ...` in the Lab repo, read-only against `W:/mpo-polymarket-research`). Record the verdict here.
