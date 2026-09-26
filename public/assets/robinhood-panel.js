@@ -1,6 +1,10 @@
 // Robinhood Auto Trader panel. This release is paper-only: API credentials feed authenticated market data,
 // while the backend hard-rejects Robinhood real-order, cancel, reconcile and real-autopilot mutations.
 let rhState=null,rhSubmitting=false,rhRefreshBusy=false,rhMessage='',rhDraft={},rhPreview=null;
+let rhView='paper';
+const RH_VIEWS={paper:['head','order','autopilot','qual','positions','closes'],why:['head','signals','gauges'],charts:['head','charts'],explore:['head','explore'],more:['head','connection','evolution','real','reset']};
+// Each view fits the window without scrolling; nothing is deleted, other views' parts are just not shown.
+function rhViewTabs(){return `<div class="rh-tabs">${Object.keys(RH_VIEWS).map(v=>`<button class="btn ${v===rhView?'on':''}" data-rh-view="${v}">${{paper:'Paper',why:'Why not trading',charts:'Charts',explore:'Exploration',more:'More'}[v]}</button>`).join('')}</div>`}
 let rhChart={symbol:null,range:'6h',data:null,at:0,busy:false,error:null};
 const RH_FOCUS_IDS=['rhSymbol','rhUsd','rhSymbols','rhOrderUsd','rhMaxOpen','rhBank','rhParams','rhResetConfirm','rhRealSymbol','rhRealUsd','rhRealType','rhApOrderUsd','rhApMaxOpen','rhApLossCap','rhApSymbols','rhApType'];
 const RH_SECRET_IDS=['rhApiKey','rhSecret','rhConfirm','rhAutoConfirm'];
@@ -58,7 +62,7 @@ async function rhLoadChart(force=false){
  finally{rhChart.busy=false;if(windowVisible('robinhood'))renderRobinhood()}
 }
 const RH_C={band:'rgba(0,200,255,.16)',mid:'#e6f3ff',don:'#ffb000',ef:'#39ff68',es:'#ff5bd0',entry:'#39ff68',exit:'#ff5b70',explore:'#ffb000',stop:'#ff5b70',take:'#39ff68',trail:'#ffffff',grid:'#2b3640',text:'#b8c7d3'};
-function rhChartDims(h){const narrow=typeof window!=='undefined'&&window.innerWidth<600;return {W:narrow?420:800,H:narrow?Math.round(h*0.9):h,pl:6,pr:narrow?58:72,pt:12,pb:20}}
+function rhChartDims(h){h=Math.round(h*0.8);const narrow=typeof window!=='undefined'&&window.innerWidth<600;return {W:narrow?420:800,H:narrow?Math.round(h*0.9):h,pl:6,pr:narrow?58:72,pt:12,pb:20}}
 function rhTimeLabel(t,range){const d=new Date(t);return range==='24h'?d.toLocaleTimeString([],{hour:'numeric'}):d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}
 function rhPath(pts,x,y,key){let s='',pen=false;for(const p of pts){const v=p[key];if(v==null||!Number.isFinite(v)){pen=false;continue}s+=(pen?'L':'M')+x(p.t).toFixed(1)+' '+y(v).toFixed(1);pen=true}return s}
 function rhMarker(m,x,y){const cx=x(m.t),cy=y(m.price),c=m.book==='explore'?RH_C.explore:(m.kind==='entry'?RH_C.entry:RH_C.exit),tip=`<title>${polyEscape(m.book+' '+m.kind+(m.reason?' '+m.reason:'')+' @ '+fmt(m.price,2))}</title>`;
@@ -131,44 +135,44 @@ function renderRobinhood(force=false){
  const openReal=j.open||[],realHist=j.history||[];
  const ev=rhState.evolve||{},evNum=(v,d)=>typeof v==='number'&&Number.isFinite(v)?fmt(v,d):v==='infinity'?'inf':'--';
  const evRow=(label,c)=>{const m=(c&&c.metrics)||{};return `<tr><td>${label}</td><td>${polyEscape(c?c.paramsHash:'--')}</td><td>${evNum(c?c.score:null,3)}</td><td>${polyEscape(String(m.closes??'--'))}</td><td>${rhPct(m.hitRate)}</td><td>${evNum(m.profitFactor,2)}</td><td>${rhMoney(m.pnlUsd)}</td><td>${rhMoney(m.maxDrawdownUsd)}</td><td>${evNum(m.tradesPerDay,2)}</td></tr>`};
- setBody('robinhood',`<div class="mpo-surface-dark" style="padding:14px">
- <h2>ROBINHOOD AUTO TRADER <small> / CRYPTO · BITCOIN PRIMARY</small></h2>
+ setBody('robinhood',`<div class="mpo-surface-dark rh-v-${rhView}" style="padding:10px">
+<div data-rh-part="head"> <h2>ROBINHOOD AUTO TRADER <small> / CRYPTO · BITCOIN PRIMARY</small></h2>
  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><span class="mpo-badge">${r.credentialsReady?'RH KEYS PRESENT':'RH KEYS OPTIONAL FOR PAPER'}</span><span class="mpo-badge">${paperLocked?'PAPER ONLY · LIVE LOCKED':(r.realEnabled?'REAL ENABLED':'REAL DISABLED')}</span><span class="mpo-badge">PAPER FEED · ${polyEscape(r.paperQuoteSource||'CONNECTING')}</span><span class="mpo-badge">${a.enabled?'PAPER AUTOPILOT ON':'PAPER AUTOPILOT OFF'}</span>${r.recoveryRequired?'<span class="mpo-badge">RECOVERY</span>':''}<button id="rhRefresh" ${disabled}>Refresh</button></div>
  <div class="metric-grid">${metric('Buying power',rhMoney(rhState.account?.buyingPowerUsd))}${metric('Fee tier',rhPct(rhState.account?.feeRatio))}${metric('Paper equity',rhMoney(p.equityUsd))}${metric('Paper P/L',rhMoney(p.stats?.pnlUsd))}${metric('Real open / unverified',(openReal.length)+' / '+(j.stats?.unverified||0))}${metric('Realized today / cap',rhMoney(j.realizedTodayUsd)+' / '+rhMoney(lim.dailyLossCapUsd))}</div>
  <p role="status" id="rhMessage">${polyEscape(rhMessage)}</p>
  ${p.recoveryRequired?`<div class="mpo-error">PAPER RECOVERY REQUIRED: ${polyEscape(p.recoveryError||'Review the book before resetting.')}</div>`:''}
  ${j.recoveryRequired?`<div class="mpo-error">REAL JOURNAL RECOVERY REQUIRED: ${polyEscape(j.recoveryError||'Review data/robinhood-auto-trader.json before any real action.')}</div>`:''}
  ${rhState.lastError?`<div class="mpo-error">${polyEscape(rhState.lastError.stage+': '+rhState.lastError.message)}</div>`:''}
- ${r.paperFallbackReason?`<div class="mpo-empty">Robinhood authenticated quotes unavailable (${polyEscape(r.paperFallbackReason.code||'unknown')}); simulation is using public Coinbase market data until Robinhood credentials work.</div>`:''}
- <details><summary>Connection and safety</summary><p>Paper mode can use a public read-only market feed when Robinhood authentication is unavailable. For Robinhood-authenticated quotes later, generate a key pair locally with <code>node -e "import('./src/robinhoodSigner.js').then(m=>console.log(JSON.stringify(m.generateRobinhoodKeyPair(),null,2)))"</code>, paste the public key into the Robinhood portal, then connect the API key and matching private seed below.</p><p>Account: ${polyEscape(rhState.account?.accountNumber||'not authenticated')} | Robinhood API: ${polyEscape(r.authCode||'not checked')} | Paper quote source: ${polyEscape(r.paperQuoteSource||'connecting')} | Public key: ${polyEscape(r.publicKey||'--')}</p><p>Stocks and options are not automated here; Robinhood's Agentic Trading MCP is the only sanctioned route and this app never uses mobile-app impersonation.</p></details>
- <fieldset class="mpo-fieldset"><legend>Paper order</legend>
+ ${r.paperFallbackReason?`<div class="mpo-empty">Robinhood authenticated quotes unavailable (${polyEscape(r.paperFallbackReason.code||'unknown')}); simulation is using public Coinbase market data until Robinhood credentials work.</div>`:''}${rhViewTabs()}</div>
+<div data-rh-part="connection"> <details><summary>Connection and safety</summary><p>Paper mode can use a public read-only market feed when Robinhood authentication is unavailable. For Robinhood-authenticated quotes later, generate a key pair locally with <code>node -e "import('./src/robinhoodSigner.js').then(m=>console.log(JSON.stringify(m.generateRobinhoodKeyPair(),null,2)))"</code>, paste the public key into the Robinhood portal, then connect the API key and matching private seed below.</p><p>Account: ${polyEscape(rhState.account?.accountNumber||'not authenticated')} | Robinhood API: ${polyEscape(r.authCode||'not checked')} | Paper quote source: ${polyEscape(r.paperQuoteSource||'connecting')} | Public key: ${polyEscape(r.publicKey||'--')}</p><p>Stocks and options are not automated here; Robinhood's Agentic Trading MCP is the only sanctioned route and this app never uses mobile-app impersonation.</p></details></div>
+<div data-rh-part="order"> <fieldset class="mpo-fieldset"><legend>Paper order</legend>
  <label>Pair <input id="rhSymbol" value="${polyEscape(symbol)}" maxlength="14"></label>
  <label>USD <input id="rhUsd" type="number" min="1" max="${lim.maxOrderUsd}" step="1" value="${polyEscape(usd)}"></label>
  <button id="rhBuy" ${disabled}>Buy in paper book</button>
- <p>Simulated fills include observed spread, modeled slippage and conservative estimated fees. Feed: ${polyEscape(r.paperQuoteSource||'connecting')}. They are not actual Robinhood executions.</p></fieldset>
- <fieldset class="mpo-fieldset"><legend>Paper autopilot</legend>
+ <p>Simulated fills include observed spread, modeled slippage and conservative estimated fees. Feed: ${polyEscape(r.paperQuoteSource||'connecting')}. They are not actual Robinhood executions.</p></fieldset></div>
+<div data-rh-part="autopilot"> <fieldset class="mpo-fieldset"><legend>Paper autopilot</legend>
  <label>Pairs <input id="rhSymbols" value="${polyEscape(watch)}" size="26"></label>
  <label>USD/order <input id="rhOrderUsd" type="number" min="1" max="${lim.maxOrderUsd}" value="${polyEscape(orderUsd)}" style="width:70px"></label>
  <label>Max positions <input id="rhMaxOpen" type="number" min="1" max="${lim.maxOpen}" value="${polyEscape(maxOpen)}" style="width:55px"></label>
  <button id="rhSave" ${disabled}>Save settings</button><button id="rhToggle" ${disabled}>${a.enabled?'Stop paper':'Start paper'}</button><button id="rhTick" ${disabled}>Sample / check exits</button>
  <details><summary>Strategy parameters</summary><textarea id="rhParams" rows="5" style="width:100%">${polyEscape(rhVal('rhParams',JSON.stringify(p.params,null,2)))}</textarea><p>Changing parameters invalidates qualification for the old strategy. Sampling interval follows the actual loop.</p></details>
  <p>Sampling every ${fmt(rhState.loop.tickMs/1000,0)} seconds. Warm-up requires ${Math.max(p.params?.warmupSamples||120,p.params?.minSamples||120)} observations. ${a.lastAction?polyEscape('Last action: '+a.lastAction.action+' '+a.lastAction.symbol):'No strategy action yet.'}</p>
- </fieldset>
- <fieldset class="mpo-fieldset"><legend>Signals and costs</legend><table class="mpo-table"><thead><tr><th>Pair</th><th>Bid / ask</th><th>Samples</th><th>Move estimate</th><th>Round-trip cost</th><th>Signal</th><th>Why</th></tr></thead><tbody>
+ </fieldset></div>
+<div data-rh-part="signals"> <fieldset class="mpo-fieldset"><legend>Signals and costs</legend><table class="mpo-table"><thead><tr><th>Pair</th><th>Bid / ask</th><th>Samples</th><th>Move estimate</th><th>Round-trip cost</th><th>Signal</th><th>Why</th></tr></thead><tbody>
  ${Object.entries(rhState.tape||{}).map(([s,t])=>`<tr><td>${polyEscape(s)}${t.primary?' <span class="mpo-badge">PRIMARY x'+polyEscape(String(prim.weight||1))+'</span>':''}</td><td>${rhMoney(quoteMap[s]?.bid)} / ${rhMoney(quoteMap[s]?.ask)}</td><td>${t.n}</td><td>${rhPct(t.expectedMovePct)}</td><td>${rhPct(t.costPct)}</td><td><span class="mpo-badge">${polyEscape(t.signal||'--')}</span></td><td>${polyEscape(t.reason||'--')}</td></tr>`).join('')}
- </tbody></table><p>The move estimate measures volatility, not predicted profit. Fees and fill costs are modeled, not verified.</p></fieldset>
- ${rhChartSection(rhState)}
- ${rhGaugeSection(rhState)}
- ${rhExploreSection(rhState)}
- <fieldset class="mpo-fieldset"><legend>Paper research qualification</legend>
+ </tbody></table><p>The move estimate measures volatility, not predicted profit. Fees and fill costs are modeled, not verified.</p></fieldset></div>
+<div data-rh-part="charts"> ${rhChartSection(rhState)}</div>
+<div data-rh-part="gauges"> ${rhGaugeSection(rhState)}</div>
+<div data-rh-part="explore"> ${rhExploreSection(rhState)}</div>
+<div data-rh-part="qual"> <fieldset class="mpo-fieldset"><legend>Paper research qualification</legend>
  <b>${q.qualified?'QUALIFIED under params '+polyEscape(p.paramsHash||'--'):'NOT QUALIFIED'}</b><p>${q.closes||0} eligible strategy closes / ${rhState.qualificationThresholds.minCloses} required | Hit rate ${rhPct(q.hitRate)} vs required ${rhPct(q.requiredHitRate)} | PF ${polyEscape(String(q.profitFactor??'--'))} | Net sample P/L ${rhMoney(q.pnlUsd)} | Max drawdown ${rhMoney(q.maxDrawdownUsd)}</p>
  <p>${polyEscape((q.reasons||[]).join('; ')||'Paper evidence only. This does not establish future profitability; live trading remains locked in this build.')}</p>
- <small>Manual entries and manual exits never count. Only the current strategy hash ${polyEscape(p.paramsHash||'--')} and the configured rolling window are evaluated.</small></fieldset>
- <fieldset class="mpo-fieldset"><legend>Open paper positions</legend><table class="mpo-table"><thead><tr><th>Pair</th><th>Quantity</th><th>Entry cost</th><th>Open P/L</th><th>Source</th><th>Action</th></tr></thead><tbody>
- ${positions.length?positions.map(x=>`<tr><td>${polyEscape(x.symbol)}</td><td>${fmt(x.qty,8)}</td><td>${rhMoney(x.costUsd)}</td><td>${rhMoney(x.unrealizedUsd)}</td><td>${polyEscape(x.placedBy)}</td><td><button data-rh-close="${polyEscape(x.id)}" ${disabled}>Close paper</button></td></tr>`).join(''):'<tr><td colspan="6">No open simulated positions.</td></tr>'}</tbody></table></fieldset>
- <fieldset class="mpo-fieldset"><legend>Recent paper closes</legend><table class="mpo-table"><thead><tr><th>Pair</th><th>Net P/L</th><th>Reason</th><th>Closed by</th></tr></thead><tbody>
- ${history.length?history.map(x=>`<tr><td>${polyEscape(x.symbol)}</td><td>${rhMoney(x.pnlUsd)}</td><td>${polyEscape(x.exit?.reason||'--')}</td><td>${polyEscape(x.closedBy||'--')}</td></tr>`).join(''):'<tr><td colspan="4">No paper closes yet.</td></tr>'}</tbody></table><small>Recent performance statistics use up to 500 retained closes; this table shows the latest eight.</small></fieldset>
- <fieldset class="mpo-fieldset"><legend>Evolution (paper-only self-improvement)</legend>
+ <small>Manual entries and manual exits never count. Only the current strategy hash ${polyEscape(p.paramsHash||'--')} and the configured rolling window are evaluated.</small></fieldset></div>
+<div data-rh-part="positions"> <fieldset class="mpo-fieldset"><legend>Open paper positions</legend><table class="mpo-table"><thead><tr><th>Pair</th><th>Quantity</th><th>Entry cost</th><th>Open P/L</th><th>Source</th><th>Action</th></tr></thead><tbody>
+ ${positions.length?positions.map(x=>`<tr><td>${polyEscape(x.symbol)}</td><td>${fmt(x.qty,8)}</td><td>${rhMoney(x.costUsd)}</td><td>${rhMoney(x.unrealizedUsd)}</td><td>${polyEscape(x.placedBy)}</td><td><button data-rh-close="${polyEscape(x.id)}" ${disabled}>Close paper</button></td></tr>`).join(''):'<tr><td colspan="6">No open simulated positions.</td></tr>'}</tbody></table></fieldset></div>
+<div data-rh-part="closes"> <fieldset class="mpo-fieldset"><legend>Recent paper closes</legend><table class="mpo-table"><thead><tr><th>Pair</th><th>Net P/L</th><th>Reason</th><th>Closed by</th></tr></thead><tbody>
+ ${history.length?history.map(x=>`<tr><td>${polyEscape(x.symbol)}</td><td>${rhMoney(x.pnlUsd)}</td><td>${polyEscape(x.exit?.reason||'--')}</td><td>${polyEscape(x.closedBy||'--')}</td></tr>`).join(''):'<tr><td colspan="4">No paper closes yet.</td></tr>'}</tbody></table><small>Recent performance statistics use up to 500 retained closes; this table shows the latest eight.</small></fieldset></div>
+<div data-rh-part="evolution"><details class="rh-more"><summary>Evolution (paper-only)</summary> <fieldset class="mpo-fieldset"><legend>Evolution (paper-only self-improvement)</legend>
  <p><span class="mpo-badge">GEN ${polyEscape(String(ev.generation||0))}</span> <span class="mpo-badge">${ev.enabled?'ENABLED':'DISABLED'}</span> <span class="mpo-badge">${ev.autopromote?'AUTOPROMOTE ON':'PROPOSE ONLY'}</span> ${ev.running?'<span class="mpo-badge">RUNNING</span>':''} <small>every ${polyEscape(String(ev.intervalMin||'--'))} min · ${polyEscape(String(ev.candidates||'--'))} candidates · min gain ${polyEscape(String(ev.minGainPct||'--'))}% · last run ${ev.lastRunAt?rhAge(Date.now()-ev.lastRunAt)+' ago':'never'}</small></p>
  <p>Tape coverage: ${Object.entries(ev.tapeDays||{}).map(([s,d])=>polyEscape(s)+' '+polyEscape(String(d))+'d').join(' · ')||'--'} (needs ${polyEscape(String(ev.minTapeDays||3))}d on the primary pair)${(()=>{const src=Object.values(ev.tapeSources||{}).reduce((a,x)=>{for(const [k,n] of Object.entries(x||{}))a[k]=(a[k]||0)+n;return a},{});const keys=Object.keys(src);return keys.length?' · quotes: '+keys.map(k=>polyEscape(k)+' '+polyEscape(String(src[k]))).join(' · '):''})()}${ev.lastError?' | <span class="mpo-error">'+polyEscape(ev.lastError.stage+': '+ev.lastError.message)+'</span>':''}</p>
  <table class="mpo-table"><thead><tr><th>Split test</th><th>Hash</th><th>Score</th><th>Closes</th><th>Hit</th><th>PF</th><th>Net P/L</th><th>Drawdown</th><th>Trades/day</th></tr></thead><tbody>
@@ -176,8 +180,8 @@ function renderRobinhood(force=false){
  <button id="rhEvolveRun" ${disabled||(ev.running?'disabled':'')}>Run now</button><button id="rhEvolveApply" ${disabled||(!ev.proposed?'disabled':'')}>Apply to paper</button>
  <small>Candidates are bounded mutations of the current paper parameters replayed walk-forward on the recorded tape (train 70% / test 30%). Applying changes only the paper strategy hash, which resets qualification and disables real autopilot; real parameters are never touched. Autopromote needs ROBINHOOD_EVOLVE_AUTOPROMOTE=true.</small>
  ${ev.proposed?`<details><summary>Champion parameters ${polyEscape(ev.proposed.paramsHash)}</summary><pre>${polyEscape(JSON.stringify(ev.proposed.params,null,1))}</pre></details>`:''}
- </fieldset>
- <fieldset class="mpo-danger-fieldset"><legend>ROBINHOOD CONNECTION · PAPER-ONLY LOCK</legend>
+ </fieldset></details></div>
+<div data-rh-part="real"><details class="rh-more"><summary>Robinhood connection and locked real-money controls</summary> <fieldset class="mpo-danger-fieldset"><legend>ROBINHOOD CONNECTION · PAPER-ONLY LOCK</legend>
  <div class="mpo-error">PAPER-ONLY BUILD: real orders, cancellations, reconciliation and real autopilot are hard-disabled in the backend.</div>
  <p>${check(r.hasApiKey&&r.hasPrivateKey,'keys present')} ${check(r.keyValid,'key valid')} ${check(r.realEnabled,'real enabled')} ${check(r.sessionArmed,'armed')} ${check(r.qualified,'qualified')} <span class="mpo-badge">PRIMARY ${polyEscape(prim.symbol||'BTC-USD')}</span> <small>limits: ${rhMoney(lim.maxOrderUsd)}/order · ${polyEscape(String(lim.maxOpen))} open · ${rhMoney(lim.dailyLossCapUsd)}/day</small></p>
  <details ${r.credentialsReady?'':'open'}><summary>Configure credentials</summary>
@@ -209,10 +213,12 @@ function renderRobinhood(force=false){
  <p>Last action: ${ap.lastAction?polyEscape(ap.lastAction.action+' '+(ap.lastAction.ids||[ap.lastAction.symbol||'']).join(',')):'--'} | skipped: ${polyEscape((ap.skipped||[]).map(s=>s.symbol+':'+s.reason).join(', ')||'--')}</p>
  ${ap.disabledReason?`<div class="mpo-error">Autopilot disabled: ${polyEscape(ap.disabledReason)}</div>`:''}
  <small>Future live controls are retained for testing but are unreachable while the paper-only build lock is active. The active Robinhood strategy is the simulated paper engine above.</small></div>
- </fieldset>
- <fieldset class="mpo-fieldset"><legend>Reset simulated book</legend><label>Starting USD <input id="rhBank" type="number" min="50" max="100000" value="${polyEscape(rhVal('rhBank',p.startUsd||1000))}"></label><label>Type RESET PAPER <input id="rhResetConfirm" value="${polyEscape(rhVal('rhResetConfirm',''))}" autocomplete="off"></label><button id="rhReset" ${disabled}>Reset paper only</button><p>Clears simulated positions, history and qualification; stops paper autopilot. Real balances and the real journal are untouched.</p></fieldset>
+ </fieldset></details></div>
+<div data-rh-part="reset"><details class="rh-more"><summary>Reset simulated book</summary> <fieldset class="mpo-fieldset"><legend>Reset simulated book</legend><label>Starting USD <input id="rhBank" type="number" min="50" max="100000" value="${polyEscape(rhVal('rhBank',p.startUsd||1000))}"></label><label>Type RESET PAPER <input id="rhResetConfirm" value="${polyEscape(rhVal('rhResetConfirm',''))}" autocomplete="off"></label><button id="rhReset" ${disabled}>Reset paper only</button><p>Clears simulated positions, history and qualification; stops paper autopilot. Real balances and the real journal are untouched.</p></fieldset></details></div>
  </div>`);
- const el=id=>root.querySelector('#'+id);
+ const keep=RH_VIEWS[rhView]||RH_VIEWS.paper;root.querySelectorAll('[data-rh-part]').forEach(n=>{if(!keep.includes(n.dataset.rhPart))n.remove()});
+ root.querySelectorAll('[data-rh-view]').forEach(b=>b.onclick=()=>{rhView=b.dataset.rhView;renderRobinhood(true);if(rhView==='charts')rhLoadChart(true)});
+ const el=id=>root.querySelector('#'+id)||{};
  el('rhRefresh').onclick=()=>refreshRobinhood();
  root.querySelectorAll('[data-rh-chart-symbol]').forEach(b=>b.onclick=()=>{rhChart.symbol=b.dataset.rhChartSymbol;rhChart.data=null;rhLoadChart(true);renderRobinhood(true)});
  root.querySelectorAll('[data-rh-chart-range]').forEach(b=>b.onclick=()=>{rhChart.range=b.dataset.rhChartRange;rhLoadChart(true);renderRobinhood(true)});

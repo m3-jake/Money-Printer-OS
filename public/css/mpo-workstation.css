@@ -645,3 +645,39 @@ textarea:disabled {
   outline-offset: 1px;
 }
 .mpo-journal-compact b { color: var(--mpo-amber); }
+
+/* Robinhood panel: one view at a time, laid out to fit the window without scrolling. */
+#body-robinhood .rh-tabs{display:flex;gap:4px;flex-wrap:wrap;margin:4px 0}
+#body-robinhood h2{margin:0 0 4px;font-size:15px}
+#body-robinhood .mpo-fieldset,#body-robinhood .mpo-danger-fieldset{margin:0 0 6px;padding:4px 8px}
+#body-robinhood p{margin:3px 0}
+#body-robinhood .metric-grid{margin:4px 0}
+.rh-v-paper,.rh-v-why{display:grid;grid-template-columns:1fr 1fr;gap:0 10px;align-content:start}
+.rh-v-why{grid-template-columns:1fr}
+.rh-v-paper>[data-rh-part=head]{grid-column:1/-1}
+#body-robinhood #rhCharts .mpo-table-wrap{max-height:110px!important}
+#body-robinhood #rhCharts svg[id^=rhEquity]{max-height:70px}
+.rh-v-why .metric-grid,.rh-v-charts .metric-grid,.rh-v-explore .metric-grid,.rh-v-more .metric-grid{display:none}
+#body-robinhood>div{padding:6px 10px!important}
+#body-robinhood #rhGauges small,#body-robinhood [data-rh-part=signals] p{display:none}
+#body-robinhood #rhPriceChart{max-height:230px}
+#body-robinhood .mpo-table td,#body-robinhood .mpo-table th{padding:1px 5px}
+#body-robinhood #rhPriceChart{max-height:190px}
+#body-robinhood #rhCharts svg[id^=rhEquity]{max-height:48px}
+#body-robinhood #rhCharts .mpo-table-wrap{max-height:84px!important}
+#body-robinhood #rhPriceChart{max-height:165px}
+
+/* Trading Terminal: fits its default window. */
+#body-trade .chart{height:130px}
+#body-trade .mpo-table-wrap{max-height:118px;overflow:auto}
+#body-trade .mpo-table td,#body-trade .mpo-table th{padding:1px 5px}
+#body-trade #solanaBook{margin:3px 0!important}
+#body-trade #solanaBook .mpo-metric,#body-trade .mpo-metrics .mpo-metric{padding:2px 6px}
+#body-trade .toolbar{margin-top:3px!important}
+#body-trade .chart{height:105px}
+#body-trade .mpo-table-wrap{max-height:92px}
+
+/* Polymarket US: the window body never scrolls; the combos list scrolls inside its module. */
+#body-sportsbook{display:flex;flex-direction:column;overflow:hidden}
+#body-sportsbook>.poly-mod{flex:1;min-height:0;display:flex;flex-direction:column}
+#body-sportsbook>.poly-mod>.poly-body{flex:1;min-height:0;overflow:auto}
