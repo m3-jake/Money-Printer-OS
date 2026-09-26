@@ -515,3 +515,4 @@ What was finished and committed before parking (all tested; nothing can place wi
   - Evidence collector running (2 scans, 82 leg rows, 61 legs tracked).
   - `/js/mpo-viz.js` 200; a `/js/..%2Fdashboard.html` traversal attempt returns 404.
 - **Rollback:** quit the app, then copy `resources\app.asar.alpha57-a244ffb-backup-20260926` over `resources\app.asar`.
+- **Update (Lab session):** the roster-test fix and the parked default are in Lab `cb3c389` (`codex/lab-evidence-20260925`). Default `MPO_LAB_MODULES` is `robinhood,polymarket` again, and the Lab page shows parked workers as OFF (`MPO_LAB_MODULES_ACTIVE`). Full Lab suite 163/163. The Lab session owns the Lab build and install.
