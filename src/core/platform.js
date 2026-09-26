@@ -12,6 +12,7 @@ import { appendProjectJournal } from '../projectJournal.js';
 import { activateExecutionBoundary } from './executionBoundary.js';
 import { StrategyRegistry } from './strategies.js';
 import { legacyCoverage } from './legacyBooks.js';
+import { syncLabChampions } from './labSync.js';
 
 export class MarketPlatform {
   constructor({file=':memory:',dataDir=null,providers=null}={}){
@@ -25,7 +26,7 @@ export class MarketPlatform {
   }
   snapshot(){
     return {at:Date.now(),risk:this.risk.state(),providers:this.providers.status(),database:this.store.health(),eventBus:this.bus.snapshot(),journalError:this.journalError,
-      strategies:this.strategies.list(),legacy:legacyCoverage(this.legacyReaders),portfolio:this.ledger.portfolio(),livePortfolio:this.ledger.portfolio('LIVE'),ledger:this.ledger.entries(),events:this.store.events(),
+      strategies:this.strategies.list(),legacy:legacyCoverage(this.legacyReaders),labSync:this.labSync||null,portfolio:this.ledger.portfolio(),livePortfolio:this.ledger.portfolio('LIVE'),ledger:this.ledger.entries(),events:this.store.events(),
       watchlist:this.store.db.prepare('SELECT * FROM watchlist ORDER BY added_at DESC').all(),proposals:this.store.db.prepare('SELECT * FROM proposals ORDER BY created_at DESC LIMIT 100').all().map(r=>({...r,payload:JSON.parse(r.payload),decision:JSON.parse(r.decision)})),
       coverage:{legacyBooks:'READ_ONLY_VIEW_NOT_IN_LEDGER',liveAccounts:'NOT_RECONCILED',riskValuation:'PAPER_COST_BASIS_AND_REALIZED_LOSS',note:'Core accounts are reconstructed from this ledger only. Existing Solana, Robinhood, and US Combo books remain in their original programs; they are shown read-only under Legacy books and are not included in these totals.'}};
   }
@@ -90,6 +91,12 @@ export class MarketPlatform {
     const r=this.strategies.transition(id,to,{reason,evidence});
     if(this.dataDir)try{appendProjectJournal(path.join(this.dataDir,'project-journal.ndjson'),{kind:'strategy',title:`Strategy ${r.promoted?'promoted':'moved'}: ${r.name} → ${to}`,detail:reason,at:Date.now()});}catch{this.journalError='Could not append strategy milestone';}
     return r;
+  }
+  // Mirrors Evolution Lab champions into the strategy registry through the common gate.
+  syncLab(labLinkDir=this.dataDir&&path.join(this.dataDir,'lab-link')){
+    if(!labLinkDir)return [];
+    const out=syncLabChampions(this.strategies,labLinkDir,{transition:(id,to,{reason,evidence})=>this.transitionStrategy({id,to,reason,evidence})});
+    this.labSync={at:Date.now(),results:out};return out;
   }
   // Sync, read-only accessors supplied by the host (dashboard). Keys: solana, robinhoodPractice, usCombos.
   setLegacyReaders(readers={}){this.legacyReaders={...readers};}

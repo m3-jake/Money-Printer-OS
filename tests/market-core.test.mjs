@@ -15,6 +15,7 @@ import { normalizeKalshi,normalizeKalshiBook,normalizePolymarket,KalshiProvider 
 import { ProviderRegistry,JsonProvider } from '../src/core/provider.js';
 import { MarketPlatform } from '../src/core/platform.js';
 import { legacyCoverage,solanaLegacy,usCombosLegacy,legacyTotals } from '../src/core/legacyBooks.js';
+import { syncLabChampions,labEvidence,LAB_CHAMPION_SOURCES } from '../src/core/labSync.js';
 import { StrategyRegistry,promotionCheck,labChampionLifecycle } from '../src/core/strategies.js';
 import { assertGlobalTradingNotHalted } from '../src/core/executionBoundary.js';
 import { localMutationAllowed } from '../src/core/http.js';
@@ -192,4 +193,30 @@ test('legacy books are read-only, never converted, and unknowns stay unknown',()
   assert.equal(p.snapshot().legacy.books.every(b=>b.status==='UNAVAILABLE'),true);
   p.setLegacyReaders({usCombos:()=>({open:[],stats:{pnlUsd:1}})});
   const snap=p.snapshot();assert.equal(snap.legacy.books[2].realized,1);assert.equal(snap.ledger.length,0);p.close();
+});
+
+test('Lab champions mirror into the registry through the common gate, never past it',()=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'mpo-labsync-')),s=new CoreDatabase(':memory:'),r=new StrategyRegistry(s);
+  const write=(f,d)=>fs.writeFileSync(path.join(dir,f),JSON.stringify(d));
+  // Solana: Lab SHADOW -> BACKTESTING; evidence has no cost flag, so PAPER would be blocked anyway.
+  write('champion.json',{schema:'mpo.lab-champion.v1',labNodeId:'n',stateSchema:'mpo.champion-state.v1',state:'SHADOW',paperPromotionAllowed:false,champion:{id:'c1',variant:{a:1},metrics:{heldOutN:43,heldOutAvgPct:13.9,maxDrawdownPct:-79.6,consistencyPct:100}}});
+  // Robinhood: Lab PAPER with paper review, strong holdout evidence.
+  write('robinhood-champion.json',{schema:'mpo.lab-module-champion.v1',module:'robinhood',stateSchema:'mpo.champion-state.v1',state:'PAPER',paperPromotionAllowed:true,candidate:{id:'RH-1',params:{x:1},holdout:{trades:60,netReturnPct:3,maxDrawdownPct:-8}},evidence:{feesModeled:true}});
+  // A record claiming live authority is ignored entirely.
+  write('polymarket-champion.json',{schema:'mpo.lab-module-champion.v1',state:'PAPER',paperPromotionAllowed:true,liveActivationAllowed:true,candidate:{id:'bad'}});
+  let res=Object.fromEntries(syncLabChampions(r,dir).map(x=>[x.id,x]));
+  assert.equal(res['lab-solana'].state,'BACKTESTING');assert.equal(labEvidence(JSON.parse(fs.readFileSync(path.join(dir,'champion.json')))).maxDrawdownPct,79.6);
+  // Lab PAPER but no fold-stability evidence: the common gate holds it at BACKTESTING and says why.
+  assert.equal(res['lab-robinhood'].state,'BACKTESTING');assert.ok(res['lab-robinhood'].blockers.some(b=>b.startsWith('UNSTABLE_ACROSS_FOLDS')));
+  assert.equal(res['lab-polymarket'].present,false);assert.equal(r.get('lab-polymarket'),null);
+  // Lab withdraws the Solana champion: the registry demotes, and a new champion id is a new version.
+  write('champion.json',{schema:'mpo.lab-champion.v1',labNodeId:'n',stateSchema:'mpo.champion-state.v1',state:'INCUBATOR',qualificationStage:'WITHDRAWN',champion:{id:'c2',variant:{a:2},metrics:{}}});
+  res=Object.fromEntries(syncLabChampions(r,dir).map(x=>[x.id,x]));
+  assert.equal(res['lab-solana'].state,'DRAFT');assert.equal(r.get('lab-solana').version,'c2');
+  // A user pause is never overridden, and a second sync with nothing new is a no-op.
+  r.transition('lab-robinhood','PAUSED',{reason:'user'});const n=r.history('lab-robinhood').length;
+  res=Object.fromEntries(syncLabChampions(r,dir).map(x=>[x.id,x]));
+  assert.equal(res['lab-robinhood'].state,'PAUSED');assert.equal(r.history('lab-robinhood').length,n);
+  assert.equal(LAB_CHAMPION_SOURCES.every(x=>r.get(x.id)?.state!=='LIVE'),true);
+  s.close();fs.rmSync(dir,{recursive:true,force:true});
 });

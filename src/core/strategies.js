@@ -18,13 +18,13 @@ export const PROMOTION_CRITERIA = Object.freeze({
   CANDIDATE: { minSample: 50, requireOutOfSample: true, requireCosts: true, maxDrawdownPct: 25, minStableFolds: 0.6, maxBrier: 0.25 },
 });
 
-// evidence: { sampleSize, outOfSampleNetUsd, costsModeled, maxDrawdownPct, positiveFoldShare, brier? }.
+// evidence: { sampleSize, outOfSampleNetUsd (or outOfSampleNetPct), costsModeled, maxDrawdownPct, positiveFoldShare, brier? }.
 // Missing values fail closed with a named blocker. Brier is checked only when the strategy prices probabilities.
 export function promotionCheck(target, evidence = {}, { probabilistic = false } = {}) {
   const c = PROMOTION_CRITERIA[target];
   if (!c) return { allowed: true, blockers: [] };
   const e = evidence && typeof evidence === 'object' ? evidence : {}, blockers = [];
-  const n = finite(e.sampleSize), oos = finite(e.outOfSampleNetUsd), dd = finite(e.maxDrawdownPct), folds = finite(e.positiveFoldShare);
+  const n = finite(e.sampleSize), oos = finite(e.outOfSampleNetUsd) ?? finite(e.outOfSampleNetPct), dd = finite(e.maxDrawdownPct), folds = finite(e.positiveFoldShare);
   if (n === null || n < c.minSample) blockers.push(`SAMPLE_SIZE<${c.minSample}`);
   if (c.requireCosts && e.costsModeled !== true) blockers.push('FEES_AND_SLIPPAGE_NOT_MODELED');
   if (c.requireOutOfSample && (oos === null || oos <= 0)) blockers.push('OUT_OF_SAMPLE_NOT_PROFITABLE_AFTER_COSTS');
@@ -67,6 +67,18 @@ export class StrategyRegistry {
     const r = this.store.db.prepare('SELECT * FROM strategies WHERE id=?').get(id);
     return r ? { id: r.id, name: r.name, version: r.version, markets: JSON.parse(r.markets), params: JSON.parse(r.params), allocationUsd: r.allocation_usd, state: r.state,
       executionMode: r.execution_mode, probabilistic: r.probabilistic === 1, evidence: JSON.parse(r.evidence), createdAt: r.created_at, updatedAt: r.updated_at } : null;
+  }
+  // A new version keeps the lifecycle state; the next transition or sync re-checks the gate.
+  revise(id, { version, params = null, reason }, now = Date.now()) {
+    requiredText(String(version ?? ''), 'Strategy version', 100); requiredText(reason, 'Revision reason', 500);
+    return this.store.transaction(() => {
+      const s = this.get(id); if (!s) throw new Error('Unknown strategy');
+      if (s.version === String(version)) return s;
+      this.store.db.prepare('UPDATE strategies SET version=?,params=?,updated_at=? WHERE id=?').run(String(version), canonicalJson(params ?? s.params), now, id);
+      this.store.db.prepare('INSERT INTO strategy_transitions(strategy_id,from_state,to_state,at,reason,evidence) VALUES(?,?,?,?,?,?)').run(id, s.state, s.state, now, `${reason} (version ${s.version} -> ${version})`, '{}');
+      this.store.record('STRATEGY_REVISED', { id, from: s.version, to: String(version) }, now);
+      return this.get(id);
+    });
   }
   list() { return this.store.db.prepare('SELECT id FROM strategies ORDER BY updated_at DESC').all().map(r => this.get(r.id)); }
   history(id) { return this.store.db.prepare('SELECT * FROM strategy_transitions WHERE strategy_id=? ORDER BY seq').all(id).map(r => ({ ...r, evidence: JSON.parse(r.evidence) })); }

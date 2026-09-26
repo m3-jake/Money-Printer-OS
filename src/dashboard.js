@@ -378,6 +378,8 @@ function snapshot() {
 
 export function startDashboard() {
   marketPlatform().setLegacyReaders({solana:loadStateCached,robinhoodPractice:()=>practiceSnapshot({dataDir:path.dirname(RH_JOURNAL_FILE)}),usCombos:usComboJournalView});
+  // Lab champions -> strategy registry, once now and every minute. Failures stay in the snapshot, never thrown.
+  const syncLab=()=>{try{marketPlatform().syncLab();}catch{}};syncLab();const labSyncTimer=setInterval(syncLab,60_000);labSyncTimer.unref();
   const server = http.createServer(async (req, res) => {
     try {
       const u = new URL(req.url, 'http://127.0.0.1');
@@ -554,7 +556,7 @@ export function startDashboard() {
   try { startUSComboLoops(); } catch { /* combo loops are optional */ }
   startRobinhoodLoops();
   startPracticeLoop({ dataDir: DATA_DIR });
-  server.on('close',()=>{ stopRobinhoodLoops(); stopPracticeLoop(); closeMarketPlatform(); });
+  server.on('close',()=>{ clearInterval(labSyncTimer); stopRobinhoodLoops(); stopPracticeLoop(); closeMarketPlatform(); });
   startRobinhoodEquitiesLoop();
   server.on('close',()=>stopRobinhoodEquitiesLoop());
   server.listen(cfg.dashboardPort, cfg.dashboardHost, () => console.log(`Dashboard: http://${cfg.dashboardHost}:${cfg.dashboardPort}`));

@@ -806,6 +806,18 @@ bing pasted the full MPOS unification brief (35 sections, phases 0–7). Phase 0
 - **Tests:** 1 new test in `market-core` (21 pass). `npm run test:all`: **714 pass, 0 fail**. Browser check on the isolated engine (:8851): Solana 0.83 SOL cash / 3 open / -0.0146 SOL realized; Robinhood practice 500 USD; US combos cash "unavailable".
 
 ### Next recommended
-1. Sync Lab champions (`lab-link/modules/*-champion.json`) into the strategy registry using `labChampionLifecycle` and their walk-forward evidence.
-2. POLYMARKET.EXE consolidation (Markets / Live / Sports / Positions / History / Combo Engine), and decide on `polymarketPaperCombos.js`.
+1. ~~Lab champion sync~~ done in batch P.
+2. Polymarket consolidation (Markets / Live / Sports / Positions / History / Combo Engine), and decide on `polymarketPaperCombos.js`.
 3. Contract-term extraction for Kalshi and Polymarket, so ARBITRAGE.EXE can rate real pairs above RELATED.
+
+## Batch P (2026-09-26): no more ".EXE" names; Lab champions in the strategy registry
+
+- **bing: "lose the .exe on all of these. It looks bad."** The window, taskbar and desktop names are now Polymarket / Kalshi / Arbitrage (`public/dashboard.html` app registry). In-window headings are KALSHI / ARBITRAGE, and the Command Center buttons were renamed too. **Rule for new modules:** plain names, never NAME.EXE, even where the unification brief suggests them.
+- **New `src/core/labSync.js`:** five Lab champion files (`lab-link/champion.json` for Solana, plus `robinhood`, `robinhood-equities`, `polymarket` and `polymarket-combo` `-champion.json`) are mirrored into the registry as `lab-*` strategies.
+  - The Lab state maps through `labChampionLifecycle`. A Lab PAPER champion without `paperPromotionAllowed` targets BACKTESTING, and WITHDRAWN targets DRAFT.
+  - Moving up goes one step at a time through the **common** promotion gate, so a Lab PAPER champion stays at BACKTESTING with named blockers until the common criteria pass too. Demotions follow the Lab.
+  - PAUSED and RETIRED (user decisions) are never overridden. A new champion id records a version revision (`StrategyRegistry.revise`, which appends a history row).
+  - Records that claim live authority are ignored. The mapping uses only fields the Lab states explicitly; percent returns go to `outOfSampleNetPct` (the gate now accepts USD or pct), and `costsModeled` is true only if the Lab says fees or markup were modeled.
+- **Wiring:** the dashboard syncs on start and every 60 s (the timer is cleared on server close, so tests don't reopen SQLite). There is also `POST /api/platform/strategies/sync-lab`, and `labSync` is in `/api/platform/status`. The Command Center strategies table shows Lab state and gate blockers.
+- **Tests:** 1 new test in `market-core` (22 pass). `npm run test:all`: **730 pass, 0 fail**. Browser check (isolated engine; copied the installed app's Solana `champion.json`, which may be the stale MSIX copy): `lab-solana` BACKTESTING (Lab SHADOW), version = champion id; no ".EXE" anywhere on the page.
+- **Known gap:** the Solana champion record has no fold-share and no fee flag, and module champions have no fold-share. So no Lab champion can reach PAPER in the registry yet. That is intentional (fail closed). The fix belongs in the Lab: publish `positiveFoldShare` and `feesModeled`.

@@ -30,6 +30,7 @@ export async function handlePlatformRequest(req,res,url,{json,body,platform=mark
       else if(route==='/orders/propose')result=await platform.propose(input);
       else if(route==='/orders/execute')result=platform.executePaper(input.id,input.confirmation);
       else if(route==='/strategies/register')result=platform.strategies.register(input);
+      else if(route==='/strategies/sync-lab')result=platform.syncLab();
       else if(route==='/strategies/transition')result=platform.transitionStrategy(input);
       else if(route==='/watchlist')result=platform.watch(input.id,input.on===true);
       else if(route==='/compare')result=await platform.compare(input);
