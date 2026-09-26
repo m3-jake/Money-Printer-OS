@@ -71,8 +71,10 @@ for (const f of files) fs.utimesSync(path.join(APP, f), commitEpoch, commitEpoch
 // 3. pack + check
 const ASAR = path.join(OUT, 'app.asar');
 fs.rmSync(ASAR, { force: true }); fs.rmSync(`${ASAR}.unpacked`, { recursive: true, force: true });
-if (spawnSync('npx.cmd', ['-y', ASAR_PKG, 'pack', APP, ASAR, '--unpack', '*.node'], { cwd: WORK, stdio: 'inherit', shell: true }).status !== 0) die('asar pack failed');
-const listing = out('npx.cmd', ['-y', ASAR_PKG, 'list', ASAR], { cwd: WORK, maxBuffer: 1 << 28, shell: true }).split('\n').map((l) => l.replace(/\\/g, '/'));
+// shell:true joins argv unquoted, so a path with spaces (the default Desktop\Money Printer OS) must be quoted here.
+const q = (p) => `"${p}"`;
+if (spawnSync('npx.cmd', ['-y', ASAR_PKG, 'pack', q(APP), q(ASAR), '--unpack', '*.node'], { cwd: WORK, stdio: 'inherit', shell: true }).status !== 0) die('asar pack failed');
+const listing = out('npx.cmd', ['-y', ASAR_PKG, 'list', q(ASAR)], { cwd: WORK, maxBuffer: 1 << 28, shell: true }).split('\n').map((l) => l.replace(/\\/g, '/'));
 if (listing.some((l) => /^\/(\.env|tests|\.agent-state|\.workflow|\.git|artifacts|docs|scripts)(\/|$)/.test(l))) die('asar contains excluded paths');
 for (const must of ['/package.json', '/BUILD.json', '/src/index.js', '/desktop/main.cjs', '/desktop/update-public-key.pem', '/public/dashboard.html']) {
   if (!listing.includes(must)) die(`asar is missing ${must}`);
