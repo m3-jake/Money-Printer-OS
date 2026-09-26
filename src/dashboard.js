@@ -15,7 +15,11 @@ import { fileURLToPath } from 'node:url';
 import { loadState, loadStateCached, stateStamp, readJournal, enqueueAction } from './store.js';
 import { cfg } from './config.js';
 import { readEvidenceMonitor } from './researchEvidenceStore.js';
-import { readResearchControlPlane, attachControlPlaneToMonitor, leaderboardRows, championPublicationView } from './researchControlPlane.js';
+import { readResearchControlPlane, attachControlPlaneToMonitor, leaderboardRows, championPublicationView, controlPlaneFiles } from './researchControlPlane.js';
+import { seedProjectJournal } from './projectJournal.js';
+import { fitnessSnapshot, writeFitnessFiles, solanaFitnessParts, polymarketFitnessParts } from './fitnessLedger.js';
+import { robinhoodFitnessParts } from './robinhoodAutoTrader.js';
+import { runSelfReport, latestSelfReport } from './selfReport.js';
 import { saveResourcePolicy, resourceSnapshot, systemTelemetry } from './resourcePolicy.js';
 // polymarketUS.js is parked except for credentials and the session arm: its scanner and single-order routes are not served.
 import { usReadiness, configurePolymarketUS, armPolymarketUS, polymarketUSAccount } from './polymarketUS.js';
@@ -82,6 +86,13 @@ function requestUpdater(action){
 
 function researchCaptureStatus(){try{return JSON.parse(fs.readFileSync(RESEARCH_CAPTURE_STATUS_FILE,'utf8'))}catch{return {schema:'mpo.research-capture-status.v1',updatedAt:null}}}
 function labModuleStatuses(){const out={};for(const id of ['robinhood','robinhood-equities','polymarket','polymarket-combo']){try{const v=JSON.parse(fs.readFileSync(path.join(DATA_DIR,'lab-link','modules',`${id}.json`),'utf8'));if(v&&v.module===id)out[id]=v}catch{}}return out}
+const readJupiterStatus = () => { try { return JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'research-capture-status.json'), 'utf8')).jupiter || null; } catch { return null; } };
+// One fitness record per module (docs/FITNESS-LEDGER.md). A failing module reports a blocker instead of throwing.
+async function fitnessNow(s = loadStateCached()) {
+  const at = Date.now(), part = fn => { try { return fn(); } catch (e) { return { blockers: [`unavailable: ${String(e?.message || e).slice(0, 160)}`] }; } };
+  let pm; try { const ev = await import('./polymarketUSEvidence.js'); pm = part(() => polymarketFitnessParts(ev.polymarketFitness(), { now: at })); } catch (e) { pm = { blockers: [`unavailable: ${String(e?.message || e).slice(0, 160)}`] }; }
+  return fitnessSnapshot({ now: at, solana: part(() => solanaFitnessParts(s, cfg, { now: at, jupiter: readJupiterStatus() })), robinhood: part(() => robinhoodFitnessParts({ at })), polymarket: pm });
+}
 function researchPlane(s = loadStateCached(), opts = {}){
   return readResearchControlPlane({dataDir:DATA_DIR,journalLimit:300,state:s,mode:cfg.mode,...opts});
 }
@@ -391,6 +402,9 @@ export function startDashboard() {
   // Lab champions -> strategy registry, once now and every minute. Failures stay in the snapshot, never thrown.
   // Lab champions -> registry and legacy books -> ledger mirror, now and every minute.
   const syncLab=()=>{try{marketPlatform().syncLab();}catch{}try{marketPlatform().syncLegacyLedger();}catch{}};syncLab();const labSyncTimer=setInterval(syncLab,60_000);labSyncTimer.unref();
+  // Catch the project journal up with this build's history (packaged builds ship it; no git there).
+  const seeded = seedProjectJournal({ journalFile: controlPlaneFiles(DATA_DIR).journal, appRoot: ROOT });
+  if (seeded.appended || seeded.error) console.log(`[journal] +${seeded.appended} from ${seeded.source || 'none'}${seeded.error ? ' error: ' + seeded.error : ''}`);
   const server = http.createServer(async (req, res) => {
     try {
       const u = new URL(req.url, 'http://127.0.0.1');
@@ -487,6 +501,8 @@ export function startDashboard() {
       if (req.method === 'GET' && u.pathname === '/api/update') return json(res, updaterState());
       if (req.method === 'GET' && u.pathname === '/api/research-monitor') return json(res, researchMonitorState());
       if (req.method === 'GET' && u.pathname === '/api/research-control-plane') return json(res, researchPlane());
+      if (req.method === 'GET' && u.pathname === '/api/fitness') return json(res, await fitnessNow());
+      if (req.method === 'GET' && u.pathname === '/api/self-report/latest') { const r = latestSelfReport(DATA_DIR); return r ? json(res, r) : json(res, { ok: false, error: 'No self-report yet; the first one is written about a minute after start.' }, 404); }
       if (req.method === 'GET' && u.pathname === '/api/project-journal') return json(res, researchPlane().journal);
 
       if (req.method !== 'POST') {
@@ -570,6 +586,16 @@ export function startDashboard() {
   startPracticeLoop({ dataDir: DATA_DIR });
   server.on('close',()=>{ clearInterval(labSyncTimer); stopRobinhoodLoops(); stopPracticeLoop(); closeMarketPlatform(); });
   startRobinhoodEquitiesLoop();
+  // The Lab reads <data>/lab-link/fitness/*.json; refresh it every minute (first write shortly after start).
+  const writeFitness = () => fitnessNow().then(snap => writeFitnessFiles(DATA_DIR, snap)).catch(() => {});
+  const fitnessTimer = setInterval(writeFitness, 60000), fitnessFirst = setTimeout(writeFitness, 5000);
+  fitnessTimer.unref?.(); fitnessFirst.unref?.();
+  server.on('close', () => { clearInterval(fitnessTimer); clearTimeout(fitnessFirst); });
+  // Daily self-report: rewritten hourly; the first run on a new day finalizes yesterday's and journals it.
+  const writeReport = () => fitnessNow().then(fitness => { const r = runSelfReport({ dataDir: DATA_DIR, fitness, state: { ...loadStateCached(), mode: cfg.mode } }); if (r.error) console.log(`[self-report] ${r.error}`); }).catch(() => {});
+  const reportTimer = setInterval(writeReport, 60 * 60000), reportFirst = setTimeout(writeReport, 60000);
+  reportTimer.unref?.(); reportFirst.unref?.();
+  server.on('close', () => { clearInterval(reportTimer); clearTimeout(reportFirst); });
   server.on('close',()=>stopRobinhoodEquitiesLoop());
   server.listen(cfg.dashboardPort, cfg.dashboardHost, () => console.log(`Dashboard: http://${cfg.dashboardHost}:${cfg.dashboardPort}`));
   return server;

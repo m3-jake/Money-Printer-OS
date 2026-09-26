@@ -572,7 +572,7 @@ async function cycle() {
   s.system.learner = learnerSnapshot(s);
   s.system.learner.settledThisCycle = settledOutcomes;
   // Feed the lab: labeled outcomes + a status line, throttled, only when something changed.
-  if (LAB_LINK) { try { publishLabFeed(s, { mode: cfg.mode, version: process.env.MONEY_PRINTER_VERSION || null }); } catch {} }
+  if (LAB_LINK) { try { publishLabFeed(s, { mode: cfg.mode, version: process.env.MONEY_PRINTER_VERSION || null, config: cfg }); } catch {} }
 
   s.memeIndex = memeIndex(ranked);
   s.watchlist = ranked.slice(0, Math.min(150, max));

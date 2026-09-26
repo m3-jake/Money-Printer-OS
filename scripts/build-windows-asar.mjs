@@ -18,6 +18,7 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { writeBuildMilestones } from '../src/projectJournal.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ALLOW = ['src', 'desktop', 'public', 'package.json', 'package-lock.json', '.env.example'];
@@ -62,6 +63,7 @@ fs.mkdirSync(path.join(APP, 'data')); fs.writeFileSync(path.join(APP, 'data', '.
 fs.writeFileSync(path.join(APP, 'BUILD.json'), JSON.stringify({ releaseId, sourceCommit: commit, packageVersion: pkg.version, electronVersion: ELECTRON_VERSION, createdAt, builtOn: 'windows' }, null, 2) + '\n');
 fs.writeFileSync(path.join(APP, '.build-commit'), commit + '\n');
 fs.writeFileSync(path.join(APP, '.build-version'), pkg.version + '\n');
+writeBuildMilestones(APP, { repoDir: ROOT, ref: commit }); // the app seeds its project journal from these
 const files = walk(APP);
 const forbidden = files.filter((f) => /(^|\/)\.env$/.test(f) || (/\.(pem|key|p12|pfx)$/.test(f) && !f.endsWith('update-public-key.pem')));
 if (forbidden.length) die(`forbidden files staged: ${forbidden.join(', ')}`);
@@ -76,7 +78,7 @@ const q = (p) => `"${p}"`;
 if (spawnSync('npx.cmd', ['-y', ASAR_PKG, 'pack', q(APP), q(ASAR), '--unpack', '*.node'], { cwd: WORK, stdio: 'inherit', shell: true }).status !== 0) die('asar pack failed');
 const listing = out('npx.cmd', ['-y', ASAR_PKG, 'list', q(ASAR)], { cwd: WORK, maxBuffer: 1 << 28, shell: true }).split('\n').map((l) => l.replace(/\\/g, '/'));
 if (listing.some((l) => /^\/(\.env|tests|\.agent-state|\.workflow|\.git|artifacts|docs|scripts)(\/|$)/.test(l))) die('asar contains excluded paths');
-for (const must of ['/package.json', '/BUILD.json', '/src/index.js', '/desktop/main.cjs', '/desktop/update-public-key.pem', '/public/dashboard.html']) {
+for (const must of ['/package.json', '/BUILD.json', '/PROJECT-MILESTONES.json', '/src/index.js', '/desktop/main.cjs', '/desktop/update-public-key.pem', '/public/dashboard.html']) {
   if (!listing.includes(must)) die(`asar is missing ${must}`);
 }
 const sha256 = crypto.createHash('sha256').update(fs.readFileSync(ASAR)).digest('hex');

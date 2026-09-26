@@ -7,7 +7,7 @@
 // NEVER calls any Robinhood endpoint. No network at import.
 import fs from 'node:fs';
 import path from 'node:path';
-import { renameSyncWithRetry } from './atomicRename.js';
+import { writeFileAtomicSync } from './atomicRename.js';
 import { etDate, isSession, lastCompletedSession, CALENDAR_START } from './robinhoodEquitiesCalendar.js';
 
 // History depth: at least 6 years, so the Lab's robinhood-equities lane can run its walk-forward and sealed holdout
@@ -83,8 +83,7 @@ export function readBarStore(dataDir){
  return {version:1,provider:null,fetchedAt:null,lastSession:null,bars:{},lastError:null,lastAttemptAt:null};
 }
 export function writeJsonAtomic(file,value){
- fs.mkdirSync(path.dirname(file),{recursive:true});
- const tmp=file+'.'+process.pid+'.tmp';fs.writeFileSync(tmp,JSON.stringify(value));renameSyncWithRetry(tmp,file);
+ writeFileAtomicSync(file,JSON.stringify(value));
 }
 // Freshness against the calendar: FRESH (every symbol has the last completed session), STALE, NO_DATA.
 export function dataStatus(store,symbols,now=Date.now(),env=process.env){

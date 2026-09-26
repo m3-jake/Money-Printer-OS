@@ -4,7 +4,7 @@
 (`CURRENT_TASKS.md`, `KNOWN_BUGS.md`, `PROJECT_STATE.md`, `RELEASE_STATUS.md`) and in `reports/NEXT-STEPS-2026-09-25.md`.
 Don't re-inventory the repo. Update this file at the end of every batch.
 
-Last updated: 2026-09-26, batch L (Codex platform + sunny desktop finished, merged to `main`). Version `0.5.0-alpha.60`.
+Last updated: 2026-09-26, batch LOOP (self-improving-loop plan, trader + Lab) and batches R–W (Arbitrage, Stocks, Market Lab, Macro). Version `0.5.0-alpha.60`.
 
 ## Architecture (inventoried once)
 
@@ -879,6 +879,73 @@ Tests: trader `test:all` green, Lab `test:all` 65/69/75 green. Nothing built or 
 
 Kalshi and Robinhood event contracts are already covered by the MPOS core platform (Batch L), so they weren't rebuilt.
 
+## Batch LOOP (2026-09-26 afternoon, "Money printer OS work" session): the self-improving-loop plan, trader side
+
+bing: "Do everything that we have planned", then "make sure the journal is fully caught up; after the 22nd there's nothing."
+
+Worked in a separate worktree, `W:\mpo-claude`, on branch `claude/planned`. Codex and three other Claude sessions were committing in `W:\money-printer-os` at the same time. The branch merged `feature/hud-declutter` up to `031504c` with no lost work. The one exception: an uncommitted ~20-line `.claude/launch.json` addition by another session was discarded by mistake while restoring that file.
+
+- **Journal catch-up.** The project journal only ever got research events. Those stopped on 09-22 when Lab champions became research-only, and the git backfill never ran for installed apps (no `.git` there).
+  - Both build scripts now ship `PROJECT-MILESTONES.json`. A CI release build would ship only one commit until `fetch-depth: 0` is added to `release.yml` (not changed: the push token lacks workflow scope). Local builds already have full history.
+  - The dashboard seeds the journal at startup: missing commits, plus one "<release> started" entry per release.
+  - The Journal sorts by time, not file position.
+  - Checked in an isolated engine: 157 entries, 139 after the 22nd, newest first.
+- **Fitness ledger (plan C, trader side).**
+  - `src/fitnessLedger.js`, `GET /api/fitness`, and `<data>/lab-link/fitness/<module>.json` written every minute. Contract: `docs/FITNESS-LEDGER.md`.
+  - `src/evidenceFlags.js` `laneMayPropose` is the shared gate, copied verbatim to the Lab. It fails closed and thresholds can only tighten.
+  - `trader-status.json` gains `runningPolicy`, so the Lab can score MPO-RUNNING as the incumbent.
+- **Lab paper trials (plan E2–E3).** `labProposalPass` runs every 5 min from the Robinhood tick, only with `ROBINHOOD_LAB_AUTO_APPLY_PAPER=true` (default **false**).
+  - It applies a PAPER_REVIEW proposal to paper params only, and only if all hold: its basis matches the running hash, evidence passes, params are in bounds, and the hash was never reverted.
+  - After 20 closes the proposal is kept only if PF ≥ the incumbent's and drawdown ≤ 3 %.
+  - Otherwise, or with no close in 14 days, it reverts and the hash is rejected for good. A hand edit abandons the trial.
+  - Decisions go to the evolve ledger and the project journal. This is the 15-second family only; the daily book (batch Q) keeps its own rules.
+- **Unattended ops (plan F1–F4, F6).**
+  - Raw tape retention: 45 days, then oldest-first over 20 GB. Today, yesterday and the Polymarket US evidence are kept until complete.
+  - `writeFileAtomicSync`: lab-link, the Robinhood tape, journal, evolve and equities writers, both Polymarket writers and the fitness files now fsync before rename.
+  - `npm run health -- --json` adds kill switches, Robinhood order POSTs (RED > 0), fitness, Lab generation advancing, Lab modules, disk free and raw retention.
+  - Daily self-report: `<data>/reports/self/<date>.md` and `/api/self-report/latest`. Yesterday's report is finalized into one Journal line.
+  - `scripts/agent-preflight.mjs` and `docs/RUNBOOK-UNATTENDED.md`.
+- **Jupiter quote tape (plan F5).** The collector quotes a 0.1 SOL buy and the matching sell for open positions and top watchlist tokens every 2 min into `raw/jupiter-quotes-*.ndjson`.
+  - Quote GETs only; 10k calls/day cap.
+  - First live sample: MINES 8.46 % and UP 1.64 % round trip, against the paper model's ~2.1 % floor.
+  - Solana fitness shows the tape but stays BLOCKED until an executable-price replay exists.
+- **Dropped in favour of another session's work:** this branch's own copy-trading step 2 and wallet scorecard (commits `966a927`, `2f32de7` on the abandoned `claude/planned-batches`). `918f740` supersedes them: it runs the indexer from the collector, which also fixes the "indexing paused since the alpha worker went off" gap found here.
+- **Decided:** `src/polymarketPaperCombos.js` stays parked. It duplicates the shadow auto-combo lane and has no route, UI or test. `moneyPhysics.js` and `researchLaneRegistry.js` are also tested but unwired.
+- **Tests:** `test:all` **773 pass / 0 fail** on the merged branch (the baseline this morning was 667). New suites:
+  - `fitness-ledger` (6), `robinhood-lab-trial` (5)
+  - `unattended-storage` (5), `self-report` (2), `lab-health` (+2)
+  - `project-journal` (+3)
+
+### Batch LOOP, Lab side (`W:\lab-claude`, branch `claude/lab-loop-20260926`; Lab `master` fast-forwarded to `2ee5e46`)
+
+- Built by a subagent of the "Money printer OS work" session.
+- The branch contains Codex's tip `6a76b8b` (Robinhood daily bars, robinhood-equities lane).
+- `codex/lab-evidence-20260925` is still at `6a76b8b`: another session has it checked out. Fast-forward it to `master` when that session is idle.
+- **Lab `test:all`: 234 pass / 0 fail** (baseline 191). Re-run and confirmed by the parent session.
+
+| Plan item | Commit | What |
+| --- | --- | --- |
+| Codex leftover | `b7d4d29` | `src/laneRegistry.js` + test |
+| C | `c16c16d` | `src/evidenceFlags.js` (byte-identical to the trader's, test enforces it); `labFeed` reads `lab-link/fitness/*.json` and `runningPolicy`; `publishModuleChampion` refuses paper promotion unless `laneMayPropose` passes on a fresh (≤ 1 h) ledger; module status shows `traderFitness` |
+| D | `47526af` | Solana exits frozen at `runningPolicy` while there are no executable prices (`exitSearch:'FROZEN'`); an MPO-RUNNING incumbent is scored every generation, and the champion is re-scored and demoted below it; held-out t above the 0.05/trials level plus ≥ 200 held-out trades; 1 M trials per sealed window (`BUDGET_SPENT`); throttle to 1 CPU worker, no GPU, 50 % CPU while Solana is not promotable; `lab-run.json` unclean-boot cap; `MPO_LAB_UNTHROTTLE=1` override; module workers honour `paused` |
+| E | `2ee5e46` | sticky versioned proposals (`proposalVersion`, `supersedes`, `basis`); `PAPER_TRIAL n/20` while the trader runs a trial; reverted hashes are never proposed again; new proposals must beat the paper record on data after `lastDecision.at` |
+
+- **Skipped:**
+  - Robinhood 1-minute history (the daily bars from the other session replace it).
+  - Search worker pool (it would fight the D throttle).
+- **Expect after the Lab is next installed:**
+  - It runs much lighter: 1 worker, no GPU, until Solana has executable prices.
+  - The current Solana champion (stop 1.5 / take 100 / hold 2) is likely demoted to MPO-RUNNING.
+  - Two OS restarts in 7 days without closing the Lab also count as unclean boots.
+- **Follow-ups:**
+  - `runningPolicy` carries exits only, so MPO-RUNNING assumes BASE entry weights. Add the entry model to it.
+  - The Lab page doesn't render the new status fields yet.
+
+### Next recommended
+- bing: the Mac (`bash scripts/mac-install-latest.sh` in a checkout); build and install the Lab from `master` `2ee5e46` and start it (it was not running at 15:30); decide `ROBINHOOD_LAB_AUTO_APPLY_PAPER` after reading the first Lab proposal.
+- An executable-price Solana replay over `raw/jupiter-quotes-*` once a few days of tape exist. It is the only way Solana leaves research-only.
+- Design work: a second Polymarket strategy family (fee-free NFL markets or maker posting with a queue model).
+
 ## Batch Q (2026-09-26): one Polymarket window with Positions / History / Performance tabs
 
 - **Polymarket is now one tabbed window:** Live combos (the old host tab, relabelled), Markets, **Positions**, **History** and **Performance**. The three new tabs live in `public/js/mpo-polymarket.js` and redraw only when their data changes.
@@ -1185,3 +1252,7 @@ Kalshi and Robinhood event contracts are already covered by the MPOS core platfo
 - **Live stays locked:** the Risk Governor still refuses LIVE (LIVE_NOT_AUTHORIZED), the proposal path still refuses LIVE, and the execution boundary is unchanged (tested after a reconciled opening balance).
 - **Real-money order routing: still not written** (see docs/MPOS-UNIFICATION.md → Remaining work).
 - **Isolated check:** both venues NO_CREDENTIALS (the scratch env has no keys). The installed app has Robinhood keys and will read that account when bing presses Reconcile. `market-core` 64.
+### Install record (2026-09-26, 17:26 local): main `08b2d75` on Windows
+- `Windows-08b2d75-20260926\app.asar`, release `0.5.0-alpha.60+windows.08b2d75`, sha256 `c584b8c0…d37a`; `smoke:windows` passed. It replaced the other session's local merge build `793c736`; backup `resources\app.asar.pre-08b2d75-backup-20260926-172552`.
+- Live on 8792: paper, HEALTHY, holder RPC OK, 10 paper positions, Journal 275 entries (167 after 09-22, newest "…08b2d75 started"), `/api/fitness`, `/api/scoreboard`, `/api/self-report/latest` and `/api/platform/status` all 200.
+- Still owner-only: Evolution Lab install from Lab `master` `2ee5e46` plus start; the MacBook (`bash scripts/mac-install-latest.sh`); `release:cut` for the GitHub auto-update channel.
