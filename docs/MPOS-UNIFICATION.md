@@ -59,7 +59,7 @@ Everything below lives in `src/core/` behind `/api/platform/*` (`src/core/http.j
 ### Rules every module follows
 
 - **Facts vs analysis.** Venue/agency data is stored as fact with its own timestamp. Links, catalysts, entities, importance, sector exposure and flags are labelled RULE_BASED / SPECULATIVE / HEURISTIC and never written into the facts. No language model is used anywhere in the core.
-- **Availability time.** Backtests and replays reveal records by `availableAt`: candle-derived tape rows at candle close, Alpaca bars at bar close, FRED vintages at end of the publication day (ET), SEC filings at acceptance time, RSS items at min(published, received).
+- **Availability time.** Backtests reveal records by `availableAt`. Candle-derived tape collapses to the close; an earlier OHLC sample cannot execute after close. Alpaca bars remain provisional at bar close; FRED vintages use end of publication day (ET), SEC filings retain acceptance time, and each RSS revision is available on first collector receipt. Publication time is a separate fact.
 - **Unknown stays unknown.** Missing fees, terms, quotes, keys or metrics are shown as unavailable and block any number that would depend on them (locked returns, orders, as-of history).
 - **No real money.** PAPER and MANUAL_APPROVAL only; LIVE is refused by the proposal path, the broker, the strategy registry and the execution boundary.
 

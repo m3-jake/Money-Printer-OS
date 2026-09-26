@@ -1,4 +1,13 @@
-# Integration ledger — 20260916-104614-4bd03
+# Current integration — 2026-09-26
+
+Branch `codex/master-upgrade-20260926` integrates the installed alpha.60 main lineage and existing
+HUD branch via `3eef954`. Owned packages: replay `b95f40f`/`1f15352`; HUD and trial `996c8ff`;
+equities producer/consumer hardening `c511661`; parent accounting, contracts, provenance, boundaries,
+native renderer and release integration follow. Lab source is `abc16cec35bb8957d7fb6f7b8a4791c0bad0fbdb`,
+including Robinhood parity commit `36fae5f`. No remote push or installed-data change occurred.
+Final verification and artifact hashes: `reports/UPGRADE-IMPLEMENTATION-2026-09-26.md`.
+
+# Historical integration ledger — 20260916-104614-4bd03
 
 Base: deployed alpha.42 `4207a70`. This worktree fast-forwarded reviewed settlement/latency, then selectively ported research tools. **No deploy, no app restart, no live orders, no credential/risk-gate changes.**
 

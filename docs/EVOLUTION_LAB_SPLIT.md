@@ -1,6 +1,6 @@
 # alpha.53 — the Evolution Lab becomes its own app
 
-> **Retired 2026-09-26.** The Evolution Lab is no longer used. The engine's lab link is off unless `MPO_LAB_LINK=true`; with it off the engine neither reads `lab-link/` nor exports the dataset. What the trader still needs from search (the Robinhood evolve) stays in the trader with a sealed holdout (`docs/ROBINHOOD-AUTO-TRADER.md` §22.3). This page is kept as history.
+> **Active architecture, reconciled 2026-09-26.** The owner's master upgrade brief explicitly restores the Evolution Lab as shared platform research. The installed trader has `MPO_LAB_LINK=true`; the Lab is connected, throttled and has no qualified Solana paper proposal. Local lightweight replay remains available. Shared compute leases coordinate Market Lab workers with the separate Lab scheduler. This document retains the original split history; current evaluation and release semantics are in `docs/UPGRADE-OPERATIONS.md`.
 
 ## Why
 

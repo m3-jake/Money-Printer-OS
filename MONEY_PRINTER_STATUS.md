@@ -1,5 +1,16 @@
 # Money Printer OS: status ledger
 
+## Current entry point — 2026-09-26 master upgrade
+
+Trader source alpha.61 on `codex/master-upgrade-20260926`; Evolution Lab source alpha.7 at
+`W:/money-printer-evolution-lab`. Lab is an active research owner. The prior main/runtime work was
+merged through `3eef954`; replay, HUD/trial and equities integration commits are recorded in
+`reports/UPGRADE-IMPLEMENTATION-2026-09-26.md`. Installed apps remain alpha.60 / alpha.6.
+No live orders, installation, restart or public release occurred. Preserve `.claude/launch.json`
+and the owner's master brief. Use `docs/UPGRADE-OPERATIONS.md` for current configuration,
+capabilities, build/rollback procedure and evidence limits. Exact archive provenance lives beside
+the review payloads under `W:/upgrade-release-20260926/`. Historical entries below are retained.
+
 **Read this first.** It is the entry point for each new session. Deeper history lives in `.agent-state/`
 (`CURRENT_TASKS.md`, `KNOWN_BUGS.md`, `PROJECT_STATE.md`, `RELEASE_STATUS.md`) and in `reports/NEXT-STEPS-2026-09-25.md`.
 Don't re-inventory the repo. Update this file at the end of every batch.

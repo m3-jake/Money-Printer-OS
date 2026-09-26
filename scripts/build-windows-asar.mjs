@@ -7,7 +7,7 @@
 // scripts/build-unified.mjs refuses to run anywhere but macOS arm64 (codesign, ditto, plutil), so
 // a Windows host had no way to produce the archive its own installer swaps in. This is step 2 of
 // that script — the part that is platform-neutral — done the same way: a clean `git archive` of
-// the allowlist at HEAD (the tracked tree must be clean), `npm ci --omit=dev --omit=optional`,
+// the allowlist at HEAD (packaged source must be committed), `npm ci --omit=dev --omit=optional`,
 // BUILD.json / .build-commit / .build-version, the forbidden-file check, and `@electron/asar pack`.
 // It does not download an Electron runtime, sign anything, or install anything; pair it with
 // `npm run smoke:windows -- --asar <file>` for the boot test and with the installed runtime's
@@ -33,8 +33,8 @@ const walk = (d, rel = '') => fs.readdirSync(d, { withFileTypes: true })
   .flatMap((e) => e.isDirectory() ? walk(path.join(d, e.name), rel ? `${rel}/${e.name}` : e.name) : [rel ? `${rel}/${e.name}` : e.name]);
 
 if (process.platform !== 'win32') die('this is the Windows packer; use npm run release:unified on the Mac');
-const dirty = out('git', ['-C', ROOT, 'status', '--porcelain', '--untracked-files=no']);
-if (dirty) die(`tracked working tree not clean:\n${dirty}`);
+const dirty = out('git', ['-C', ROOT, 'status', '--porcelain', '--untracked-files=all', '--', ...ALLOW]);
+if (dirty) die(`packaged source is not committed:\n${dirty}`);
 const commit = out('git', ['-C', ROOT, 'rev-parse', 'HEAD']);
 const short = commit.slice(0, 7);
 const commitEpoch = Number(out('git', ['-C', ROOT, 'show', '-s', '--format=%ct', 'HEAD']));
@@ -60,7 +60,10 @@ const ci = spawnSync('npm.cmd', ['ci', '--ignore-scripts', '--omit=dev', '--omit
 fs.writeFileSync(path.join(OUT, 'npm-ci.log'), `${ci.stdout}\n${ci.stderr}`);
 if (ci.status !== 0) die(`npm ci failed (see ${OUT}\\npm-ci.log)`);
 fs.mkdirSync(path.join(APP, 'data')); fs.writeFileSync(path.join(APP, 'data', '.keep'), '');
-fs.writeFileSync(path.join(APP, 'BUILD.json'), JSON.stringify({ releaseId, sourceCommit: commit, packageVersion: pkg.version, electronVersion: ELECTRON_VERSION, createdAt, builtOn: 'windows' }, null, 2) + '\n');
+const sourceFiles=walk(APP).filter(f=>!f.startsWith('node_modules/')).sort();
+const fileHashes=Object.fromEntries(sourceFiles.map(f=>[f,crypto.createHash('sha256').update(fs.readFileSync(path.join(APP,f))).digest('hex')]));
+const sourceFingerprint=crypto.createHash('sha256').update(JSON.stringify(fileHashes)).digest('hex');
+fs.writeFileSync(path.join(APP, 'BUILD.json'), JSON.stringify({ schema:'mpo.build-provenance.v1',releaseId, sourceCommit: commit, sourceDirty:false, sourceFingerprint,fileHashes, packageVersion: pkg.version, electronVersion: ELECTRON_VERSION, createdAt:new Date(commitEpoch*1000).toISOString(), builtOn: 'windows',toolchain:{node:process.versions.node,asar:ASAR_PKG},compatibility:{compute:'mpo.compute-budget.v1',prediction:'mpo.prediction-episodes.v1',replay:'market-replay.v2',robinhood:'robinhood-backtest.v2',equities:'equities-close-next-open-v2'} }, null, 2) + '\n');
 fs.writeFileSync(path.join(APP, '.build-commit'), commit + '\n');
 fs.writeFileSync(path.join(APP, '.build-version'), pkg.version + '\n');
 writeBuildMilestones(APP, { repoDir: ROOT, ref: commit }); // the app seeds its project journal from these
@@ -82,7 +85,7 @@ for (const must of ['/package.json', '/BUILD.json', '/PROJECT-MILESTONES.json', 
   if (!listing.includes(must)) die(`asar is missing ${must}`);
 }
 const sha256 = crypto.createHash('sha256').update(fs.readFileSync(ASAR)).digest('hex');
-const info = { releaseId, sourceCommit: commit, packageVersion: pkg.version, electronVersion: ELECTRON_VERSION, createdAt, builtOn: os.hostname(), sha256, bytes: fs.statSync(ASAR).size, entries: listing.length, nativeModules: nativeMods, stagedFiles: files.length };
+const info = { releaseId, sourceCommit: commit, sourceFingerprint, packageVersion: pkg.version, electronVersion: ELECTRON_VERSION, createdAt, builtOn: os.hostname(), sha256, bytes: fs.statSync(ASAR).size, entries: listing.length, nativeModules: nativeMods, stagedFiles: files.length };
 fs.writeFileSync(path.join(OUT, 'BUILD-INFO.json'), JSON.stringify(info, null, 2) + '\n');
 fs.writeFileSync(path.join(OUT, 'SHA256SUMS.txt'), `${sha256}  app.asar\n`);
 fs.rmSync(WORK, { recursive: true, force: true });

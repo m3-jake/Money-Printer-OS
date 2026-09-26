@@ -60,7 +60,7 @@ export function fillPending(book,{session,openOf,settlesOn,late=false,now=Date.n
   p.qty=floorQty(p.qty-q);const realized=r2(net-q*p.avgPx);
   if(p.qty<QTY_STEP)delete book.positions[s];else p.lastPx=o;
   book.unsettled.push({usd:net,settlesOn});
-  fills.push({at:new Date(now).toISOString(),session,side:'sell',symbol:s,qty:q,fillPrice:r2(px*1e4)/1e4,refOpen:o,notionalUsd:r2(gross),fees,pnlUsd:realized,late,strategyId:pend.strategyId});
+  fills.push({at:new Date(now).toISOString(),session,side:'sell',symbol:s,qty:q,fillPrice:r2(px*1e4)/1e4,refOpen:o,notionalUsd:r2(gross),fees,pnlUsd:realized,late,strategyId:pend.strategyId,paramsHash:pend.paramsHash||null});
  }
  // Buys with settled cash only (cash account: no trading on unsettled proceeds). Shortfall is re-decided next close.
  const buys=Object.entries(pend.targets).map(([s,w])=>{const o=openOf(s);const cur=(book.positions[s]?.qty||0)*(o||0);return {s,o,need:w*equity-cur}}).filter(x=>Number.isFinite(x.o)&&x.need>=minTrade);
@@ -71,7 +71,7 @@ export function fillPending(book,{session,openOf,settlesOn,late=false,now=Date.n
   const p=book.positions[b.s]||{qty:0,avgPx:0,lastPx:b.o};
   p.avgPx=(p.qty*p.avgPx+cost)/(p.qty+q);p.qty=floorQty(p.qty+q);p.lastPx=b.o;book.positions[b.s]=p;
   book.settledCashUsd=r2(book.settledCashUsd-cost);
-  fills.push({at:new Date(now).toISOString(),session,side:'buy',symbol:b.s,qty:q,fillPrice:r2(px*1e4)/1e4,refOpen:b.o,notionalUsd:cost,fees:{sec:0,taf:0},late,shortOfSettledCash:scale<1,strategyId:pend.strategyId});
+  fills.push({at:new Date(now).toISOString(),session,side:'buy',symbol:b.s,qty:q,fillPrice:r2(px*1e4)/1e4,refOpen:b.o,notionalUsd:cost,fees:{sec:0,taf:0},late,shortOfSettledCash:scale<1,strategyId:pend.strategyId,paramsHash:pend.paramsHash||null});
  }
  book.history.push(...fills);if(book.history.length>500)book.history.splice(0,book.history.length-500);
  book.lastFill={session,late,decidedForSession:pend.decidedForSession,count:fills.length};

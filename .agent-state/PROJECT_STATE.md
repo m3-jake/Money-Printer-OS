@@ -1,4 +1,14 @@
-# Money Printer OS — project state (2026-09-20, alpha53 integrated)
+# Current project state — 2026-09-26
+
+Authoritative working repositories: `W:/money-printer-os` (alpha.61,
+`codex/master-upgrade-20260926`) and `W:/money-printer-evolution-lab` (alpha.7).
+Installed runtime remains trader alpha.60 and Lab alpha.6; source fixes are not installed.
+Evolution Lab is active, owns bounded evidence-driven research, and cannot own live execution.
+The trader owns paper accounting, risk, applied policy and admission/rollback. See
+`docs/UPGRADE-OPERATIONS.md` and `reports/UPGRADE-IMPLEMENTATION-2026-09-26.md` for verified
+current architecture, versions, data paths, tests, artifacts and remaining qualification limits.
+
+# Historical project state (2026-09-20, alpha53 integrated)
 
 - **Authoritative source:** `/Users/bing/Desktop/Money Printer OS/Current/MPO-alpha53-release-src`
   (git; `93c8022` = "alpha53 source as received", fast-forwarded through `cb71d4c` = "fix: alpha53

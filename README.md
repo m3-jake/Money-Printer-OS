@@ -1,6 +1,6 @@
 # Money Printer OS
 
-Version `0.5.0-alpha.53`. A native, retro-styled trading workstation: continuous research,
+Source version `0.5.0-alpha.61` (upgrade candidate; installation is tracked separately). A native, retro-styled trading workstation: continuous research,
 paper-mode strategy evaluation, monitoring, and desktop supervision, launched from
 `desktop/main.cjs`.
 
@@ -13,7 +13,7 @@ multiple points (`src/dashboard.js`, `src/index.js`, `src/experimentRegistry.js`
 tree loosens those gates automatically; live trading requires an explicit, manual step outside
 of research/evolution code paths.
 
-Alpha.53's headline change is the **Evolution Lab split**: the strategy-search furnace
+The **Evolution Lab split** remains the current architecture: the strategy-search furnace
 (evolution engine, BEAST/GPU scorer, research cluster) has moved to a separate app,
 `money-printer-evolution-lab` (Windows-only). This trader keeps the network mesh, the
 read-only research/evidence surfaces the HUD reads, and a small link module

@@ -3,8 +3,10 @@ import { marketPlatform } from './platform.js';
 export function localMutationAllowed(req) {
   if(!['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket?.remoteAddress))return false;
   if(req.headers['sec-fetch-site']==='cross-site')return false;
-  if(!String(req.headers['content-type']||'').toLowerCase().startsWith('application/json'))return false;
-  if(req.headers.origin){try{const origin=new URL(req.headers.origin);if(!['127.0.0.1','localhost','[::1]'].includes(origin.hostname)||origin.host!==req.headers.host)return false;}catch{return false;}}
+  if(!/^application\/json(?:\s*;|$)/i.test(req.headers['content-type']||''))return false;
+  try{const host=new URL('http://'+req.headers.host);if(!['127.0.0.1','localhost','[::1]'].includes(host.hostname)||host.username||host.password)return false;
+    if(req.headers.origin&&req.headers.origin!==host.origin)return false;
+  }catch{return false;}
   return true;
 }
 export async function handlePlatformRequest(req,res,url,{json,body,platform=marketPlatform()}={}) {
@@ -22,6 +24,7 @@ export async function handlePlatformRequest(req,res,url,{json,body,platform=mark
       if(route==='/stocks/bars')return json(res,{ok:true,...platform.stocksBars(url.searchParams.get('symbol'))});
       if(route==='/lab/sources')return json(res,{ok:true,...platform.labSources()});
       if(route==='/lab/runs')return json(res,{ok:true,runs:platform.labRuns(50)});
+      if(route==='/research/kalshi')return json(res,{ok:true,...platform.predictionEpisodes()});
       if(route==='/macro')return json(res,{ok:true,...await platform.macroSnapshot({force:url.searchParams.get('force')==='1'})});
       if(route==='/macro/asof')return json(res,{ok:true,...await platform.macroAsOf({id:url.searchParams.get('id'),asOf:url.searchParams.get('asOf')})});
       if(route==='/diagnostics')return json(res,{ok:true,...platform.diagnostics()});
@@ -57,6 +60,7 @@ export async function handlePlatformRequest(req,res,url,{json,body,platform=mark
       else if(route==='/stocks/cancel')result=platform.stocks.cancel(input.id);
       else if(route==='/lab/walkforward')result=await platform.labWalkForward(input);
       else if(route==='/lab/run')result=await platform.labRun(input);
+      else if(route==='/research/kalshi/run')result=platform.predictionResearch(input);
       else if(route==='/lab/replay/start')result=await platform.labReplayStart(input);
       else if(route==='/lab/replay/step')result=platform.labReplayStep(input);
       else if(route==='/whales/label')result=platform.labelWallet(input);

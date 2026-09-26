@@ -21,7 +21,14 @@ The isolated worker benchmark used a copied installed BTC-USD tape with 4,085 re
 
 Observed first run: about 95 seconds. Subsequent resumes produced **98.429 seconds accumulated**, 567 complete paper cycles, 1,135 ledger entries, 567 worker completions, 56 cancellations, 11 reopen/restart checks, maximum queue depth 1, final cash `$1000.000000`, zero open positions, zero network attempts, and zero failures. Initial RSS was 69 MiB. The first run observed a maximum of 110 MiB; an earlier checkpoint implementation reset this peak to 94 MiB on resume, so peak retention was corrected in the script for future runs. A separate one-second fresh smoke passed eight cycles with no failure. The 24-hour target was **not reached**. Continuation directory: `C:\Users\jakem\AppData\Local\Temp\mpo-upgrade-soak-tuZBzj`. The soak touched no installed application data.
 
-## Read-only local security integration audit
+## Local security integration audit and resolution
+
+Integration follow-up: both findings below were fixed before packaging. Legacy mutation dispatch
+now uses the shared local-host/same-origin/JSON guard; authenticated server ingestion retains its
+own token boundary. Electron uses exact-origin navigation and an HTTP/HTTPS external protocol
+allowlist. `tests/upgrade-boundaries.test.mjs` reproduces foreign-origin, DNS-rebinding Host,
+simple-form and cross-site refusals before side effects and checks external protocol decisions.
+The following bullets preserve the findings as they were observed before these fixes.
 
 - `src/core/http.js` platform mutations require loopback, JSON content type, and a matching browser Origin when present. `src/robinhoodHttp.js` has a similar guard. The dashboard body parser caps JSON at 32 KiB, and its default bind address is `127.0.0.1`.
 - Legacy POST routes in `src/dashboard.js` currently bypass that guard. Simple cross-origin form posts can reach bodyless actions such as `/api/kill`, `/api/pause`, and `/api/update/install` on the loopback server; other state-changing routes also lack an Origin/JSON check. Browser cross-origin response blocking does not prevent the request itself. Apply the shared mutation guard before all dashboard POST dispatch, preserving explicitly authenticated ingestion as needed.

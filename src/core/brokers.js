@@ -47,7 +47,16 @@ export class PaperBroker {
   constructor({ platform, quotes = new AlpacaQuotes(), clock = () => Date.now(), session = marketState }) { this.platform = platform; this.quoteSource = quotes; this.clock = clock; this.session = session; this.id = STOCK_VENUE; validateBroker(this); }
   instrumentId(symbol) { return stableId('Instrument', STOCK_VENUE, symbol); }
   instruments(symbols) { return cleanSymbols(symbols).map(s => ({ symbol: s, instrumentId: this.instrumentId(s), kind: 'EQUITY_OR_ETF', venue: STOCK_VENUE })); }
-  quotes(symbols) { return this.quoteSource.quotes(symbols); }
+  async quotes(symbols) {
+    const quotes=await this.quoteSource.quotes(symbols);
+    for(const [symbol,q] of Object.entries(quotes)){
+      const instrumentId=this.instrumentId(symbol),quantity=num(q.bidSize),at=Math.min(q.quoteAt??0,q.receivedAt??0);
+      if(!(q.bid>0)||!(q.ask>=q.bid)||!(quantity>0)||!at){this.platform.risk.clearMark(STOCK_VENUE,'manual',instrumentId);continue;}
+      const f=sellFees(q.bid*quantity,quantity);
+      this.platform.risk.recordMark({venue:STOCK_VENUE,account:'manual',instrumentId,bid:q.bid,quantity,liquidationFee:f.sec+f.taf,at,source:'alpaca-iex-liquidation'});
+    }
+    return quotes;
+  }
   #rows() { return this.platform.ledger.portfolio('PAPER').accounts.filter(a => a.venue === STOCK_VENUE && a.currency === 'USD'); }
   positions(marks = {}) {
     return this.#rows().flatMap(a => a.positions.map(p => {

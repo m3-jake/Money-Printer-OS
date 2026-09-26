@@ -1,4 +1,15 @@
-# Current tasks — 2026-09-20 (alpha.53, integrated + packaged)
+# Current tasks — 2026-09-26 master upgrade
+
+Implementation and verification of milestones A–F are recorded in
+`reports/UPGRADE-IMPLEMENTATION-2026-09-26.md`; current operator documentation is
+`docs/UPGRADE-OPERATIONS.md`. Remaining owner/external work: review prepared alpha.61/alpha.7
+archives, authorize installation/restart if desired, complete an observed 24-hour isolated soak,
+and collect authentic/prospective execution evidence. No module is newly claimed profitable.
+No speculative chain connector or unbenchmarked GPU path was activated. Physical multi-monitor
+transitions, Mac installation and signing/publication remain unverified. Earlier tasks below
+are historical context; they do not override the September 26 master brief.
+
+# Historical tasks — 2026-09-20 (alpha.53, integrated + packaged)
 
 - 2026-09-25 (Robinhood Auto Trader, `feature/robinhood-auto-trader`): package F leftovers closed (HUD contract test, visual-contract backend assertions, doctor/health-check readiness, release-gate exposure test, spec section 9 loss-cap wording) and the paper-only **Robinhood Evolution** loop landed (`src/robinhoodTape.js`, `src/robinhoodBacktest.js`, `src/robinhoodEvolve.js`, routes `GET /api/robinhood/evolve`, `POST .../evolve/run`, `POST .../evolve/apply`, HUD EVOLUTION fieldset, spec section 22, `.env.example` `ROBINHOOD_EVOLVE_*`). Champions are proposed only; APPLY changes paper params (qualification resets, real autopilot disables with `paramsChanged`); real autopilot is never a promotion target. **Still bing:** connect read-only keys, let the tape accumulate >= 3 days on BTC-USD before the first generation, review proposals before APPLY; do not set `ROBINHOOD_EVOLVE_AUTOPROMOTE=true` or `ROBINHOOD_REAL_ENABLED=true` without reading section 16. Uncommitted on the branch at the time of writing.
 - 2026-09-24: unified build script `scripts/build-unified.mjs` landed; mac arm64 + Windows x64 packages built from 3ba4959 (see RELEASE_STATUS.md). Still pending bing: Authenticode signing, Windows boot test, updater manifest signing, install.

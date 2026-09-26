@@ -1,4 +1,14 @@
-# Windows build — 0.5.0-alpha.54+windows.aa32002 (2026-09-24, WITCHDOCTOR, **not installed**)
+# Current review release — alpha.61 trader / alpha.7 Lab (2026-09-26)
+
+Review artifacts: `W:/upgrade-release-20260926/trader/app.asar` and
+`W:/upgrade-release-20260926/lab/app.asar`. Exact packaged commits, SHA256 values and smoke
+results are in adjacent manifests and `reports/UPGRADE-IMPLEMENTATION-2026-09-26.md`.
+Installed apps remain alpha.60/alpha.6. These are unsigned local archive payloads for the existing
+Windows Electron runtime; no install, restart, signed updater publication or Mac package is claimed.
+Use `docs/UPGRADE-OPERATIONS.md` for build, backup, verification and rollback. Earlier release
+entries below are historical and do not identify the current runtime.
+
+# Historical Windows build — 0.5.0-alpha.54+windows.aa32002 (2026-09-24, WITCHDOCTOR, **not installed**)
 
 Built by `npm run release:windows-asar` (`scripts/build-windows-asar.mjs`) from a clean `git archive` of
 `aa320021def77ed5b37402364f09fd2871465c28` on the Windows host itself. First version cut from the

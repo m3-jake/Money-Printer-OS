@@ -135,7 +135,8 @@ export function matchTerms(a, b) {
 
 // Everything a human attests to when marking a pair EXACT. Any venue edit changes it.
 export function termsFingerprint(d = {}) {
-  return fingerprint({ venue: d.venue ?? null, title: d.title ?? null, outcomes: d.outcomes ?? null, rules: d.settlementRules ?? null, secondary: d.secondaryRules ?? null, source: d.resolutionSource ?? null, expiresAt: d.expiresAt ?? null });
+  const fields=['venue','title','outcomes','settlementRules','secondaryRules','resolutionSource','expiresAt','closeAt','eventKey','outcomeDefinition','edgeCases','cancellationRules','currency','collateral','payout','timeZone','timeWindow','threshold','units','strike','floorStrike','capStrike','strikeType','overtime','tieTreatment','voidRules','disputeRules','settlementTiming'];
+  return fingerprint(Object.fromEntries(fields.map(k=>[k,d[k]??null])));
 }
 
 // Candidate pairs across two venues among already-loaded contracts. Cheap prefilter on game date

@@ -73,9 +73,9 @@ export function cleanBars(rows,{completedThrough}={}){
 export function barsFile(dataDir){return path.join(dataDir,'robinhood-equities','bars.json')}
 // Hand-off copy for the Evolution Lab's robinhood-equities lane (it reads this before the trader's own store).
 export function labBarsFile(dataDir){return path.join(dataDir,'lab-link','robinhood-equities-bars.json')}
-export function writeLabBars(dataDir,store){
+export function writeLabBars(dataDir,store,{incumbent=null,executionAssumptions=null}={}){
  if(!store?.bars||!Object.keys(store.bars).length)return false;
- writeJsonAtomic(labBarsFile(dataDir),{version:1,schema:'mpo.trader-equities-bars.v1',provider:store.provider,fetchedAt:store.fetchedAt,lastSession:store.lastSession,lookbackDays:store.lookbackDays||null,firstSession:store.bars.SPY?.[0]?.d||null,adjusted:'splits and dividends',robinhoodQuotes:false,bars:store.bars});
+ writeJsonAtomic(labBarsFile(dataDir),{version:1,schema:'mpo.trader-equities-bars.v1',provider:store.provider,fetchedAt:store.fetchedAt,lastSession:store.lastSession,lookbackDays:store.lookbackDays||null,firstSession:store.bars.SPY?.[0]?.d||null,adjusted:'splits and dividends',robinhoodQuotes:false,incumbent,executionAssumptions,bars:store.bars});
  return true;
 }
 export function readBarStore(dataDir){

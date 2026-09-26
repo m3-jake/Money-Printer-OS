@@ -1,4 +1,5 @@
 import { finite, fingerprint, requiredText, timestamp } from './model.js';
+import { valuePortfolio, advanceValuation } from './valuation.js';
 
 export const DEFAULT_LIMITS = Object.freeze({ maxOrderUsd:25,maxPositionUsd:100,maxVenueUsd:250,maxStrategyUsd:150,maxEventUsd:100,maxTotalUsd:500,dailyLossUsd:25,maxDrawdownPct:20,maxConcurrentOrders:5,maxSlippageBps:100,maxQuoteAgeMs:15000,minLiquidityUsd:1 });
 export function validateLimits(patch={}) {
@@ -58,14 +59,27 @@ export function portfolioRiskState({dailyPnlUsd,drawdownPct},limits=DEFAULT_LIMI
 }
 
 export class RiskGovernor {
-  constructor(store,ledger,bus){this.store=store;this.ledger=ledger;this.bus=bus;}
+  constructor(store,ledger,bus){this.store=store;this.ledger=ledger;this.bus=bus;
+    store.db.exec(`CREATE TABLE IF NOT EXISTS risk_marks(venue TEXT,account TEXT,instrument_id TEXT,at INTEGER,payload TEXT,PRIMARY KEY(venue,account,instrument_id));
+      CREATE TABLE IF NOT EXISTS risk_valuation(mode TEXT PRIMARY KEY,payload TEXT NOT NULL);`);
+  }
+  recordMark({venue,account,instrumentId,bid,quantity,liquidationFee,at,source}){
+    for(const [k,v] of Object.entries({venue,account,instrumentId,source}))requiredText(v,k);
+    if(!timestamp(at)||finite(bid)===null||bid<0||finite(quantity)===null||quantity<=0||finite(liquidationFee)===null||liquidationFee<0)throw new Error('Verified price, depth, timestamp and liquidation fee required');
+    const mark={bid,quantity,liquidationFee,at,source};
+    this.store.db.prepare(`INSERT INTO risk_marks VALUES(?,?,?,?,?) ON CONFLICT(venue,account,instrument_id) DO UPDATE SET at=excluded.at,payload=excluded.payload WHERE excluded.at>=risk_marks.at`).run(venue,account,instrumentId,at,JSON.stringify(mark));
+  }
+  clearMark(venue,account,instrumentId){this.store.db.prepare('DELETE FROM risk_marks WHERE venue=? AND account=? AND instrument_id=?').run(venue,account,instrumentId);}
   control(){const r=this.store.db.prepare('SELECT * FROM risk_control WHERE id=1').get();return {halted:!!r.halted,reason:r.reason,changedAt:r.changed_at,limits:validateLimits(JSON.parse(r.limits_json))};}
   lossMetrics(mode='PAPER',now=Date.now()){
-    const rows=this.ledger.portfolio(mode).accounts.filter(a=>a.currency==='USD'),day=new Date(now).toISOString().slice(0,10);
-    const deposits=rows.reduce((s,a)=>s+Number(a.netDeposits),0),realized=rows.reduce((s,a)=>s+Number(a.realized),0);
-    // Until mark-to-market / account reconciliation is available, drawdown is a conservative
-    // realized-loss proxy for PAPER only. LIVE always fails reconciliation.
-    return {dailyPnlUsd:rows.reduce((s,a)=>s+Number(a.daily[day]||0),0),drawdownPct:deposits>0?Math.max(0,-realized/deposits*100):0};
+    const portfolio=this.ledger.portfolio(mode),day=new Date(now).toISOString().slice(0,10);
+    const marks=new Map(this.store.db.prepare('SELECT * FROM risk_marks').all().map(r=>[JSON.stringify([r.venue,r.account,r.instrument_id]),JSON.parse(r.payload)]));
+    const valuation=valuePortfolio(portfolio,marks,{now,maxAgeMs:this.control().limits.maxQuoteAgeMs});
+    const row=this.store.db.prepare('SELECT payload FROM risk_valuation WHERE mode=?').get(mode),previous=row?JSON.parse(row.payload):null;
+    const ledgerSeq=this.store.db.prepare('SELECT MAX(seq) seq FROM ledger WHERE mode=?').get(mode).seq||0;
+    const result=advanceValuation(previous,valuation,{now,ledgerSeq,realizedToday:portfolio.accounts.filter(a=>a.currency==='USD').reduce((s,a)=>s+Number(a.daily[day]||0),0)});
+    if(result.state&&(!previous||result.state.equity!==previous.equity||result.state.ledgerSeq!==previous.ledgerSeq||result.state.day!==previous.day))this.store.db.prepare('INSERT INTO risk_valuation VALUES(?,?) ON CONFLICT(mode) DO UPDATE SET payload=excluded.payload').run(mode,JSON.stringify(result.state));
+    return result.metrics;
   }
   state(now=Date.now()){const c=this.control(),metrics=this.lossMetrics('PAPER',now),book=portfolioRiskState(metrics,c.limits,c.halted);
     return {state:book.state,stateReasons:book.reasons,metrics,halted:c.halted,reason:c.reason,changedAt:c.changedAt,mode:'PAPER',liveAvailable:false,limits:c.limits};}
@@ -83,10 +97,11 @@ export class RiskGovernor {
   context(order,now=Date.now()){
     const portfolio=this.ledger.portfolio(order.mode==='LIVE'?'LIVE':'PAPER');
     const rows=portfolio.accounts.filter(a=>a.currency==='USD'),account=rows.find(a=>a.venue===order.venue&&a.account===order.account);
-    const positions=rows.flatMap(a=>a.positions.map(p=>({...p,venue:a.venue,account:a.account})));
+    const metrics=this.lossMetrics(order.mode==='LIVE'?'LIVE':'PAPER',now);
+    const positions=metrics.positions;
     const pending=this.store.db.prepare("SELECT payload FROM proposals WHERE status IN ('APPROVED','SUBMITTING','UNCERTAIN')").all().map(r=>JSON.parse(r.payload)).filter(p=>(p.mode==='LIVE')===(order.mode==='LIVE'));
-    const sum=(filter)=>positions.filter(filter).reduce((s,p)=>s+Number(p.costBasis),0)+pending.filter(p=>p.side==='BUY'&&filter(p)).reduce((s,p)=>s+p.quantity*p.price+p.feeUsd,0);
-    const {dailyPnlUsd,drawdownPct}=this.lossMetrics(order.mode==='LIVE'?'LIVE':'PAPER',now);
+    const sum=(filter)=>positions.filter(filter).some(p=>p.exposureUsd===null)?null:positions.filter(filter).reduce((s,p)=>s+p.exposureUsd,0)+pending.filter(p=>p.side==='BUY'&&filter(p)).reduce((s,p)=>s+p.quantity*p.price+p.feeUsd,0);
+    const {dailyPnlUsd,drawdownPct}=metrics;
     return {halted:this.control().halted,liveAuthorized:false,reconciled:false,cashUsd:account?Number(account.cash)-pending.filter(p=>p.venue===order.venue&&p.account===order.account&&p.side==='BUY').reduce((s,p)=>s+p.quantity*p.price+p.feeUsd,0):null,
       heldQuantity:account?account.positions.filter(p=>p.instrumentId===order.instrumentId&&p.strategyId===order.strategyId&&p.eventId===order.eventId).reduce((s,p)=>s+Number(p.quantity),0)-pending.filter(p=>p.side==='SELL'&&p.venue===order.venue&&p.account===order.account&&p.instrumentId===order.instrumentId&&p.strategyId===order.strategyId&&p.eventId===order.eventId).reduce((s,p)=>s+p.quantity,0):0,
       positionUsd:sum(p=>p.instrumentId===order.instrumentId),venueUsd:sum(p=>p.venue===order.venue),strategyUsd:sum(p=>p.strategyId===order.strategyId),eventUsd:sum(p=>p.eventId===order.eventId),totalUsd:sum(()=>true),pendingCount:pending.length,dailyPnlUsd,drawdownPct};

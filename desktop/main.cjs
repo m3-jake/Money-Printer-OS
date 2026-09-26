@@ -3,6 +3,7 @@
 // adopts an engine that is already answering on the port, and never leaves orphans.
 const { app, BrowserWindow, Menu, shell, Tray, nativeImage, screen, session } = require('electron');
 const windowState = require('./window-state.cjs');
+const { navigationPolicy } = require('./navigation-policy.cjs');
 const { spawn } = require('node:child_process');
 const crypto = require('node:crypto');
 const { verifyManifest } = require('./update-auth.cjs');
@@ -317,7 +318,9 @@ function createWindow() {
     else if (params.selectionText) items.push({ role:'copy' });
     if (items.length) Menu.buildFromTemplate(items).popup({ window:win });
   });
-  win.webContents.setWindowOpenHandler(({ url }) => { if (!url.startsWith(BASE)) shell.openExternal(url); return { action: 'deny' }; });
+  const openSafeExternal=url=>{if(navigationPolicy(url,BASE)==='external')shell.openExternal(url).catch(e=>log(`External link failed: ${e.message}`));};
+  win.webContents.setWindowOpenHandler(({ url }) => { openSafeExternal(url); return { action: 'deny' }; });
+  win.webContents.on('will-navigate',(event,url)=>{if(navigationPolicy(url,BASE)!=='local'){event.preventDefault();openSafeExternal(url);}});
   win.loadURL(page('Starting engine…', `Waiting for the trading engine on ${BASE}`)).catch(() => {});
   return win;
 }

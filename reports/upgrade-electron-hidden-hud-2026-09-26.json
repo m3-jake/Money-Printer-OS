@@ -1,0 +1,419 @@
+{
+  "schema": "mpo.electron-hud-check.v1",
+  "at": "2026-09-26T23:43:47.457Z",
+  "electron": "38.8.6",
+  "mode": "HIDDEN_NATIVE_RENDERER_SYNTHETIC_FIXTURE",
+  "load": "four bounded CPU workers",
+  "phases": [
+    {
+      "fixture": {
+        "fixture": "SYNTHETIC / NO ORDERS",
+        "frames": 11,
+        "frameP50": 1006.2,
+        "frameP95": 1012.4,
+        "frameP99": 1012.4,
+        "over50ms": 9,
+        "interactionCount": 24,
+        "interactionP95": 967.2,
+        "renders": 22,
+        "renderP95": 19.8,
+        "longTasks": 2,
+        "errors": []
+      },
+      "metrics": {
+        "longTasks": 2,
+        "longTaskMs": 255,
+        "charts": {
+          "n": 11,
+          "p50": 2.699999988079071,
+          "p95": 5.799999997019768,
+          "max": 14.700000002980232
+        },
+        "frame": {
+          "n": 12,
+          "p50": 1000,
+          "p95": 1006.3000000000002,
+          "max": 1012.4000000000001
+        },
+        "layoutAndFit": {
+          "n": 9,
+          "p50": 3.1000000089406967,
+          "p95": 5.299999997019768,
+          "max": 13.700000002980232
+        },
+        "allRenderers": {
+          "n": 22,
+          "p50": 0.5,
+          "p95": 18.5,
+          "max": 27.200000002980232
+        },
+        "stateParse": {
+          "n": 6,
+          "p50": 0.29999999701976776,
+          "p95": 0.4000000059604645,
+          "max": 1.2000000029802322
+        },
+        "feedback": {
+          "n": 24,
+          "p50": 508.40000000596046,
+          "p95": 945.7999999970198,
+          "max": 992.5
+        }
+      },
+      "transport": {
+        "active": 0,
+        "queued": 0,
+        "pending": 0,
+        "failures": []
+      },
+      "status": "Connected",
+      "windows": 16,
+      "viewport": {
+        "width": 1522,
+        "height": 961,
+        "dpr": 1.5
+      },
+      "storageErrors": [],
+      "size": [
+        1536,
+        1024
+      ],
+      "fault": "corrupt",
+      "memoryBefore": {
+        "workingSetSize": 191840,
+        "peakWorkingSetSize": 200004,
+        "privateBytes": 40040
+      },
+      "memoryAfter": {
+        "workingSetSize": 203500,
+        "peakWorkingSetSize": 204320,
+        "privateBytes": 49780
+      }
+    },
+    {
+      "fixture": {
+        "fixture": "SYNTHETIC / NO ORDERS",
+        "frames": 7,
+        "frameP50": 1006.2,
+        "frameP95": 1006.3,
+        "frameP99": 1006.3,
+        "over50ms": 7,
+        "interactionCount": 24,
+        "interactionP95": 918.3,
+        "renders": 22,
+        "renderP95": 13.4,
+        "longTasks": 0,
+        "errors": []
+      },
+      "metrics": {
+        "longTasks": 0,
+        "longTaskMs": 0,
+        "allRenderers": {
+          "n": 22,
+          "p50": 1.800000011920929,
+          "p95": 13,
+          "max": 19.399999991059303
+        },
+        "stateParse": {
+          "n": 6,
+          "p50": 0.30000001192092896,
+          "p95": 0.699999988079071,
+          "max": 1.4000000059604645
+        },
+        "charts": {
+          "n": 8,
+          "p50": 3,
+          "p95": 5.0999999940395355,
+          "max": 8.700000002980232
+        },
+        "layoutAndFit": {
+          "n": 8,
+          "p50": 5.700000002980232,
+          "p95": 15.599999994039536,
+          "max": 26.399999991059303
+        },
+        "frame": {
+          "n": 7,
+          "p50": 1006.1999999999998,
+          "p95": 1006.2,
+          "max": 1006.3000000000001
+        },
+        "feedback": {
+          "n": 24,
+          "p50": 464,
+          "p95": 875.3000000119209,
+          "max": 994.2999999970198
+        }
+      },
+      "transport": {
+        "active": 0,
+        "queued": 0,
+        "pending": 0,
+        "failures": []
+      },
+      "status": "Preferences could not be saved or were repaired. Connected",
+      "windows": 16,
+      "viewport": {
+        "width": 1906,
+        "height": 1017,
+        "dpr": 1.5
+      },
+      "storageErrors": [
+        "mpo-layout-version",
+        "mpo-display",
+        "mpo-restore-migrated",
+        "mpo-last-focus",
+        "mpo-detail",
+        "mpo-layout",
+        "mpo-open",
+        "mpo-tabs"
+      ],
+      "size": [
+        1920,
+        1080
+      ],
+      "fault": "quota",
+      "memoryBefore": {
+        "workingSetSize": 249528,
+        "peakWorkingSetSize": 266060,
+        "privateBytes": 55856
+      },
+      "memoryAfter": {
+        "workingSetSize": 265820,
+        "peakWorkingSetSize": 268040,
+        "privateBytes": 73596
+      }
+    },
+    {
+      "fixture": {
+        "fixture": "SYNTHETIC / NO ORDERS",
+        "frames": 11,
+        "frameP50": 1006.2,
+        "frameP95": 1006.3,
+        "frameP99": 1006.3,
+        "over50ms": 11,
+        "interactionCount": 24,
+        "interactionP95": 959.4,
+        "renders": 18,
+        "renderP95": 14,
+        "longTasks": 0,
+        "errors": []
+      },
+      "metrics": {
+        "longTasks": 0,
+        "longTaskMs": 0,
+        "allRenderers": {
+          "n": 18,
+          "p50": 3.9000000059604645,
+          "p95": 13,
+          "max": 14
+        },
+        "stateParse": {
+          "n": 1,
+          "p50": 0.4000000059604645,
+          "p95": 0.4000000059604645,
+          "max": 0.4000000059604645
+        },
+        "charts": {
+          "n": 12,
+          "p50": 2.3999999910593033,
+          "p95": 5.5999999940395355,
+          "max": 9.400000005960464
+        },
+        "layoutAndFit": {
+          "n": 8,
+          "p50": 2.6000000089406967,
+          "p95": 4.700000002980232,
+          "max": 4.9000000059604645
+        },
+        "frame": {
+          "n": 11,
+          "p50": 1006.1999999999989,
+          "p95": 1006.3000000000002,
+          "max": 1006.3000000000011
+        },
+        "feedback": {
+          "n": 24,
+          "p50": 493.79999999701977,
+          "p95": 897.6000000089407,
+          "max": 1003.0999999940395
+        }
+      },
+      "transport": {
+        "active": 0,
+        "queued": 0,
+        "pending": 0,
+        "failures": [
+          {
+            "key": "/api/state",
+            "lastSuccess": 1790466248499,
+            "error": "HTTP 503 · /api/state",
+            "failures": 4,
+            "retryAt": 1790466266971
+          }
+        ]
+      },
+      "status": "STALE · service snapshot 12s old",
+      "windows": 16,
+      "viewport": {
+        "width": 1522,
+        "height": 961,
+        "dpr": 1.5
+      },
+      "storageErrors": [],
+      "size": [
+        1536,
+        1024
+      ],
+      "fault": "disconnect",
+      "memoryBefore": {
+        "workingSetSize": 270328,
+        "peakWorkingSetSize": 318820,
+        "privateBytes": 76108
+      },
+      "memoryAfter": {
+        "workingSetSize": 268476,
+        "peakWorkingSetSize": 318820,
+        "privateBytes": 75752
+      }
+    }
+  ],
+  "errors": [],
+  "limitations": [
+    "Hidden renderer; physical monitor/DPI and human input latency not certified",
+    "Synthetic read-only data; provider and order transports not loaded"
+  ],
+  "processes": [
+    {
+      "cpu": {
+        "cumulativeCPUUsage": 3.767329,
+        "percentCPUUsage": 2.9615040986955403,
+        "idleWakeupsPerSecond": 0
+      },
+      "pid": 44652,
+      "type": "Browser",
+      "creationTime": 1790466227263.359,
+      "memory": {
+        "workingSetSize": 156784,
+        "peakWorkingSetSize": 156784,
+        "privateBytes": 58956
+      },
+      "integrityLevel": "medium",
+      "sandboxed": false
+    },
+    {
+      "cpu": {
+        "cumulativeCPUUsage": 3.832153,
+        "percentCPUUsage": 0.17201180676861785,
+        "idleWakeupsPerSecond": 0
+      },
+      "pid": 38404,
+      "type": "GPU",
+      "creationTime": 1790466227549.025,
+      "serviceName": "GPU",
+      "memory": {
+        "workingSetSize": 272436,
+        "peakWorkingSetSize": 349204,
+        "privateBytes": 614448
+      },
+      "integrityLevel": "low",
+      "sandboxed": true
+    },
+    {
+      "cpu": {
+        "cumulativeCPUUsage": 0.504174,
+        "percentCPUUsage": 0,
+        "idleWakeupsPerSecond": 0
+      },
+      "pid": 46332,
+      "type": "Utility",
+      "creationTime": 1790466227589.471,
+      "serviceName": "network.mojom.NetworkService",
+      "name": "Network Service",
+      "memory": {
+        "workingSetSize": 49524,
+        "peakWorkingSetSize": 51156,
+        "privateBytes": 15280
+      },
+      "integrityLevel": "medium",
+      "sandboxed": false
+    },
+    {
+      "cpu": {
+        "cumulativeCPUUsage": 3.349893,
+        "percentCPUUsage": 0.048512994101159106,
+        "idleWakeupsPerSecond": 0
+      },
+      "pid": 44768,
+      "type": "Tab",
+      "creationTime": 1790466227634.223,
+      "memory": {
+        "workingSetSize": 268612,
+        "peakWorkingSetSize": 318820,
+        "privateBytes": 75880
+      },
+      "integrityLevel": "untrusted",
+      "sandboxed": true
+    }
+  ],
+  "gpu": {
+    "auxAttributes": {
+      "amdSwitchable": false,
+      "canSupportThreadedTextureMailbox": false,
+      "directMLFeatureLevel": "Not supported",
+      "dx12FeatureLevel": "Not supported",
+      "glImplementationParts": "(gl=none,angle=none)",
+      "glResetNotificationStrategy": 0,
+      "hardwareSupportsVulkan": false,
+      "inProcessGpu": true,
+      "initializationTime": 0,
+      "isAsan": false,
+      "isClangCoverage": false,
+      "jpegDecodeAcceleratorSupported": false,
+      "optimus": false,
+      "overlayInfo": {
+        "bgra8OverlaySupport": "NONE",
+        "directComposition": false,
+        "nv12OverlaySupport": "NONE",
+        "p010OverlaySupport": "NONE",
+        "rgb10a2OverlaySupport": "NONE",
+        "supportsOverlays": false,
+        "yuy2OverlaySupport": "NONE"
+      },
+      "passthroughCmdDecoder": false,
+      "sandboxed": false,
+      "skiaBackendType": "None",
+      "subpixelFontRendering": true,
+      "supportsD3dSharedImages": false,
+      "supportsDirectML": false,
+      "supportsDx12": false,
+      "supportsVulkan": false,
+      "targetCpuBits": 64,
+      "visibilityCallbackCallCount": 0,
+      "vulkanVersion": "Not supported"
+    },
+    "gpuDevice": [
+      {
+        "active": false,
+        "deviceId": 12036,
+        "deviceString": "NVIDIA GeForce RTX 5070",
+        "driverVersion": "32.0.16.1074",
+        "gpuPreference": 0,
+        "revision": 161,
+        "subSysId": 1394807906,
+        "vendorId": 4318
+      },
+      {
+        "active": false,
+        "deviceId": 140,
+        "deviceString": "Microsoft Basic Render Driver",
+        "driverVersion": "10.0.26100.9278",
+        "gpuPreference": 0,
+        "revision": 0,
+        "subSysId": 0,
+        "vendorId": 5140
+      }
+    ]
+  },
+  "success": false
+}

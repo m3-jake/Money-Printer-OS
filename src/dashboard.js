@@ -27,13 +27,14 @@ import { usComboJournalView, usComboSnapshot, buildUSCombo, quoteUSCombo, placeU
 import { readApiUnitEconomics } from './apiUnitEconomics.js';
 import { productEconomics, productIngestionAuthorized, productReadAuthorized } from './productEconomics.js';
 import updateChannel from '../desktop/update-channel.cjs';
-import { handlePlatformRequest } from './core/http.js';
+import { handlePlatformRequest, localMutationAllowed } from './core/http.js';
 import { marketPlatform, closeMarketPlatform } from './core/platform.js';
 import { practiceSnapshot,loadPracticeBook } from './robinhoodPractice.js';
 import { comboPerformance } from './core/comboPerformance.js';
 import { alphaDb } from './alphaDb.js';
 import { creds as rhCreds,fetchAccount as rhFetchAccount,fetchHoldings as rhFetchHoldings } from './robinhoodTransport.js';
 import { JOURNAL_FILE as RH_JOURNAL_FILE } from './robinhoodJournal.js';
+import { BUILD_PROVENANCE } from './buildInfo.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const html = fs.readFileSync(path.join(ROOT, 'public', 'dashboard.html'), 'utf8');
@@ -376,7 +377,7 @@ function snapshot() {
       learner: s.system?.learner || null,
     },
     mode: cfg.mode,
-    build: { version: packageMeta.version, productName: packageMeta.productName || 'Money Printer OS' },
+    build: { version: packageMeta.version, productName: packageMeta.productName || 'Money Printer OS',provenance:BUILD_PROVENANCE },
     config: {
       scanIntervalSec: cfg.scanIntervalSec,
       maxOpenPositions: cfg.maxOpenPositions,
@@ -401,7 +402,7 @@ export function startDashboard() {
     txEvents:({since,limit})=>alphaDb().prepare('SELECT signature,event_index eventIndex,ts,slot,mint,wallet,side,token_delta tokenDelta,sol_delta solDelta FROM tx_events WHERE ts>=? ORDER BY ts DESC LIMIT ?').all(since,limit)});
   // Lab champions -> strategy registry, once now and every minute. Failures stay in the snapshot, never thrown.
   // Lab champions -> registry and legacy books -> ledger mirror, now and every minute.
-  const syncLab=()=>{try{marketPlatform().syncLab();}catch{}try{marketPlatform().syncLegacyLedger();}catch{}};syncLab();const labSyncTimer=setInterval(syncLab,60_000);labSyncTimer.unref();
+  const syncLab=()=>{try{marketPlatform().syncLab();}catch{}try{marketPlatform().syncLegacyLedger();}catch{}try{marketPlatform().publishPredictionHandoff();}catch{}};syncLab();const labSyncTimer=setInterval(syncLab,60_000);labSyncTimer.unref();
   // Catch the project journal up with this build's history (packaged builds ship it; no git there).
   const seeded = seedProjectJournal({ journalFile: controlPlaneFiles(DATA_DIR).journal, appRoot: ROOT });
   if (seeded.appended || seeded.error) console.log(`[journal] +${seeded.appended} from ${seeded.source || 'none'}${seeded.error ? ' error: ' + seeded.error : ''}`);
@@ -518,6 +519,9 @@ export function startDashboard() {
         catch (error) { return json(res, {ok:false,error:error.message}, 400); }
       }
 
+      // Server-to-server revenue ingestion above retains its explicit bearer authentication.
+      // Every desktop mutation below, including legacy queues and updater requests, is local JSON.
+      if(!localMutationAllowed(req))return json(res,{ok:false,error:'Local same-origin JSON request required'},403);
       if (u.pathname === '/api/pause') { const a = queue('toggle-pause'); return json(res, { ok: true, queued: true, actionId: a.id }); }
       if (u.pathname === '/api/kill') { const a = queue('toggle-kill'); return json(res, { ok: true, queued: true, actionId: a.id }); }
       if (u.pathname === '/api/reset') {

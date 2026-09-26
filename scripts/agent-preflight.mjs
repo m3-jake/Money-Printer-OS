@@ -50,7 +50,8 @@ async function main() {
   const advice = stale ? 'STOP: this process sees a stale copy of the app data. Read state only through the HTTP APIs and never write under the data dirs from this session.' : unverified ? 'Neither app answered; on-disk state could not be verified. Treat it as possibly stale.' : 'Disk view matches the running apps.';
   if (JSON_OUT) console.log(JSON.stringify({ at: new Date(now).toISOString(), overall, advice, traderData: TRADER_DATA, labData: LAB_DATA, results }, null, 2));
   else { console.log(`AGENT PREFLIGHT // ${overall}`); for (const r of results) console.log(`  ${r.verdict.padEnd(11)} ${r.name.padEnd(7)} ${r.detail}`); console.log(advice); }
-  process.exit(stale ? 2 : unverified ? 3 : 0);
+  // Let pending HTTP handle cleanup finish (forced process.exit can assert in Windows libuv).
+  process.exitCode = stale ? 2 : unverified ? 3 : 0;
 }
 const entry = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'));
 if (entry) main();

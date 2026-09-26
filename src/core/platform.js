@@ -10,7 +10,7 @@ import { arbitrageQuote,walkBook } from './contracts.js';
 import { decimal,finite,fingerprint,stableId,units } from './model.js';
 import { appendProjectJournal } from '../projectJournal.js';
 import { activateExecutionBoundary } from './executionBoundary.js';
-import { StrategyRegistry } from './strategies.js';
+import { StrategyRegistry, strategyEvidenceIdentity } from './strategies.js';
 import { legacyCoverage } from './legacyBooks.js';
 import { solanaPlan,practicePlan } from './legacyImport.js';
 import { reconcileVenue } from './accountReconcile.js';
@@ -25,6 +25,10 @@ import { createHash } from 'node:crypto';
 import { MACRO_INDICATORS,FredSource,transform as macroTransform,impliedLadder,asOf as macroAsOf,indicator as macroIndicator } from './macro.js';
 import { EdgarSource,analyseFiling } from './edgar.js';
 import { summarizeFiling,htmlToText,aiConfigured,SUMMARY_MODEL } from './aiSummary.js';
+import { moduleCapabilities } from './capabilities.js';
+import { BUILD_PROVENANCE } from '../buildInfo.js';
+import { evaluatePredictionEpisodes, PREDICTION_EXPERIMENT_SCHEMA } from '../predictionExperiment.js';
+import { writeFileAtomicSync } from '../atomicRename.js';
 import { WEATHER_CITIES,WeatherSource,bucketLadder,weatherLinks } from './weather.js';
 import { buildSportsEvents,mlbLive,nhlLive,attachLive } from './sports.js';
 import { buildEventPages,EVENT_TEMPLATES,sportsPages,weatherPages,corporatePages } from './correlation.js';
@@ -62,10 +66,10 @@ export class MarketPlatform {
     });
   }
   snapshot(){
-    return {at:Date.now(),risk:this.risk.state(),providers:this.providers.status(),database:this.store.health(),eventBus:this.bus.snapshot(),journalError:this.journalError,
+    return {at:Date.now(),build:BUILD_PROVENANCE,capabilities:moduleCapabilities(this.store,{dataDir:this.dataDir}),risk:this.risk.state(),providers:this.providers.status(),database:this.store.health(),eventBus:this.bus.snapshot(),journalError:this.journalError,
       strategies:this.strategies.list(),venueAccounts:this.store.db.prepare('SELECT venue,at,state,result FROM venue_reconcile').all().map(r=>({...JSON.parse(r.result),at:r.at})),legacy:{...legacyCoverage(this.legacyReaders),mirror:this.store.db.prepare('SELECT * FROM legacy_sync').all().map(r=>({...r,detail:JSON.parse(r.detail)}))},labSync:this.labSync||null,portfolio:this.ledger.portfolio(),livePortfolio:this.ledger.portfolio('LIVE'),ledger:this.ledger.entries(),events:this.store.events(),
       watchlist:this.store.db.prepare('SELECT * FROM watchlist ORDER BY added_at DESC').all(),proposals:this.store.db.prepare('SELECT * FROM proposals ORDER BY created_at DESC LIMIT 100').all().map(r=>({...r,payload:JSON.parse(r.payload),decision:JSON.parse(r.decision)})),
-      coverage:{legacyBooks:'MIRRORED_AND_RECONCILED_WHERE_POSSIBLE',liveAccounts:'NOT_RECONCILED',riskValuation:'PAPER_COST_BASIS_AND_REALIZED_LOSS',note:'Core accounts are reconstructed from this ledger only. The Solana paper book (SOL) and the Robinhood practice book are mirrored into this ledger and reconciled against their own cash; US combos stay read-only (no readable account balance).'}};
+      coverage:{legacyBooks:'MIRRORED_AND_RECONCILED_WHERE_POSSIBLE',liveAccounts:'NOT_RECONCILED',riskValuation:'USD_MARKED_EQUITY_WITH_CASH_FLOW_NEUTRAL_HIGH_WATER',note:'USD risk requires fresh liquidation depth and costs for every included open position. SOL and other currencies are reported separately without FX consolidation. Legacy books without fresh marks block new USD risk; US combos remain excluded without a reconciled account balance. High-water history begins at the first upgraded valuation; earlier intraperiod peaks are unknown.'}};
   }
   async markets(venue,query={}){
     const result=await this.providers.get(venue).markets(query);
@@ -74,8 +78,23 @@ export class MarketPlatform {
   }
   async contract(venue,id){const c=await this.providers.get(venue).market(id);this.store.put(c);return c;}
   async book(venue,id){const contract=await this.contract(venue,id),book=await this.providers.get(venue).book(id,contract);
-    this.store.put({kind:'OrderBook',provider:venue,sourceId:id,data:book,observedAt:book.observedAt,availableAt:book.observedAt});
+    this.store.put({kind:'OrderBook',provider:venue,sourceId:id,data:{...book,feeModel:contract.data.feeModel||null,contractRulesFingerprint:termsFingerprint(contract.data),contractCloseAt:contract.data.closeAt},observedAt:book.observedAt,availableAt:book.observedAt});
+    this.captureRiskMarks(venue,id,book,contract.data.feeModel);
     this.bus.publish('ORDERBOOK_UPDATED',{contractId:contract.id,observedAt:book.observedAt});return {contract,book};}
+  captureRiskMarks(venue,sourceId,book,feeModel,requestedOutcome=null,requestedQty=0,feeBps=null){
+    const accounts=this.ledger.portfolio().accounts.filter(a=>a.venue===venue&&a.currency==='USD');
+    if(!accounts.some(a=>a.account==='manual'))accounts.push({account:'manual',positions:[]});
+    for(const a of accounts)for(const outcome of ['YES','NO']){
+      const instrumentId=stableId('Instrument',venue,`${sourceId}:${outcome}`);
+      const held=a.positions.filter(p=>p.instrumentId===instrumentId).reduce((s,p)=>s+Number(p.quantity),0);
+      const quantity=Math.max(held,a.account==='manual'&&requestedOutcome===outcome?requestedQty:0);if(!quantity)continue;
+      const bids=book[outcome.toLowerCase()]?.bids||[],q=walkBook(bids.map(l=>({...l,price:1-l.price})),quantity);
+      const fills=q.fills.map(f=>({...f,price:1-f.price})),gross=fills.reduce((s,f)=>s+f.price*f.quantity,0);
+      const fee=feeBps===null?takerFee(feeModel,fills):gross*feeBps/10000;
+      if(!q.complete||fee===null){this.risk.clearMark(venue,a.account,instrumentId);continue;}
+      this.risk.recordMark({venue,account:a.account,instrumentId,bid:gross/quantity,quantity,liquidationFee:fee,at:Math.min(book.observedAt,book.providerTimestamp??book.observedAt),source:'observed-book-liquidation'});
+    }
+  }
   watch(id,on){if(!this.store.get(id))throw new Error('Unknown instrument');if(on)this.store.db.prepare('INSERT OR IGNORE INTO watchlist VALUES(?,?)').run(id,Date.now());else this.store.db.prepare('DELETE FROM watchlist WHERE entity_id=?').run(id);return {ok:true};}
   deposit({venue,amount,id}){
     if(venue!==STOCK_VENUE)this.providers.get(venue);const n=units(amount);if(n<=0n||n>1000000000000n)throw new Error('Paper funding must be between 0 and 1,000,000 USD');
@@ -108,6 +127,7 @@ export class MarketPlatform {
     const payload={id:input.id||randomUUID(),mode:input.mode,venue:input.venue,account:'manual',currency:'USD',instrumentId:stableId('Instrument',input.venue,`${input.sourceId}:${input.outcome}`),
       contractId:contract.id,sourceId:input.sourceId,outcome:input.outcome,eventId:contract.data.eventId||contract.id,strategyId:'manual',side:input.side,quantity,price,feeUsd:Number(fee),gross,fee,
       slippageBps,liquidityUsd:levels.reduce((s,l)=>s+l.price*l.quantity,0),quoteAt:Math.min(book.observedAt,book.providerTimestamp??book.observedAt),bookFingerprint:fingerprint(book),feeModel,simulated:true};
+    this.captureRiskMarks(input.venue,input.sourceId,book,venueModel,input.outcome,quantity,feeBps);
     const result=this.risk.propose(payload);this.bus.publish(result.status==='REJECTED'?'ORDER_REJECTED':'ORDER_PROPOSED',{id:result.id,status:result.status});return result;
   }
   executePaper(id,confirmation){
@@ -260,6 +280,37 @@ export class MarketPlatform {
     const alpaca=!!((process.env.ALPACA_KEY_ID||process.env.APCA_API_KEY_ID)&&(process.env.ALPACA_SECRET_KEY||process.env.APCA_API_SECRET_KEY));
     return {tape,books,alpaca:{configured:alpaca,note:alpaca?'Minute bars (IEX feed) for any symbol.':'Set ALPACA_KEY_ID / ALPACA_SECRET_KEY to replay stock sessions from minute bars.'},strategies:Object.fromEntries(Object.entries(REPLAY_STRATEGIES).map(([k,v])=>[k,{label:v.label,params:v.params}]))};
   }
+  predictionEpisodes({quantity=1,now=Date.now()}={}){
+    if(!Number.isInteger(quantity)||quantity<1||quantity>100)throw new Error('Quantity must be 1–100 contracts');
+    const episodes=[];
+    for(const c of this.store.list({kind:'Contract',provider:'kalshi',limit:100})){
+      if(!c.data.closeAt||!c.data.settlementRules||!c.data.resolutionSource)continue;
+      const rulesFingerprint=termsFingerprint(c.data),id=stableId('OrderBook','kalshi',c.sourceId);
+      const versions=this.store.db.prepare('SELECT payload FROM entity_versions WHERE id=? AND available_at<=? ORDER BY available_at DESC LIMIT 2000').all(id,now).map(r=>JSON.parse(r.payload));
+      const quotes=[];
+      for(const v of versions){const b=v.data;if(b.contractRulesFingerprint!==rulesFingerprint||!b.feeModel||b.contractCloseAt!==c.data.closeAt)continue;
+        try{const fill=walkBook(b.yes?.asks||[],quantity),fee=takerFee(b.feeModel,fill.fills);
+          const m=b.feeModel,feesKnown=m.venue==='kalshi'&&m.overridesChecked===true&&['NONE','APPLIED','PENDING'].includes(m.overrideState)&&!(m.overrideState==='PENDING'&&(!Number.isFinite(m.nextChange?.at)||m.nextChange.at<=v.availableAt));
+          if(fill.complete&&fee!==null)quotes.push({at:v.availableAt,quantity,ask:fill.averagePrice,feeUsd:fee,feesKnown,executable:true,rulesFingerprint});
+        }catch{}
+      }
+      const settled=this.store.history(c.id,now).find(v=>v.data.settlementOutcome&&termsFingerprint(v.data)===rulesFingerprint);
+      episodes.push({id:c.id,eventId:c.data.eventId||c.id,venue:'kalshi',rulesFingerprint,closeAt:c.data.closeAt,quotes,
+        settlement:settled?{outcome:settled.data.settlementOutcome,observedAt:settled.availableAt,rulesFingerprint}:null});
+    }
+    return {schema:PREDICTION_EXPERIMENT_SCHEMA,quantity,episodes,datasetHash:fingerprint(episodes),sourceCommit:BUILD_PROVENANCE.sourceCommit,generatedAt:now};
+  }
+  publishPredictionHandoff(){
+    const input=this.predictionEpisodes();
+    if(this.dataDir){const bytes=JSON.stringify(input);if(Buffer.byteLength(bytes)>8*1024*1024)throw new Error('Kalshi handoff exceeds 8 MiB budget');writeFileAtomicSync(path.join(this.dataDir,'lab-link','kalshi-episodes.json'),bytes);}
+    return input;
+  }
+  predictionResearch(input={}){
+    const handoff=this.predictionEpisodes({quantity:input.quantity??1}),policy={capital:input.capital??100,quantity:handoff.quantity,maxEntryPrice:input.maxEntryPrice??.45,latencyMs:input.latencyMs??1000};
+    const result=evaluatePredictionEpisodes({...handoff,...policy,strategyHash:fingerprint(policy)}),id=randomUUID(),now=Date.now();
+    this.store.db.prepare('INSERT INTO lab_runs VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(id,now,'kalshi-episodes','binary-yes-threshold',0,now,'fixed-threshold',JSON.stringify(policy),handoff.datasetHash,handoff.episodes.reduce((s,e)=>s+e.quotes.length,0),result.evaluatorVersion,os.hostname(),'none',JSON.stringify(result));
+    return {id,...result};
+  }
   async labRecords({source,key,start,end}){
     const s=Number(start),e=Number(end);if(!Number.isFinite(s)||!Number.isFinite(e)||e<=s)throw new Error('Choose a start before the end');if(e-s>7*86400000)throw new Error('Replay window is limited to 7 days');
     const dir=this.dataDir||path.resolve(process.env.MONEY_PRINTER_DATA_DIR||'data');
@@ -280,15 +331,18 @@ export class MarketPlatform {
   // Walk-forward validation + seeded Monte Carlo, stored as an experiment and optionally attached to a
   // registry strategy as its evidence (the promotion gate then decides; nothing is promoted here).
   async labWalkForward({source,key,start,end,strategy='momentum',grid={},folds=4,stepMs=15000,feeBps=10,cash=1000,seed=1,strategyId=null}){
+    const registered=strategyId?this.strategies.get(String(strategyId)):null;
+    if(strategyId&&!registered)throw new Error('Unknown registry strategy');
+    const strategyIdentity=registered?strategyEvidenceIdentity(registered):null;
     const records=await this.labRecords({source,key,start,end});if(!records.length)throw new Error('No records in that window');
     const k=records[0].key,step=Math.max(1000,Math.min(3600000,Number(stepMs)||15000)),fee=Math.max(0,Math.min(1000,Number(feeBps)||0)),sd=Math.max(1,Math.floor(Number(seed)||1));
     const wf=await this.labCompute({kind:'walkforward',records,opts:{key:k,strategy,grid,folds:Math.floor(Number(folds)||4),start:Number(start),end:Number(end),stepMs:step,feeBps:fee,cash:Math.max(1,Number(cash)||1000)}});
     const mc=monteCarlo(wf.folds.flatMap(f=>f.test.tradeReturns),{runs:2000,seed:sd});
     const datasetFp=createHash('sha256').update(JSON.stringify(records.map(r=>[r.availableAt,r.observedAt,r.bid,r.ask,r.synthetic?1:0]))).digest('hex'),id=randomUUID();
-    const summary={evidence:wf.evidence,monteCarlo:mc,folds:wf.folds.map(f=>({...f,test:{...f.test,tradeReturns:undefined}}))};
+    const summary={strategyIdentity,evidence:wf.evidence,monteCarlo:mc,folds:wf.folds.map(f=>({...f,test:{...f.test,tradeReturns:undefined}}))};
     this.store.db.prepare('INSERT INTO lab_runs VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(id,Date.now(),source,k,Number(start),Number(end),'walkforward:'+strategy,JSON.stringify({grid,folds:wf.folds.length+1,stepMs:step,feeBps:fee}),datasetFp,records.length,CODE_VERSION,os.hostname(),String(sd),JSON.stringify(summary));
     let attached=null;
-    if(strategyId)attached=this.strategies.attachEvidence(String(strategyId),{...wf.evidence,monteCarloP5:mc.p5??null,labRunId:id,datasetFp},`Market Lab walk-forward ${id.slice(0,8)} on ${k}`);
+    if(strategyId)attached=this.strategies.attachEvidence(String(strategyId),{...wf.evidence,strategyIdentity,monteCarloP5:mc.p5??null,labRunId:id,datasetFp},`Market Lab walk-forward ${id.slice(0,8)} on ${k}`);
     return {id,datasetFp,codeVersion:CODE_VERSION,machine:os.hostname(),seed:sd,...summary,attached,
       checks:{PAPER:promotionCheck('PAPER',wf.evidence),CANDIDATE:promotionCheck('CANDIDATE',wf.evidence)}};
   }
@@ -406,7 +460,10 @@ export class MarketPlatform {
       const c=this.wireFeeds.get(f.id);if(!force&&c&&now-c.at<300000){feeds.push(c.status);continue;}
       try{const r=await this.wireFetch(f.url,{headers:{'User-Agent':'MoneyPrinterOS/0.5 (wire)'},signal:AbortSignal.timeout?.(12000)});if(!r.ok)throw new Error(`HTTP ${r.status}`);
         const items=parseRss(await r.text());
-        for(const it of items){const id=stableId('NewsEvent',f.id,it.guid),fresh=!this.store.get(id);try{this.store.put({kind:'NewsEvent',provider:f.id,sourceId:it.guid,data:{...it,feed:f.id,kindHint:f.kind},observedAt:now,availableAt:Math.min(it.publishedAt,now),sourceUrl:it.link});}catch{continue;}if(fresh)this.bus.publish('NEWS_RECEIVED',{kind:'RSS',id,feed:f.id,title:it.title});}
+        for(const it of items){const id=stableId('NewsEvent',f.id,it.guid),prior=this.store.get(id),fresh=!prior;
+          const changed=prior&&['title','summary','publishedAt'].some(k=>prior.data[k]!==it[k]);
+          // Publication and collector arrival differ. Each correction becomes usable on receipt.
+          try{if(fresh||changed)this.store.put({kind:'NewsEvent',provider:f.id,sourceId:it.guid,data:{...it,receivedAt:now,availabilityRule:'FIRST_RECEIPT_OF_THIS_REVISION',feed:f.id,kindHint:f.kind},observedAt:now,availableAt:now,sourceUrl:it.link});}catch{continue;}if(fresh)this.bus.publish('NEWS_RECEIVED',{kind:'RSS',id,feed:f.id,title:it.title});}
         const status={id:f.id,label:f.label,status:'CONNECTED',items:items.length,at:now};this.wireFeeds.set(f.id,{at:now,status});feeds.push(status);}
       catch(e){const status={id:f.id,label:f.label,status:'DISCONNECTED',error:e.message,at:now};this.wireFeeds.set(f.id,{at:now,status});feeds.push(status);}
     }

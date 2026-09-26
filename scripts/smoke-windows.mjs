@@ -39,16 +39,17 @@ const env = {
   USERPROFILE: dataDir, APPDATA: dataDir, LOCALAPPDATA: dataDir, HOME: dataDir,
   ELECTRON_RUN_AS_NODE: '1', MODE: 'paper', DOCTOR_OFFLINE: '1',
   ALPHA_WORKER_ENABLED: 'false', DIRECT_STREAM_ENABLED: 'false', OPEN_DASHBOARD: 'false',
+  ROBINHOOD_AUTOSTART: 'false', ROBINHOOD_EQUITIES_AUTOSTART: 'false', ROBINHOOD_PRACTICE_AUTOSTART:'false', POLYMARKET_AUTOSTART:'false', LAB_LINK_ENABLED: 'false',
   DASHBOARD_HOST: '127.0.0.1', DASHBOARD_PORT: String(PORT), MONEY_PRINTER_DATA_DIR: dataDir,
 };
-const child = spawn(EXE, [path.join(ASAR, 'src', 'index.js'), '--dashboard-only'], { cwd: dataDir, env, stdio: ['ignore', logFd, logFd] });
-let status = 0, health = { status: 0, body: '' };
+const child = spawn(EXE, [path.join(ASAR, 'src', 'index.js'), '--dashboard-only'], { cwd: dataDir, env, windowsHide: true, stdio: ['ignore', logFd, logFd] });
+let status = 0, health = { status: 0, body: '' },state={status:0,body:''};
 for (let i = 0; i < 60 && !status; i++) {
   await new Promise((r) => setTimeout(r, 1000));
   if (child.exitCode !== null) break;
   status = await httpStatus(`http://127.0.0.1:${PORT}/`);
 }
-if (status) health = await httpBody(`http://127.0.0.1:${PORT}/api/health`);
+if (status) {health = await httpBody(`http://127.0.0.1:${PORT}/api/health`);state=await httpBody(`http://127.0.0.1:${PORT}/api/state`);}
 const pid = child.pid;
 child.kill();
 await new Promise((r) => { const t = setTimeout(() => { spawnSync('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' }); r(); }, 5000); child.once('exit', () => { clearTimeout(t); r(); }); });
@@ -56,9 +57,11 @@ fs.closeSync(logFd);
 await new Promise((r) => setTimeout(r, 1000));
 fs.rmSync(dataDir, { recursive: true, force: true });
 let healthJson = null; try { healthJson = JSON.parse(health.body); } catch { /* not JSON */ }
+let stateJson=null;try{stateJson=JSON.parse(state.body)}catch{}
 const result = {
   ran: true, asar: ASAR, binary: 'installed Electron runtime (ELECTRON_RUN_AS_NODE=1)', exe: EXE, mode: 'paper', dashboardOnly: true,
   port: PORT, pid, dashboardStatus: status, healthStatus: health.status, healthOk: healthJson ? healthJson.ok === true : null, health: healthJson ? healthJson.health : null,
+  build:stateJson?.build??null,
   isolatedDataDir: 'temp dir (deleted)', success: status === 200 && health.status === 200 && healthJson?.ok === true, log: logFile, at: new Date().toISOString(),
 };
 fs.writeFileSync(path.join(OUT, 'WINDOWS-ENGINE-SMOKE.json'), JSON.stringify(result, null, 2) + '\n');

@@ -1,6 +1,6 @@
 {
   "name": "money-printer-os",
-  "version": "0.5.0-alpha.60",
+  "version": "0.5.0-alpha.61",
   "description": "Money Printer OS â€” native retro trading workstation with continuous research, monitoring, and desktop supervision.",
   "type": "module",
   "dependencies": {
@@ -43,8 +43,8 @@
     "test:poly-research-eval": "node --test tests/polymarket-research-eval.test.mjs",
     "test:evolution": "node --test tests/evolution-paper-policy.test.mjs tests/lab-link.test.mjs",
     "test:release-gate": "node --test tests/release-gate.test.cjs",
-    "test:visual": "node --test tests/renderer-alpha52.test.mjs tests/visual-assets.test.mjs tests/visual-contract.test.mjs tests/window-state.test.mjs",
-    "test:all": "npm run test:recovery && npm run test:solana && npm run test:turnover && npm run test:updater && npm run test:execution && npm run test:unit-economics && npm run test:product-economics && npm run test:settlement && npm run test:polymarket-us && npm run test:combos && npm run test:edge-robustness && npm run test:accounting && npm run test:replay && npm run test:experiments && npm run test:research && npm run test:evidence && npm run test:poly-research-eval && npm run test:evolution && npm run test:lab-link && npm run test:visual && npm run test:release-gate && npm run test:latency && npm run test:robinhood && npm run test:robinhood-equities && npm run test:lane-contracts && npm run test:fitness && npm run test:unattended",
+    "test:visual": "node --test tests/renderer-alpha52.test.mjs tests/visual-assets.test.mjs tests/visual-contract.test.mjs tests/window-state.test.mjs tests/hud-resilience.test.mjs",
+    "test:all": "npm run test:recovery && npm run test:solana && npm run test:turnover && npm run test:updater && npm run test:execution && npm run test:unit-economics && npm run test:product-economics && npm run test:settlement && npm run test:polymarket-us && npm run test:combos && npm run test:edge-robustness && npm run test:accounting && npm run test:replay && npm run test:experiments && npm run test:research && npm run test:evidence && npm run test:poly-research-eval && npm run test:evolution && npm run test:lab-link && npm run test:visual && npm run test:release-gate && npm run test:latency && npm run test:robinhood && npm run test:robinhood-equities && npm run test:lane-contracts && npm run test:fitness && npm run test:unattended && npm run test:upgrade",
     "test:lane-contracts": "node --test tests/research-lane-registry.test.mjs tests/money-physics.test.mjs tests/market-core.test.mjs tests/robinhood-practice.test.mjs tests/champion-state.test.mjs tests/data-coverage.test.mjs tests/runtime-controls.test.mjs tests/scoreboard.test.mjs",
     "test:unattended": "node --test tests/unattended-storage.test.mjs tests/self-report.test.mjs tests/lab-health.test.mjs",
     "test:fitness": "node --test tests/fitness-ledger.test.mjs tests/robinhood-lab-trial.test.mjs",
@@ -68,6 +68,7 @@
     "collector": "node scripts/run-collector.mjs",
     "rh-tape-stats": "node scripts/rh-tape-stats.mjs",
     "test:robinhood-equities": "node --test tests/robinhood-equities.test.mjs tests/robinhood-equities-lab.test.mjs",
-    "test:robinhood": "node scripts/sync-robinhood-panel.mjs --check && node --test tests/robinhood-paper-feed.test.mjs tests/robinhood-signer.test.mjs tests/robinhood-journal.test.mjs tests/robinhood-strategy.test.mjs tests/robinhood-safety.test.mjs tests/robinhood-auto-trader.test.mjs tests/robinhood-auto.test.mjs tests/robinhood-tape.test.mjs tests/rh-tape-stats.test.mjs tests/robinhood-backtest.test.mjs tests/robinhood-evidence.test.mjs tests/robinhood-evolve.test.mjs tests/robinhood-hud.test.mjs tests/robinhood-http.test.mjs tests/robinhood-explore.test.mjs tests/robinhood-chart.test.mjs tests/robinhood-daily-book.test.mjs"
+    "test:robinhood": "node scripts/sync-robinhood-panel.mjs --check && node --test tests/robinhood-paper-feed.test.mjs tests/robinhood-signer.test.mjs tests/robinhood-journal.test.mjs tests/robinhood-strategy.test.mjs tests/robinhood-safety.test.mjs tests/robinhood-auto-trader.test.mjs tests/robinhood-auto.test.mjs tests/robinhood-tape.test.mjs tests/rh-tape-stats.test.mjs tests/robinhood-backtest.test.mjs tests/robinhood-evidence.test.mjs tests/robinhood-evolve.test.mjs tests/robinhood-hud.test.mjs tests/robinhood-http.test.mjs tests/robinhood-explore.test.mjs tests/robinhood-chart.test.mjs tests/robinhood-daily-book.test.mjs",
+    "test:upgrade": "node --test tests/core-replay-correctness.test.mjs tests/lab-pool-lifecycle.test.mjs tests/marked-risk.test.mjs tests/prediction-experiment.test.mjs tests/upgrade-boundaries.test.mjs tests/upgrade-bridge.test.mjs"
   }
 }

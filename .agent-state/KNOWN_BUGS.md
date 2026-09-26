@@ -1,4 +1,16 @@
-# Known bugs / findings (2026-09-20, alpha53 integrated pass)
+# Current findings — 2026-09-26
+
+See `reports/UPGRADE-IMPLEMENTATION-2026-09-26.md` for the current issue ledger and
+`docs/UPGRADE-OPERATIONS.md` for limitations. Corrected source defects include replay time/cost
+accounting, fold closure, evidence identity/invalidations, marked drawdown including full withdrawal,
+equities incumbent/holdout/persistence, manual trial admission and rollback, unbounded worker
+lifecycle, damaged HUD preferences, stale-data display and legacy mutation/navigation boundaries.
+Remaining qualification blockers are genuine: no verified complete executable corpus, limited
+authentic Robinhood elapsed data, 126 future equity sessions and known actual costs pending,
+US joint RFQ evidence unavailable, no complete consolidated FX/legacy valuation. Historical loss
+and settlement evidence below is preserved; it has not been erased by this upgrade.
+
+# Historical bugs / findings (2026-09-20, alpha53 integrated pass)
 
 ## Data/evidence — status marked per item (see `.agent-state/DATA_DECISION_MEMO.md`)
 
