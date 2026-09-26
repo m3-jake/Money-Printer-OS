@@ -766,3 +766,8 @@ bing: "Codex got halfway through some work… finish it, push everything to main
 - A Robinhood practice panel in the Robinhood window (the routes exist: `/api/robinhood/practice`, `practice/config|run|order|close|reset`).
 - Decide whether to wire or delete `polymarketPaperCombos.js`.
 - MacBook: still alpha.53 until it's updated (see the Batch L install record).
+
+### Batch L install record (2026-09-26, 14:40 local)
+- **Pushed:** `origin/main` fast-forwarded `8ae2795 → 6b24708`; `feature/hud-declutter` pushed; local `main` fast-forwarded (it was a strict ancestor). GitHub renamed the repo, so `origin` now points at `https://github.com/m3-jake/Money-Printer-OS.git`. CI result not checked (no `gh` on this machine).
+- **Windows:** `npm run release:windows-asar` → `Desktop\Money Printer OS\Windows-6b24708-20260926\app.asar`, release `0.5.0-alpha.60+windows.6b24708`, sha256 `1af4d2e9e13d1ba34687ab1b1605a2656187b631065f6c4da021f4a5b01e017c`. `smoke:windows` on 18792 passed. The app wasn't running; backup `resources\app.asar.pre-6b24708-backup-20260926-144040` (that was the sunny build installed 13:19); new hash verified; launched. Live on 8792: paper, HEALTHY, holder RPC OK, `/api/platform/status` GREEN, practice loop IDLE with 2 fresh quotes, sunny assets served. Rollback: quit, copy the backup over `resources\app.asar`.
+- **Mac: not done from here.** No reachable session or SSH, `build-unified.mjs` must run on macOS arm64, and the updater only takes releases signed with bing's key. bing runs on the MacBook: clone/pull `main`, `npm ci`, `npm run release:unified`, then swap the `.app` per the build's `START-HERE.txt`. The MacBook is still alpha.53 (the ungated-champion hazard from the Lab audit) until then.
