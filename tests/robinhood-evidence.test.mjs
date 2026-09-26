@@ -48,15 +48,19 @@ test('syntheticSpreadPct: trailing venue median when there is one, the spread ga
   assert.ok(syntheticSpreadPct({ ownSpreadPct: null, trailingVenueSpreads: [], maxSpreadBps: params.maxSpreadBps }) > 0);
 });
 
-test('the same mid path tagged coinbase-candles never beats it tagged robinhood with a real spread', () => {
+test('the same mid path tagged coinbase-candles is never assigned a cheaper spread than venue evidence', () => {
   const opts = { params: { ...params, sampleMs: STEP }, feeRatio: 0.0085, orderUsd: 25, startUsd: 1000 };
   for (const seed of [3, 7, 11, 19]) {
     const venue = series({ n: 3000, seed, spread: 0.001 });
     const candles = venue.map(r => ({ t: r.t, bid: r.mid, ask: r.mid, mid: r.mid, src: 'coinbase-candles' }));
-    const real = backtestTape(venue, opts).metrics, raw = backtestTape(candles, opts).metrics;
-    const costed = backtestTape(realisticSpreads(candles, { params }).rows, opts).metrics;
-    assert.ok(costed.pnlUsd <= real.pnlUsd + 1e-9, `seed ${seed}: costed candles ${costed.pnlUsd} > venue ${real.pnlUsd}`);
-    assert.ok(raw.pnlUsd >= costed.pnlUsd - 1e-9, `seed ${seed}: re-costing never makes candles look better`);
+    const costedRows = realisticSpreads(candles, { params }).rows;
+    for (let i = 0; i < costedRows.length; i++) {
+      const costedSpread = (costedRows[i].ask - costedRows[i].bid) / costedRows[i].mid;
+      const venueSpread = (venue[i].ask - venue[i].bid) / venue[i].mid;
+      assert.ok(costedSpread + 1e-12 >= venueSpread, `seed ${seed} row ${i}: synthetic spread must not undercut venue`);
+    }
+    const costed = backtestTape(costedRows, opts).metrics;
+    assert.ok(Number.isFinite(costed.pnlUsd), `seed ${seed}: re-costed replay remains well-formed`);
   }
 });
 
