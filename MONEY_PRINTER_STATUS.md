@@ -357,6 +357,8 @@ Last updated: 2026-09-26, batches 16–18 (Solana fair test, Robinhood visible p
 - **Tests:** new `robinhood-chart` 6/0, plus a HUD render test.
 - **Housekeeping:** the unpushed batch commits were rewritten to fix line endings. Python on this machine had written several LF files as CRLF.
 
+**Build (not installed; bing installs):** `DesktopMoney Printer OSWindows-9269231-20260926app.asar`, sha256 `4fada4703a2a44a3581415cc2853c8503c6695a4419651d249107e39efde77e8`, 30,354,382 bytes. `smoke:windows` passed: dashboard 200, health 200, isolated data dir.
+
 **Batches 16–18 totals:** `npm run test:all` **576 pass, 0 fail** (was 554). SELFTEST PASS.
 
 ## Next recommended batch (priority order)
