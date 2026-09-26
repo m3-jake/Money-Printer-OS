@@ -428,7 +428,7 @@ function setTab(host,id){
  w.querySelectorAll('.tabpane').forEach(p=>p.classList.toggle('on',p.id==='body-'+id));
  persist(); renderSig.delete(id); renderAll(); scheduleFit(w);
 }
-// Windows must never end up unreachable: keep at least 60px of the title bar on the desktop.
+// Windows stay fully inside the desktop (above the taskbar); shrink them if the desktop got smaller.
 function clampWin(w){
  if(!w||w.classList.contains('max')||w.classList.contains('hidden'))return;
  const d=$('#desktop');if(!d)return;
@@ -436,14 +436,15 @@ function clampWin(w){
  // browser); clamping against it would shrink every window to a sliver and persist that.
  if(d.clientWidth<480||d.clientHeight<320)return;
  const maxW=d.clientWidth,maxH=Math.max(160,d.clientHeight-36);
- const ww=Math.min(w.offsetWidth,Math.max(260,maxW-8)),wh=Math.min(w.offsetHeight,Math.max(150,maxH-8));
+ const ww=Math.min(w.offsetWidth,Math.max(260,maxW)),wh=Math.min(w.offsetHeight,Math.max(150,maxH)),resized=ww!==w.offsetWidth||wh!==w.offsetHeight;
  if(ww!==w.offsetWidth)w.style.width=ww+'px';
  if(wh!==w.offsetHeight)w.style.height=wh+'px';
  let x=parseInt(w.style.left),y=parseInt(w.style.top);
  if(!Number.isFinite(x))x=40;if(!Number.isFinite(y))y=40;
- x=Math.min(Math.max(x,60-ww),Math.max(0,maxW-60));
- y=Math.min(Math.max(y,0),Math.max(0,maxH-24));
+ x=Math.min(Math.max(x,0),Math.max(0,maxW-ww));
+ y=Math.min(Math.max(y,0),Math.max(0,maxH-wh));
  w.style.left=Math.round(x)+'px';w.style.top=Math.round(y)+'px';
+ if(resized&&typeof scheduleFit==='function')scheduleFit(w);
 }
 function clampAll(){$$('.window').forEach(clampWin)}
 // Fit to window: the visible pane (window body or active tab) is scaled with CSS zoom so its whole
