@@ -15,6 +15,7 @@ const POLY_MS=Math.max(2000,Number(process.env.MPO_POLY_CAPTURE_MS||5000));
 const POLY_HEARTBEAT_MS=Math.max(POLY_MS,Number(process.env.MPO_POLY_HEARTBEAT_MS||30000));
 const MARKET_LIMIT=Math.max(5,Math.min(30,Number(process.env.MPO_POLY_CAPTURE_MARKETS||20)));
 const POLY_US_MS=Math.max(5000,Number(process.env.MPO_POLY_US_CAPTURE_MS||15000));
+const WALLET_MS=Math.max(5000,Number(process.env.MPO_WALLET_INDEX_MS||15000));
 const LEVELS=Math.max(3,Math.min(20,Number(process.env.MPO_POLY_CAPTURE_LEVELS||10)));
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
@@ -93,7 +94,7 @@ async function run(){
  if(!lock.ok){console.log(`research collector: another collector (pid ${lock.heldBy??'unknown'}) owns ${DATA_DIR}; exiting`);return}
  const release=()=>releaseCollectorLock(LOCK_FILE);process.on('exit',release);
  for(const sig of ['SIGINT','SIGTERM'])process.on(sig,()=>{release();process.exit(0)});
- let cursor=readJson(CURSOR_FILE,{solana:{},books:{},stats:{solanaRows:0,polyRows:0,bytes:0}}),lastPoly=0,polyApi=null,lastPolyUS=0,usEvidence=null;
+ let cursor=readJson(CURSOR_FILE,{solana:{},books:{},stats:{solanaRows:0,polyRows:0,bytes:0}}),lastPoly=0,polyApi=null,lastPolyUS=0,usEvidence=null,walletIdx=null,walletBusy=false,lastWallet=0;
  process.env.POLYMARKET_AUTOSTART='false';
  const status={schema:'mpo.research-capture-status.v1',startedAt:Date.now(),pid:process.pid,liveOrderAccess:false};
  while(true){
@@ -123,6 +124,13 @@ async function run(){
     const r=await usEvidence.evidenceTick();
     status.polymarketUS={lastAt:Date.now(),legRows:r.legRows,estimates:r.estimates,resolved:r.resolved,rateLimited:r.rateLimited,shadowDecisions:r.decisions.length};
    }catch(e){status.polymarketUS={...(status.polymarketUS||{}),error:String(e?.message||e),lastErrorAt:Date.now()}}
+  }
+  // Lean wallet indexer for copy-trading research: daily credit cap, single-flight, never awaited here so a slow
+  // RPC cannot stall the tape. WALLET_INDEXER_ENABLED=false turns it off (the tick then only reports OFF).
+  if(!walletBusy&&Date.now()-lastWallet>=WALLET_MS){
+   lastWallet=Date.now();walletBusy=true;
+   (walletIdx ||= import('./transactionIndexer.js')).then(m=>m.walletIndexerTick()).then(h=>{status.walletIndexer=h})
+    .catch(e=>{status.walletIndexer={...(status.walletIndexer||{}),error:String(e?.message||e),lastErrorAt:Date.now()}}).finally(()=>{walletBusy=false});
   }
   // A transient Windows rename refusal (Dropbox/AV holding the file) must not kill the collector.
   try{cursor.updatedAt=Date.now();atomicJson(CURSOR_FILE,cursor);atomicJson(STATUS_FILE,{...status,updatedAt:Date.now(),bytesTotal:cursor.stats.bytes,rawDir:RAW_DIR})}

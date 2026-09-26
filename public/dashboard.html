@@ -439,11 +439,11 @@ const APPS=[
 ['risk','Risk Radar','!','dark','trade'],
 ['archive','Archive','DB','light','trade'],
 ['control','Control Bay','CTL','light','trade'],
-['sportsbook','POLYMARKET.EXE','PM','dark'],
+['sportsbook','Polymarket','PM','dark'],
 ['predictionmarkets','Markets','PM','dark','sportsbook'],
 ['command','Command Center','CMD','dark'],
-['kalshi','KALSHI.EXE','K','dark'],
-['arbitrage','ARBITRAGE.EXE','ARB','dark'],
+['kalshi','Kalshi','K','dark'],
+['arbitrage','Arbitrage','ARB','dark'],
 ['robinhood','Robinhood','RH','dark'],
 ['researchmon','Lab Monitor','LAB','dark','trade'],
 ['journal','Journal','JRN','dark'],
@@ -911,7 +911,13 @@ function renderWallet(){
  const hLabel={OK:'OK',RATE_LIMITED:'RATE LIMITED',TIMEOUT:'TIMING OUT',ERROR:'ERROR',BUDGET:'DAILY CAP HIT',UNKNOWN:'WAITING'}[h?.status]||'—';
  const holderLine=h?`<div class="mpo-status" title="${polyEscape(h.lastError||'')}"><span class="muted">Holder data</span><b class="mpo-badge ${hOk?'mpo-badge--live':h.status==='UNKNOWN'?'mpo-badge--degraded':'mpo-badge--down'}">${hLabel}</b><span class="muted">${polyEscape(h.provider||'')}${h.dedicated?'':' (public RPC)'} · ${h.calls||0}${h.dailyBudget?` / ${h.dailyBudget}`:''} calls today</span></div>`:'';
  const empty=h&&!hOk&&h.status!=='UNKNOWN'?`Holder lookups are failing (${hLabel.toLowerCase()}), so no wallets can be collected.${h.dedicated?'':' Add HOLDER_RPC_URL to the .env.'}`:'No wallet intelligence collected yet.';
- setBody('wallet',`<div class="mpo-surface-light" style="height:100%;display:flex;flex-direction:column;min-height:0;padding:8px;color:#111"><div class="mpo-status"><b>WALLET INTEL</b><span class="muted">${w.length} tracked</span>${w.length?`<b class="mpo-badge ${(w[0].recurrenceScore||0)>60?'mpo-badge--armed':'mpo-badge--degraded'}">${(w[0].recurrenceScore||0)>60?'HOT':'WARM'}</b>`:''}</div>${holderLine}<div class="mpo-table-wrap" data-scroll="wallet-table"><table class="table mpo-table"><thead><tr><th>Wallet</th><th>Seen</th><th>Score</th><th>Status</th></tr></thead><tbody>${w.length?w.slice(0,16).map(x=>`<tr><td>${polyEscape(String(x.address||'').slice(0,6))}...${polyEscape(String(x.address||'').slice(-4))}</td><td>${x.seen||0}</td><td>${fmt(x.recurrenceScore,1)}<div class="mpo-meter-bar--sm ${(x.recurrenceScore||0)>60?'hot':''}"><i style="width:${Math.max(2,Math.min(100,Number(x.recurrenceScore)||0))}%"></i></div></td><td class="${(x.recurrenceScore||0)>60?'red':'amber'}">${(x.recurrenceScore||0)>60?'Hot':'Warm'}</td></tr>`).join(''):`<tr><td colspan="4" style="white-space:normal"><div class="mpo-empty" style="white-space:normal">${polyEscape(empty)}</div></td></tr>`}</tbody></table></div></div>`);
+ // PnL scorecard from the lean tx indexer (research collector). Says plainly how many wallets have enough round trips.
+ const sc=state?.walletIntel?.scorecard||null,si=sc?.indexer||{},ss=sc?.summary||null,sOk=si.status==='OK'||si.status==='IDLE';
+ const sLabel={OK:'OK',IDLE:'IDLE',PACING:'PACING',BUDGET:'DAILY CAP HIT',RATE_LIMITED:'RATE LIMITED',ERROR:'ERROR',OFF:'OFF',STALE:'STALE','NOT RUNNING':'NOT RUNNING'}[si.status]||'—';
+ const scoreLine=sc?`<div class="mpo-status" title="${polyEscape(si.lastError||'')}"><span class="muted">Tx indexer</span><b class="mpo-badge ${sOk?'mpo-badge--live':si.status==='PACING'?'mpo-badge--degraded':'mpo-badge--down'}">${sLabel}</b><span class="muted">${polyEscape(si.provider||'')} · ${si.credits||0}${si.dailyCredits!=null?` / ${si.dailyCredits}`:''} credits today · ${si.trackedMints||0} mints</span></div><div class="mpo-status"><b>PnL SCORECARD</b><span class="muted" style="white-space:normal">${ss?`${ss.wallets} wallets · ${ss.withRoundTrip} with a round trip · ${ss.withAtLeast3} with 3+ · <b>${ss.graded} graded</b> (needs ${sc.minTrips}+ round trips)`:'No scorecard written yet.'}</span></div>`:'';
+ const gw=(sc?.wallets||[]).filter(x=>x.graded).slice(0,8);
+ const gradedBlock=gw.length?`<div class="mpo-table-wrap" style="max-height:40%;flex:0 0 auto"><table class="table mpo-table"><thead><tr><th>Wallet</th><th>Trips</th><th>Win</th><th>PnL SOL</th><th title="Mean return per round trip, shrunk toward 0 and capped at +200% per trip">Score %</th><th>Hold</th><th title="Median seconds after the mint's first trade">Entry s</th></tr></thead><tbody>${gw.map(x=>`<tr><td>${polyEscape(String(x.wallet||'').slice(0,6))}...${polyEscape(String(x.wallet||'').slice(-4))}</td><td>${x.roundTrips}</td><td>${fmt((x.winRate||0)*100,0)}%</td><td class="${(x.realizedPnlSol||0)>=0?'green':'red'}">${fmt(x.realizedPnlSol,3)}</td><td>${fmt(x.shrunkReturnPct,1)}</td><td>${x.medianHoldSec==null?'—':fmt(x.medianHoldSec/60,1)+'m'}</td><td>${x.medianEntrySec==null?'—':fmt(x.medianEntrySec,0)}</td></tr>`).join('')}</tbody></table></div>`:ss?`<div class="muted" style="white-space:normal;padding:2px 0 6px">No wallet has ${sc.minTrips}+ round trips with SOL on both legs yet, so none is graded.</div>`:'';
+ setBody('wallet',`<div class="mpo-surface-light" style="height:100%;display:flex;flex-direction:column;min-height:0;padding:8px;color:#111"><div class="mpo-status"><b>WALLET INTEL</b><span class="muted">${w.length} tracked</span>${w.length?`<b class="mpo-badge ${(w[0].recurrenceScore||0)>60?'mpo-badge--armed':'mpo-badge--degraded'}">${(w[0].recurrenceScore||0)>60?'HOT':'WARM'}</b>`:''}</div>${holderLine}${scoreLine}${gradedBlock}<div class="mpo-table-wrap" data-scroll="wallet-table"><table class="table mpo-table"><thead><tr><th>Wallet</th><th>Seen</th><th title="How many checked tokens list this wallet as a top-10 holder. Not profit.">Holder recurrence (not profit)</th><th>Status</th></tr></thead><tbody>${w.length?w.slice(0,16).map(x=>`<tr><td>${polyEscape(String(x.address||'').slice(0,6))}...${polyEscape(String(x.address||'').slice(-4))}</td><td>${x.seen||0}</td><td>${fmt(x.recurrenceScore,1)}<div class="mpo-meter-bar--sm ${(x.recurrenceScore||0)>60?'hot':''}"><i style="width:${Math.max(2,Math.min(100,Number(x.recurrenceScore)||0))}%"></i></div></td><td class="${(x.recurrenceScore||0)>60?'red':'amber'}">${(x.recurrenceScore||0)>60?'Hot':'Warm'}</td></tr>`).join(''):`<tr><td colspan="4" style="white-space:normal"><div class="mpo-empty" style="white-space:normal">${polyEscape(empty)}</div></td></tr>`}</tbody></table></div></div>`);
 }
 function renderControl(){
  const s=state||{},r=s.runtime||{},cfg=s.config||{},ec=s.effectiveControls||{},eb=ec.bounds||{},ex=r.exitPreset==='custom'?(ec.customExit||{}):(ec.exit||{});
@@ -1480,7 +1486,7 @@ function renderAll(force=false){
  renderChanged('system',[m,e.status,e.workerCount,e.datasetSamples,s.system?.lastCycle,perf.stateKB,Math.round(perf.refreshMs)],renderSystem);
  renderChanged('economics',productEconomicsState,renderProductEconomics);
  renderChanged('log',journal.slice(-180),renderLog);
- renderChanged('wallet',[s.walletIntel?.wallets,s.walletIntel?.holderRpc?.status,s.walletIntel?.holderRpc?.calls,s.walletIntel?.holderRpc?.dedicated],renderWallet);
+ renderChanged('wallet',[s.walletIntel?.wallets,s.walletIntel?.holderRpc?.status,s.walletIntel?.holderRpc?.calls,s.walletIntel?.holderRpc?.dedicated,s.walletIntel?.scorecard?.indexer?.status,s.walletIntel?.scorecard?.indexer?.credits,s.walletIntel?.scorecard?.asOf],renderWallet);
  renderChanged('control',[s.mode,s.runtime,s.config,e.status,s.system?.paused,s.system?.killSwitch],renderControl);
  renderChanged('network',[networkState.room,networkState.peers,networkState.messages,networkState.events,networkState.totals,networkState.error],renderNetwork);
  renderChanged('updater',updateState,renderUpdater);
