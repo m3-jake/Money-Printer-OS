@@ -112,7 +112,7 @@ test('primary order multiplier is capped by maxOrderUsd and by 2.0; default univ
 });
 test('snapshot: pinned key list, signal enum values, never throws on a dead feed, masks the account',async()=>{
  reset();const s=await RH.robinhoodSnapshot({force:true});
- assert.deepEqual(Object.keys(s),['at','readiness','account','pairs','quotes','tape','paper','journal','limits','qualificationThresholds','strategy','loop','equities','evolve','lastError']);
+ assert.deepEqual(Object.keys(s),['at','readiness','account','pairs','quotes','tape','paper','journal','limits','qualificationThresholds','strategy','loop','equities','evolve','explore','gauges','lastError']);
  for(const [sym,t] of Object.entries(s.tape)){assert.ok(SIGNALS.includes(t.signal),sym+' '+t.signal);assert.equal(t.primary,sym==='BTC-USD')}
  assert.equal(s.tape['BTC-USD'].signal,'WARMUP');assert.match(s.tape['BTC-USD'].reason,/warming up 0\/120/);assert.equal(Object.keys(s.tape)[0],'BTC-USD','primary is listed first');
  assert.equal(s.account.accountNumber,'****9876');assert.equal(s.readiness.execution,'manual-confirm-only');assert.equal(s.loop.needsQuotes,false);
@@ -133,6 +133,6 @@ test('configure validates the key, writes USER_ROOT/.env with mode 0600 and disa
  RH.configureRobinhood({apiKey:KEYS.apiKey,privateKey:KEYS.seed,realEnabled:true});assert.equal((fs.readFileSync(RH.__testing.envFile,'utf8').match(/^ROBINHOOD_API_KEY=/gm)||[]).length,1,'rewriteEnv replaces in place');
 });
 test('startRobinhoodLoops returns the unref timer when autostart is on and null when off; idle tick makes no request',async()=>{
- reset();assert.equal(RH.startRobinhoodLoops(),null);process.env.ROBINHOOD_AUTOSTART='true';const t=RH.startRobinhoodLoops();assert.ok(t);assert.equal(RH.startRobinhoodLoops(),t);RH.stopRobinhoodLoops();process.env.ROBINHOOD_AUTOSTART='false';
- mock.calls.length=0;assert.equal((await RH.__testing.tick()).reason,'idle');assert.equal(mock.calls.length,0);
+ reset();assert.equal(RH.startRobinhoodLoops(),null);process.env.ROBINHOOD_AUTOSTART='true';process.env.ROBINHOOD_WARM_START='false';const t=RH.startRobinhoodLoops();assert.ok(t);assert.equal(RH.startRobinhoodLoops(),t);RH.stopRobinhoodLoops();process.env.ROBINHOOD_AUTOSTART='false';delete process.env.ROBINHOOD_WARM_START;
+ process.env.ROBINHOOD_COLLECT_QUOTES='false';try{mock.calls.length=0;assert.equal((await RH.__testing.tick()).reason,'idle');assert.equal(mock.calls.length,0)}finally{delete process.env.ROBINHOOD_COLLECT_QUOTES}
 });

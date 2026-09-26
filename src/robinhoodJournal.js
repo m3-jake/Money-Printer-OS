@@ -13,6 +13,7 @@ const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const DATA_DIR=path.resolve(process.env.MONEY_PRINTER_DATA_DIR||path.join(ROOT,'data'));
 export const JOURNAL_FILE=path.join(DATA_DIR,'robinhood-auto-trader.json');
 export const PAPER_FILE=path.join(DATA_DIR,'robinhood-paper.json');
+export const EXPLORE_FILE=path.join(DATA_DIR,'robinhood-paper-explore.json');
 
 export const OPEN_STATUSES=['PENDING_SUBMIT','SUBMITTED','SUBMITTED_UNCERTAIN','OPEN','CLOSING','CLOSING_UNCERTAIN'];
 export const TERMINAL_STATUSES=['CLOSED','CANCELLED','REJECTED','FAILED','FORGOTTEN'];
@@ -234,6 +235,28 @@ export function savePaper(s,{force=false}={}){
  return paperCache;
 }
 
+// Exploration book (§23): a second, separate paper book with its own bank and looser params. It holds
+// no tape (it reads the strict book's), and its closes are tagged placedBy 'explore-autopilot', which
+// evaluateQualification never counts. Corruption is handled like the strict book: recovery, never a throw.
+let exploreCache=null,lastExploreSaveAt=0;
+export function defaultExplore(){const d=defaultPaper();return {...d,exploration:true,autopilot:{...d.autopilot,enabled:true}}}
+export function loadExplore(){
+ if(exploreCache)return exploreCache;
+ try{const raw=JSON.parse(fs.readFileSync(EXPLORE_FILE,'utf8'));
+  if(!isObj(raw)||raw.version!==1||!Array.isArray(raw.positions)||!Array.isArray(raw.history)||!Number.isFinite(raw.cashUsd)||raw.cashUsd<0)throw new Error('Invalid exploration book schema');
+  exploreCache={...normalizePaper(raw),exploration:true,tape:{},tapeAt:0}}
+ catch(e){exploreCache=e?.code==='ENOENT'?defaultExplore():{...normalizePaper({...defaultExplore(),cashUsd:0,recoveryRequired:true,recoveryError:`STATE RECOVERY REQUIRED: ${e?.message||e}`}),exploration:true}}
+ return exploreCache;
+}
+export function saveExplore(s,{force=false}={}){
+ const candidate={...normalizePaper({...s,tape:{},tapeAt:0}),exploration:true},now=Date.now();
+ if(force||now-lastExploreSaveAt>=TAPE_FLUSH_MS){
+  try{atomicWrite(EXPLORE_FILE,'robinhood-paper-explore',candidate)}catch(e){exploreCache=null;throw e}
+  lastExploreSaveAt=now;
+ }
+ exploreCache=candidate;return exploreCache;
+}
+
 export function appendTape(p,symbol,{bid,ask,at,quoteSource}={},cap=TAPE_CAP){
  const sym=String(symbol||'').toUpperCase();
  const b=num(bid),a=num(ask),t=num(at)||Date.now();
@@ -298,6 +321,6 @@ export function evaluateQualification(p,now=Date.now(),thresholds=qualificationT
 
 export const __testing={
  resetJournal(){journalCache=null},
- resetPaper(){paperCache=null;lastPaperSaveAt=0},
+ resetPaper(){paperCache=null;lastPaperSaveAt=0;exploreCache=null;lastExploreSaveAt=0},
  journalFile:JOURNAL_FILE,paperFile:PAPER_FILE,TAPE_FLUSH_MS,TAPE_CAP,HISTORY_CAP,PAPER_HISTORY_CAP,
 };

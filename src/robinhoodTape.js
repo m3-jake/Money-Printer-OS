@@ -35,6 +35,14 @@ export function bufferTape(symbol,{t,bid,ask,src}={}){
  buffers.get(sym).push(row);
  return true;
 }
+// Buffer older rows that fill a hole (warm start). They must carry a src tag and never move the
+// live dedupe cursor; parseLines sorts and dedupes on read, so appending them out of order is safe.
+export function bufferBackfill(symbol,rows){
+ const sym=String(symbol||'').toUpperCase();if(!SYMBOL_RE.test(sym))return 0;let n=0;
+ for(const r of Array.isArray(rows)?rows:[]){const b=num(r?.bid),a=num(r?.ask),ts=num(r?.t),s=cleanSrc(r?.src);if(!s||!(b>0)||!(a>=b)||!(ts>0))continue;
+  if(!buffers.has(sym))buffers.set(sym,[]);buffers.get(sym).push({t:ts,bid:b,ask:a,src:s});n++}
+ return n;
+}
 export function pendingTapeRows(){let n=0;for(const rows of buffers.values())n+=rows.length;return n}
 
 function appendFile(sym,rows){

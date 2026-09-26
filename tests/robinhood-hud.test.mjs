@@ -48,3 +48,14 @@ test('automatic refresh never replaces a focused input or a typed secret',()=>{
  for(const active of ['rhUsd','rhConfirm','rhSecret']){let renders=0;const context=vm.createContext({document:{getElementById:()=>({}),activeElement:{id:active}},setBody:()=>renders++});vm.runInContext(panel,context);vm.runInContext('renderRobinhood()',context);assert.equal(renders,0,active)}
  let renders=0;const context=vm.createContext({document:{getElementById:id=>id==='rhConfirm'?{value:'PLACE'}:{},activeElement:{id:'other'}},setBody:()=>renders++});vm.runInContext(panel,context);vm.runInContext('renderRobinhood()',context);assert.equal(renders,0,'a half-typed phrase blocks the refresh');
 });
+test('gauge and exploration sections render both books, label EXPLORATION (NOT A STRATEGY) and never offer promotion',()=>{
+ assert.match(panel,/\$\{rhGaugeSection\(rhState\)\}/);assert.match(panel,/\$\{rhExploreSection\(rhState\)\}/);
+ const ctx=vm.createContext({document:{getElementById:()=>null},polyEscape:s=>String(s??''),money:n=>'$'+Number(n).toFixed(2),fmt:(n,d)=>Number(n).toFixed(d)});vm.runInContext(panel,ctx);
+ const g={warmup:{n:90,need:120,pct:0.75},spread:{bps:3,capBps:40,ok:true},move:{expectedPct:0.01,requiredPct:0.028,ratio:0.36,ok:false},breakout:{mid:1,level:1.01,distancePct:-0.0099,ok:false},trend:{ok:true},cooldownUntil:null,blocking:'warmup',blockingText:'warming up',ready:false};
+ ctx.st={loop:{alwaysOn:true,warmStart:{ran:true,bySymbol:{'BTC-USD':{disk:200,candles:520}}}},gauges:{strict:{'BTC-USD':g},explore:{'BTC-USD':{...g,blocking:null,blockingText:'ready: breakout signal',ready:true}}},
+  explore:{label:'EXPLORATION (NOT A STRATEGY)',enabled:true,startUsd:1000,equityUsd:990,overrides:{costMultiple:0.5,lookbackSamples:40,maxHoldMin:120},stats:{closes:3,pnlUsd:-4.2,feesUsd:1.3,hitRate:1/3,profitFactor:0.4},positions:[],history:[{symbol:'BTC-USD',exit:{reason:'stop'},pnlUsd:-2}]}};
+ const gs=vm.runInContext('rhGaugeSection(st)',ctx),ex=vm.runInContext('rhExploreSection(st)',ctx);
+ assert.match(gs,/data-rh-gauge="strict:BTC-USD"/);assert.match(gs,/data-rh-gauge="explore:BTC-USD"/);assert.match(gs,/90<\/small>|90\/120/);assert.match(gs,/warming up/);assert.match(gs,/200 tape \+ 520 candle rows/);
+ assert.match(ex,/EXPLORATION \(NOT A STRATEGY\)/);assert.match(ex,/NEVER COUNTS TOWARD QUALIFICATION OR PROMOTION/);assert.match(ex,/Net P\/L after fees/);
+ assert.doesNotMatch(ex,/rhAction\(|evolve\/apply|Apply to paper/,'no control on the exploration book can promote it');
+});

@@ -27,7 +27,9 @@ import * as J from './robinhoodJournal.js';
 import * as S from './robinhoodStrategy.js';
 import * as T from './robinhoodTape.js';
 import * as E from './robinhoodEvolve.js';
-import { fetchPublicPaperMarket } from './robinhoodPaperFeed.js';
+import { fetchPublicPaperMarket, fetchPublicCandles } from './robinhoodPaperFeed.js';
+import * as W from './robinhoodWarmStart.js';
+import { gauge } from './robinhoodGauge.js';
 export const CONFIRM_PLACE='PLACE REAL CRYPTO ORDER', CONFIRM_CANCEL='CANCEL REAL CRYPTO ORDER', CONFIRM_CANCEL_ALL='CANCEL REAL CRYPTO ORDERS', CONFIRM_AUTOPILOT='ENABLE REAL CRYPTO AUTOPILOT', CONFIRM_FORGET='FORGET';
 const clone=x=>structuredClone(x), envNum=(k,d)=>{const n=Number(process.env[k]);return Number.isFinite(n)&&n>0?n:d};
 const TICK_MS=Math.max(5000,envNum('ROBINHOOD_TICK_MS',15000)), PREVIEW_TTL_MS=30000, PREVIEW_CACHE_MS=10000, SNAPSHOT_TTL_MS=5000, ENTRY_TTL_MS=90000, RECONCILE_THROTTLE_MS=5000, NEVER_RECEIVED_MS=600000, NEVER_RECEIVED_LISTINGS=3;
@@ -40,6 +42,12 @@ let account=null, pairs=new Map(), quotes=new Map(), feedAt=0, identity='', last
 let paperQuoteSource=null, paperFallbackReason=null, paperFallbackUntil=0;
 let sessionArmed=false, placeBusy=false, apBusy=false, reconcileBusy=false, lastPreview=null, lastReconcileRun=0;
 let evolveBusy=false, evolveCheckedAt=0;
+// §23: quotes are collected on every tick while the app runs (ROBINHOOD_COLLECT_QUOTES=false restores the old idle tick),
+// and a second paper book explores with looser, bounded params. It never counts toward qualification or promotion.
+export const EXPLORE_LABEL='EXPLORATION (NOT A STRATEGY)', EXPLORE_OVERRIDES=Object.freeze({costMultiple:0.5,lookbackSamples:40,maxHoldMin:120});
+const collectAlways=()=>String(process.env.ROBINHOOD_COLLECT_QUOTES??'true').toLowerCase()!=='false';
+const exploreEnabled=()=>String(process.env.ROBINHOOD_EXPLORE_ENABLED??'true').toLowerCase()!=='false';
+let warmStatus=null, warmFlight=null;
 const EVOLVE_CHECK_MS=300000;
 const previewCache=new Map();
 const now=()=>clockFn?clockFn():Date.now();
@@ -66,6 +74,8 @@ export function primaryOrderUsd(symbol,orderUsd,limits=robinhoodLimits()){const 
 export function robinhoodSymbols(){const s=symbols(process.env.ROBINHOOD_SYMBOLS);return primaryFirst(s.length?s:['BTC-USD','ETH-USD','SOL-USD'])}
 function needCredentials(){if(!creds().apiKey||!keyObject())fail('noCredentials','Robinhood API credentials are required for Robinhood-authenticated data or future live execution')}
 function paper(){const p=J.loadPaper();p.params=S.normalizeParams({...p.params,sampleMs:TICK_MS});p.paramsHash=S.paramsHash(p.params);return p}
+function exploreParams(strictParams){return S.normalizeParams({...strictParams,...EXPLORE_OVERRIDES,sampleMs:TICK_MS})}
+function explore(strict=paper()){const e=J.loadExplore();e.params=exploreParams(strict.params);e.paramsHash=S.paramsHash(e.params);return e}
 function fee(){const f=account?.feeRatio;return Number.isFinite(f)&&f>=0&&f<0.25?f:envNum('ROBINHOOD_FEE_RATIO_FALLBACK',0.0085)}
 function fresh(q){return q&&Number.isFinite(q.bid)&&q.bid>0&&Number.isFinite(q.ask)&&q.ask>=q.bid&&Number.isFinite(q.at)&&q.at<=now()&&now()-q.at<=30000}
 function quote(symbol){const q=quotes.get(symbol);if(!fresh(q))fail('validation','A fresh, valid bid/ask quote is required');return q}
@@ -393,8 +403,8 @@ export function setRobinhoodAutopilot(patch={}){
  ap.orderUsd=Math.min(ap.orderUsd,limits.maxOrderUsd);ap.maxOpen=Math.min(ap.maxOpen,limits.maxOpen);ap.dailyLossCapUsd=Math.min(ap.dailyLossCapUsd,limits.dailyLossCapUsd);
  j.autopilot=ap;J.saveJournal(j);return clone(J.loadJournal().autopilot);
 }
-function featureRows(p,list){const out={};for(const symbol of primaryFirst([...new Set(list)])){
- const f=S.computeFeatures(J.tapeFor(p,symbol),p.params,now()),costPct=S.roundTripCost(fee(),f.spreadPct||0,p.params),signal=S.entrySignal(f,{costPct,params:p.params});out[symbol]={features:f,costPct,signal};
+function featureRows(p,list,tapeBook=p){const out={};for(const symbol of primaryFirst([...new Set(list)])){
+ const f=S.computeFeatures(J.tapeFor(tapeBook,symbol),p.params,now()),costPct=S.roundTripCost(fee(),f.spreadPct||0,p.params),signal=S.entrySignal(f,{costPct,params:p.params});out[symbol]={features:f,costPct,signal};
 }return out}
 export async function runRobinhoodAutopilotOnce(){
  if(paperOnlyBuild())return {ran:false,reason:'paperOnly',disabled:true};
@@ -443,11 +453,13 @@ export async function runRobinhoodAutopilotOnce(){
  }
 }
 // ------------------------------------------------------------------ paper book
-function paperStats(p){
+function paperStats(p){bookStats(p);p.qualification=qualification(p);return p}
+function exploreStats(e){bookStats(e);e.qualification={qualified:false,exploration:true,paramsHash:e.paramsHash,closes:e.stats.closes,hitRate:e.stats.hitRate,profitFactor:e.stats.profitFactor,pnlUsd:e.stats.pnlUsd,reasons:[EXPLORE_LABEL+': never counts toward qualification or promotion']};return e}
+function bookStats(p){
  const rows=p.history.filter(x=>x.status==='CLOSED'&&Number.isFinite(x.pnlUsd));let win=0,loss=0,total=0,fees=0,cum=0,peak=0,dd=0;
  for(const x of [...rows].reverse()){const pl=x.pnlUsd;total+=pl;win+=Math.max(pl,0);loss+=Math.max(-pl,0);fees+=(x.feeUsd||0)+(x.exit?.feeUsd||0);cum+=pl;peak=Math.max(peak,cum);dd=Math.max(dd,peak-cum)}
  const won=rows.filter(x=>x.pnlUsd>0).length;p.stats={closes:rows.length,won,lost:rows.length-won,pnlUsd:total,grossWinUsd:win,grossLossUsd:loss,feesUsd:fees,hitRate:rows.length?won/rows.length:null,profitFactor:loss?win/loss:win?'infinity':null,maxDrawdownUsd:dd};
- p.qualification=qualification(p);return p;
+ return p;
 }
 function commitPaper(p,force=true){paperStats(p);paperDirty=true;return J.savePaper(p,{force})}
 async function withPaperLock(fn){if(paperBusy)fail('busy','A paper operation is already in progress');paperBusy=true;try{return await fn()}finally{paperBusy=false}}
@@ -459,13 +471,13 @@ function paperSizing(p,symbol,usd,q){
  const size=S.sizeOrder({orderUsd:usd,ask:model.fillPrice,pair,feeRatio:fee(),buyingPowerUsd:p.cashUsd,maxOrderUsd:robinhoodLimits().maxOrderUsd});
  if(!size.ok)fail(size.reason==='buyingPower'?'paperCash':size.reason,'Paper order sizing failed: '+size.reason);return size;
 }
-function openPaperAt(p,symbol,usd,placedBy='manual'){
+function openPaperAt(p,symbol,usd,placedBy='manual',tapeBook=p){
  assertPaper(p);if(p.positions.length>=Math.min(p.autopilot.maxOpen,robinhoodLimits().maxOpen))fail('openCap','Paper position cap reached');
  if(p.positions.some(x=>x.symbol===symbol))fail('duplicate','A paper position already exists for this symbol');
  if(J.inCooldown(p,symbol,now()))fail('cooldown','The symbol is cooling down');
- const q=quote(symbol),size=paperSizing(p,symbol,usd,q),f=S.computeFeatures(J.tapeFor(p,symbol),p.params,now());
+ const q=quote(symbol),size=paperSizing(p,symbol,usd,q),f=S.computeFeatures(J.tapeFor(tapeBook,symbol),p.params,now());
  const costPct=S.roundTripCost(fee(),(q.ask-q.bid)/((q.ask+q.bid)/2),p.params),signal=S.entrySignal(f,{costPct,params:p.params});
- if(placedBy==='paper-autopilot'&&!signal.enter)fail('validation','No entry signal: '+signal.reason);
+ if((placedBy==='paper-autopilot'||placedBy==='explore-autopilot')&&!signal.enter)fail('validation','No entry signal: '+signal.reason);
  const fill=S.paperBuyFill({qty:size.qty,bid:q.bid,ask:q.ask,feeRatio:fee(),now:now(),params:p.params});
  if(!(fill.costUsd>0)||fill.costUsd>usd+1e-8||fill.costUsd>p.cashUsd)fail('paperCash','Modeled fill would exceed the paper budget');
  const position={id:J.newPaperId(),symbol,status:'OPEN',placedBy,qty:size.qty,entryAsk:q.ask,...fill,at:now(),openedAt:now(),stopPct:signal.stopPct,takePct:signal.takePct,trailArmPct:signal.trailArmPct,trailPct:signal.trailPct,peakBid:q.bid,trailStop:null,maxFavorablePct:0,maxAdversePct:0,params:clone(p.params),paramsHash:p.paramsHash,costPct,quoteSource:q.source,exit:null,pnlUsd:null};
@@ -513,7 +525,8 @@ export function resetRobinhoodPaper({amountUsd=1000}={}){
 function needsQuotes(p=paper(),j=J.loadJournal()){return !!(p.autopilot.enabled||p.positions.length||j.autopilot.enabled||j.open.length)}
 async function paperPass(initial){
  return withPaperLock(async()=>{
-  const wanted=[...new Set([...initial.autopilot.symbols,...initial.positions.map(p=>p.symbol),...(J.loadJournal().autopilot.enabled?J.loadJournal().autopilot.symbols:[])])];
+  const ex=exploreEnabled()?explore(initial):null;
+  const wanted=[...new Set([...(collectAlways()?robinhoodSymbols():[]),...initial.autopilot.symbols,...initial.positions.map(p=>p.symbol),...(ex?[...ex.autopilot.symbols,...ex.positions.map(p=>p.symbol)]:[]),...(J.loadJournal().autopilot.enabled?J.loadJournal().autopilot.symbols:[])])];
   await refreshFeed(wanted,true);const p=clone(paper());assertPaper(p);p.autopilot.skipped=[];let changed=false;
   for(const symbol of primaryFirst([...new Set([robinhoodPrimary().symbol,...wanted,...openSymbolsReal()])])){const q=quotes.get(symbol);if(fresh(q)){J.appendTape(p,symbol,{...q,quoteSource:q.source});T.bufferTape(symbol,{t:q.at,bid:q.bid,ask:q.ask,src:q.source})}}
   for(const position of [...p.positions]){
@@ -529,13 +542,59 @@ async function paperPass(initial){
     try{openPaperAt(p,symbol,p.autopilot.orderUsd,'paper-autopilot');changed=true;p.autopilot.lastAction={action:'buy',symbol,at:now()}}catch(e){p.autopilot.skipped.push({symbol,reason:e.code||safeMessage(e)})}
    }
   }
-  p.autopilot.lastRunAt=now();commitPaper(p,changed);return {ran:true,changed,open:p.positions.length,skipped:clone(p.autopilot.skipped)};
+  p.autopilot.lastRunAt=now();commitPaper(p,changed);
+  let exploreOut={ran:false,reason:'disabled'};if(exploreEnabled()){try{exploreOut=explorePass(p)}catch(e){note('explore-loop',e);exploreOut={ran:false,reason:e.code||'unknown',error:safeMessage(e)}}}
+  return {ran:true,changed,open:p.positions.length,skipped:clone(p.autopilot.skipped),explore:exploreOut};
  });
+}
+// The exploration book trades on the strict book's tape and quotes with looser params. Same fees, spread and fill model.
+function explorePass(strict){
+ const e=clone(explore(strict));if(e.recoveryRequired)return {ran:false,reason:'paperRecovery'};e.autopilot.skipped=[];let changed=false;
+ for(const position of [...e.positions]){
+  const q=quotes.get(position.symbol);if(!fresh(q))continue;const params=position.params||e.params;
+  const features=S.computeFeatures(J.tapeFor(strict,position.symbol),params,now());
+  const exit=S.exitSignal(position,{bid:q.bid,features,now:now(),feeRatio:fee(),params});
+  position.peakBid=exit.peakBid;position.trailStop=exit.trailStop;position.maxFavorablePct=Math.max(position.maxFavorablePct||0,q.bid/position.fillPrice-1);position.maxAdversePct=Math.min(position.maxAdversePct||0,q.bid/position.fillPrice-1);
+  if(exit.exit){closePaperAt(e,position.id,exit.reason,'strategy');changed=true;e.autopilot.lastAction={action:'close',symbol:position.symbol,reason:exit.reason,at:now()}}
+ }
+ if(e.autopilot.enabled){const rows=featureRows(e,[...e.autopilot.symbols,...e.positions.map(x=>x.symbol)],strict),eligible=Object.fromEntries(Object.entries(rows).filter(([,r])=>r.signal.enter));
+  for(const [symbol,row]of Object.entries(rows))if(!row.signal.enter)e.autopilot.skipped.push({symbol,reason:row.signal.reason});
+  for(const symbol of S.pickCandidates(eligible,e.positions.map(x=>x.symbol),e.cooldowns,Math.min(e.autopilot.maxOpen,robinhoodLimits().maxOpen),now(),primaryWeights())){
+   try{openPaperAt(e,symbol,e.autopilot.orderUsd,'explore-autopilot',strict);changed=true;e.autopilot.lastAction={action:'buy',symbol,at:now()}}catch(err){e.autopilot.skipped.push({symbol,reason:err.code||safeMessage(err)})}
+  }
+ }
+ e.autopilot.lastRunAt=now();exploreStats(e);J.saveExplore(e,{force:changed});return {ran:true,changed,open:e.positions.length};
+}
+// §23 warm start: refill the in-memory tape from the durable tape, then fill any hole (restart gap or short tape) from
+// public 1-minute candles tagged src 'coinbase-candles'. Unauthenticated; one request per symbol; never throws.
+export async function warmStartRobinhood({fetchCandles=fetchPublicCandles}={}){
+ if(warmFlight)return warmFlight;
+ warmFlight=withPaperLock(async()=>{
+  const p=clone(paper()),at=now();if(p.recoveryRequired)return warmStatus={at,ran:false,reason:'paperRecovery'};
+  const to=at,from=to-J.__testing.TAPE_CAP*TICK_MS,bySymbol={};
+  for(const sym of primaryFirst([...new Set([...robinhoodSymbols(),...p.autopilot.symbols,...p.positions.map(x=>x.symbol)])])){
+   const mem=J.tapeFor(p,sym).filter(r=>r.t>=from),disk=T.loadTape(sym,from),byT=new Map();
+   for(const r of [...disk,...mem])byT.set(r.t,{t:r.t,bid:r.bid,ask:r.ask});
+   const real=[...byT.values()].sort((a,b)=>a.t-b.t),gaps=W.findGaps(real,{from,to,sampleMs:TICK_MS}),row={memory:mem.length,disk:disk.length,gaps:gaps.length,candles:0,total:real.length,error:null};
+   let rows=real;
+   if(gaps.length){
+    try{const candles=await fetchCandles(sym,{startMs:Math.max(from,gaps[0][0]-60000),endMs:to});const m=W.mergeWarm(real,W.candlesToSamples(candles,TICK_MS),{from,to,sampleMs:TICK_MS});rows=m.rows;row.candles=m.added.length;T.bufferBackfill(sym,m.added)}
+    catch(e){row.error=safeMessage(e)}
+   }
+   const prior=p.tape?.[sym];if(!p.tape||typeof p.tape!=='object')p.tape={};
+   p.tape[sym]={intervalMs:TICK_MS,quoteSource:prior?.quoteSource||'v2',samples:rows.slice(-J.__testing.TAPE_CAP).map(r=>[r.t,r.bid,r.ask])};
+   if(rows.length)p.tapeAt=Math.max(Number(p.tapeAt)||0,rows[rows.length-1].t);
+   row.total=Math.min(rows.length,J.__testing.TAPE_CAP);bySymbol[sym]=row;
+  }
+  commitPaper(p);T.flushTape({force:true,now:now()});
+  return warmStatus={at,ran:true,bySymbol};
+ }).catch(e=>{note('warm-start',e);return warmStatus={at:now(),ran:false,reason:e.code||'unknown',error:safeMessage(e)}});
+ try{return await warmFlight}finally{warmFlight=null}
 }
 async function tick(){
  if(tickBusy||paperBusy)return {ran:false,reason:'busy'};
  const initial=paper(),j=J.loadJournal();if(initial.recoveryRequired&&!j.open.length&&!j.autopilot.enabled)return {ran:false,reason:'paperRecovery'};
- if(!needsQuotes(initial,j))return {ran:false,reason:'idle'};
+ if(!collectAlways()&&!needsQuotes(initial,j))return {ran:false,reason:'idle'};
  if(lastTickAt&&now()-lastTickAt<TICK_MS)return {ran:false,reason:'cadence'};
  tickBusy=true;lastTickAt=now();const out={ran:true};
  try{
@@ -547,8 +606,8 @@ async function tick(){
   return out;
  }finally{tickBusy=false;if(evolveDue()){evolveCheckedAt=now();runRobinhoodEvolveOnce().catch(e=>note('evolve',e))}}
 }
-export async function runRobinhoodPaperOnce(){if(tickBusy||paperBusy)return {ran:false,reason:'busy'};const p=paper();if(p.recoveryRequired)return {ran:false,reason:'paperRecovery'};if(!p.autopilot.enabled&&!p.positions.length)return {ran:false,reason:'idle'};tickBusy=true;try{return await paperPass(p)}catch(e){note('paper-loop',e);return {ran:false,reason:e.code||'unknown',error:safeMessage(e)}}finally{tickBusy=false}}
-export function startRobinhoodLoops(){if(timer)return timer;const setting=process.env.ROBINHOOD_AUTOSTART??process.env.POLYMARKET_AUTOSTART??'true';if(String(setting).toLowerCase()==='false')return null;timer=setInterval(()=>{tick().catch(()=>{})},TICK_MS);timer.unref?.();return timer}
+export async function runRobinhoodPaperOnce(){if(tickBusy||paperBusy)return {ran:false,reason:'busy'};const p=paper();if(p.recoveryRequired)return {ran:false,reason:'paperRecovery'};if(!collectAlways()&&!p.autopilot.enabled&&!p.positions.length)return {ran:false,reason:'idle'};tickBusy=true;try{return await paperPass(p)}catch(e){note('paper-loop',e);return {ran:false,reason:e.code||'unknown',error:safeMessage(e)}}finally{tickBusy=false}}
+export function startRobinhoodLoops(){if(timer)return timer;const setting=process.env.ROBINHOOD_AUTOSTART??process.env.POLYMARKET_AUTOSTART??'true';if(String(setting).toLowerCase()==='false')return null;timer=setInterval(()=>{tick().catch(()=>{})},TICK_MS);timer.unref?.();if(collectAlways()&&String(process.env.ROBINHOOD_WARM_START??'true').toLowerCase()!=='false')warmStartRobinhood().then(()=>tick()).catch(()=>{});return timer}
 export function stopRobinhoodLoops(){if(timer)clearInterval(timer);timer=null;if(paperDirty){try{J.savePaper(paper(),{force:true});paperDirty=false}catch(e){note('paper-save',e)}}T.flushTape({force:true,now:now()})}
 // ------------------------------------------------------------------ evolution (§22, paper-only)
 const num=v=>{const n=Number(v);return Number.isFinite(n)?n:0};
@@ -631,17 +690,23 @@ function snapshotView(){
  const rows=featureRows(p,[...robinhoodSymbols(),...p.autopilot.symbols,...j.autopilot.symbols,...p.positions.map(x=>x.symbol),...openSymbolsReal(j)]);
  const positions=p.positions.map(position=>{const q=quotes.get(position.symbol),known=fresh(q);return {...position,markBid:known?q.bid:null,unrealizedUsd:known?S.markToMarket(position,q.bid,fee()):null,unrealizedPct:known?q.bid/position.fillPrice-1:null,ageMs:now()-position.openedAt}});
  const known=positions.every(p=>p.unrealizedUsd!==null),unrealizedUsd=known?positions.reduce((s,p)=>s+p.unrealizedUsd,0):null;
+ const ex=exploreStats(clone(explore(p))),exRows=featureRows(ex,Object.keys(rows),p);
+ const gaugeOf=(book,r,s)=>gauge({features:r.features,signal:r.signal,params:book.params,holding:book.positions.some(x=>x.symbol===s),cooldownUntil:Number(book.cooldowns?.[s])||null,autopilotEnabled:!!book.autopilot.enabled,now:now()});
+ const gauges={strict:Object.fromEntries(Object.entries(rows).map(([s,r])=>[s,gaugeOf(p,r,s)])),explore:Object.fromEntries(Object.entries(exRows).map(([s,r])=>[s,gaugeOf(ex,r,s)]))};
+ const exPositions=ex.positions.map(position=>{const q=quotes.get(position.symbol),known=fresh(q);return {...position,markBid:known?q.bid:null,unrealizedUsd:known?S.markToMarket(position,q.bid,fee()):null,unrealizedPct:known?q.bid/position.fillPrice-1:null,ageMs:now()-position.openedAt}});
+ const exKnown=exPositions.every(x=>x.unrealizedUsd!==null);
+ const exploreView={label:EXPLORE_LABEL,enabled:exploreEnabled()&&!!ex.autopilot.enabled,countsTowardQualification:false,cashUsd:ex.cashUsd,startUsd:ex.startUsd,equityUsd:exKnown?ex.cashUsd+exPositions.reduce((s,x)=>s+x.costUsd+x.unrealizedUsd,0):null,unrealizedUsd:exKnown?exPositions.reduce((s,x)=>s+x.unrealizedUsd,0):null,positions:exPositions,history:ex.history.slice(0,8),stats:ex.stats,params:ex.params,paramsHash:ex.paramsHash,overrides:{...EXPLORE_OVERRIDES},autopilot:ex.autopilot,qualification:ex.qualification,recoveryRequired:!!ex.recoveryRequired};
  const tape=Object.fromEntries(Object.entries(rows).map(([s,r])=>[s,{n:r.features.n,ageMs:r.features.ageMs,expectedMovePct:r.features.expectedMovePct,costPct:r.costPct,requiredMovePct:r.signal.requiredMovePct,signal:signalEnum(s,r,p,j),reason:signalText(r,p),primary:s===primary.symbol,spark:J.tapeFor(p,s).slice(-60).map(x=>x.mid)}]));
  const entry=e=>{const q=quotes.get(e.symbol),known=fresh(q)&&e.status==='OPEN'&&e.fillVerified;return {id:e.id,symbol:e.symbol,side:e.side,status:e.status,placedBy:e.placedBy,orderType:e.orderType,orderId:e.orderId,requestedUsd:e.requestedUsd,requestedQty:e.requestedQty,filledQty:e.filledQty,avgPrice:e.avgPrice,costUsd:e.costUsd,feeUsd:e.feeUsd,fillVerified:e.fillVerified,markBid:known?q.bid:e.markBid,unrealizedUsd:known?e.filledQty*q.bid*(1-fee())-e.costUsd:e.unrealizedUsd,pnlUsd:e.pnlUsd,exitReason:e.exit?.reason||null,stopPct:e.stopPct,takePct:e.takePct,at:e.at,openedAt:e.openedAt,closedAt:e.closedAt,ageMs:now()-(e.openedAt||e.at),lastNote:e.notes?.length?e.notes[e.notes.length-1].text:null}};
  if(p.qualification.profitFactor===Infinity)p.qualification.profitFactor='infinity';
  const stats={...j.stats};if(stats.profitFactor===Infinity)stats.profitFactor='infinity';
  return {at:now(),readiness:robinhoodReadiness(),account:account?{...account,accountNumber:'****'+String(account.accountNumber).slice(-4)}:null,pairs:[...pairs.values()].map(x=>({symbol:x.symbol,assetIncrement:x.assetIncrement,quoteIncrement:x.quoteIncrement,minOrderAmountUsd:x.minOrderAmountUsd,isApiTradable:x.isApiTradable})),quotes:[...quotes.values()].map(q=>({...q,spreadPct:(q.ask-q.bid)/((q.ask+q.bid)/2)})),tape,
   paper:{cashUsd:p.cashUsd,startUsd:p.startUsd,equityUsd:known?p.cashUsd+positions.reduce((s,x)=>s+x.costUsd+x.unrealizedUsd,0):null,unrealizedUsd,positions,history:p.history.slice(0,8),stats:p.stats,autopilot:p.autopilot,params:p.params,paramsHash:p.paramsHash,qualification:p.qualification,recoveryRequired:!!p.recoveryRequired,recoveryError:p.recoveryError||null,fillModel:'Conservative simulated fills with spread, slippage and estimated fees; not actual executions'},
-  journal:{open:j.open.map(entry),history:j.history.slice(0,12).map(entry),stats,autopilot:clone(j.autopilot),cooldowns:clone(j.cooldowns),realizedTodayUsd:J.realizedTodayUsd(j,now()),lastReconcileAt:j.lastReconcileAt,recoveryRequired:!!j.recoveryRequired,recoveryError:j.recoveryError||null},limits:robinhoodLimits(),qualificationThresholds:J.qualificationThresholds(),strategy:{params:p.params,paramsHash:p.paramsHash,requiredHitRate:p.qualification.requiredHitRate,primary:{symbol:primary.symbol,weight:primary.weight,orderMult:primary.orderMult}},loop:{running:!!timer,tickMs:TICK_MS,lastTickAt,needsQuotes:needsQuotes(p,j)},equities:{automated:false,route:'Agentic Trading MCP',url:'https://agent.robinhood.com/mcp/trading',note:'Separate integration; no stock or option orders from this app'},evolve:robinhoodEvolveView(p),lastError};
+  journal:{open:j.open.map(entry),history:j.history.slice(0,12).map(entry),stats,autopilot:clone(j.autopilot),cooldowns:clone(j.cooldowns),realizedTodayUsd:J.realizedTodayUsd(j,now()),lastReconcileAt:j.lastReconcileAt,recoveryRequired:!!j.recoveryRequired,recoveryError:j.recoveryError||null},limits:robinhoodLimits(),qualificationThresholds:J.qualificationThresholds(),strategy:{params:p.params,paramsHash:p.paramsHash,requiredHitRate:p.qualification.requiredHitRate,primary:{symbol:primary.symbol,weight:primary.weight,orderMult:primary.orderMult}},loop:{running:!!timer,tickMs:TICK_MS,lastTickAt,needsQuotes:needsQuotes(p,j),alwaysOn:collectAlways(),warmStart:warmStatus?clone(warmStatus):null},equities:{automated:false,route:'Agentic Trading MCP',url:'https://agent.robinhood.com/mcp/trading',note:'Separate integration; no stock or option orders from this app'},evolve:robinhoodEvolveView(p),explore:exploreView,gauges,lastError};
 }
 export async function robinhoodSnapshot({force=false}={}){
  if(snapshotFlight)return snapshotFlight;
  snapshotFlight=(async()=>{try{if(paperOnlyBuild()||robinhoodReadiness().credentialsReady)await refreshFeed([...new Set([...robinhoodSymbols(),...paper().autopilot.symbols,...J.loadJournal().autopilot.symbols])],force)}catch(e){note('snapshot',e)}return snapshotView()})();
  try{return await snapshotFlight}finally{snapshotFlight=null}
 }
-export const __testing={tick,setClock(fn){clockFn=fn},unlockRealExecutionForTests(v=true){testRealExecutionUnlocked=v===true;sessionArmed=false},reset(){stopRobinhoodLoops();testRealExecutionUnlocked=false;account=null;pairs=new Map();quotes=new Map();feedAt=0;identity='';paperQuoteSource=null;paperFallbackReason=null;paperFallbackUntil=0;lastTickAt=0;lastError=null;paperDirty=false;feedFlight=null;snapshotFlight=null;sessionArmed=false;placeBusy=false;apBusy=false;reconcileBusy=false;lastPreview=null;lastReconcileRun=0;previewCache.clear();evolveBusy=false;evolveCheckedAt=0;J.__testing.resetPaper();J.__testing.resetJournal();T.__testing.reset();E.__testing.reset()},journalFile:J.JOURNAL_FILE,paperFile:J.PAPER_FILE,envFile:ENV_FILE,TICK_MS,SNAPSHOT_TTL_MS,PREVIEW_TTL_MS,ENTRY_TTL_MS,CONFIRM_PLACE,CONFIRM_CANCEL,CONFIRM_CANCEL_ALL,CONFIRM_AUTOPILOT,get lastPreview(){return lastPreview},get sessionArmed(){return sessionArmed},primaryOrderUsd,evolveFile:E.EVOLVE_FILE,tapeDir:T.TAPE_DIR};
+export const __testing={tick,setClock(fn){clockFn=fn},unlockRealExecutionForTests(v=true){testRealExecutionUnlocked=v===true;sessionArmed=false},reset(){stopRobinhoodLoops();testRealExecutionUnlocked=false;account=null;pairs=new Map();quotes=new Map();feedAt=0;identity='';paperQuoteSource=null;paperFallbackReason=null;paperFallbackUntil=0;lastTickAt=0;lastError=null;paperDirty=false;feedFlight=null;snapshotFlight=null;sessionArmed=false;placeBusy=false;apBusy=false;reconcileBusy=false;lastPreview=null;lastReconcileRun=0;previewCache.clear();evolveBusy=false;evolveCheckedAt=0;warmStatus=null;warmFlight=null;J.__testing.resetPaper();J.__testing.resetJournal();T.__testing.reset();E.__testing.reset()},journalFile:J.JOURNAL_FILE,paperFile:J.PAPER_FILE,envFile:ENV_FILE,TICK_MS,SNAPSHOT_TTL_MS,PREVIEW_TTL_MS,ENTRY_TTL_MS,CONFIRM_PLACE,CONFIRM_CANCEL,CONFIRM_CANCEL_ALL,CONFIRM_AUTOPILOT,get lastPreview(){return lastPreview},get sessionArmed(){return sessionArmed},primaryOrderUsd,evolveFile:E.EVOLVE_FILE,tapeDir:T.TAPE_DIR,exploreFile:J.EXPLORE_FILE,explorePass,get warmStatus(){return warmStatus}};

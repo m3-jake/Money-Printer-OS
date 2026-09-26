@@ -29,3 +29,14 @@ export async function fetchPublicPaperMarket(symbols,{fetchFn=globalThis.fetch,n
  const pairs=needPairs?await Promise.all(list.map(s=>fetchPublicPaperPair(s,{fetchFn}))):[];
  return {source:'coinbase-public-paper',quotes,pairs};
 }
+// Public 1-minute candles (unauthenticated), used only to warm the paper tape after a restart.
+// Coinbase returns at most 300 rows [time_s, low, high, open, close, volume], newest first.
+export async function fetchPublicCandles(symbol,{startMs,endMs,granularity=60,fetchFn=globalThis.fetch}={}){
+ const s=cleanSymbol(symbol),end=Math.floor(Number(endMs)),start=Math.max(Math.floor(Number(startMs)),end-300*granularity*1000);
+ if(!(end>start))throw Error('invalid candle window');
+ const qs=`granularity=${granularity}&start=${encodeURIComponent(new Date(start).toISOString())}&end=${encodeURIComponent(new Date(end).toISOString())}`;
+ const body=await json('/products/'+encodeURIComponent(s)+'/candles?'+qs,{fetchFn});
+ if(!Array.isArray(body))throw Error('public candle feed returned an invalid body');
+ return body.map(r=>({t:finite(r?.[0])*1000,low:finite(r?.[1]),high:finite(r?.[2]),open:finite(r?.[3]),close:finite(r?.[4])}))
+  .filter(c=>c.t>0&&c.low>0&&c.high>=c.low&&c.open>0&&c.close>0).sort((a,b)=>a.t-b.t);
+}

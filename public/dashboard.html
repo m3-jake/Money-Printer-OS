@@ -47,6 +47,33 @@ async function rhAction(action,body,label){
  catch(e){rhMessage=e.message}finally{rhSubmitting=false;await refreshRobinhood();renderRobinhood(true)}
 }
 function rhPrompt(phrase,text){const v=window.prompt((text||'')+'\nType '+phrase+' to confirm.');return v===null?null:v}
+// §23 "why not trading" gauge: one row per symbol and book. Bars are plain inline elements, no chart library.
+function rhBar(frac,color,marker){const w=Math.max(0,Math.min(1,Number(frac)||0))*100,m=marker==null?'':`<i style="position:absolute;left:${Math.max(0,Math.min(100,marker*100))}%;top:-2px;bottom:-2px;width:2px;background:#fff"></i>`;return `<span class="rh-bar" style="position:relative;display:inline-block;width:90px;height:8px;background:#26313a;border-radius:2px;vertical-align:middle"><i style="display:block;height:100%;width:${w}%;background:${color};border-radius:2px"></i>${m}</span>`}
+function rhGaugeRows(book,label,gs){return Object.entries(gs||{}).map(([s,g])=>{
+ const mv=g.move||{},sp=g.spread||{},bo=g.breakout||{},wu=g.warmup||{};
+ const moveFrac=mv.expectedPct!=null&&mv.requiredPct>0?mv.expectedPct/(Math.max(mv.expectedPct,mv.requiredPct)*1.25):0,moveMark=mv.expectedPct!=null&&mv.requiredPct>0?mv.requiredPct/(Math.max(mv.expectedPct,mv.requiredPct)*1.25):null;
+ return `<tr data-rh-gauge="${polyEscape(book+':'+s)}"><td>${polyEscape(s)}</td><td>${label}</td>
+ <td>${rhBar(wu.pct,wu.pct>=1?'#39ff68':'#ffb000')} <small>${polyEscape(String(wu.n??0))}/${polyEscape(String(wu.need??0))}</small></td>
+ <td class="${sp.ok===false?'red':''}">${sp.bps==null?'--':fmt(sp.bps,1)} / ${polyEscape(String(sp.capBps??'--'))} bps</td>
+ <td title="bar = expected move, white tick = required move">${rhBar(moveFrac,mv.ok?'#39ff68':'#ff5b70',moveMark)} <small>${rhPct(mv.expectedPct)} vs ${rhPct(mv.requiredPct)}</small></td>
+ <td class="${bo.ok?'green':''}">${bo.distancePct==null?'--':(bo.distancePct>=0?'+':'')+fmt(bo.distancePct*100,2)+'%'}</td>
+ <td class="${g.trend?.ok?'green':'red'}">${g.trend?.ok==null?'--':g.trend.ok?'OK':'not up'}</td>
+ <td><b class="${g.ready?'green':'amber'}">${polyEscape(g.blockingText||'--')}</b></td></tr>`}).join('')}
+function rhGaugeSection(st){
+ const g=st.gauges||{};
+ return `<fieldset class="mpo-fieldset" id="rhGauges"><legend>Why not trading (per symbol, both books)</legend><div class="mpo-table-wrap"><table class="mpo-table"><thead><tr><th>Pair</th><th>Book</th><th>Warm-up</th><th>Spread / cap</th><th>Expected vs required move</th><th>Breakout distance</th><th>Trend</th><th>Blocking</th></tr></thead><tbody>
+ ${rhGaugeRows('strict','STRICT',g.strict)}${rhGaugeRows('explore','EXPLORE',g.explore)||''}</tbody></table></div>
+ <small>Breakout distance is mid vs the Donchian high plus buffer; positive means above. ${st.loop?.alwaysOn?'Quotes are collected on every tick while the app runs.':'Quotes are collected only while a book needs them.'}${st.loop?.warmStart?.ran?' Warm start: '+Object.entries(st.loop.warmStart.bySymbol||{}).map(([s,w])=>polyEscape(s)+' '+w.disk+' tape + '+w.candles+' candle rows').join(' · '):''}</small></fieldset>`;
+}
+function rhExploreSection(st){
+ const e=st.explore;if(!e)return '';const s=e.stats||{},pos=e.positions||[],hist=e.history||[];
+ const pf=s.profitFactor==='infinity'?'inf':typeof s.profitFactor==='number'?fmt(s.profitFactor,2):'--';
+ return `<fieldset class="mpo-fieldset" id="rhExplore" style="border-color:#ffb000"><legend><b class="amber">${polyEscape(e.label)}</b></legend>
+ <p><span class="mpo-badge">${e.enabled?'RUNNING':'OFF'}</span> <span class="mpo-badge">NEVER COUNTS TOWARD QUALIFICATION OR PROMOTION</span> <small>own $${fmt(e.startUsd,0)} bank · costMultiple ${polyEscape(String(e.overrides?.costMultiple))} · lookback ${polyEscape(String(e.overrides?.lookbackSamples))} · max hold ${polyEscape(String(e.overrides?.maxHoldMin))} min · same fees, spread and fill model · hash ${polyEscape(e.paramsHash||'--')}</small></p>
+ <div class="metric-grid"><div class="mpo-metric"><label>Equity</label><strong>${rhMoney(e.equityUsd)}</strong></div><div class="mpo-metric"><label>Net P/L after fees</label><strong class="${(s.pnlUsd||0)>=0?'green':'red'}">${rhMoney(s.pnlUsd)}</strong></div><div class="mpo-metric"><label>Fees paid</label><strong>${rhMoney(s.feesUsd)}</strong></div><div class="mpo-metric"><label>Closes</label><strong>${s.closes||0}</strong></div><div class="mpo-metric"><label>Hit rate</label><strong>${rhPct(s.hitRate)}</strong></div><div class="mpo-metric"><label>Profit factor</label><strong>${pf}</strong></div></div>
+ <table class="mpo-table"><thead><tr><th>Open</th><th>Qty</th><th>Cost</th><th>Open P/L</th><th>Stop / take</th></tr></thead><tbody>${pos.length?pos.map(x=>`<tr><td>${polyEscape(x.symbol)}</td><td>${fmt(x.qty,8)}</td><td>${rhMoney(x.costUsd)}</td><td>${rhMoney(x.unrealizedUsd)}</td><td>${rhPct(x.stopPct)} / ${rhPct(x.takePct)}</td></tr>`).join(''):'<tr><td colspan="5">No open exploration positions.</td></tr>'}</tbody></table>
+ <small>Recent: ${hist.length?hist.map(x=>polyEscape(x.symbol+' '+(x.exit?.reason||'')+' ')+rhMoney(x.pnlUsd)).join(' · '):'no exploration closes yet'}. This book exists to generate data; it is not a strategy.</small></fieldset>`;
+}
 function renderRobinhood(force=false){
  const root=document.getElementById('body-robinhood');if(!root)return;
  if(!force&&rhTyping())return;rhCapture();
@@ -89,6 +116,8 @@ function renderRobinhood(force=false){
  <fieldset class="mpo-fieldset"><legend>Signals and costs</legend><table class="mpo-table"><thead><tr><th>Pair</th><th>Bid / ask</th><th>Samples</th><th>Move estimate</th><th>Round-trip cost</th><th>Signal</th><th>Why</th></tr></thead><tbody>
  ${Object.entries(rhState.tape||{}).map(([s,t])=>`<tr><td>${polyEscape(s)}${t.primary?' <span class="mpo-badge">PRIMARY x'+polyEscape(String(prim.weight||1))+'</span>':''}</td><td>${rhMoney(quoteMap[s]?.bid)} / ${rhMoney(quoteMap[s]?.ask)}</td><td>${t.n}</td><td>${rhPct(t.expectedMovePct)}</td><td>${rhPct(t.costPct)}</td><td><span class="mpo-badge">${polyEscape(t.signal||'--')}</span></td><td>${polyEscape(t.reason||'--')}</td></tr>`).join('')}
  </tbody></table><p>The move estimate measures volatility, not predicted profit. Fees and fill costs are modeled, not verified.</p></fieldset>
+ ${rhGaugeSection(rhState)}
+ ${rhExploreSection(rhState)}
  <fieldset class="mpo-fieldset"><legend>Paper research qualification</legend>
  <b>${q.qualified?'QUALIFIED under params '+polyEscape(p.paramsHash||'--'):'NOT QUALIFIED'}</b><p>${q.closes||0} eligible strategy closes / ${rhState.qualificationThresholds.minCloses} required | Hit rate ${rhPct(q.hitRate)} vs required ${rhPct(q.requiredHitRate)} | PF ${polyEscape(String(q.profitFactor??'--'))} | Net sample P/L ${rhMoney(q.pnlUsd)} | Max drawdown ${rhMoney(q.maxDrawdownUsd)}</p>
  <p>${polyEscape((q.reasons||[]).join('; ')||'Paper evidence only. This does not establish future profitability; live trading remains locked in this build.')}</p>

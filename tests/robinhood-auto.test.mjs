@@ -25,7 +25,8 @@ const RH=await import('../src/robinhoodAutoTrader.js'),J=await import('../src/ro
 const S=await import('../src/robinhoodStrategy.js');
 function reset(){RH.__testing.reset();fs.rmSync(process.env.MONEY_PRINTER_DATA_DIR,{recursive:true,force:true});fs.mkdirSync(process.env.MONEY_PRINTER_DATA_DIR,{recursive:true});J.__testing.resetPaper();J.__testing.resetJournal();TX.__testing.resetTransport();TX.__testing.setClock(()=>time);RH.__testing.setClock(()=>time);bid=100;ask=100.1;quoteTime=null;calls.length=0;process.env.ROBINHOOD_REAL_ENABLED='false'}
 test.after(()=>{RH.stopRobinhoodLoops();globalThis.fetch=nativeFetch;fs.rmSync(root,{recursive:true,force:true})});
-test('import and idle tick make no venue requests',async()=>{assert.equal(calls.length,0);reset();assert.equal((await RH.__testing.tick()).reason,'idle');assert.equal(calls.length,0)});
+test('import makes no venue requests; the idle tick is quiet only when always-on collection is off',async()=>{assert.equal(calls.length,0);reset();process.env.ROBINHOOD_COLLECT_QUOTES='false';try{assert.equal((await RH.__testing.tick()).reason,'idle');assert.equal(calls.length,0)}finally{delete process.env.ROBINHOOD_COLLECT_QUOTES}
+ reset();const t=await RH.__testing.tick();assert.equal(t.ran,true,'always-on: the tick collects quotes with autopilot off');assert.ok(calls.every(c=>c.method==='GET'));assert.equal(J.loadPaper().autopilot.enabled,false);assert.ok(J.tapeFor(J.loadPaper(),'BTC-USD').length>=1)});
 test('paper-only build hard-locks real execution even if the environment requests live mode',async()=>{
  reset();let r=RH.robinhoodReadiness();assert.equal(r.paperOnlyBuild,true);assert.equal(r.execution,'paper-only');assert.equal(r.realEnabled,false);assert.equal(r.sessionArmed,false);
  assert.throws(()=>RH.armRobinhood(true),e=>e.code==='paperOnly');
