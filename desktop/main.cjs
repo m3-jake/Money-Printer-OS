@@ -1,7 +1,7 @@
 // Money Printer OS — desktop supervisor.
 // Owns the Node children (trading engine, network mesh, evidence collector), keeps them alive,
 // adopts an engine that is already answering on the port, and never leaves orphans.
-const { app, BrowserWindow, Menu, shell } = require('electron');
+const { app, BrowserWindow, Menu, shell, Tray, nativeImage } = require('electron');
 const { spawn } = require('node:child_process');
 const crypto = require('node:crypto');
 const { verifyManifest } = require('./update-auth.cjs');
@@ -46,6 +46,30 @@ const UPDATE_INTERVAL_MS = Math.max(60000, Number(process.env.UPDATE_INTERVAL_MS
 const UPDATE_DIR = path.join(USER_ROOT, 'update');
 const UPDATE_STATUS = path.join(DATA, 'update-status.json');
 const UPDATE_REQUEST = path.join(DATA, 'update-request.json');
+// Written by the HUD (Settings), applied here. runInBackground: closing the window hides it to the tray
+// so the engine and collector keep recording. startWithWindows: login item, launched hidden to the tray.
+const DESKTOP_PREFS = path.join(DATA, 'desktop-prefs.json');
+const LAUNCHED_HIDDEN = process.argv.includes('--hidden');
+let tray = null, prefsSeen = '', trayHintShown = false;
+function readDesktopPrefs(){try{return {runInBackground:true,startWithWindows:false,...JSON.parse(fs.readFileSync(DESKTOP_PREFS,'utf8'))}}catch{return {runInBackground:true,startWithWindows:false}}}
+function showWindow(){ if (!win) createWindow(); else { if (win.isMinimized()) win.restore(); win.show(); win.focus(); } }
+function installTray(){
+  if (tray) return;
+  try {
+    tray = new Tray(nativeImage.createFromPath(path.join(ROOT, 'public', 'assets', 'app-icon.png')).resize({ width: 16, height: 16 }));
+    tray.setToolTip('Money Printer OS: trading engine and data collector running');
+    tray.setContextMenu(Menu.buildFromTemplate([{ label: 'Open Money Printer OS', click: showWindow }, { type: 'separator' }, { label: 'Quit (stops trading and data collection)', click: () => app.quit() }]));
+    tray.on('click', showWindow);
+  } catch (e) { log(`tray: ${e.message || e}`); }
+}
+function applyDesktopPrefs(){
+  let raw=''; try { raw = fs.readFileSync(DESKTOP_PREFS, 'utf8'); } catch {}
+  if (raw === prefsSeen) return; prefsSeen = raw;
+  const p = readDesktopPrefs();
+  if (app.isPackaged && process.platform !== 'linux') {
+    try { app.setLoginItemSettings({ openAtLogin: p.startWithWindows === true, args: ['--hidden'] }); log(`prefs: startWithWindows=${p.startWithWindows === true}`); } catch (e) { log(`prefs: login item failed: ${e.message || e}`); }
+  }
+}
 // Public release channel: this repo's GitHub Releases by default, MONEY_PRINTER_UPDATE_URL to override
 // (docs/RELEASE-CHANNEL.md). A bad override is reported on the next check, never a crash here.
 const REMOTE_CHANNEL = resolveUpdateChannel(process.env);
@@ -258,7 +282,12 @@ function createWindow() {
     icon: path.join(ROOT, 'public', 'assets', 'app-icon.png'),
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
-  win.on('closed', () => { win = null; });
+  win.on('close', e => {
+    if (quitting || process.platform === 'darwin' || readDesktopPrefs().runInBackground !== true) return;
+    e.preventDefault(); win.hide(); installTray();
+    if (!trayHintShown && tray && process.platform === 'win32') { trayHintShown = true; try { tray.displayBalloon({ title: 'Money Printer OS is still running', content: 'Trading and data collection continue in the background. Right-click the tray icon to quit.' }); } catch {} }
+  });
+  win.on('closed', () => { win = null; showingDashboard = false; });
   win.webContents.on('context-menu', (_event, params) => {
     const items=[];
     if (params.isEditable) items.push({ role:'undo', enabled:params.editFlags.canUndo },{ role:'redo', enabled:params.editFlags.canRedo },{ type:'separator' },{ role:'cut', enabled:params.editFlags.canCut },{ role:'copy', enabled:params.editFlags.canCopy },{ role:'paste', enabled:params.editFlags.canPaste },{ role:'selectAll' });
@@ -360,18 +389,20 @@ else {
     const priorUpdate=readUpdateStatus();
     if((priorUpdate.installAttempted===APP_VERSION&&['INSTALLING','READY','ERROR'].includes(String(priorUpdate.status||'')))||(priorUpdate.available&&!versionGreater(priorUpdate.available,APP_VERSION))) updateStatus({status:'CURRENT',current:APP_VERSION,available:APP_VERSION,error:null,note:null});
     installMenu();
-    createWindow();
+    applyDesktopPrefs();
+    if (LAUNCHED_HIDDEN && readDesktopPrefs().runInBackground === true) installTray(); else createWindow();
     boot().catch(e => { log(`boot: ${e.stack || e}`); showRecovery(String(e.message || e)); });
     setInterval(monitorTick, HEALTH_INTERVAL_MS);
     setTimeout(() => checkForClusterUpdate(false), 15000);
     setInterval(() => checkForClusterUpdate(false), UPDATE_INTERVAL_MS);
     setInterval(consumeUpdateRequest, 1200);
+    setInterval(applyDesktopPrefs, 1500);
   });
   // Terminal/dev use: Ctrl-C or kill on the supervisor becomes a graceful quit, not an orphan factory.
   for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => { log(`supervisor: ${sig} received, quitting`); app.quit(); });
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
   // Closing the window does not stop trading on macOS; the app keeps running in the Dock.
-  app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+  app.on('window-all-closed', () => { if (process.platform !== 'darwin' && readDesktopPrefs().runInBackground !== true) app.quit(); });
   // Quit = stop everything we own, wait for the children, then kill any straggler.
   app.on('before-quit', e => {
     if (quitting) return;

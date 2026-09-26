@@ -149,3 +149,17 @@ test('Lab proposal: read-only, rejects live claims, and applies only through the
  assert.throws(()=>combos.setUSComboSettings(ev.labComboProposal(f).params),/between/);
  assert.equal(ev.labComboProposal(path.join(DIR,'missing.json')),null);
 });
+
+test('polymarketFitness: per-window settled/open, hit rate, P/L, calibration; search blocked until 20 settled everywhere',()=>{
+ const st=ev.defaultEvidenceState(),W=Object.keys(ev.shadowRecord(st));
+ const f0=ev.polymarketFitness(st);
+ assert.equal(f0.verdict,'BLOCKED');assert.equal(f0.searchAllowed,false);assert.equal(f0.blockers.length,W.length);assert.equal(f0.combosParked,true);
+ for(const w of W)st.shadow[w]={open:[{}],history:Array.from({length:20},(_,i)=>({status:i<12?'WON':'LOST',pnlUsd:i<12?1:-1,costUsd:2}))};
+ st.calibration={k:{bucket:'0.5',sport:'nba',window:W[0],n:3,wins:2,sumPrice:1.5,sumFee:0.03}};
+ const f=ev.polymarketFitness(st);
+ assert.equal(f.searchAllowed,true);assert.equal(f.verdict,'KEEP_RESEARCHING');assert.deepEqual(f.blockers,[]);
+ assert.deepEqual(f.byWindow[W[0]],{settled:20,open:1,hitRate:0.6,pnlUsd:4,roi:0.1,calibrationRows:1});
+ assert.equal(f.calibrationRows,1);
+ st.shadow[W[0]].history.pop();assert.equal(ev.polymarketFitness(st).verdict,'BLOCKED','one window short blocks the search');
+ assert.ok(ev.evidenceSummary(st).fitness);
+});

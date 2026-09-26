@@ -92,6 +92,30 @@ export function solanaBookStats(history = []) {
   };
 }
 
+// Wilson score interval for a binomial proportion (95 % by default).
+export function wilsonInterval(wins, n, z = 1.959964) {
+  if (!(n > 0)) return { low: null, high: null };
+  const p = wins / n, d = 1 + z * z / n, c = p + z * z / (2 * n), m = z * Math.sqrt(p * (1 - p) / n + z * z / (4 * n * n));
+  return { low: Math.max(0, (c - m) / d), high: Math.min(1, (c + m) / d) };
+}
+
+// FAIR expectancy after measured cost, from closed trades opened under the FAIR preset (positions carry exitPreset
+// since Batch B; older closes have none and are not counted). A win is a close with pnlSol > 0.
+// expectancy = p*tp1 - (1-p)*stop - C, in percent of size, with C the realised round trip of those fills.
+export function fairExpectancy(history = [], config = {}) {
+  const pr = exitPresets.fair, closes = (Array.isArray(history) ? history : []).filter(h => h?.exitPreset === 'fair' && Number.isFinite(Number(h.pnlSol)));
+  const n = closes.length, wins = closes.filter(h => Number(h.pnlSol) > 0).length;
+  const cost = typicalRoundTripPct(closes, config), p = n ? wins / n : null, ci = wilsonInterval(wins, n);
+  const breakEven = breakEvenHitRate(pr, cost.pct);
+  return {
+    preset: 'fair', closes: n, wins, hitRate: p, hitRate95: ci, breakEvenHitRate: breakEven,
+    realisedRoundTripPct: cost.pct, roundTripSource: cost.source,
+    expectancyPct: p == null ? null : p * pr.tp1 - (1 - p) * pr.stop - cost.pct,
+    // Park rule input: after 100 FAIR closes, an upper bound below break-even means no edge after costs.
+    verdict: n < 100 ? 'COLLECTING' : ci.high < breakEven ? 'PARK' : 'KEEP_RESEARCHING',
+  };
+}
+
 // The HUD's Solana card.
 export function solanaBookView(s = {}, config = {}) {
   const runtime = s.runtime || {};
@@ -104,6 +128,7 @@ export function solanaBookView(s = {}, config = {}) {
     profile: runtime.profile || null, exitPreset: runtime.exitPreset || null,
     preset: { tp1: pr.tp1, tp2: pr.tp2, stop: pr.stop, trail: pr.trail, maxHold: pr.maxHold },
     ...solanaBookStats(s.history),
+    fair: fairExpectancy(s.history, config),
     roundTripPct: cost.pct, roundTripSource: cost.source,
     breakEvenHitRate: be,
     sprintBreakEvenHitRate: sprintBe,

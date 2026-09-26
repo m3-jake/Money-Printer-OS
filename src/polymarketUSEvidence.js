@@ -12,6 +12,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { appendNdjson, atomicJson, RESEARCH_RAW_DIR } from './researchCollector.js';
 import { usLiveEvents, usCandidatesFromEvents, chooseUSCombo, comboFeePerContract, STRATEGY_WINDOWS, usComboSettings } from './polymarketUSCombos.js';
+import { championState, championPaperAllowed } from './championState.js';
 
 const GATEWAY=process.env.POLYMARKET_US_GATEWAY||'https://gateway.polymarket.us';
 const DATA_DIR=path.resolve(process.env.MONEY_PRINTER_DATA_DIR||'data');
@@ -287,10 +288,21 @@ export async function evidenceTick({now=Date.now(),state=loadEvidenceState(),fet
 }
 
 // HUD summary (read-only).
+// Fitness for the ledger (Batch B): settled/open shadow combos, hit rate and P/L per window, and calibration rows.
+// Park rule: no search of any kind until every window has MIN_SETTLED_PER_WINDOW settled shadow combos.
+export const MIN_SETTLED_PER_WINDOW=20;
+export function polymarketFitness(state=loadEvidenceState()){
+ const rec=shadowRecord(state),cal=calibrationTable(state),byWindow={};
+ for(const w of STRATEGY_WINDOWS){const r=rec[w];byWindow[w]={settled:r.settled,open:r.open,hitRate:r.winRate,pnlUsd:r.pnlUsd,roi:r.roi,calibrationRows:cal.filter(c=>c.window===w).length}}
+ const short=STRATEGY_WINDOWS.filter(w=>byWindow[w].settled<MIN_SETTLED_PER_WINDOW);
+ return {module:'polymarket-us',byWindow,calibrationRows:cal.length,trackedLegs:Object.keys(state.tracked||{}).length,minSettledPerWindow:MIN_SETTLED_PER_WINDOW,
+  searchAllowed:short.length===0,verdict:short.length?'BLOCKED':'KEEP_RESEARCHING',
+  blockers:short.map(w=>`${w}: ${byWindow[w].settled}/${MIN_SETTLED_PER_WINDOW} settled shadow combos`),combosParked:true,publicDataOnly:true};
+}
 export function evidenceSummary(state=loadEvidenceState()){
  return {updatedAt:state.updatedAt||null,stats:state.stats,tracked:Object.keys(state.tracked).length,
   markup:{median:state.markup?.median??null,samples:state.markup?.count??0,used:effectiveMarkup(state),conservative:state.markup?.median==null},
-  shadow:shadowRecord(state),calibration:calibrationTable(state)};
+  shadow:shadowRecord(state),calibration:calibrationTable(state),fitness:polymarketFitness(state)};
 }
 
 // ------------------------------------------------------------ Lab proposal
@@ -304,6 +316,6 @@ export function labComboProposal(file=LAB_PROPOSAL_FILE){
  if(doc.liveActivationAllowed!==false)return {valid:false,reason:'proposal claims live authority; ignored'};
  const p=doc.candidate?.params||{};
  const params={window:p.window,priceMin:Number(p.priceMin),maxLegs:Number(p.maxLegs),rankWeights:p.rankWeights};
- return {valid:true,publishedAt:doc.publishedAt||null,stage:doc.qualificationStage||null,id:doc.candidate?.id||null,params,
+ return {valid:true,paperAllowed:championPaperAllowed(doc),championState:championState(doc).state,publishedAt:doc.publishedAt||null,stage:doc.qualificationStage||null,id:doc.candidate?.id||null,params,
   train:doc.candidate?.train||null,holdout:doc.candidate?.holdout||null,positiveEdge:!!doc.evidence?.positiveEdge,markup:doc.evidence?.markup||null,trials:doc.evidence?.trials??null};
 }

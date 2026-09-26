@@ -13,6 +13,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { fairExpectancy } from './solanaEconomics.js';
+import { championState, championPaperAllowed } from './championState.js';
 
 export const LAB_LINK_SCHEMA = { status: 'mpo.lab-status.v1', champion: 'mpo.lab-champion.v1', dataset: 'mpo.lab-dataset.v1', trader: 'mpo.lab-trader-status.v1' };
 export const LOCAL_FRESH_MS = 5 * 60_000;
@@ -95,7 +97,8 @@ export function loopViewFromLab(status, championDoc) {
   return {
     enabled: true,
     source: 'evolution-lab',
-    paperPromotionAllowed: championDoc?.paperPromotionAllowed === true,
+    paperPromotionAllowed: championPaperAllowed(championDoc),
+    championState: championState(championDoc).state,
     qualificationStage: championDoc?.qualificationStage || st.qualificationStage || 'RESEARCH_ONLY',
     labNodeId: st.labNodeId || championDoc?.labNodeId || null,
     labName: st.labName || championDoc?.labName || null,
@@ -148,7 +151,7 @@ export function syncLabLink(s, opts = {}) {
     status: link.status?.status || null,
     championId: link.champion?.champion?.id || null,
     championPublishedAt: link.champion?.publishedAt || null,
-    paperPromotionAllowed: link.connected && link.champion?.paperPromotionAllowed === true,
+    paperPromotionAllowed: link.connected && championPaperAllowed(link.champion),
     qualificationStage: link.champion?.qualificationStage || link.status?.qualificationStage || 'RESEARCH_ONLY',
     checkedAt: now,
   };
@@ -178,7 +181,7 @@ export function datasetRecord(s, { nodeId = traderNodeId(), name = traderNodeNam
 }
 export function traderStatusRecord(s, { nodeId = traderNodeId(), name = traderNodeName(), version = process.env.MONEY_PRINTER_VERSION || null, mode = 'paper', now = Date.now() } = {}) {
   const p = s?.portfolio || {};
-  return { schema: LAB_LINK_SCHEMA.trader, nodeId, name, version, platform: process.platform, mode, updatedAt: now, equitySol: finite(p.equitySol), sessionPnlSol: finite(s?.dailyPnlSol), openPositions: Array.isArray(s?.positions) ? s.positions.length : 0, activeEvolutionChampionId: s?.runtime?.activeEvolutionChampionId || 'BASE', activeStage: s?.system?.activeEvolutionPolicy?.stage || 'BASE', labLink: s?.labLink ? { connected: !!s.labLink.connected, source: s.labLink.source } : null };
+  return { schema: LAB_LINK_SCHEMA.trader, nodeId, name, version, platform: process.platform, mode, updatedAt: now, equitySol: finite(p.equitySol), sessionPnlSol: finite(s?.dailyPnlSol), openPositions: Array.isArray(s?.positions) ? s.positions.length : 0, activeEvolutionChampionId: s?.runtime?.activeEvolutionChampionId || 'BASE', activeStage: s?.system?.activeEvolutionPolicy?.stage || 'BASE', labLink: s?.labLink ? { connected: !!s.labLink.connected, source: s.labLink.source } : null, solanaFair: fairExpectancy(s?.history) };
 }
 
 // Publishes the labeled dataset and a small status line for the lab, throttled and only when

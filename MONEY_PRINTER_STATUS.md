@@ -599,3 +599,51 @@ What was finished and committed before parking (all tested; nothing can place wi
 - **Tests:** trader **619 / 0** (+7). Lab **158 / 158** (+1). The plan's "163" Lab baseline does not match the three current `test:all` scripts (30 + 53 + 75).
 - **Owner-only:** build and install the trader (for auto-demote, the outbound audit and health switches) and the Lab (for health switches). Until then, clicking FAIR by hand has the same effect as the auto-demote.
 - **Next:** Batch B (measure before searching).
+
+## Batch C (2026-09-26): champion lifecycle state (MPO side)
+
+- New `src/championState.js`: INCUBATOR -> SHADOW -> PAPER -> LIVE (`stateSchema: mpo.champion-state.v1`). Missing, unknown or newer-schema state reads as SHADOW. LIVE is treated as PAPER (never real money).
+- Paper now requires state >= PAPER **and** `paperPromotionAllowed`. Wired into `labLink.js` (Solana policy), `robinhoodAutoTrader.js` (view + apply-lab), `polymarketUSEvidence.js` + `dashboard.js` apply-lab (409 when not cleared).
+- **Consequence:** until the Lab writes `state`, every Lab champion reads as SHADOW and nothing paper-promotes. Lab batch (writer + seeded slippage + trial count + DSR-style promotion gate) is next.
+- Tests: new `tests/champion-state.test.mjs`; `lab-link` fixture now carries state PAPER. Full per-file sweep green except `robinhood-evidence` (untracked, pre-existing, fails without these changes too).
+- Robinhood mute: no code; `ROBINHOOD_AUTOSTART=false` already stops the loops. The 401 is Polymarket's, not Robinhood's.
+
+## Batch D (2026-09-26): editable Controls (Pump.fun)
+
+- The three readonly Controls boxes showed env caps that paper mode never used (open limit came from aggression, stop from the exit preset). Replaced with real knobs: entry frequency, candidates scanned, max-open override (blank = auto), exit preset, and custom tp1/tp2/stop/trail/max-hold (editing switches to custom). Env caps are now shown as live-mode hard limits text.
+- Engine: `runtime.js` gains `sanitizeCustomExit`/`customExitPolicy`/`openLimitFor` (hard bounds); `index.js` `preset()` and `blockStatus` use them; the `runtime` action accepts `customExit` and `maxOpenPositions`. `/api/state` exposes `effectiveControls` (incl. a note when a Lab paper champion overrides exits).
+- Verified end-to-end in an isolated engine (`engine-controls` launch config, port 8811). New `tests/runtime-controls.test.mjs`. Sweep green except pre-existing `robinhood-evidence`.
+
+## Batch E (2026-09-26): Lab Crucible (Lab commit cd02376 on codex/lab-evidence-20260925)
+
+- Scorer: the stop/take clamp filled every stop exactly at the stop. Now `exitFill` (gap-through stops realize half the overshoot + stress slippage; takes fill under the limit). Deterministic; mirrored in packed JS, Python reference and Torch scorer. Beast baseline fingerprints regenerated. **Python/Torch parity not run here (no numpy/torch on this machine).**
+- `src/deflatedSharpe.js` (real Bailey/Lopez de Prado DSR, lifetime trials). Solana: computed per generation on walk-forward folds and published (state stays SHADOW). Robinhood: proposal now also needs DSR >= 0.95 on holdout closes; lifetime `trialsTotal` in module status. **This part lives in `moduleResearch.js` and is NOT committed** (file also holds another session's unfinished Batch B).
+- Module/Solana champion records carry `stateSchema: mpo.champion-state.v1` + `state`, so MPO batch C now reads real states.
+- Blockers from the other session (not this batch): Lab `moduleResearch.js` imports `./robinhoodEvidence.js` which is missing in the Lab repo (breaks `module-research` and `polymarket-combo-research` tests); with MPO's copy supplied, its `realisticSpreads` breaks the RH-LAB-G9-win fixture. MPO batches C/D are uncommitted because the same files carry that session's hunks.
+
+### Next recommended batches
+
+1. ~~Walk-forward~~ done in batch F.
+2. ~~Stress replay~~ done in batch G.
+3. ~~Always-on data~~ done in batch H.
+4. Shadow vs backtest: KS test of shadow-logged trade returns vs backtest returns; SHADOW -> PAPER only when p > 0.05 and enough shadow trades.
+
+## Batch F (2026-09-26): walk-forward promotion (Lab commit fdc852b)
+
+- `src/walkForward.js`: 12 rolling windows; pass = >=6 active windows (>=5 trades), >=60% positive, positive median.
+- `selectChampion()` in `evolutionEngine.js`: the top 32 gate-passing challengers (`MPO_LAB_WALK_FORWARD_TOP_K`) are replayed; the best consistent one is promoted, lucky top scorers are skipped (event logged). Ranking scorer untouched, so GPU parity is unaffected. Published as `walkForward` in lab status.
+- Tests: new `tests/walk-forward.test.mjs` (4), `test:evolution` 53/0. The only failures in the Lab sweep are the two from the other session's Batch B.
+- MPO batches C/D are still uncommitted, waiting on a/b/c (other session's Batch B overlap).
+
+## Batch G (2026-09-26): stress replay (Lab)
+
+- `src/stressReplay.js`: 1000 seeded scenarios (friction 1-2.5x, stop slip 0.5-3%, gap share 30-90%, take shortfall, latency drag, adverse-selection misses). Pass = p10 scenario avg trade > 0.
+- `selectChampion` now needs gates + walk-forward + stress replay; rejections logged; summary in status `walkForward.stress`. ~0.8 s per challenger at 50k trades.
+- Tests: `tests/stress-replay.test.mjs` (4) + selection veto test; `test:evolution` green.
+
+## Batch H (2026-09-26): always-on data + coverage (MPO, uncommitted)
+
+- Solana ticks and the Robinhood tape are produced by the engine, so data stopped whenever the window closed (`window-all-closed` quit the app). `desktop/main.cjs`: closing the window now hides to a tray icon (Open / Quit) when `runInBackground` (default on); `startWithWindows` (default off) sets a login item launched `--hidden` into the tray. Prefs live in `<data>/desktop-prefs.json`, polled every 1.5 s.
+- `src/dataCoverage.js` + `GET /api/data-coverage`: per source (Solana path, Polymarket depth, each Robinhood symbol) status LIVE/STALE/DOWN/NO_DATA, last-row age, 7-day per-day rows, largest gap. `GET/POST /api/desktop-prefs`. Settings window gets a Background & data panel.
+- Verified in the isolated engine (panel, toggles persist). **Tray/login-item behavior not exercised: needs the packaged Electron app.** Test: `tests/data-coverage.test.mjs`.
+- Still uncommitted with C/D: `dashboard.js` also carries C's apply-lab 409 which depends on the entangled `polymarketUSEvidence.js`.

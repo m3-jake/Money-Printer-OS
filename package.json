@@ -25,7 +25,7 @@
     "test:turnover": "node --test tests/sports-turnover.test.mjs tests/update-auth.test.cjs",
     "test:updater": "node --test tests/update-channel.test.cjs tests/update-fetch.test.cjs tests/sign-manifest.test.mjs",
     "test:settlement": "node --test tests/polymarket-settlement.test.mjs",
-    "test:polymarket-us": "node --test tests/polymarket-us-safety.test.mjs",
+    "test:polymarket-us": "node --test tests/polymarket-us-safety.test.mjs tests/polymarket-us-evidence.test.mjs",
     "test:combos": "node --test tests/polymarket-us-combos.test.mjs",
     "replay": "node src/replayLab.js",
     "forensics": "node src/tradeForensics.js",
@@ -61,6 +61,6 @@
     "robinhood:keygen": "node scripts/robinhood-keygen.mjs",
     "collector": "node scripts/run-collector.mjs",
     "rh-tape-stats": "node scripts/rh-tape-stats.mjs",
-    "test:robinhood": "node scripts/sync-robinhood-panel.mjs --check && node --test tests/robinhood-paper-feed.test.mjs tests/robinhood-signer.test.mjs tests/robinhood-journal.test.mjs tests/robinhood-strategy.test.mjs tests/robinhood-safety.test.mjs tests/robinhood-auto-trader.test.mjs tests/robinhood-auto.test.mjs tests/robinhood-tape.test.mjs tests/rh-tape-stats.test.mjs tests/robinhood-backtest.test.mjs tests/robinhood-evolve.test.mjs tests/robinhood-hud.test.mjs tests/robinhood-http.test.mjs tests/robinhood-explore.test.mjs tests/robinhood-chart.test.mjs"
+    "test:robinhood": "node scripts/sync-robinhood-panel.mjs --check && node --test tests/robinhood-paper-feed.test.mjs tests/robinhood-signer.test.mjs tests/robinhood-journal.test.mjs tests/robinhood-strategy.test.mjs tests/robinhood-safety.test.mjs tests/robinhood-auto-trader.test.mjs tests/robinhood-auto.test.mjs tests/robinhood-tape.test.mjs tests/rh-tape-stats.test.mjs tests/robinhood-backtest.test.mjs tests/robinhood-evidence.test.mjs tests/robinhood-evolve.test.mjs tests/robinhood-hud.test.mjs tests/robinhood-http.test.mjs tests/robinhood-explore.test.mjs tests/robinhood-chart.test.mjs"
   }
 }

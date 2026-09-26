@@ -27,10 +27,12 @@ import * as J from './robinhoodJournal.js';
 import * as S from './robinhoodStrategy.js';
 import * as T from './robinhoodTape.js';
 import * as E from './robinhoodEvolve.js';
+import { volGateStats, realisticSpreads } from './robinhoodEvidence.js';
 import { fetchPublicPaperMarket, fetchPublicCandles } from './robinhoodPaperFeed.js';
 import * as W from './robinhoodWarmStart.js';
 import { gauge } from './robinhoodGauge.js';
 import * as C from './robinhoodChart.js';
+import { championState, championPaperAllowed } from './championState.js';
 export const CONFIRM_PLACE='PLACE REAL CRYPTO ORDER', CONFIRM_CANCEL='CANCEL REAL CRYPTO ORDER', CONFIRM_CANCEL_ALL='CANCEL REAL CRYPTO ORDERS', CONFIRM_AUTOPILOT='ENABLE REAL CRYPTO AUTOPILOT', CONFIRM_FORGET='FORGET';
 const clone=x=>structuredClone(x), envNum=(k,d)=>{const n=Number(process.env[k]);return Number.isFinite(n)&&n>0?n:d};
 const TICK_MS=Math.max(5000,envNum('ROBINHOOD_TICK_MS',15000)), PREVIEW_TTL_MS=30000, PREVIEW_CACHE_MS=10000, SNAPSHOT_TTL_MS=5000, ENTRY_TTL_MS=90000, RECONCILE_THROTTLE_MS=5000, NEVER_RECEIVED_MS=600000, NEVER_RECEIVED_LISTINGS=3;
@@ -632,13 +634,22 @@ function evolveDue(){
  if(now()-evolveCheckedAt<EVOLVE_CHECK_MS)return false;
  const l=E.loadEvolveLedger();return now()-l.lastRunAt>=cfg.intervalMin*60000;
 }
+// Vol-gate ratio per evolve symbol over the last 7 days of Robinhood rows. Reads a week of tape, so it is cached.
+const VOL_GATE_TTL_MS=10*60000;let volGateCache={at:0,key:'',value:null};
+export function robinhoodVolGate(p=paper(),{force=false}={}){
+ const key=p.paramsHash+':'+fee();if(!force&&volGateCache.value&&volGateCache.key===key&&now()-volGateCache.at<VOL_GATE_TTL_MS)return volGateCache.value;
+ const bySymbol={};for(const s of evolveSymbols(p)){try{bySymbol[s]=volGateStats(T.loadTape(s,now()-7*864e5),{params:p.params,feeRatio:fee(),now:now()})}catch(e){bySymbol[s]={verdict:'ERROR',error:safeMessage(e)}}}
+ const ratios=Object.values(bySymbol).map(x=>x.ratio).filter(Number.isFinite);
+ const value={at:now(),days:7,bySymbol,maxRatio:ratios.length?Math.max(...ratios):null,binding:ratios.length>0&&ratios.every(r=>r<1)};
+ volGateCache={at:now(),key,value};return value;
+}
 export function robinhoodEvolveView(p=paper()){
  const lab=readLabRobinhoodStatus(),labDoc=readLabRobinhoodChampion();
- if(lab||labDoc){const c=labDoc?.candidate||null,champion=c?compactCandidate({params:c.params,paramsHash:c.paramsHash,score:c.score,metrics:c.metrics,bySymbol:c.bySymbol,at:labDoc.publishedAt,generation:lab?.generation||0}):null,proposed=champion&&champion.paramsHash!==p.paramsHash?champion:null;return {source:'evolution-lab',enabled:true,running:lab?.status==='RUNNING',phase:lab?.phase||lab?.status||'STARTING',generation:lab?.generation||0,champion,proposed,incumbent:lab?.incumbent||null,applied:null,currentParamsHash:p.paramsHash,tapeDays:lab?.tapeDays||{},tapeSources:lab?.tapeSources||{},minTapeDays:lab?.minTapeDays||7,lastRunAt:lab?.lastRunAt||null,nextRunAt:null,intervalMin:5,candidates:null,minGainPct:lab?.gainPct??null,autopromote:false,history:[],events:[],lastError:lab?.lastError?{stage:'lab',message:String(lab.lastError)}:null,tape:T.tapeStatus(),paperPromotionAllowed:labDoc?.paperPromotionAllowed===true,note:lab?.note||null};}
+ if(lab||labDoc){const c=labDoc?.candidate||null,champion=c?compactCandidate({params:c.params,paramsHash:c.paramsHash,score:c.score,metrics:c.metrics,bySymbol:c.bySymbol,at:labDoc.publishedAt,generation:lab?.generation||0}):null,proposed=champion&&champion.paramsHash!==p.paramsHash?champion:null;return {source:'evolution-lab',volGate:robinhoodVolGate(p),enabled:true,running:lab?.status==='RUNNING',phase:lab?.phase||lab?.status||'STARTING',generation:lab?.generation||0,champion,proposed,incumbent:lab?.incumbent||null,applied:null,currentParamsHash:p.paramsHash,tapeDays:lab?.tapeDays||{},tapeSources:lab?.tapeSources||{},minTapeDays:lab?.minTapeDays||7,lastRunAt:lab?.lastRunAt||null,nextRunAt:null,intervalMin:5,candidates:null,minGainPct:lab?.gainPct??null,autopromote:false,history:[],events:[],lastError:lab?.lastError?{stage:'lab',message:String(lab.lastError)}:null,tape:T.tapeStatus(),paperPromotionAllowed:championPaperAllowed(labDoc),championState:championState(labDoc).state,note:lab?.note||null};}
  const cfg=E.evolveConfig(),l=E.loadEvolveLedger(),tapeDays={},tapeSources={};
  for(const s of evolveSymbols(p)){try{const c=T.tapeCoverage(s,now());tapeDays[s]=Math.round(c.days*100)/100;tapeSources[s]=c.sources}catch{tapeDays[s]=0;tapeSources[s]={}}}
  const champion=compactCandidate(l.champion),proposed=champion&&champion.paramsHash!==p.paramsHash?champion:null;
- return {enabled:cfg.enabled,running:evolveBusy,generation:l.generation,champion,proposed,incumbent:compactCandidate(l.incumbent),applied:l.applied,currentParamsHash:p.paramsHash,tapeDays,tapeSources,minTapeDays:cfg.minTapeDays,lastRunAt:l.lastRunAt,nextRunAt:l.lastRunAt?l.lastRunAt+cfg.intervalMin*60000:null,intervalMin:cfg.intervalMin,candidates:cfg.candidates,minGainPct:Math.round(cfg.minGain*1000)/10,autopromote:cfg.autopromote,history:l.history.slice(0,10),events:l.events.slice(0,10),lastError:l.lastError,tape:T.tapeStatus()};
+ return {volGate:robinhoodVolGate(p),enabled:cfg.enabled,running:evolveBusy,generation:l.generation,champion,proposed,incumbent:compactCandidate(l.incumbent),applied:l.applied,currentParamsHash:p.paramsHash,tapeDays,tapeSources,minTapeDays:cfg.minTapeDays,lastRunAt:l.lastRunAt,nextRunAt:l.lastRunAt?l.lastRunAt+cfg.intervalMin*60000:null,intervalMin:cfg.intervalMin,candidates:cfg.candidates,minGainPct:Math.round(cfg.minGain*1000)/10,autopromote:cfg.autopromote,history:l.history.slice(0,10),events:l.events.slice(0,10),lastError:l.lastError,tape:T.tapeStatus()};
 }
 export async function runRobinhoodEvolveOnce({manual=false}={}){
  const cfg=E.evolveConfig();
@@ -649,7 +660,7 @@ export async function runRobinhoodEvolveOnce({manual=false}={}){
  try{
   T.flushTape({force:true,now:now()});
   const since=now()-cfg.maxTapeDays*864e5,tapes={},tapeDays={},need=Math.max(p.params.warmupSamples,p.params.minSamples)*3;
-  for(const s of evolveSymbols(p)){const rows=T.loadTape(s,since);tapeDays[s]=rows.length?Math.round((rows[rows.length-1].t-rows[0].t)/864e5*100)/100:0;if(rows.length>=need)tapes[s]=rows}
+  const synthetic={};for(const s of evolveSymbols(p)){const adj=realisticSpreads(T.loadTape(s,since),{params:p.params}),rows=adj.rows;synthetic[s]={rowsSynthetic:adj.rowsSynthetic,syntheticShare:adj.syntheticShare};tapeDays[s]=rows.length?Math.round((rows[rows.length-1].t-rows[0].t)/864e5*100)/100:0;if(rows.length>=need)tapes[s]=rows}
   const primary=robinhoodPrimary().symbol;
   if(!tapes[primary]||tapeDays[primary]<cfg.minTapeDays){const l=E.loadEvolveLedger();l.lastError={at:now(),stage:'tape',message:`primary tape ${tapeDays[primary]||0} days < ${cfg.minTapeDays}`};E.saveEvolveLedger(l);return {ran:false,reason:'insufficientTape',tapeDays}}
   const l0=E.loadEvolveLedger(),generation=l0.generation+1,split=E.holdoutSplit(tapes,cfg.holdoutFrac),orderUsd=Math.min(p.autopilot.orderUsd,robinhoodLimits().maxOrderUsd);
@@ -665,7 +676,7 @@ export async function runRobinhoodEvolveOnce({manual=false}={}){
    if(!already||r.best.score>l.champion.score){l.champion={params:r.best.params,paramsHash:r.best.paramsHash,score:r.best.score,metrics:{...r.best.metrics,holdout},bySymbol:r.best.bySymbol,at:now(),generation};E.ledgerEvent(l,'champion',`G${generation}: ${r.best.paramsHash} scored ${r.best.score.toFixed(3)} vs incumbent ${r.incumbent.score.toFixed(3)} (+${r.gainPct}%)`,{paramsHash:r.best.paramsHash,gainPct:r.gainPct})}
    proposed=true;
   }
-  l.history=[{generation,at:now(),elapsedMs:r.elapsedMs,timedOut:r.timedOut,evaluated:r.evaluated.length,symbols:Object.keys(tapes),tapeDays,incumbentHash:r.incumbent.paramsHash,incumbentScore:Math.round(r.incumbent.score*1000)/1000,bestHash:r.best?.paramsHash||null,bestScore:r.best?Math.round(r.best.score*1000)/1000:null,gainPct:r.gainPct,beats,searchBeats:r.beats,holdout,promoted:false},...l.history].slice(0,E.__testing.HISTORY_CAP);
+  l.history=[{generation,at:now(),elapsedMs:r.elapsedMs,timedOut:r.timedOut,evaluated:r.evaluated.length,symbols:Object.keys(tapes),tapeDays,synthetic,incumbentHash:r.incumbent.paramsHash,incumbentScore:Math.round(r.incumbent.score*1000)/1000,bestHash:r.best?.paramsHash||null,bestScore:r.best?Math.round(r.best.score*1000)/1000:null,gainPct:r.gainPct,beats,searchBeats:r.beats,holdout,promoted:false},...l.history].slice(0,E.__testing.HISTORY_CAP);
   E.saveEvolveLedger(l);
   if(beats&&cfg.autopromote&&l.champion.paramsHash!==p.paramsHash){
    try{applyRobinhoodEvolution({paramsHash:l.champion.paramsHash,by:'autopromote'});promoted=true;const l2=E.loadEvolveLedger();if(l2.history[0])l2.history[0].promoted=true;E.saveEvolveLedger(l2)}
@@ -679,7 +690,7 @@ export async function runRobinhoodEvolveOnce({manual=false}={}){
 // paramsChanged disable inside setRobinhoodPaperAutopilot. Qualification resets because the paramsHash changes.
 export function applyRobinhoodEvolution({paramsHash,by='operator'}={}){
  const hash=String(paramsHash||'').trim(),labDoc=readLabRobinhoodChampion(),labCandidate=labDoc?.candidate;
- if(labCandidate&&labCandidate.paramsHash===hash){if(labDoc.paperPromotionAllowed!==true)fail('notQualified','Evolution Lab candidate has not cleared the paper-review gates');if(!E.withinEvolveBounds(labCandidate.params))fail('validation','Lab candidate parameters fall outside the evolution bounds');const p=paper();if(hash===p.paramsHash)return {ok:true,applied:false,paramsHash:p.paramsHash,autopilot:clone(p.autopilot),realAutopilot:robinhoodAutopilot()};const autopilot=setRobinhoodPaperAutopilot({params:labCandidate.params});if(autopilot.paramsHash!==hash)fail('validation',`Applied params hash ${autopilot.paramsHash} does not match Lab candidate ${hash}`);return {ok:true,applied:true,paramsHash:hash,autopilot,realAutopilot:robinhoodAutopilot(),source:'evolution-lab'};}
+ if(labCandidate&&labCandidate.paramsHash===hash){if(!championPaperAllowed(labDoc))fail('notQualified',`Evolution Lab candidate is ${championState(labDoc).state}, not cleared for paper`);if(!E.withinEvolveBounds(labCandidate.params))fail('validation','Lab candidate parameters fall outside the evolution bounds');const p=paper();if(hash===p.paramsHash)return {ok:true,applied:false,paramsHash:p.paramsHash,autopilot:clone(p.autopilot),realAutopilot:robinhoodAutopilot()};const autopilot=setRobinhoodPaperAutopilot({params:labCandidate.params});if(autopilot.paramsHash!==hash)fail('validation',`Applied params hash ${autopilot.paramsHash} does not match Lab candidate ${hash}`);return {ok:true,applied:true,paramsHash:hash,autopilot,realAutopilot:robinhoodAutopilot(),source:'evolution-lab'};}
  const l=E.loadEvolveLedger();
  if(!l.champion)fail('notFound','No evolution champion has been proposed yet');
  if(!hash||l.champion.paramsHash!==hash)fail('validation',`paramsHash must match the proposed champion ${l.champion.paramsHash}`);

@@ -121,3 +121,26 @@ test('paper auto-demote: SPRINT fails the cost gate at the floor round trip and 
   assert.match(src, /type: 'profile-auto-demote'/);
   assert.doesNotMatch(src, /profile = 'SPRINT'/, 'nothing promotes to SPRINT automatically');
 });
+
+test('FAIR expectancy: only FAIR-tagged closes, Wilson 95 % interval, measured cost, PARK only after 100 closes', async () => {
+  const { fairExpectancy, wilsonInterval } = await import('../src/solanaEconomics.js');
+  const w = wilsonInterval(50, 100);
+  assert.ok(Math.abs(w.low - 0.4038) < 1e-3 && Math.abs(w.high - 0.5962) < 1e-3, JSON.stringify(w));
+  assert.deepEqual(wilsonInterval(0, 0), { low: null, high: null });
+  const close = (win, preset = 'fair') => ({ exitPreset: preset, pnlSol: win ? 0.01 : -0.01, entrySlippageBps: 80, exitSlippageBps: 80 });
+  const empty = fairExpectancy([], config);
+  assert.equal(empty.closes, 0); assert.equal(empty.expectancyPct, null); assert.equal(empty.verdict, 'COLLECTING');
+  const mixed = [...Array.from({ length: 10 }, (_, i) => close(i < 6)), close(true, 'sprint'), { pnlSol: 1 }];
+  const e = fairExpectancy(mixed, config);
+  assert.equal(e.closes, 10, 'SPRINT and untagged legacy closes are not FAIR evidence'); assert.equal(e.hitRate, 0.6);
+  assert.equal(e.roundTripSource, 'history'); assert.equal(e.realisedRoundTripPct, 2.1);
+  assert.ok(Math.abs(e.expectancyPct - (0.6 * 12 - 0.4 * 8 - 2.1)) < 1e-9);
+  // 100 closes at a 30 % hit rate: the upper bound sits under the ~52 % break-even, so the lane parks itself.
+  const poor = fairExpectancy(Array.from({ length: 100 }, (_, i) => close(i < 30)), config);
+  assert.ok(poor.hitRate95.high < poor.breakEvenHitRate); assert.equal(poor.verdict, 'PARK');
+  const ok = fairExpectancy(Array.from({ length: 100 }, (_, i) => close(i < 55)), config);
+  assert.equal(ok.verdict, 'KEEP_RESEARCHING');
+  assert.ok(solanaBookView({ history: mixed, runtime: { profile: 'FAIR', exitPreset: 'fair' } }, config).fair.closes === 10);
+  assert.match(read('src/index.js'), /exitPreset: s\.runtime\.exitPreset \|\| null/);
+  assert.match(read('src/labLink.js'), /solanaFair: fairExpectancy\(/);
+});

@@ -1,4 +1,7 @@
 import { handleRobinhoodRequest, startRobinhoodLoops, stopRobinhoodLoops } from './robinhoodHttp.js';
+import { exitPresets, customExitPolicy, openLimitFor, aggressionParams, customExitBounds, MAX_OPEN_OVERRIDE } from './runtime.js';
+import { evolutionChampionPolicy } from './learner.js';
+import { dataCoverage } from './dataCoverage.js';
 import { solanaBookView } from './solanaEconomics.js';
 import { traderSwitches } from './killSwitches.js';
 import { robinhoodReadiness } from './robinhoodAutoTrader.js';
@@ -25,6 +28,12 @@ const MAX_BODY = 32 * 1024;
 const DATA_DIR = path.resolve(process.env.MONEY_PRINTER_DATA_DIR || path.join(ROOT,'data'));
 const UPDATE_STATUS_FILE = path.join(DATA_DIR,'update-status.json');
 const UPDATE_REQUEST_FILE = path.join(DATA_DIR,'update-request.json');
+// Desktop-shell preferences (read by desktop/main.cjs every ~1 s): keep collecting when the window is
+// closed, and start with Windows. The shell owns applying them; this only stores the user's choice.
+const DESKTOP_PREFS_FILE = path.join(DATA_DIR,'desktop-prefs.json');
+const DESKTOP_PREF_DEFAULTS = { runInBackground: true, startWithWindows: false };
+function readDesktopPrefs(){try{const v=JSON.parse(fs.readFileSync(DESKTOP_PREFS_FILE,'utf8'));return {...DESKTOP_PREF_DEFAULTS,...(v&&typeof v==='object'?v:{})}}catch{return {...DESKTOP_PREF_DEFAULTS}}}
+function writeDesktopPrefs(patch={}){const next={...readDesktopPrefs()};for(const k of Object.keys(DESKTOP_PREF_DEFAULTS))if(typeof patch[k]==='boolean')next[k]=patch[k];next.updatedAt=Date.now();const tmp=DESKTOP_PREFS_FILE+'.tmp';fs.writeFileSync(tmp,JSON.stringify(next,null,2));fs.renameSync(tmp,DESKTOP_PREFS_FILE);return next}
 const RESEARCH_MONITOR_FILE = path.join(DATA_DIR,'research-monitor.json');
 const RESEARCH_EVIDENCE_MONITOR_FILE = path.join(DATA_DIR,'research-evidence-monitor.json');
 const RESEARCH_CAPTURE_STATUS_FILE = path.join(DATA_DIR,'research-capture-status.json');
@@ -314,6 +323,7 @@ function snapshot() {
     market: s.market || {},
     memeIndex: s.memeIndex || {},
     runtime: s.runtime || {},
+    effectiveControls: (() => { const rt = s.runtime || {}, champ = cfg.mode === 'paper' ? evolutionChampionPolicy(s) : null; return { exit: exitPresets[rt.exitPreset] || customExitPolicy(rt), customExit: customExitPolicy(rt), labChampionExit: champ ? { takePct: champ.takePct, stopPct: champ.stopPct, maxHoldMin: champ.maxHoldMin } : null, openLimit: openLimitFor(rt), autoOpenLimit: aggressionParams(rt.aggression).maxOpenPositions, bounds: { ...customExitBounds, maxOpenPositions: MAX_OPEN_OVERRIDE }, presets: Object.keys(exitPresets) }; })(),
     system: systemView(s.system, plane.activeEvolutionPolicy),
     stats: s.stats || {},
     solanaBook: solanaBookView(s, cfg),
@@ -436,6 +446,8 @@ export function startDashboard() {
       if (req.method === 'GET' && u.pathname === '/api/evolution') { const st = loadStateCached(); return json(res, { ...(st.evolution || {}), loop: evolutionLoopView(st.evolutionLoop || st.evolution?.loop || {}), labLink: labLinkView(st) }); }
       if (req.method === 'GET' && u.pathname === '/api/network') { const r=await meshRequest('GET','/state'); return json(res,r.body,r.status); }
       if (req.method === 'GET' && u.pathname === '/api/resources') return json(res, resourceSnapshot());
+      if (req.method === 'GET' && u.pathname === '/api/data-coverage') return json(res, dataCoverage(DATA_DIR, { force: u.searchParams.get('force') === '1' }));
+      if (req.method === 'GET' && u.pathname === '/api/desktop-prefs') return json(res, readDesktopPrefs());
       if (req.method === 'GET' && u.pathname === '/api/unit-economics') return json(res, readApiUnitEconomics());
       if (req.method === 'GET' && u.pathname === '/api/product-economics') {
         if (!productReadAuthorized(req)) return json(res, {ok:false,error:'Product reporting requires localhost or a server token'}, 403);
@@ -485,13 +497,14 @@ export function startDashboard() {
         if (u.pathname === '/api/polymarket-us/combos/quote') { try{return json(res,{ok:true,quote:await quoteUSCombo({legKeys:b.legKeys,stakeUsd:b.stakeUsd})})}catch(e){return comboFail(e)} }
         if (u.pathname === '/api/polymarket-us/combos/place') { try{return json(res,await placeUSCombo({legKeys:b.legKeys,stakeUsd:b.stakeUsd,mode:b.mode,rfqId:b.rfqId,quoteId:b.quoteId,limitPrice:b.limitPrice,confirmation:b.confirmation,placedBy:'manual'}))}catch(e){return comboFail(e)} }
         if (u.pathname === '/api/polymarket-us/combos/cancel-rfq') { try{return json(res,{ok:true,...await cancelUSRfq({rfqId:b.rfqId})})}catch(e){return comboFail(e)} }
-        if (u.pathname === '/api/polymarket-us/combos/apply-lab') { try{const ev=await import('./polymarketUSEvidence.js');const p=ev.labComboProposal();if(!p||!p.valid)return json(res,{ok:false,error:p?.reason||'No Lab proposal to apply'},400);return json(res,{ok:true,settings:setUSComboSettings(p.params),applied:p.id})}catch(e){return comboFail(e)} }
+        if (u.pathname === '/api/polymarket-us/combos/apply-lab') { try{const ev=await import('./polymarketUSEvidence.js');const p=ev.labComboProposal();if(!p||!p.valid)return json(res,{ok:false,error:p?.reason||'No Lab proposal to apply'},400);if(!p.paperAllowed)return json(res,{ok:false,error:`Lab proposal is ${p.championState}, not cleared for paper`},409);return json(res,{ok:true,settings:setUSComboSettings(p.params),applied:p.id})}catch(e){return comboFail(e)} }
         if (u.pathname === '/api/polymarket-us/combos/autopilot') { try{return json(res,{ok:true,autopilot:await setUSComboAutopilot(b)})}catch(e){return comboFail(e)} }
         if (u.pathname === '/api/polymarket-us/combos/settings') { try{return json(res,{ok:true,settings:setUSComboSettings(b)})}catch(e){return comboFail(e)} }
         if (u.pathname === '/api/polymarket-us/combos/settle') { try{return json(res,{ok:true,...await settleUSCombos({force:true})})}catch(e){return comboFail(e)} }
         if (u.pathname === '/api/polymarket-us/combos/forget') { try{return json(res,forgetUSCombo({id:b.id,confirmation:b.confirmation}))}catch(e){return comboFail(e)} }
         res.writeHead(404); return res.end('not found');
       }
+      if (u.pathname === '/api/desktop-prefs') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); return json(res,{ok:true,prefs:writeDesktopPrefs(b)}); }
       if (u.pathname === '/api/update/check') return json(res, requestUpdater('check'));
       if (u.pathname === '/api/update/install') return json(res, requestUpdater('install')); 
       if (u.pathname === '/api/network/chat') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); const r=await meshRequest('POST','/chat',{text:b.text}); return json(res,r.body,r.status); }

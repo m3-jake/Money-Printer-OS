@@ -13,7 +13,7 @@ import { alert } from './alerts.js';
 import { pushTick, microFeatures, explosionScore, moonScore, buildCandles, narrative, walletSignals } from './intelligence.js';
 import { socialSignals } from './providers.js';
 import { startProgramStream } from './stream.js';
-import { aggressionParams, exitPresets, operatingProfiles } from './runtime.js';
+import { aggressionParams, exitPresets, operatingProfiles, customExitPolicy, sanitizeCustomExit, openLimitFor, MAX_OPEN_OVERRIDE } from './runtime.js';
 import { recordUniverse, postmortemTrade } from './research.js';
 import { supervisorTick } from './supervisor.js';
 import { proposeTrade, proposeExit, resolveProposal, expireProposals } from './proposals.js';
@@ -83,10 +83,7 @@ function exitPolicy(s) {
 }
 
 function preset(s) {
-  return exitPresets[s.runtime.exitPreset] || {
-    tp1: cfg.takeProfit1Pct, tp2: cfg.takeProfit2Pct, stop: cfg.stopLossPct,
-    trail: cfg.trailingStopPct, maxHold: cfg.maxHoldMin,
-  };
+  return exitPresets[s.runtime.exitPreset] || customExitPolicy(s.runtime);
 }
 
 function paperSell(s, p, fraction, price, reason, final = false, market = null) {
@@ -225,6 +222,7 @@ async function enter(s, pick, manual = false) {
       tp1Done: false, tp2Done: false, breakEvenArmed: false, realizedSol: -entryFee, feesSol: entryFee, manual,
       maxFavorablePct: 0, maxAdversePct: 0, entrySlippageBps:sim.slippageBps, simulatedLatencyMs:sim.latencyMs,
       lastLiquidityUsd:pick.liq, lastMicro:pick.micro, lastPriceAccel:pick.priceAccel,
+      profile: s.runtime.profile || null, exitPreset: s.runtime.exitPreset || null, championId: s.runtime.activeEvolutionChampionId || 'BASE',
     });
     s.stats.signals++;
     appendJournal({ type: 'trade-open', mode: 'paper', mint: pick.mint, symbol: pick.symbol, sizeSol: size, score: pick.score, fastEdgeScore:pick.fastEdgeScore||pick.score, strategy, manual, slippageBps:sim.slippageBps, simulatedFailurePct:sim.failurePct });
@@ -305,6 +303,8 @@ async function actions(s) {
       if (raw.maxCandidates != null) patch.maxCandidates = Math.max(30, Math.min(600, Math.round(Number(raw.maxCandidates) || cfg.maxCandidates)));
       if (raw.entryFrequency != null && ['normal','high','max'].includes(String(raw.entryFrequency))) patch.entryFrequency = String(raw.entryFrequency);
       if (raw.exitPreset != null && ['ultraScalp','sprint','fair','scalper','runner','moonbag','yolo','custom'].includes(String(raw.exitPreset))) patch.exitPreset = String(raw.exitPreset);
+      if (raw.customExit != null) { patch.customExit = { ...(s.runtime.customExit || {}), ...sanitizeCustomExit(raw.customExit) }; }
+      if (raw.maxOpenPositions !== undefined) { const o = Math.round(Number(raw.maxOpenPositions)); patch.maxOpenPositions = raw.maxOpenPositions === null || raw.maxOpenPositions === '' || !Number.isFinite(o) ? null : Math.max(MAX_OPEN_OVERRIDE[0], Math.min(MAX_OPEN_OVERRIDE[1], o)); }
       if (raw.visualIntensity != null) patch.visualIntensity = Math.max(0, Math.min(100, Number(raw.visualIntensity) || 0));
       Object.assign(s.runtime, patch);
     } else if (a.type === 'evolution-sync') {
@@ -413,7 +413,7 @@ function blockStatus(s) {
   const dailyLimit = cfg.mode === 'paper' ? Math.max(cfg.dailyLossLimitSol, start * .05) : cfg.dailyLossLimitSol;
   const hourlyLimit = cfg.mode === 'paper' ? Math.max(cfg.hourlyLossLimitSol, start * .025) : cfg.hourlyLossLimitSol;
   const sprintPaper = cfg.mode === 'paper' && s.runtime.profile === 'SPRINT';
-  const openLimit = cfg.mode === 'paper' ? (sprintPaper ? Math.max(16,ap.maxOpenPositions) : ap.maxOpenPositions) : Math.min(ap.maxOpenPositions, cfg.maxOpenPositions);
+  const openLimit = openLimitFor(s.runtime);
   const currentOpenPnl = unrealizedPnl(s);
   const reasons=[];
   if (s.system.paused) reasons.push('paused');

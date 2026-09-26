@@ -636,7 +636,7 @@ function renderWallet(){
  setBody('wallet',`<div class="mpo-surface-light" style="height:100%;display:flex;flex-direction:column;min-height:0;padding:8px;color:#111"><div class="mpo-status"><b>WALLET INTEL</b><span class="muted">${w.length} tracked</span>${w.length?`<b class="mpo-badge ${(w[0].recurrenceScore||0)>60?'mpo-badge--armed':'mpo-badge--degraded'}">${(w[0].recurrenceScore||0)>60?'HOT':'WARM'}</b>`:''}</div><div class="mpo-table-wrap" data-scroll="wallet-table"><table class="table mpo-table"><thead><tr><th>Wallet</th><th>Seen</th><th>Score</th><th>Status</th></tr></thead><tbody>${w.length?w.slice(0,16).map(x=>`<tr><td>${polyEscape(String(x.address||'').slice(0,6))}...${polyEscape(String(x.address||'').slice(-4))}</td><td>${x.seen||0}</td><td>${fmt(x.recurrenceScore,1)}<div class="mpo-meter-bar--sm ${(x.recurrenceScore||0)>60?'hot':''}"><i style="width:${Math.max(2,Math.min(100,Number(x.recurrenceScore)||0))}%"></i></div></td><td class="${(x.recurrenceScore||0)>60?'red':'amber'}">${(x.recurrenceScore||0)>60?'Hot':'Warm'}</td></tr>`).join(''):'<tr><td colspan="4"><div class="mpo-empty">No wallet intelligence collected yet.</div></td></tr>'}</tbody></table></div></div>`);
 }
 function renderControl(){
- const s=state||{},r=s.runtime||{},cfg=s.config||{};
+ const s=state||{},r=s.runtime||{},cfg=s.config||{},ec=s.effectiveControls||{},eb=ec.bounds||{},ex=r.exitPreset==='custom'?(ec.customExit||{}):(ec.exit||{});
  const bodyEl=$('#body-control');
  if(bodyEl&&document.activeElement&&bodyEl.contains(document.activeElement))return;
  const mode=String(s.mode||'paper').toUpperCase();
@@ -644,11 +644,23 @@ function renderControl(){
  <div class="controls-grid"><div>
  <div class="formrow"><label>Profile:</label><select class="field" id="profile">${['FAIR','CALM','FAST','DEGEN','MAX','SPRINT','RESEARCH'].map(v=>`<option value="${v}" ${String(r.profile)===v?'selected':''}>${v}</option>`).join('')}</select></div>
  <div class="formrow"><label>Aggression:</label><select class="field" id="aggr">${[55,72,86,96,100].map(v=>`<option value="${v}" ${Number(r.aggression)===v?'selected':''}>${v}</option>`).join('')}</select></div>
- <div class="formrow"><label>Max Open Positions:</label><input class="field" value="${cfg.maxOpenPositions??3}" readonly></div>
- <div class="formrow"><label>Max Exposure SOL:</label><input class="field" value="${cfg.maxTotalExposureSol??.45}" readonly></div>
- <div class="formrow"><label>Stop Loss (%):</label><input class="field" value="${cfg.stopLossPct??8}" readonly></div>
+ <div class="formrow"><label>Entry frequency:</label><select class="field" id="ctlFreq">${['normal','high','max'].map(v=>`<option value="${v}" ${(r.entryFrequency||'normal')===v?'selected':''}>${v}</option>`).join('')}</select></div>
+ <div class="formrow"><label>Candidates scanned:</label><input class="field" id="ctlCand" type="number" min="30" max="600" step="10" value="${Number(r.maxCandidates??240)}"></div>
+ <div class="formrow"><label title="Blank = automatic from aggression">Max open positions:</label><input class="field" id="ctlMaxOpen" type="number" min="${eb.maxOpenPositions?.[0]??1}" max="${eb.maxOpenPositions?.[1]??30}" step="1" placeholder="auto (${ec.autoOpenLimit??'-'})" value="${r.maxOpenPositions??''}"></div>
+ <div class="formrow"><label>Exit preset:</label><select class="field" id="ctlPreset">${(ec.presets||['fair','custom']).map(v=>`<option value="${v}" ${(r.exitPreset||'fair')===v?'selected':''}>${v}</option>`).join('')}</select></div>
+ <fieldset class="mpo-fieldset" style="margin-top:6px"><legend>Exits · editing any box switches the preset to custom</legend>
+ ${[['tp1','Take profit 1 %'],['tp2','Take profit 2 %'],['stop','Stop loss %'],['trail','Trailing stop %'],['maxHold','Max hold (min)']].map(([k,l])=>`<div class="formrow"><label>${l}:</label><input class="field ctlExit" data-k="${k}" type="number" min="${eb[k]?.[0]??1}" max="${eb[k]?.[1]??500}" step="${k==='maxHold'?1:.5}" value="${ex[k]??''}"></div>`).join('')}
+ ${ec.labChampionExit?`<p class="muted" style="font-size:10px">A Lab paper champion is active and overrides these exits: take ${fmt(ec.labChampionExit.takePct,1)}% · stop ${fmt(ec.labChampionExit.stopPct,1)}% · hold ${ec.labChampionExit.maxHoldMin} min.</p>`:''}</fieldset>
+ <p class="muted" style="font-size:10px">Live-mode hard limits (from .env, not editable here): max open ${cfg.maxOpenPositions??3} · exposure ${cfg.maxTotalExposureSol??.45} SOL · daily loss ${cfg.dailyLossLimitSol??'-'} SOL.</p>
  </div><div><div class="mpo-module"><header><span>Testing controls</span></header><div class="mpo-module-body"><div class="toolbar"><button class="btn test-reset" data-sol="1">Reset 1 SOL</button><button class="btn test-reset" data-sol="5">5 SOL</button><button class="btn test-reset" data-sol="10">10 SOL</button><button class="btn test-reset" data-sol="50">50 SOL</button></div><div class="toolbar" style="margin-top:6px"><button class="btn" id="testPause">Pause / Resume</button><fieldset class="mpo-danger-fieldset" style="display:inline-block;margin:0;padding:2px 6px 3px;vertical-align:middle"><button class="btn" id="testKill">Kill Switch</button></fieldset></div></div></div><div class="mpo-module"><header><span>Safety boundary</span></header><div class="mpo-module-body"><b>${polyEscape(mode)}</b><p>Evolution may promote Research → Paper → Shadow only. Real-wallet activation remains explicit. Research runs in the separate Evolution Lab app; this machine only applies published champions.</p></div></div><button class="btn" id="applyCtl">Apply Runtime</button></div></div></div>`);
- $$('.test-reset').forEach(b=>b.onclick=async()=>{await post('/api/reset',{amountSol:Number(b.dataset.sol)});showDialog('Money Printer OS','Paper wallet reset',`Testing bankroll queued at ${b.dataset.sol} SOL.`)}); $('#testPause')?.addEventListener('click',()=>post('/api/pause',{})); $('#testKill')?.addEventListener('click',()=>post('/api/kill',{})); $('#applyCtl')?.addEventListener('click',async()=>{await post('/api/profile',{profile:$('#profile').value});await post('/api/runtime',{aggression:Number($('#aggr').value)});showDialog('Money Printer OS','Settings queued','Profile and runtime settings were sent to the trading engine.')});
+ $$('.test-reset').forEach(b=>b.onclick=async()=>{await post('/api/reset',{amountSol:Number(b.dataset.sol)});showDialog('Money Printer OS','Paper wallet reset',`Testing bankroll queued at ${b.dataset.sol} SOL.`)}); $('#testPause')?.addEventListener('click',()=>post('/api/pause',{})); $('#testKill')?.addEventListener('click',()=>post('/api/kill',{})); $$('.ctlExit').forEach(i=>i.addEventListener('input',()=>{const p=$('#ctlPreset');if(p)p.value='custom'}));
+ $('#applyCtl')?.addEventListener('click',async()=>{
+  const profileChanged=$('#profile').value!==String(r.profile);
+  const common={maxCandidates:Number($('#ctlCand').value),maxOpenPositions:$('#ctlMaxOpen').value===''?null:Number($('#ctlMaxOpen').value)};
+  const preset=$('#ctlPreset').value,customExit={};if(preset==='custom')$$('.ctlExit').forEach(i=>{if(i.value!=='')customExit[i.dataset.k]=Number(i.value)});
+  if(profileChanged){await post('/api/profile',{profile:$('#profile').value});await post('/api/runtime',{...common,...(preset==='custom'?{customExit}:{})})}
+  else await post('/api/runtime',{...common,aggression:Number($('#aggr').value),entryFrequency:$('#ctlFreq').value,exitPreset:preset,...(preset==='custom'?{customExit}:{})});
+  showDialog('Money Printer OS','Settings queued',profileChanged?'New profile applied (it sets aggression, exit preset and entry frequency). Candidates, max open and custom exits were sent too.':'Runtime settings were sent to the trading engine.')});
 }
 
 // Polymarket US combos (real execution): selection, stake and the in-flight build.
@@ -996,9 +1008,36 @@ function renderSimple(id){
   $('#setGoMonitor')?.addEventListener('click',()=>{openApp('system');setTab('system','system')});
   $('#setGoControls')?.addEventListener('click',()=>openApp('control'));
   $('#setResetLayout')?.addEventListener('click',()=>{localStorage.removeItem('mpo-layout');localStorage.removeItem('mpo-tabs');localStorage.setItem('mpo-open',JSON.stringify(DEFAULT_OPEN));location.reload()});
+  renderBackgroundSettings();
   return;
  }
  setBody(id,`<div style="padding:12px;color:#111">Money Printer OS ${polyEscape(s.build?.version||'')}</div>`);
+}
+// Settings > Background & data: keep collecting with the window closed, start with Windows, and tape coverage.
+let bgPrefs=null,bgCoverage=null,bgFetchedAt=0;
+async function loadBackgroundSettings(force=false){
+ if(!force&&Date.now()-bgFetchedAt<60000)return;bgFetchedAt=Date.now();
+ try{[bgPrefs,bgCoverage]=await Promise.all([fetch('/api/desktop-prefs').then(r=>r.json()),fetch('/api/data-coverage'+(force?'?force=1':'')).then(r=>r.json())])}catch{}
+ paintBackgroundSettings();
+}
+function covAge(ms){if(ms==null)return '—';const m=ms/60000;return m<1?'now':m<90?Math.round(m)+' min':m<2880?(m/60).toFixed(1)+' h':(m/1440).toFixed(1)+' d'}
+function paintBackgroundSettings(){
+ const host=$('#setBackground');if(!host)return;
+ const p=bgPrefs||{},c=bgCoverage?.sources||[],badge={LIVE:'mpo-badge--live',STALE:'mpo-badge--degraded',DOWN:'mpo-badge--down',NO_DATA:'mpo-badge--down'};
+ const rows=c.map(x=>`<tr><td>${polyEscape(x.source)}</td><td><b class="mpo-badge ${badge[x.status]||''}">${polyEscape(x.status.replace('_',' '))}</b></td><td>${covAge(x.ageMs)}</td><td>${Number(x.rows).toLocaleString()}</td><td style="font-family:monospace;font-size:10px">${x.perDay.map(d=>`<span title="${d.day}: ${d.rows}">${d.rows?'█':'·'}</span>`).join('')}</td><td>${x.rows?covAge(x.maxGapMs):'—'}</td></tr>`).join('');
+ host.innerHTML=`<fieldset class="mpo-fieldset" style="margin-top:10px"><legend>Background &amp; data</legend>
+ <label><input type="checkbox" id="setRunBg" ${p.runInBackground!==false?'checked':''}> Keep trading and collecting data when the window is closed (tray icon; right-click it to quit)</label><br>
+ <label><input type="checkbox" id="setStartWin" ${p.startWithWindows?'checked':''}> Start with Windows (opens hidden in the tray)</label>
+ <p class="muted" style="font-size:10px">Every Lab result is only as good as the tape under it. Gaps below are hours the Lab has nothing to learn from.</p>
+ <table class="table mpo-table"><thead><tr><th>Source</th><th>Status</th><th>Last row</th><th>Rows (7d)</th><th>Per day</th><th>Largest gap</th></tr></thead><tbody>${rows||'<tr><td colspan="6">Scanning…</td></tr>'}</tbody></table>
+ <button class="btn" id="setCovRefresh">Rescan</button></fieldset>`;
+ const save=async()=>{bgPrefs=(await post('/api/desktop-prefs',{runInBackground:$('#setRunBg').checked,startWithWindows:$('#setStartWin').checked}))?.prefs||bgPrefs};
+ $('#setRunBg').onchange=save;$('#setStartWin').onchange=save;$('#setCovRefresh').onclick=()=>loadBackgroundSettings(true);
+}
+function renderBackgroundSettings(){
+ const body=$('#body-settings');if(!body)return;
+ if(!$('#setBackground')){const d=document.createElement('div');d.id='setBackground';(body.firstElementChild||body).appendChild(d)}
+ paintBackgroundSettings();loadBackgroundSettings();
 }
 function renderChanged(id,sig,fn){if(!windowVisible(id))return;const key=JSON.stringify(sig);if(renderSig.get(id)===key)return;renderSig.set(id,key);fn()}
 function renderProductEconomics(){
