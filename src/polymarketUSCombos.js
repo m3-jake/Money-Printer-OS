@@ -2,13 +2,16 @@
 // Every place/accept path re-checks credentials, session arm, typed confirmation,
 // stake cap, open cap, daily loss cap, leg freshness, price tolerance and distinct
 // events server-side. Nothing here can be bypassed from the browser.
+// AUTO COMBO (opt-in, 2026-09-26 at bing's request) goes through the same place path
+// and adds its own guards: in-memory enable (always OFF after a restart), typed phrase,
+// armed session, verified key, shadow gate, bankroll sizing and self-disable triggers.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as ed25519 from '@noble/ed25519';
 import { appendNdjson } from './researchCollector.js';
 import { lateGameEstimate, windowEstimate, gameProgress, STRATEGY_WINDOWS, WINDOW_RULES, TURNOVER_TARGET_MINUTES } from './sportsTiming.js';
-import { usReadiness, noteUSAuthResult } from './polymarketUS.js';
+import { usReadiness, noteUSAuthResult, polymarketUSAccount } from './polymarketUS.js';
 import { mapLimit } from './utils.js';
 import { renameSyncWithRetry } from './atomicRename.js';
 
@@ -451,7 +454,7 @@ function normalizeSettings(s={}){
  return out;
 }
 function defaultJournal(){return {version:1,combos:{},open:[],history:[],
- stats:{placed:0,won:0,lost:0,pnlUsd:0,hitRate:null},cooldowns:{},settings:defaultSettings()}}
+ stats:{placed:0,won:0,lost:0,pnlUsd:0,hitRate:null},cooldowns:{},settings:defaultSettings(),autopilot:defaultAutopilot()}}
 function normalizeJournal(s={}){
  const out={...defaultJournal(),...s};
  out.combos=s.combos&&typeof s.combos==='object'?s.combos:{};
@@ -459,7 +462,7 @@ function normalizeJournal(s={}){
  out.history=Array.isArray(s.history)?s.history:[];
  out.cooldowns=s.cooldowns&&typeof s.cooldowns==='object'?s.cooldowns:{};
  out.settings=normalizeSettings(s.settings);
- delete out.autopilot; // autopilot was removed; old journals may still carry the key
+ out.autopilot=normalizeAutopilot(s.autopilot);
  return out;
 }
 let journalCache=null;
@@ -832,8 +835,16 @@ async function fetchSettlement(symbol,{pendingTtlMs=SETTLE_CACHE_PENDING_MS}={})
  const hit=cachedSettlement(key,pendingTtlMs);if(hit!==undefined)return hit;
  const r=await signedFetch('GET',`/v1/markets/${encodeURIComponent(key)}/settlement`);
  const settledAt=r?.settledAt||r?.marketSettlement?.settledAt;
- const px=val(r?.settlementPrice??r?.marketSettlement?.settlementPrice);
- const value=settledAt?{px:clamp(px,0,1),settledAt}:null;
+ let value=null;
+ if(settledAt)value={px:clamp(val(r?.settlementPrice??r?.marketSettlement?.settlementPrice),0,1),settledAt};
+ else if(r&&typeof r==='object'&&'settlement' in r){
+  // Observed live shape (2026-09-26): {slug,settlement}. It reads 0.5 for UNRESOLVED markets,
+  // so it only counts once the public markets list says MARKET_STATUS_RESOLVED.
+  const px=Number(r.settlement);
+  const m=await publicFetch('/v1/markets',{slug:key,limit:1}).catch(()=>null);
+  const row=(Array.isArray(m?.markets)?m.markets:[]).find(x=>x?.slug===key);
+  if(row?.status==='MARKET_STATUS_RESOLVED'&&Number.isFinite(px))value=px===0||px===1?{px,settledAt:new Date(nowMs()).toISOString()}:{px,void:true,settledAt:new Date(nowMs()).toISOString()};
+ }
  settlementCache.set(key,{at:nowMs(),value});
  return value;
 }
@@ -845,6 +856,7 @@ async function settlementValue(entry){
   const chunk=legs.slice(i,i+SETTLE_FETCH_CONCURRENCY);
   const rows=await Promise.all(chunk.map(l=>fetchSettlement(l.symbol,{pendingTtlMs})));
   if(rows.some(x=>x===null))return null;
+  if(rows.some(x=>x.void))return {void:true};
   for(let k=0;k<chunk.length;k++){const leg=chunk[k],px=rows[k].px;value*=leg.side==='SIDE_SELL'?clamp(1-px,0,1):clamp(px,0,1)}
  }
  return value;
@@ -871,6 +883,8 @@ export async function settleUSCombos({force=false}={}){
     if(e?.code==='keyNotFound'||e?.code==='betaNotEnabled'){entry.status='UNKNOWN';stillOpen.push(entry);continue}
    }
    if(value===null){stillOpen.push(entry);continue}
+   // A resolved-but-void leg is UNKNOWN: never a win, no P/L booked; left for manual review.
+   if(typeof value==='object'&&value.void){stillOpen.push({...entry,status:'UNKNOWN',unknownReason:'a leg resolved void (not 0 or 1)'});continue}
    const payout=r2(num(entry.quantity)*value);
    const pnl=r2(payout-num(entry.costUsd));
    settled++;
@@ -886,10 +900,202 @@ export async function settleUSCombos({force=false}={}){
  return settleBusy;
 }
 
+// ------------------------------------------------------------ AUTO COMBO
+export const CONFIRM_AUTOPILOT='ENABLE REAL AUTOPILOT';
+export const AUTO_GATE={minSettled:20,minRoi:0};
+const AUTO_NO_QUOTE_LIMIT=3,AUTO_UNVERIFIED_MS=120_000;
+// Upper bounds come from usComboLimits(), so no auto setting can exceed the manual caps.
+export function autoBounds(limits=usComboLimits()){
+ return {maxLegs:{min:2,max:4},stakeCapUsd:{min:1,max:limits.maxStakeUsd},stakePct:{min:0.05,max:0.5},fixedStakeUsd:{min:1,max:limits.maxStakeUsd},
+  maxOpen:{min:1,max:limits.maxOpen},dailyLossCapUsd:{min:1,max:limits.dailyLossCapUsd},balanceFloorUsd:{min:0,max:1000}};
+}
+export function defaultAutopilot(){return {window:null,maxLegs:2,stakeMode:'auto',stakeCapUsd:2,stakePct:0.2,fixedStakeUsd:2,maxOpen:2,dailyLossCapUsd:3,balanceFloorUsd:4,
+ noQuoteStreak:0,lastRunAt:0,lastAction:null,disabledReason:null,disabledAt:null,decisions:[]}}
+function normalizeAutopilot(a={}){
+ const out=defaultAutopilot(),b=autoBounds();
+ const src=a&&typeof a==='object'?a:{};
+ for(const [k,r] of Object.entries(b)){const v=Number(src[k]);if(Number.isFinite(v))out[k]=clamp(v,r.min,r.max)}
+ out.maxLegs=Math.round(out.maxLegs);out.maxOpen=Math.round(out.maxOpen);
+ out.window=STRATEGY_WINDOWS.includes(src.window)?src.window:null;
+ out.stakeMode=src.stakeMode==='fixed'?'fixed':'auto';
+ out.noQuoteStreak=Math.max(0,Math.round(num(src.noQuoteStreak)));
+ out.lastRunAt=num(src.lastRunAt);out.disabledAt=num(src.disabledAt)||null;
+ out.lastAction=src.lastAction&&typeof src.lastAction==='object'?src.lastAction:null;
+ out.disabledReason=typeof src.disabledReason==='string'?src.disabledReason.slice(0,200):null;
+ out.decisions=Array.isArray(src.decisions)?src.decisions.filter(d=>d&&typeof d==='object').slice(0,200):[];
+ return out;
+}
+let autoEnabled=false,autoBusy=false;
+let accountProvider=()=>polymarketUSAccount();
+// HUD feed sink (the engine journal the Live Log reads). Lazy so tests and tools never load the engine store.
+let autoFeedSink=null;
+async function feedAuto(message){
+ try{
+  if(autoFeedSink)return autoFeedSink({type:'polymarket-auto',message});
+  const store=await import('./store.js');store.appendJournal({type:'polymarket-auto',message});
+ }catch{}
+}
+// Every automated decision is journaled (collapsing identical consecutive skips) and sent to the HUD feed.
+function noteAuto(d){
+ const j=loadJournal(),ap=j.autopilot;
+ const row={at:Date.now(),...d};
+ const head=ap.decisions[0];
+ ap.lastRunAt=row.at;
+ if(row.action==='skipped'&&head&&head.action==='skipped'&&head.reason===row.reason){head.lastAt=row.at;head.repeats=num(head.repeats)+1}
+ else{ap.decisions=[row,...ap.decisions].slice(0,200);feedAuto(`AUTO COMBO ${row.action}${row.reason?': '+row.reason:''}${row.symbol?' · '+row.symbol:''}`)}
+ if(row.action!=='skipped')ap.lastAction=row;
+ saveJournal(j);
+ return row;
+}
+function disableAuto(reason,extra={}){
+ const was=autoEnabled;autoEnabled=false;
+ const j=loadJournal();j.autopilot.disabledReason=reason;j.autopilot.disabledAt=Date.now();saveJournal(j);
+ if(was)noteAuto({action:'disabled',reason,...extra});
+ return {ran:false,disabled:true,reason};
+}
+// Bankroll sizing: auto = min(stake cap, pct x balance); fixed = the fixed stake. Both are floored
+// to cents and never exceed the manual cap, buying power or the balance.
+export function autoStake(ap,account,limits=usComboLimits()){
+ const bal=account?.currentBalance==null?NaN:Number(account.currentBalance);
+ const bp=account?.buyingPower==null?bal:Number(account.buyingPower);
+ if(!Number.isFinite(bal))return {ok:false,reason:'balance unknown'};
+ if(bal<num(ap.balanceFloorUsd))return {ok:false,disable:true,reason:`balance $${r2(bal)} is below the $${r2(ap.balanceFloorUsd)} floor`};
+ const raw=ap.stakeMode==='fixed'?num(ap.fixedStakeUsd):Math.min(num(ap.stakeCapUsd),num(ap.stakePct)*bal);
+ const stake=Math.floor(Math.min(raw,limits.maxStakeUsd,Number.isFinite(bp)?bp:bal,bal)*100)/100;
+ if(!(stake>=1))return {ok:false,reason:`stake $${stake.toFixed(2)} is under the $1 minimum`};
+ return {ok:true,stakeUsd:stake,balanceUsd:r2(bal),buyingPowerUsd:Number.isFinite(bp)?r2(bp):null};
+}
+export function autoWindow(ap,settings=usComboSettings()){return ap.window||settings.window||'NEAR_END'}
+// GATE: the shadow record for the selected window must show >= 20 settled combos and ROI > 0
+// after fees and markup before real auto can be enabled (and while it runs).
+export async function autoGateStatus(window){
+ try{
+  const ev=await import('./polymarketUSEvidence.js');
+  const rec=ev.shadowRecord(ev.loadEvidenceState())[window]||{settled:0,roi:null};
+  const ok=num(rec.settled)>=AUTO_GATE.minSettled&&rec.roi!=null&&num(rec.roi)>AUTO_GATE.minRoi;
+  return {ok,window,settled:num(rec.settled),roi:rec.roi??null,
+   reason:ok?null:num(rec.settled)<AUTO_GATE.minSettled?`shadow ${window} has ${num(rec.settled)}/${AUTO_GATE.minSettled} settled combos`:`shadow ${window} ROI ${rec.roi==null?'—':(num(rec.roi)*100).toFixed(1)+'%'} is not above 0 after fees and markup`};
+ }catch(e){return {ok:false,window,settled:0,roi:null,reason:`shadow record unavailable: ${String(e?.message||e).slice(0,120)}`}}
+}
+// Reasons the ENABLE switch is greyed out (empty list = it may be enabled).
+export async function autoBlockers(ap=loadJournal().autopilot){
+ const r=usReadiness(),out=[];
+ const j=loadJournal();
+ if(j.recoveryRequired)out.push('combo journal needs recovery');
+ if(!r.credentialsReady)out.push('connect a Polymarket US key');
+ else if(r.authCode!=='ok')out.push('key not verified by a signed call');
+ if(r.realEnabled===false)out.push('real trading is disabled in .env');
+ if(!r.sessionArmed)out.push('arm the session first');
+ if(betaAccess==='denied')out.push('Polymarket has not enabled combos for this account (beta)');
+ const gate=await autoGateStatus(autoWindow(ap,j.settings));
+ if(!gate.ok)out.push(gate.reason);
+ return {blockers:out,gate};
+}
+export function usComboAutopilot(){return {...loadJournal().autopilot,enabled:autoEnabled,confirmPhrase:CONFIRM_AUTOPILOT}}
+export async function setUSComboAutopilot(patch={}){
+ const j=loadJournal();
+ if(j.recoveryRequired)fail('stateRecovery','Local combo journal is corrupt; refusing to change autopilot until recovered');
+ const b=autoBounds(),next={...j.autopilot};
+ for(const [k,r] of Object.entries(b)){
+  if(patch?.[k]===undefined)continue;
+  const v=Number(patch[k]);
+  if(!Number.isFinite(v)||v<r.min-1e-9||v>r.max+1e-9)fail('settingsInvalid',`${k} must be between ${r.min} and ${r.max}`);
+  next[k]=k==='maxLegs'||k==='maxOpen'?Math.round(v):Math.round(v*1000)/1000;
+ }
+ if(patch?.window!==undefined){
+  if(patch.window!==null&&patch.window!==''&&!STRATEGY_WINDOWS.includes(patch.window))fail('settingsInvalid',`window must be one of ${STRATEGY_WINDOWS.join(', ')} (or empty to follow the strategy setting)`);
+  next.window=patch.window||null;
+ }
+ if(patch?.stakeMode!==undefined){
+  if(!['auto','fixed'].includes(patch.stakeMode))fail('settingsInvalid','stakeMode must be auto or fixed');
+  next.stakeMode=patch.stakeMode;
+ }
+ if(patch?.enabled===true&&!autoEnabled){
+  if(patch.confirmation!==CONFIRM_AUTOPILOT)fail('confirmation',`Type ${CONFIRM_AUTOPILOT} to enable real auto combos`);
+  requireArmed();
+  const {blockers}=await autoBlockers(next);
+  if(blockers.length)fail('autoBlocked',`Auto combo cannot be enabled: ${blockers.join('; ')}`);
+  next.noQuoteStreak=0;next.disabledReason=null;next.disabledAt=null;
+  j.autopilot=next;saveJournal(j);
+  autoEnabled=true;
+  noteAuto({action:'enabled',reason:`window ${autoWindow(next,j.settings)} · ${next.maxLegs} legs · ${next.stakeMode==='fixed'?'fixed $'+next.fixedStakeUsd:'min($'+next.stakeCapUsd+', '+Math.round(next.stakePct*100)+'% of balance)'} · max ${next.maxOpen} open · $${next.dailyLossCapUsd} daily loss cap · $${next.balanceFloorUsd} floor`});
+ }else{
+  j.autopilot=next;saveJournal(j);
+  if(patch?.enabled===false&&autoEnabled)disableAuto('turned off by the operator');
+ }
+ snapCache={at:0,data:null};
+ return usComboAutopilot();
+}
+const authLike=e=>e?.code==='keyNotFound'||e?.code==='betaNotEnabled'||num(e?.status)===401||num(e?.status)===403;
+export async function runUSComboAutopilotOnce(){
+ if(!autoEnabled)return {ran:false,reason:'disabled'};
+ if(autoBusy)return {ran:false,reason:'busy'};
+ autoBusy=true;
+ try{return await runUSComboAutopilotPass()}finally{autoBusy=false}
+}
+async function runUSComboAutopilotPass(){
+ const j=loadJournal(),ap=j.autopilot,now=Date.now();
+ if(j.recoveryRequired)return disableAuto('combo journal needs recovery');
+ const r=usReadiness();
+ if(!r.credentialsReady||!r.sessionArmed||r.realEnabled===false)return disableAuto('session disarmed or real trading disabled');
+ if(r.authCode==='keyNotFound')return disableAuto('401: key rejected (regenerate at polymarket.us/developer)');
+ if(betaAccess==='denied')return disableAuto('403: combos beta not enabled for this account');
+ // An auto combo whose fill is not verified stops everything until a human looks.
+ const unverified=j.open.find(x=>x.placedBy==='autopilot'&&(x.acceptUncertain||x.confirmError||(x.fillVerified!==true&&now-num(x.at)>AUTO_UNVERIFIED_MS)));
+ if(unverified)return disableAuto('unverified fill',{symbol:unverified.symbol});
+ const realized=realizedTodayUsd(j,now);
+ if(realized<=-Math.abs(num(ap.dailyLossCapUsd)))return disableAuto(`daily realized loss $${r2(-realized)} hit the $${r2(ap.dailyLossCapUsd)} cap`);
+ const window=autoWindow(ap,j.settings);
+ const gate=await autoGateStatus(window);
+ if(!gate.ok)return disableAuto(`shadow gate no longer met: ${gate.reason}`);
+ if(j.open.length>=Math.min(ap.maxOpen,usComboLimits().maxOpen)){noteAuto({action:'skipped',reason:`max open (${ap.maxOpen})`});return {ran:false,reason:'openCap'}}
+ const acct=await accountProvider();
+ if(!acct.ok){
+  if(acct.keyStatus==='REJECTED')return disableAuto('401: key rejected (regenerate at polymarket.us/developer)');
+  noteAuto({action:'skipped',reason:'account balance unavailable'});return {ran:false,reason:'noBalance'};
+ }
+ const size=autoStake(ap,acct.balance);
+ if(!size.ok){
+  if(size.disable)return disableAuto(size.reason);
+  noteAuto({action:'skipped',reason:size.reason});return {ran:false,reason:'sizing'};
+ }
+ let legKeys=[];
+ try{
+  const pool=await refreshCandidates({...j.settings,window});
+  // Auto only ever uses legs eligible in its window; hand-add rows are never picked.
+  const eligible=pool.filter(c=>c.eligible!==false&&!c.outsideWindow);
+  const legs=chooseUSCombo(eligible,ap.maxLegs,j,now);
+  if(legs.length<ap.maxLegs){noteAuto({action:'skipped',reason:`only ${legs.length} eligible leg(s) in ${window}`});return {ran:false,reason:'noCandidates'}}
+  legKeys=legs.map(l=>l.key);
+  let quote;
+  try{quote=await quoteUSCombo({legKeys,stakeUsd:size.stakeUsd,candidates:pool,waitMs:num(process.env.POLYMARKET_US_AUTO_QUOTE_WAIT_MS)||8000})}
+  catch(e){
+   if(e?.code==='noQuote'){
+    const s=loadJournal();s.autopilot.noQuoteStreak=num(s.autopilot.noQuoteStreak)+1;saveJournal(s);
+    if(s.autopilot.noQuoteStreak>=AUTO_NO_QUOTE_LIMIT)return disableAuto(`${AUTO_NO_QUOTE_LIMIT} consecutive RFQs got no quote`);
+    noteAuto({action:'rejected',reason:`no quote (${s.autopilot.noQuoteStreak}/${AUTO_NO_QUOTE_LIMIT})`,legs:legKeys});return {ran:false,reason:'noQuote'};
+   }
+   throw e;
+  }
+  {const s=loadJournal();s.autopilot.noQuoteStreak=0;saveJournal(s)}
+  const placed=await placeUSCombo({legKeys,stakeUsd:size.stakeUsd,mode:'rfq',rfqId:quote.rfqId,quoteId:quote.quoteId,confirmation:CONFIRM_PLACE,placedBy:'autopilot'});
+  noteAuto({action:'placed',reason:`${legKeys.length} legs · $${size.stakeUsd} of $${size.balanceUsd} balance · quote ${quote.buyPrice}`,symbol:placed.entry.symbol,stakeUsd:size.stakeUsd,price:placed.entry.fillPrice,window});
+  return {ran:true,placed:1,entry:placed.entry};
+ }catch(e){
+  const code=e?.code||'error',msg=String(e?.message||e).slice(0,160);
+  if(authLike(e))return disableAuto(`${num(e?.status)||code}: ${code==='betaNotEnabled'?'combos beta not enabled':code==='keyNotFound'?'key rejected':msg}`);
+  if(code==='priceTolerance')return disableAuto(`quote above tolerance: ${msg}`);
+  if(e?.entryId)return disableAuto('unverified fill (accepted but not confirmed)',{symbol:String(e.entryId)});
+  noteAuto({action:'rejected',reason:`${code}: ${msg}`,legs:legKeys});
+  return {ran:false,reason:code,error:msg};
+ }
+}
+
 let loopTimer=null;
 export function startUSComboLoops(){
  if(loopTimer||!AUTOSTART())return loopTimer;
  loopTimer=setInterval(()=>{
+  runUSComboAutopilotOnce().catch(()=>{});
   settleUSCombos().catch(()=>{});
  },5000);
  loopTimer.unref?.();
@@ -927,9 +1133,9 @@ function withManualRows(candidates,board=[]){
  const have=new Set(candidates.map(c=>c.key));
  return [...candidates,...board.filter(b=>b.key&&b.outsideWindow&&!have.has(b.key))];
 }
-async function refreshCandidates(){
+async function refreshCandidates(settings=usComboSettings()){
  const f=await usLiveEvents();
- const {candidates,board}=usCandidatesFromEvents(f.ok?f.events:[],Date.now());
+ const {candidates,board}=usCandidatesFromEvents(f.ok?f.events:[],Date.now(),settings);
  const enriched=String(process.env.POLYMARKET_US_COMBO_BBO||'true').toLowerCase()==='false'?candidates:await enrichBBO(candidates);
  lastCandidates=withManualRows(enriched,board);
  return lastCandidates;
@@ -956,6 +1162,9 @@ export async function usComboSnapshot({force=false}={}){
   }catch(e){feedErr=String(e?.message||e);lastError=feedErr}
   const j=loadJournal();
   if(lastQuote&&num(lastQuote.expiresAt)<now)lastQuote=null;
+  // Sizing preview uses the cached account only when a signed call already verified the key.
+  let polyAccountForSizing=null;
+  if(readiness.authCode==='ok'){try{const a=await accountProvider();polyAccountForSizing=a.ok?a.balance:null}catch{}}
   let suggested=null;
   const picked=chooseUSCombo(candidates,j.settings.maxLegs,j);
   if(picked.length>=2){
@@ -978,6 +1187,8 @@ export async function usComboSnapshot({force=false}={}){
    journal:{open:j.open,history:j.history.slice(0,8),stats:{...j.stats,unverified:j.open.filter(x=>x.fillVerified!==true).length}},
    limits:usComboLimits(),
    settings:{...j.settings},
+   autopilot:{...usComboAutopilot(),decisions:j.autopilot.decisions.slice(0,30),bounds:autoBounds(),...(await autoBlockers(j.autopilot)),window:autoWindow(j.autopilot,j.settings),
+    sizing:polyAccountForSizing?autoStake(j.autopilot,polyAccountForSizing):null},
    settingsBounds:SETTINGS_BOUNDS,windows:STRATEGY_WINDOWS,windowRules:WINDOW_RULES,rankWeightBounds:RANK_WEIGHT_BOUNDS,
    betaAccess,
    lastError};
@@ -987,6 +1198,7 @@ export async function usComboSnapshot({force=false}={}){
  return snapBusy;
 }
 
-export const __testing={resetJournal(){journalCache=null;lastQuote=null;lastCandidates=[];betaAccess='unknown';lastError=null;snapCache={at:0,data:null};feed={at:0,fetchedAt:0,ok:false,error:null,events:[],inPlay:0,live:0};bboCache.clear();settlementCache.clear();settleAt=0;settleClock=null;placeBusy=null},
+export const __testing={reloadJournal(){journalCache=null},setAutoFeedSink(fn){autoFeedSink=fn},setAccountProvider(fn){accountProvider=fn||(()=>polymarketUSAccount())},get autoEnabled(){return autoEnabled},setBetaAccess(v){betaAccess=v},CONFIRM_AUTOPILOT,
+ resetJournal(){autoEnabled=false;autoBusy=false;journalCache=null;lastQuote=null;lastCandidates=[];betaAccess='unknown';lastError=null;snapCache={at:0,data:null};feed={at:0,fetchedAt:0,ok:false,error:null,events:[],inPlay:0,live:0};bboCache.clear();settlementCache.clear();settleAt=0;settleClock=null;placeBusy=null},
  setClock(fn){settleClock=typeof fn==='function'?fn:null},
  get lastQuote(){return lastQuote},get candidates(){return lastCandidates},stateFile:STATE_FILE,CONFIRM_PLACE,SETTLE_THROTTLE_MS,SETTLE_CACHE_PENDING_MS,SETTLE_CACHE_RESOLVED_MS,SETTLE_FETCH_CONCURRENCY,settlementCache};

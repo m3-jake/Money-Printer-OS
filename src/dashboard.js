@@ -11,7 +11,7 @@ import { readResearchControlPlane, attachControlPlaneToMonitor, leaderboardRows,
 import { saveResourcePolicy, resourceSnapshot, systemTelemetry } from './resourcePolicy.js';
 // polymarketUS.js is parked except for credentials and the session arm: its scanner and single-order routes are not served.
 import { usReadiness, configurePolymarketUS, armPolymarketUS, polymarketUSAccount } from './polymarketUS.js';
-import { usComboSnapshot, buildUSCombo, quoteUSCombo, placeUSCombo, cancelUSRfq, setUSComboSettings, settleUSCombos, forgetUSCombo, startUSComboLoops } from './polymarketUSCombos.js';
+import { usComboSnapshot, buildUSCombo, quoteUSCombo, placeUSCombo, cancelUSRfq, setUSComboSettings, settleUSCombos, forgetUSCombo, startUSComboLoops, setUSComboAutopilot } from './polymarketUSCombos.js';
 import { readApiUnitEconomics } from './apiUnitEconomics.js';
 import { productEconomics, productIngestionAuthorized, productReadAuthorized } from './productEconomics.js';
 import updateChannel from '../desktop/update-channel.cjs';
@@ -483,6 +483,7 @@ export function startDashboard() {
         if (u.pathname === '/api/polymarket-us/combos/place') { try{return json(res,await placeUSCombo({legKeys:b.legKeys,stakeUsd:b.stakeUsd,mode:b.mode,rfqId:b.rfqId,quoteId:b.quoteId,limitPrice:b.limitPrice,confirmation:b.confirmation,placedBy:'manual'}))}catch(e){return comboFail(e)} }
         if (u.pathname === '/api/polymarket-us/combos/cancel-rfq') { try{return json(res,{ok:true,...await cancelUSRfq({rfqId:b.rfqId})})}catch(e){return comboFail(e)} }
         if (u.pathname === '/api/polymarket-us/combos/apply-lab') { try{const ev=await import('./polymarketUSEvidence.js');const p=ev.labComboProposal();if(!p||!p.valid)return json(res,{ok:false,error:p?.reason||'No Lab proposal to apply'},400);return json(res,{ok:true,settings:setUSComboSettings(p.params),applied:p.id})}catch(e){return comboFail(e)} }
+        if (u.pathname === '/api/polymarket-us/combos/autopilot') { try{return json(res,{ok:true,autopilot:await setUSComboAutopilot(b)})}catch(e){return comboFail(e)} }
         if (u.pathname === '/api/polymarket-us/combos/settings') { try{return json(res,{ok:true,settings:setUSComboSettings(b)})}catch(e){return comboFail(e)} }
         if (u.pathname === '/api/polymarket-us/combos/settle') { try{return json(res,{ok:true,...await settleUSCombos({force:true})})}catch(e){return comboFail(e)} }
         if (u.pathname === '/api/polymarket-us/combos/forget') { try{return json(res,forgetUSCombo({id:b.id,confirmation:b.confirmation}))}catch(e){return comboFail(e)} }

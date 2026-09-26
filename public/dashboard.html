@@ -590,7 +590,7 @@ function renderControl(){
 }
 
 // Polymarket US combos (real execution): selection, stake and the in-flight build.
-let polyUSEvidence=null,polyUSEvidenceAt=0,polyUSAccount=null,usComboSelected=new Set(),usComboStakeValue='',usComboSubmitting=false,usComboBuildState=null,usComboBuildTimer=null,usComboRefreshBusy=false,usComboSettingsDraft={};
+let usAutoDraft={},polyUSEvidence=null,polyUSEvidenceAt=0,polyUSAccount=null,usComboSelected=new Set(),usComboStakeValue='',usComboSubmitting=false,usComboBuildState=null,usComboBuildTimer=null,usComboRefreshBusy=false,usComboSettingsDraft={};
 const polyEscape=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function researchParamLine(p={}){const keys=[['aggression','agg'],['tp','tp'],['stop','stop'],['trail','trail'],['maxHold','hold'],['cooldown','cool'],['filter','filter'],['entry','in'],['exit','out']];return keys.filter(([k])=>p[k]!=null).map(([k,l])=>`${l} ${p[k]}`).join(' · ')||'default profile'}
 function monNum(v){const n=Number(v);return Number.isFinite(n)?n:null}
@@ -769,12 +769,14 @@ function renderPolyCombos(box){
   <div class="muted" style="font-size:10px;margin:3px 0">Feed: ${Number(fd.total??fd.eventsInPlay??0)} sports events scanned${fd.pages?' over '+Number(fd.pages)+' pages':''}${fd.capped?' (CAPPED)':''} · ${Number(fd.eventsLive||0)} live · ${fd.comboLive==null?'—':Number(fd.comboLive)} combo-enabled live · ${Number(fd.candidates||0)} eligible${rej?' · Filtered: '+rej:''}</div>
   <div class="inset" style="padding:6px;margin-top:6px"><div class="toolbar" style="flex-wrap:wrap;gap:8px"><label>Stake $ <input class="field" id="usComboStake" type="number" min="1" max="${Number(ucs.limits?.maxStakeUsd||25)}" step="0.5" value="${polyEscape(usComboStakeValue||5)}" style="width:70px"></label><span style="font-size:11px">${buildLine}</span></div>
   <div class="toolbar" style="margin-top:4px"><button class="btn" id="usComboPlace" ${canPlace?'':'disabled'}>${betaDenied?'Place (combos beta pending)':'Place combo…'}</button><span class="muted" style="font-size:10px">${polyEscape(placeHint)}</span></div></div>
+  ${usAutoHtml(ucs.autopilot)}
   <div class="grid2" style="margin-top:6px"><fieldset><legend>Open combos · ${open.length}</legend><div class="toolbar" style="margin-bottom:4px"><button class="btn" id="usComboSettle">Check settlement</button></div><div data-scroll="combo-open" style="overflow:auto;max-height:160px"><table class="table terminal"><thead><tr><th>Legs</th><th>Price × Qty</th><th>Stake</th><th>Status</th><th>P/L</th><th></th></tr></thead><tbody>${openRows}</tbody></table></div></fieldset><fieldset><legend>History</legend><div data-scroll="combo-hist" style="overflow:auto;max-height:160px"><table class="table terminal"><thead><tr><th>Legs</th><th>Price × Qty</th><th>Stake</th><th>Status</th><th>P/L</th></tr></thead><tbody>${histRows}</tbody></table></div><div class="muted" style="font-size:10px;margin-top:3px">${Number(stats.placed||0)} placed · ${Number(stats.won||0)} won · ${Number(stats.lost||0)} lost · P/L ${polyUsd(stats.pnlUsd)} · hit rate ${stats.hitRate==null?'—':polyPct(stats.hitRate)}</div></fieldset></div>
  ${usResearchHtml(polyUSEvidence)}
  </fieldset></div>`;
  const rerender=()=>{polyModuleSig='';renderSportsbook()};
  $$('.usComboLeg').forEach(el=>el.onchange=()=>{const k=el.dataset.key;if(!k)return;if(el.checked&&usComboSelected.size>=maxLegs){el.checked=false;return}if(el.checked)usComboSelected.add(k);else usComboSelected.delete(k);scheduleUSComboBuild();rerender()});
  $('#usUseSuggested')?.addEventListener('click',()=>{const sgl=(ucs.suggested&&ucs.suggested.legs)||[];usComboSelected=new Set(sgl.slice(0,maxLegs));scheduleUSComboBuild();rerender()});
+ bindUSAuto(ucs.autopilot);
  $('#usApplyLab')?.addEventListener('click',async()=>{
   const r=await post('/api/polymarket-us/combos/apply-lab',{}).catch(e=>({ok:false,error:e.message}));
   if(!r?.ok)return showDialog('Polymarket US','Lab proposal not applied',r?.error||'The server refused the proposal.');
@@ -988,6 +990,47 @@ function scheduleUSComboBuild(){
   }catch(e){usComboBuildState={error:e.message||'Could not price this combo.'}}
   renderSig.delete('sportsbook');renderSportsbook();
  },300);
+}
+// AUTO COMBO (real money, opt-in). The server enforces every guard; this only shows them.
+function usAutoHtml(ap){
+ if(!ap)return '';
+ const d={...ap,...usAutoDraft},b=ap.bounds||{},blockers=Array.isArray(ap.blockers)?ap.blockers:[],gate=ap.gate||{},sz=ap.sizing;
+ const num=(id,k,step)=>`<input class="field" id="${id}" type="number" min="${polyEscape(b[k]?.min??'')}" max="${polyEscape(b[k]?.max??'')}" step="${step}" value="${polyEscape(d[k])}" style="width:62px">`;
+ const dec=(Array.isArray(ap.decisions)?ap.decisions:[]).slice(0,8).map(x=>`<tr><td style="white-space:nowrap">${new Date(Number(x.at)).toLocaleTimeString()}</td><td class="${x.action==='placed'?'green':x.action==='disabled'||x.action==='rejected'?'red':x.action==='enabled'?'amber':'muted'}">${polyEscape(x.action)}${x.repeats?' ×'+(Number(x.repeats)+1):''}</td><td style="white-space:normal;font-size:10px">${polyEscape(x.reason||'')}${x.symbol?' · '+polyEscape(x.symbol):''}</td></tr>`).join('');
+ const canEnable=!ap.enabled&&!blockers.length&&!!ap.confirmPhrase;
+ return `<fieldset class="mpo-danger-fieldset" style="margin-top:6px"><legend>AUTO COMBO · REAL MONEY · ${ap.enabled?'<span class="red">ON</span>':'OFF'}</legend>
+  <div style="font-size:11px">${ap.enabled?`<b class="red">Running</b> in ${polyEscape(ap.window)} · every automated decision is listed below and in the Live Log.`:`<b>Off.</b> ${ap.disabledReason?'Last stopped: '+polyEscape(ap.disabledReason)+'.':'Off by default; resets to off on restart.'}`}</div>
+  <div class="muted" style="font-size:10px;margin:3px 0">Gate: shadow ${polyEscape(gate.window||ap.window||'')} ${Number(gate.settled||0)}/20 settled · ROI ${gate.roi==null?'—':(Number(gate.roi)*100).toFixed(1)+'%'} (needs &gt;0 after fees and markup) · Next stake: ${sz?(sz.ok?'$'+Number(sz.stakeUsd).toFixed(2)+' of $'+Number(sz.balanceUsd).toFixed(2):polyEscape(sz.reason)):'balance not read yet'}</div>
+  <div class="toolbar" style="flex-wrap:wrap;gap:6px;margin:4px 0"><label>Window <select class="field" id="usAutoWindow"><option value="" ${!d.window?'selected':''}>follow strategy</option>${['NEAR_END','LATE','ANY_LIVE'].map(w=>`<option value="${w}" ${d.window===w?'selected':''}>${w.replace('_',' ')}</option>`).join('')}</select></label>
+   <label>Legs <select class="field" id="usAutoLegs">${[2,3,4].map(v=>`<option value="${v}" ${Number(d.maxLegs)===v?'selected':''}>${v}</option>`).join('')}</select></label>
+   <label>Stake <select class="field" id="usAutoMode"><option value="auto" ${d.stakeMode!=='fixed'?'selected':''}>bankroll</option><option value="fixed" ${d.stakeMode==='fixed'?'selected':''}>fixed</option></select></label>
+   <label>cap $${num('usAutoCap','stakeCapUsd',0.5)}</label><label>% bal ${num('usAutoPct','stakePct',0.05)}</label><label>fixed $${num('usAutoFixed','fixedStakeUsd',0.5)}</label>
+   <label>max open ${num('usAutoOpen','maxOpen',1)}</label><label>day loss $${num('usAutoLoss','dailyLossCapUsd',0.5)}</label><label>floor $${num('usAutoFloor','balanceFloorUsd',0.5)}</label>
+   <button class="btn" id="usAutoSave" ${Object.keys(usAutoDraft).length?'':'disabled'}>Save</button></div>
+  <div class="toolbar" style="gap:8px">${ap.enabled?'<button class="btn" id="usAutoOff">Turn auto OFF</button>':`<button class="btn" id="usAutoOn" ${canEnable?'':'disabled'} title="${polyEscape(blockers.join(' · '))}">Enable real auto…</button>`}<span class="${blockers.length?'amber':'green'}" style="font-size:10px">${ap.enabled?'':blockers.length?'Blocked: '+polyEscape(blockers.join(' · ')):'All guards pass; enabling asks for the typed phrase.'}</span></div>
+  ${dec?`<div style="max-height:110px;overflow:auto;margin-top:4px"><table class="table terminal"><tbody>${dec}</tbody></table></div>`:''}
+ </fieldset>`;
+}
+function bindUSAuto(ap){
+ if(!ap)return;
+ const set=(id,k,conv)=>$('#'+id)?.addEventListener(/usAuto(Window|Legs|Mode)/.test(id)?'change':'input',e=>{usAutoDraft[k]=conv(e.target.value);const b=$('#usAutoSave');if(b)b.disabled=false});
+ set('usAutoWindow','window',v=>v||null);set('usAutoLegs','maxLegs',Number);set('usAutoMode','stakeMode',String);set('usAutoCap','stakeCapUsd',Number);set('usAutoPct','stakePct',Number);
+ set('usAutoFixed','fixedStakeUsd',Number);set('usAutoOpen','maxOpen',Number);set('usAutoLoss','dailyLossCapUsd',Number);set('usAutoFloor','balanceFloorUsd',Number);
+ $('#usAutoSave')?.addEventListener('click',async()=>{
+  const r=await post('/api/polymarket-us/combos/autopilot',{...usAutoDraft}).catch(e=>({ok:false,error:e.message}));
+  if(!r?.ok)return showDialog('Polymarket US','Auto settings not saved',r?.error||'The server rejected the settings.');
+  usAutoDraft={};await refreshUSComboSnapshot();
+ });
+ $('#usAutoOff')?.addEventListener('click',async()=>{await post('/api/polymarket-us/combos/autopilot',{enabled:false}).catch(()=>null);await refreshUSComboSnapshot()});
+ $('#usAutoOn')?.addEventListener('click',async()=>{
+  const phrase=ap.confirmPhrase;if(!phrase)return;
+  const typed=await polyConfirm({title:'Polymarket US',head:'Enable REAL auto combos',phrase,confirmLabel:'Enable auto',
+   html:`<p>Auto will place real-money combos in <b>${polyEscape(ap.window)}</b> on its own until you turn it off, disarm, restart, or a guard trips (401/403, daily loss cap, balance floor, 3 no-quote RFQs, an unverified fill, a quote above tolerance, or the shadow gate failing).</p><p>Stake: ${ap.stakeMode==='fixed'?'fixed $'+Number(ap.fixedStakeUsd).toFixed(2):'min($'+Number(ap.stakeCapUsd).toFixed(2)+', '+Math.round(Number(ap.stakePct)*100)+'% of balance)'} · max ${Number(ap.maxOpen)} open · $${Number(ap.dailyLossCapUsd).toFixed(2)} daily loss cap · stop below $${Number(ap.balanceFloorUsd).toFixed(2)}.</p>`});
+  if(typed==null)return;
+  const r=await post('/api/polymarket-us/combos/autopilot',{enabled:true,confirmation:typed}).catch(e=>({ok:false,error:e.message}));
+  if(!r?.ok)showDialog('Polymarket US','Auto combo not enabled',r?.error||'The server refused.');
+  await refreshUSComboSnapshot();
+ });
 }
 // Live board visuals: games on a time-to-finish axis by sport, price histogram, feed heartbeat.
 function usBoardViz(ucs,boardRows,st,chosen){

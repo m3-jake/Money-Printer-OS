@@ -35,9 +35,14 @@ test('confirmation phrases remain exact in UI and backends', () => {
   assert.match(us, /CANCEL REAL ORDER/);
   assert.match(us, /CANCEL REAL ORDERS/);
   assert.match(combos, /CONFIRM_PLACE='PLACE REAL COMBO'|PLACE REAL COMBO/);
-  // Combo autopilot was deleted (renovation step 5); its phrase must not come back.
-  assert.doesNotMatch(combos, /ENABLE REAL AUTOPILOT/);
-  assert.doesNotMatch(html, /ENABLE REAL AUTOPILOT|combos\/autopilot/);
+  // AUTO COMBO is back (opt-in): the phrase lives only in the backend; the UI asks the operator to
+  // type the phrase the server supplies, and the HTTP place route can never place as autopilot.
+  assert.match(combos, /CONFIRM_AUTOPILOT='ENABLE REAL AUTOPILOT'/);
+  assert.doesNotMatch(html, /ENABLE REAL AUTOPILOT/);
+  assert.ok(html.includes("const phrase=ap.confirmPhrase;if(!phrase)return;"));
+  assert.ok(html.includes("id=\"usAutoOn\" ${canEnable?'':'disabled'}"));
+  assert.ok(dashJs.includes("u.pathname === '/api/polymarket-us/combos/autopilot') { try{return json(res,{ok:true,autopilot:await setUSComboAutopilot(b)})}"));
+  assert.match(dashJs, /combos\/place'\)[^\n]*placedBy:'manual'/);
   assert.match(html, /confirmation!=='FORGET'|phrase:\s*'FORGET'/);
   assert.match(combos, /confirmation!=='FORGET'/);
 });

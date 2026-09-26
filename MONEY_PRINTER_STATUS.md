@@ -4,7 +4,7 @@
 (`CURRENT_TASKS.md`, `KNOWN_BUGS.md`, `PROJECT_STATE.md`, `RELEASE_STATUS.md`) and in `reports/NEXT-STEPS-2026-09-25.md`.
 Don't re-inventory the repo. Update this file at the end of every batch.
 
-Last updated: 2026-09-26, batch 24 (live visuals: Polymarket, Robinhood, Pump.fun). Branch `feature/polymarket-combo-only`, version `0.5.0-alpha.57`.
+Last updated: 2026-09-26, batch 25 (Polymarket combo module PARKED: no combo beta access). Branch `feature/polymarket-combo-only`, version `0.5.0-alpha.57`.
 
 ## Architecture (inventoried once)
 
@@ -483,3 +483,18 @@ Plan (from bing): 1 connection truth, 2 page every live game, 3 strategy windows
 - **Env gotcha:** Claude-desktop processes see a stale MSIX overlay of the Lab data dir (Sep 20, gen 53549). Read the Lab through its API or the trader-side `lab-link/` mirror, and never launch the Lab from a Claude session.
 - **Installed MPO:** its `BUILD-INFO.json` still says alpha.56, but the asar is alpha.57 = `a244ffb`.
 - Tests: Lab `lab-window` 1/1 and `lab-supervision` 3/3. No MPO code changed.
+
+## Batch 25 (2026-09-26): AUTO COMBO written, then the combo module was PARKED
+
+**Status: PARKED by bing (2026-09-26): "We don't have access. Forget about it for now."** Polymarket returns 403 `betaNotEnabled` on `/v1/combos` for this account. Do not continue combo work (batch 6 ship of the combo plan, Lab tuning, auto) until Polymarket enables combos and bing asks to resume.
+
+What was finished and committed before parking (all tested; nothing can place without combo access):
+- AUTO COMBO in `src/polymarketUSCombos.js`. Enable is in memory only (OFF after every restart; a persisted `enabled` flag is ignored). It needs the typed `ENABLE REAL AUTOPILOT`, an armed session, a key verified by a signed call, beta not denied, and the shadow gate (≥20 settled shadow combos in the selected window with ROI > 0 after fees and markup). Config is persisted in the journal `autopilot` (window/legs 2-4/stake mode, auto = min(stakeCap $2, 20% of balance), fixed stake, max open 2, $3 daily loss, $4 balance floor), bounded by `usComboLimits()`.
+- The pass runs through the normal `placeUSCombo` path (`placedBy:'autopilot'`), uses only window-eligible legs, and never reuses an event in an open combo (plus the existing cooldown and one leg per event).
+- Self-disable triggers: disarm, 401, 403/beta denied, daily loss cap, balance floor, 3 consecutive no-quote RFQs, an unverified auto fill (accept uncertain, confirm error, or unverified after 120 s), a quote above tolerance, and the shadow gate failing.
+- Every decision (enabled/placed/skipped/rejected/disabled) goes to `journal.autopilot.decisions` (repeated skips collapsed) and to the HUD Live Log (`market.ndjson`, type `polymarket-auto`).
+- Routes and UI: `POST /api/polymarket-us/combos/autopilot`. The panel's AUTO COMBO fieldset greys the Enable button with the blocker list and asks for the phrase the server supplies (the phrase is not in the HTML).
+- **Settlement shape fix (from batch 23):** the signed settlement path now also accepts the observed `{slug,settlement}` shape, but only when the public markets list says `MARKET_STATUS_RESOLVED`. 0.5 on an open market stays pending; a resolved non-0/1 leg makes the combo UNKNOWN with no P/L.
+- Tests: the deletion-pinning tests were replaced with 14 guard tests plus 1 settlement-shape test. Full trader sweep `node --test tests/*.mjs tests/*.cjs` **609 pass / 0 fail**.
+- Still running while parked: the research collector's public-data evidence tick (legs tape, outcomes, shadow). Turn it off with `MPO_POLY_US_EVIDENCE=false` if unwanted. The Lab `polymarket-combo` worker (default in `MPO_LAB_MODULES`) only reads those tapes.
+- Not done (was batch 6): version bump, Windows build/install, live verification.
