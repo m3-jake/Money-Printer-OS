@@ -10,20 +10,156 @@
    "box": [
     0,
     0,
-    3840,
-    1317
+    1024,
+    304
    ],
-   "w": 3840,
-   "h": 1317,
+   "w": 1024,
+   "h": 304,
    "kind": "top-edge",
-   "meanAlpha": 0.458,
-   "dense": 0.187,
+   "meanAlpha": 0.497,
+   "dense": 0.248,
    "cut": [
     "left",
+    "top"
+   ],
+   "bytes": 62214
+  },
+  {
+   "file": "cloud-02.webp",
+   "box": [
+    976,
+    0,
+    3840,
+    608
+   ],
+   "w": 2864,
+   "h": 608,
+   "kind": "top-edge",
+   "meanAlpha": 0.442,
+   "dense": 0.14,
+   "cut": [
     "right",
     "top"
    ],
-   "bytes": 624100
+   "bytes": 204190
+  },
+  {
+   "file": "cloud-03.webp",
+   "box": [
+    696,
+    432,
+    1344,
+    712
+   ],
+   "w": 648,
+   "h": 280,
+   "kind": "cumulus",
+   "meanAlpha": 0.424,
+   "dense": 0.195,
+   "cut": [],
+   "bytes": 17820
+  },
+  {
+   "file": "cloud-04.webp",
+   "box": [
+    3336,
+    376,
+    3840,
+    760
+   ],
+   "w": 504,
+   "h": 384,
+   "kind": "wisp",
+   "meanAlpha": 0.347,
+   "dense": 0.078,
+   "cut": [
+    "right"
+   ],
+   "bytes": 29082
+  },
+  {
+   "file": "cloud-05.webp",
+   "box": [
+    1592,
+    584,
+    3840,
+    1317
+   ],
+   "w": 2248,
+   "h": 733,
+   "kind": "cumulus",
+   "meanAlpha": 0.5,
+   "dense": 0.252,
+   "cut": [
+    "right"
+   ],
+   "bytes": 240736
+  },
+  {
+   "file": "cloud-06.webp",
+   "box": [
+    224,
+    632,
+    952,
+    976
+   ],
+   "w": 728,
+   "h": 344,
+   "kind": "cumulus",
+   "meanAlpha": 0.428,
+   "dense": 0.211,
+   "cut": [],
+   "bytes": 23988
+  },
+  {
+   "file": "cloud-07.webp",
+   "box": [
+    3576,
+    712,
+    3840,
+    976
+   ],
+   "w": 264,
+   "h": 264,
+   "kind": "wisp",
+   "meanAlpha": 0.141,
+   "dense": 0.0,
+   "cut": [
+    "right"
+   ],
+   "bytes": 7178
+  },
+  {
+   "file": "cloud-08.webp",
+   "box": [
+    952,
+    1024,
+    1568,
+    1192
+   ],
+   "w": 616,
+   "h": 168,
+   "kind": "cumulus",
+   "meanAlpha": 0.433,
+   "dense": 0.155,
+   "cut": [],
+   "bytes": 7268
+  },
+  {
+   "file": "cloud-09.webp",
+   "box": [
+    1608,
+    1032,
+    2120,
+    1224
+   ],
+   "w": 512,
+   "h": 192,
+   "kind": "wisp",
+   "meanAlpha": 0.353,
+   "dense": 0.006,
+   "cut": [],
+   "bytes": 9182
   }
  ]
 }

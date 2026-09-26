@@ -22,7 +22,8 @@ Steps
   5. crop to the alpha bbox (+ margin) first, so the saved file is OUT_W wide;
      save WebP (lossless) + PNG.
 
-Run:  python make-logo-cutout.py [--debug]
+Run:  python make-logo-cutout.py [--debug] [--lossy]
+(pure Pillow, no numpy; ~30 s)
 """
 import os
 import sys
@@ -31,18 +32,21 @@ from collections import deque
 from PIL import Image, ImageDraw, ImageFilter, ImageChops
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SRC = ("C:/Users/jakem/AppData/Local/Temp/claude/W--money-printer-os/"
-       "e84377ed-8f84-42c9-8734-3209caf39381/images/1.webp")
+# original render (1448x1086, black bg); a copy lives next to this script
+SRC = os.path.join(HERE, "mpo-logo-3d-source.webp")
 SKY = os.path.join(HERE, "..", "sky-approved.png")
 
 OUT_W = 960            # output width in px (displays ~320 CSS px at DPR 1.5-3)
-DEBUG = "--debug" in sys.argv
+DEBUG = "--debug" in sys.argv     # also write debug-body.png / debug-barrier.png
+LOSSY = "--lossy" in sys.argv     # WebP q92 (alpha lossless) instead of lossless
 
 # ---- tunables -------------------------------------------------------------
 CORE = 250             # max channel >= this is always solid (blown highlights)
 METAL_MIN = 8          # below this max channel colour is noise -> passable
 GLOW_RG = 0.62         # glow colour: R <= GLOW_RG*G (+4) ...
 GLOW_BG = 0.24         #              B <= GLOW_BG*G (+3); anything else is metal
+GLOW_RG_DIM = 0.45     # stricter R/G (+2) below DIM_M: dim glow is pure green, while
+DIM_M = 90             # the olive underside of the extrusion is not
 SEAL = 5               # MaxFilter size used to seal gaps in the barrier
 DROP = 8               # max darkening per 1px step the outside flood may take
 UP = 12                # max brightening per 1px step (glow ramps up smoothly)
@@ -78,7 +82,11 @@ def classify(im):
         if m >= CORE:
             out[i] = 255
         elif m >= METAL_MIN:
-            if g < r or g < b or b > GLOW_BG * g + 3 or r > GLOW_RG * g + 4:
+            if m >= DIM_M:
+                rmax = GLOW_RG * g + 4
+            else:
+                rmax = GLOW_RG_DIM * g + 2
+            if g < r or g < b or b > GLOW_BG * g + 3 or r > rmax:
                 out[i] = 255
     return Image.frombytes("L", (w, h), bytes(out))
 
@@ -268,8 +276,17 @@ def previews(logo):
     region = (x - pad, 0, 2560, y + css_h + pad)
     sky2 = sky.crop(region).resize(((region[2] - region[0]) * 2, (region[3] - region[1]) * 2), Image.LANCZOS)
     lg2 = logo.resize((css_w * 2, css_h * 2), Image.LANCZOS)
-    sky2.paste(lg2, (pad * 2, y * 2), lg2)
-    sky2.save(os.path.join(HERE, "preview-zoom.png"))
+    lx, ly = pad * 2, y * 2
+    sky2.paste(lg2, (lx, ly), lg2)
+    # detail strip: two edge crops of that DPR-2 render, enlarged 2x (nearest)
+    cw, ch, gap = 190, 130, 8
+    spots = [(lx + 110, ly + 40), (lx + 640 - 20 - cw, ly + css_h * 2 - ch + 10)]
+    sheet = Image.new("RGB", (sky2.width, sky2.height + gap + ch * 2), (255, 255, 255))
+    sheet.paste(sky2, (0, 0))
+    for k, (cx, cy) in enumerate(spots):
+        crop = sky2.crop((cx, cy, cx + cw, cy + ch)).resize((cw * 2, ch * 2), Image.NEAREST)
+        sheet.paste(crop, (k * (cw * 2 + gap), sky2.height + gap))
+    sheet.save(os.path.join(HERE, "preview-zoom.png"))
 
 
 def main():
@@ -281,7 +298,11 @@ def main():
         dbg.save(os.path.join(HERE, "debug-body.png"))
         barrier.save(os.path.join(HERE, "debug-barrier.png"))
     logo = cutout(im, body, OUT_W)
-    logo.save(os.path.join(HERE, "mpo-logo-3d.webp"), "WEBP", lossless=True, quality=100, method=6, exact=True)
+    webp = os.path.join(HERE, "mpo-logo-3d.webp")
+    if LOSSY:   # ~130 KB instead of ~430 KB; alpha stays lossless
+        logo.save(webp, "WEBP", quality=92, alpha_quality=100, method=6)
+    else:
+        logo.save(webp, "WEBP", lossless=True, quality=100, method=6, exact=True)
     logo.save(os.path.join(HERE, "mpo-logo-3d.png"), optimize=True)
     previews(logo)
     print("logo", logo.size)

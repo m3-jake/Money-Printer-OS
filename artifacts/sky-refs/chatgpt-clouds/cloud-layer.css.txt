@@ -1,0 +1,18 @@
+.sky-clouds{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:1}
+.sky-cloud{position:absolute;left:0;height:auto;will-change:transform;animation:skyDrift linear infinite}
+.sky-cloud>img{display:block;width:100%;height:auto;transform:scaleX(-1)}
+@keyframes skyDrift{from{transform:translateX(-100%)}to{transform:translateX(100vw)}}
+@media (prefers-reduced-motion:reduce){.sky-cloud{animation-play-state:paused}}
+
+<img class="sky-cloud" src="/assets/clouds/09.webp" alt="" style="width:30vw;top:3.0%;animation-duration:420s;animation-delay:-357s">
+<img class="sky-cloud" src="/assets/clouds/10.webp" alt="" style="width:24vw;top:8.0%;animation-duration:380s;animation-delay:-8s">
+<img class="sky-cloud" src="/assets/clouds/07.webp" alt="" style="width:22vw;bottom:44.8%;animation-duration:720s;animation-delay:-432s">
+<img class="sky-cloud" src="/assets/clouds/06.webp" alt="" style="width:16vw;bottom:44.2%;animation-duration:650s;animation-delay:-195s">
+<div class="sky-cloud" style="width:12vw;bottom:43.0%;animation-duration:780s;animation-delay:-608s"><img src="/assets/clouds/06.webp" alt=""></div>
+<img class="sky-cloud" src="/assets/clouds/08.webp" alt="" style="width:12vw;bottom:50.0%;animation-duration:560s;animation-delay:-470s">
+<img class="sky-cloud" src="/assets/clouds/05.webp" alt="" style="width:9vw;top:34.0%;animation-duration:210s;animation-delay:-126s">
+<div class="sky-cloud" style="width:12vw;top:31.0%;animation-duration:240s;animation-delay:-14s"><img src="/assets/clouds/04.webp" alt=""></div>
+<img class="sky-cloud" src="/assets/clouds/04.webp" alt="" style="width:15vw;top:13.0%;animation-duration:215s;animation-delay:-194s">
+<img class="sky-cloud" src="/assets/clouds/03.webp" alt="" style="width:17vw;top:25.0%;animation-duration:235s;animation-delay:-108s">
+<img class="sky-cloud" src="/assets/clouds/02.webp" alt="" style="width:30vw;top:20.0%;animation-duration:290s;animation-delay:-41s">
+<img class="sky-cloud" src="/assets/clouds/01.webp" alt="" style="width:27vw;top:5.0%;animation-duration:265s;animation-delay:-188s">
