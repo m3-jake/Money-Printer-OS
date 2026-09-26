@@ -4,7 +4,7 @@
 (`CURRENT_TASKS.md`, `KNOWN_BUGS.md`, `PROJECT_STATE.md`, `RELEASE_STATUS.md`) and in `reports/NEXT-STEPS-2026-09-25.md`.
 Don't re-inventory the repo. Update this file at the end of every batch.
 
-Last updated: 2026-09-25, batch 3. Branch `feature/robinhood-auto-trader`, version `0.5.0-alpha.56`.
+Last updated: 2026-09-25, batch 4. Branch `feature/polymarket-combo-only`, version `0.5.0-alpha.56`.
 
 ## Architecture (inventoried once)
 
@@ -84,7 +84,24 @@ Last updated: 2026-09-25, batch 3. Branch `feature/robinhood-auto-trader`, versi
 - Tests: `research-collector` 7/7, `lab-health` 2/2, full `npm run test:all` **533 pass / 0 fail**. Live smoke: collector start, then the health line reads OK with a 1 s heartbeat.
 - The batch 2 merges are still pending bing. See the commands above.
 
+## Batch 4 (2026-09-25): Polymarket combo renovation, preflight + step 1
+
+- Plan: `reports/POLYMARKET-COMBO-RENOVATION-PROMPT.md` (8 steps, one commit each). Branch `feature/polymarket-combo-only`, cut from `feature/robinhood-auto-trader`.
+- Baseline before edits: `npm run test:all` **533 pass / 0 fail**. Live journal `open: []`.
+- New `scripts/polymarket-us-preflight.mjs`:
+  - A signed `GET /v1/orders/open` proves the key.
+  - The signed `POST /v1/combos` runs only with `--probe-combo` and a 2xx key probe, and it uses a temp data dir so it never writes the live journal.
+  - The report goes to `reports/polymarket-preflight-<local date>.md`.
+- **Result: 401 keyNotFound** (`reports/polymarket-preflight-2026-09-25.md`). The combo probe was skipped. Building continues with mocked fetch, and step 6 (singles fallback) stays unbuilt until a 403 is actually observed.
+- **Owner-only (bing):**
+  - Regenerate the key at polymarket.us/developer.
+  - Run `node scripts/polymarket-us-preflight.mjs --probe-combo` during live games. It creates a combo instrument, not an order.
+  - The spec's "$1 order to prove the singles body shape" is a real trade, so bing places it, not an agent.
+- Next: step 2 (detach the paper lab).
+
 ## Next recommended batch (priority order)
+
+0. Combo renovation step 2: detach the paper lab (see batch 4).
 
 1. **bing:** run the two merge commands (batch 2), then say whether to push. Schedule `npm run collector -- --data "%APPDATA%\Money Printer OS\data"` at logon, and disable `MoneyPrinterReplayWorkhorse`.
 2. Re-run the Lab's three Polymarket sandbox searches with the committed fee model (report section 2.3: `node scripts/polymarket-research.mjs --mode search ...` in the Lab repo, read-only against `W:/mpo-polymarket-research`). Record the verdict here.
