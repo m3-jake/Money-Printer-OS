@@ -842,3 +842,39 @@ bing pasted the full MPOS unification brief (35 sections, phases 0–7). Phase 0
   - Alpaca history now goes back 7 years (`ROBINHOOD_EQUITIES_LOOKBACK_DAYS`, minimum 6 years), and weekday bars from before the NYSE table are kept. A store from before this change refetches once. Before 2024, month-ends come from the data.
   - A successful fetch also writes `lab-link/robinhood-equities-bars.json`. Lab parity still holds: its equities-research test passes 7/7 against this tree.
 - **Tests:** new `tests/robinhood-daily-book.test.mjs` (9) in `test:robinhood` and `tests/robinhood-equities-lab.test.mjs` (5) in `test:robinhood-equities`. Snapshot key pins now include `daily`. `npm run test:all`: **746 pass, 0 fail**.
+
+## Session summary (2026-09-26 afternoon): audit + "use everything" batches (M–Q)
+
+Audit first (read-only, verified): the Lab was installed and current, but it helped no module.
+- **Solana:** the champion score was mostly an unsimulated hold time, friction was modelled at 0.64% vs a real 2.1%, and the stage handshake meant nothing could reach the trader.
+- **Robinhood crypto:** the 0.95%/side fee versus a 4 h horizon meant it could never trade.
+- **Polymarket Lab lane:** it studied the international CLOB, not PM US. A shadow settlement bug also left wins stuck OPEN.
+- **Pump.fun:** gains came from SPRINT→FAIR. One trade (Support) was ~92% of the +0.30 SOL.
+- **PM US balance:** read $0.09 (bing to check the app).
+
+The owner then asked to use everything Robinhood and Polymarket offer (memory: robinhood-whole-platform) and to add copy trading.
+
+Trader commits:
+- `287f740` crypto fee fallback 0.95%.
+- `1d146c4` Robinhood stocks/ETF paper lane: Alpaca IEX daily bars, key needed, otherwise NO_DATA. Strategy "tactical-a" = 200-day SPY trend sleeve plus dual-momentum rotation. `GET /api/robinhood-equities`. Docs §25.
+- `da12894` Polymarket: durable outcome store (settlement fix), cross-venue gap log `raw/polymarket-cross-venue-*.ndjson` (strict slug match), singles calibration.
+- `9f4627d` Robinhood window becomes a multi-asset suite (Stocks & ETFs tab, Practice tab, honest readiness).
+- `e462f21` `/api/scoreboard` plus a Command Center SCOREBOARD card. YES only when a book still beats its baseline without its best trade and has at least 20 closes.
+- `918f740` Pump.fun copy trading step 2: capped standard-RPC indexer in the collector (SOL incl. WSOL per swap, signers only, `wallet-indexer-budget.json`, default 7,258 credits/day) and a point-in-time wallet PnL scorecard (graded at ≥10 round trips).
+- `9717223` Robinhood daily crypto paper book (one decision per closed UTC bar), equities Lab champion apply, 7-year equities history plus `lab-link/robinhood-equities-bars.json` (batch Q above).
+
+Lab commits (`codex/lab-evidence-20260925`):
+- `d97003c` honesty: stage PAPER only when shadow-qualified, 2.1% friction, velocity ignores maxHoldMin, search-bound blocker, syntheticSpreadPct implemented, 0.95% fee.
+- `0fa2673` daily-bar Robinhood crypto research plus a new `robinhood-equities` lane.
+- `6a76b8b` a passing daily proposal carries `state: PAPER`, so the trader book can use it.
+
+Tests: trader `test:all` green, Lab `test:all` 65/69/75 green. Nothing built or installed from this work yet.
+
+**Owner actions:**
+1. Free Alpaca key in `.env` (`ALPACA_KEY_ID`, `ALPACA_SECRET_KEY`).
+2. Check the PM US balance.
+3. Check in the Helius dashboard whether standard calls cost 1 or 10 credits (`INDEXER_CREDITS_PER_CALL`).
+4. Decide whether the MacBook alpha.53 keeps reading the bridge; PAPER-stage Lab champions can now reach it.
+5. Build and install both apps.
+
+Kalshi and Robinhood event contracts are already covered by the MPOS core platform (Batch L), so they weren't rebuilt.
