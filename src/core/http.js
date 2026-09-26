@@ -17,6 +17,13 @@ export async function handlePlatformRequest(req,res,url,{json,body,platform=mark
       if(route==='/entities')return json(res,{ok:true,entities:platform.store.list({kind:url.searchParams.get('kind')||null,provider:url.searchParams.get('provider')||null})});
       if(route==='/strategies')return json(res,{ok:true,strategies:platform.strategies.list()});
       if(route==='/strategies/history')return json(res,{ok:true,history:platform.strategies.history(url.searchParams.get('id'))});
+      if(route==='/arbitrage/candidates')return json(res,{ok:true,...platform.arbitrageCandidates({limit:Number(url.searchParams.get('limit'))||50})});
+      if(route==='/stocks/status')return json(res,{ok:true,...await platform.stocksStatus(url.searchParams.get('symbols')||'')});
+      if(route==='/stocks/bars')return json(res,{ok:true,...platform.stocksBars(url.searchParams.get('symbol'))});
+      if(route==='/lab/sources')return json(res,{ok:true,...platform.labSources()});
+      if(route==='/lab/runs')return json(res,{ok:true,runs:platform.labRuns(50)});
+      if(route==='/macro')return json(res,{ok:true,...await platform.macroSnapshot({force:url.searchParams.get('force')==='1'})});
+      if(route==='/macro/asof')return json(res,{ok:true,...await platform.macroAsOf({id:url.searchParams.get('id'),asOf:url.searchParams.get('asOf')})});
       if(route==='/relationships')return json(res,{ok:true,relationships:platform.store.relationships(url.searchParams.get('id'))});
     }
     if(req.method==='POST'){
@@ -32,7 +39,15 @@ export async function handlePlatformRequest(req,res,url,{json,body,platform=mark
       else if(route==='/strategies/register')result=platform.strategies.register(input);
       else if(route==='/strategies/sync-lab')result=platform.syncLab();
       else if(route==='/strategies/transition')result=platform.transitionStrategy(input);
+      else if(route==='/stocks/fund')result=platform.deposit({venue:'stocks-paper',amount:input.amount,id:input.id});
+      else if(route==='/stocks/preview')result=await platform.stocksPreview(input);
+      else if(route==='/stocks/submit')result=platform.stocks.submit(input.id);
+      else if(route==='/stocks/cancel')result=platform.stocks.cancel(input.id);
+      else if(route==='/lab/run')result=await platform.labRun(input);
+      else if(route==='/lab/replay/start')result=await platform.labReplayStart(input);
+      else if(route==='/lab/replay/step')result=platform.labReplayStep(input);
       else if(route==='/watchlist')result=platform.watch(input.id,input.on===true);
+      else if(route==='/compare/verify')result=platform.verifyPair(input);
       else if(route==='/compare')result=await platform.compare(input);
       else return json(res,{ok:false,error:'Unknown platform action'},404);
       return json(res,{ok:true,result});

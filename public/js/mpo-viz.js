@@ -118,11 +118,13 @@
     if (s.sig !== sig) { s.sig = sig; s.prog = reduce() ? 1 : 0; }
     s.prog = Math.min(1, (s.prog ?? 1) + dt * 1.2);
     if (!series.length) return emptyNote(x, W, H, dpr, t, d.empty || 'No data yet');
-    let lo = Math.min(0, ...series.flatMap(sr => sr.points)), hi = Math.max(0, ...series.flatMap(sr => sr.points));
+    // zero:false for price series: scale to the data instead of anchoring at a $0 baseline.
+    const all = series.flatMap(sr => sr.points), anchor = d.zero === false ? [] : [0];
+    let lo = Math.min(...anchor, ...all), hi = Math.max(...anchor, ...all);
     if (hi - lo < 1e-9) { hi += 1; lo -= 1; }
     const pad = (hi - lo) * 0.1; lo -= pad; hi += pad;
     const py = v => bot - ((v - lo) / (hi - lo)) * (bot - top);
-    x.strokeStyle = C.axis; x.lineWidth = dpr; x.setLineDash([3 * dpr, 3 * dpr]); x.beginPath(); x.moveTo(L, py(0)); x.lineTo(R, py(0)); x.stroke(); x.setLineDash([]);
+    if (d.zero !== false) { x.strokeStyle = C.axis; x.lineWidth = dpr; x.setLineDash([3 * dpr, 3 * dpr]); x.beginPath(); x.moveTo(L, py(0)); x.lineTo(R, py(0)); x.stroke(); x.setLineDash([]); }
     label(x, dpr, `${d.unit || ''}${hi.toFixed(2)}`, 2 * dpr, top + 6 * dpr, C.dim, 9); label(x, dpr, `${d.unit || ''}${lo.toFixed(2)}`, 2 * dpr, bot, C.dim, 9);
     const maxN = Math.max(...series.map(sr => sr.points.length));
     series.forEach((sr, si) => {

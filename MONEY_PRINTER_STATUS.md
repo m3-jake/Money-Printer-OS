@@ -4,7 +4,7 @@
 (`CURRENT_TASKS.md`, `KNOWN_BUGS.md`, `PROJECT_STATE.md`, `RELEASE_STATUS.md`) and in `reports/NEXT-STEPS-2026-09-25.md`.
 Don't re-inventory the repo. Update this file at the end of every batch.
 
-Last updated: 2026-09-26, batch R (self-improving-loop plan, trader side; merged with batches M–Q). Version `0.5.0-alpha.60`.
+Last updated: 2026-09-26, batch LOOP (self-improving-loop plan, trader + Lab) and batches R–W (Arbitrage, Stocks, Market Lab, Macro). Version `0.5.0-alpha.60`.
 
 ## Architecture (inventoried once)
 
@@ -807,7 +807,7 @@ bing pasted the full MPOS unification brief (35 sections, phases 0–7). Phase 0
 
 ### Next recommended
 1. ~~Lab champion sync~~ done in batch P.
-2. Polymarket consolidation (Markets / Live / Sports / Positions / History / Combo Engine), and decide on `polymarketPaperCombos.js`.
+2. ~~Polymarket consolidation~~ first pass done in batch Q.
 3. Contract-term extraction for Kalshi and Polymarket, so ARBITRAGE.EXE can rate real pairs above RELATED.
 
 ## Batch P (2026-09-26): no more ".EXE" names; Lab champions in the strategy registry
@@ -879,7 +879,7 @@ Tests: trader `test:all` green, Lab `test:all` 65/69/75 green. Nothing built or 
 
 Kalshi and Robinhood event contracts are already covered by the MPOS core platform (Batch L), so they weren't rebuilt.
 
-## Batch R (2026-09-26 afternoon, "Money printer OS work" session): the self-improving-loop plan, trader side
+## Batch LOOP (2026-09-26 afternoon, "Money printer OS work" session): the self-improving-loop plan, trader side
 
 bing: "Do everything that we have planned", then "make sure the journal is fully caught up; after the 22nd there's nothing."
 
@@ -916,7 +916,7 @@ Worked in a separate worktree, `W:\mpo-claude`, on branch `claude/planned`. Code
   - `unattended-storage` (5), `self-report` (2), `lab-health` (+2)
   - `project-journal` (+3)
 
-### Batch R, Lab side (`W:\lab-claude`, branch `claude/lab-loop-20260926`; Lab `master` fast-forwarded to `2ee5e46`)
+### Batch LOOP, Lab side (`W:\lab-claude`, branch `claude/lab-loop-20260926`; Lab `master` fast-forwarded to `2ee5e46`)
 
 - Built by a subagent of the "Money printer OS work" session.
 - The branch contains Codex's tip `6a76b8b` (Robinhood daily bars, robinhood-equities lane).
@@ -945,3 +945,99 @@ Worked in a separate worktree, `W:\mpo-claude`, on branch `claude/planned`. Code
 - bing: the Mac (`bash scripts/mac-install-latest.sh` in a checkout); build and install the Lab from `master` `2ee5e46` and start it (it was not running at 15:30); decide `ROBINHOOD_LAB_AUTO_APPLY_PAPER` after reading the first Lab proposal.
 - An executable-price Solana replay over `raw/jupiter-quotes-*` once a few days of tape exist. It is the only way Solana leaves research-only.
 - Design work: a second Polymarket strategy family (fee-free NFL markets or maker posting with a queue model).
+
+## Batch Q (2026-09-26): one Polymarket window with Positions / History / Performance tabs
+
+- **Polymarket is now one tabbed window:** Live combos (the old host tab, relabelled), Markets, **Positions**, **History** and **Performance**. The three new tabs live in `public/js/mpo-polymarket.js` and redraw only when their data changes.
+  - **Positions:** open US combos (real venue orders, unreconciled; unverified fills are shown in bold) and core paper positions on Polymarket, labelled separately and never summed.
+  - **History:** settled US combos (up to 500) and core ledger entries for Polymarket.
+  - **Performance:** net P/L, ROI on cost, won/lost, win rate with its **Wilson 95% interval**, average implied probability (fill price), realized minus implied, open cost; a cumulative P/L chart and a won-vs-implied chart; a calibration table by fill-price bucket. With fewer than 30 settled combos it shows a "not yet meaningful" note. An empty journal reads as unknown, never 0%.
+- **Server:** new `src/core/comboPerformance.js` (pure; `comboPerformance`, `wilson`), and `GET /api/polymarket-us/combos/journal` returns `usComboJournalView({historyLimit:500})` plus `performance`.
+- **Deleted `src/polymarketPaperCombos.js`:** nothing imported it, and it had no route, UI or test. It overlapped the shadow auto-combo lane. It's still in git history.
+- **Tests:** 1 new test (`market-core`, 23 pass). `npm run test:all`: **747 pass, 0 fail**. Browser check on the isolated engine with a **fake** 13-combo journal seeded in the scratch data dir (deleted afterwards): all five tabs render, and the numbers match the API.
+- **Not done yet (brief §6):** a Sports tab (needs the canonical SportsEvent engine, Phase 4) and a Strategy Lab tab. For now the Lab's combo proposal stays in the Live combos evidence section.
+
+## Batch R (2026-09-26): contract-term extraction, so Arbitrage can match real Kalshi/Polymarket pairs
+
+- **New `src/core/contractTerms.js`:** `extractTerms` turns venue text into a proposition: GAME_WINNER, SPREAD (side wins by more than a line) or TOTAL (combined score over a line). It captures participants, side, line, stat, game day, scope (regulation / including OT / period), cancellation (50-50, resolves No, fair price), resolution-source domain, and YES meaning. `matchTerms` classifies a pair as STRONG MATCH / RELATED / NOT EQUIVALENT and gives an orientation (SAME, or INVERTED when YES on one venue = NO on the other). Unresolved differences are listed as residual risks: scope, cancellation, resolution source, integer-line push. `candidatePairs` scans already-loaded contracts.
+- **EXACT MATCH is human-only:** `POST /api/platform/compare/verify` needs the typed phrase "I READ BOTH RULE TEXTS AND THEY SETTLE IDENTICALLY" and only works on a STRONG MATCH. It stores a `SETTLEMENT_VERIFIED` relationship bound to a fingerprint of both contracts' rule text and the orientation. **Any venue edit voids it** (it shows "no longer valid" and drops back to STRONG). A locked return is still only computed for EXACT MATCH, with known fees and fresh depth; `riskFree` stays false.
+- **Platform:** `compare` uses the structured match and swaps B's YES/NO books for INVERTED pairs. `GET /api/platform/arbitrage/candidates`. Arbitrage UI: "Scan loaded contracts" → candidates table → Compare → extracted terms side by side, residual risks, attestation status, and a Verify panel with links to both markets. Markets detail shows named outcomes (e.g. "Chiefs (YES)").
+- **Provider fixes:** Polymarket two-outcome markets ("Ole Miss"/"Florida", "Over"/"Under") are now binary, with the first outcome carried as YES and `yesLabel`/`noLabel` on the contract. Before this, their books were unsupported. Markets list by 24h volume (it used to be id order, mostly stale long-dated markets). `market(id)` uses `/markets?id=`, because `/markets/{id}` omits the parent event and so dropped the participants.
+- **Known limits (fail safe):** different naming (Kalshi "Kansas City" vs Polymarket "Chiefs") → not matched. "Miami" matches "Miami (OH)" by name, so a match also needs the same opponent and date. Soccer 3-way markets, player props, and non-sports markets (Fed, CPI, politics) are OTHER → RELATED at best. Fee schedules are still unavailable, so the locked return stays blocked even for EXACT pairs until fees are modeled.
+- **Tests:** 5 new tests (fixtures copied from live rule text), `market-core` 28 pass; `npm run test:all` **752 pass, 0 fail**. Live check (isolated engine): 252 Kalshi (MLB game/total, NFL spread) × 1000 Polymarket → 78 candidates, 13 STRONG MATCH (NFL spreads, MLB winners/totals). The live check caught two bugs, both fixed with regression tests: the refetch dropped participants, and the name regex swallowed "Pro Football".
+
+### Next recommended
+1. ~~Venue fee schedules~~ done in batch S.
+2. Team-alias table (city ↔ nickname per league) to raise match recall; keep it fail-safe.
+3. Phase 3: STOCKS window through a `BrokerProvider` adapter (paper-first), then Market Lab replay.
+
+## Batch S (2026-09-26): venue fee schedules in Arbitrage
+
+- **New `src/core/fees.js`:** taker-fee models taken from the venues' published docs (checked 2026-09-26), priced on each direction's **actual book fills**:
+  - **Kalshi:** per series `fee_type` + `fee_multiplier` (Get Series). Taker = 0.07 × multiplier × C × P(1−P). Non-direct accounts settle to the cent per order, modelled as `ceil_cent(cost+fee) − cost`, which reproduces the docs' worked example exactly. `flat` fee type → unavailable. Event-level fee overrides are **not** checked yet (the description says so).
+  - **Polymarket:** per market `feesEnabled` / `feeSchedule` (rate, exponent). Fee = C × rate × p(1−p), rounded up to 5 decimals, takers only. Only exponent 1 is documented, so any other exponent → unavailable. `feesEnabled:false` → $0.
+- **Providers:** Kalshi contracts look up their series once per hour (cached; sequential, so the 4-request concurrency cap never trips). That adds `feeModel`, `seriesTicker` and `resolutionSource` (the series' settlement source). A failed series lookup leaves fees unavailable with a reason instead of failing the market list. Polymarket contracts carry `feeModel` from the market.
+- **Arbitrage:** `arbitrageQuote` takes `feeModels`, per-direction `feeA`/`feeB`, and after-fee spread. The locked return is still only shown for EXACT MATCH and fresh depth, and is blocked with `FEES_UNAVAILABLE` if either model is missing. The UI shows each venue's fee model and a Fees A / B column.
+- **Live check (isolated engine, 10 contracts):** fees resolve for all 13 STRONG pairs. Kalshi NFL spread 10 @ $0.48 → $0.18; Kalshi MLB multiplier 0.5; that Polymarket market is `zero_fees`. **Every live pair is negative after fees** (−0.8 to −4.8 pts), the expected efficient-market result. It also surfaced a real settlement difference: Kalshi's MLB series settles from **ESPN**, Polymarket's from **mlb.com**.
+- **Tests:** 3 new tests (docs examples for both venues, per-fill pricing, series caching and failure) → `market-core` 31 pass; `npm run test:all` **755 pass, 0 fail**.
+- **Not changed:** core paper proposals in the Markets tabs still take a user-entered fee (bps). Switching them to the venue model is a small follow-up.
+
+## Batch T (2026-09-26): paper fills use venue fees; team aliases dropped
+
+- bing: "continue until we complete everything, you don't have to ask for permission." Batches now run back to back (each is still tested, committed and logged here).
+- Core paper proposals (the Kalshi and Polymarket Markets tabs): the fee field is now optional. Left blank, the fill is charged the venue's published taker fee on the actual fills (`fees.js`), recorded as `feeModel {kind:'VENUE_SCHEDULE', model, rate, source}` and named in the ledger reference. A typed bps still overrides it. No schedule and no typed fee → refused with the reason.
+- **Team-alias table: not built.** On live data Kalshi's NFL/MLB rule text already uses matching names ("KC Chiefs", "Atlanta"), and trailing-letter abbreviations ("Chicago C") are handled, so an alias table would add little. Revisit if NBA/NHL pairs show misses.
+- Tests: +1 (`market-core` 32). `test:all` green (count below).
+
+## Batch U (2026-09-26): Stocks window over a BrokerProvider paper broker (Phase 3)
+
+- **New `src/core/brokers.js`:** `PaperBroker` implements the existing `BROKER_METHODS` contract (account, positions, instruments, quotes, preview, submit, orderStatus, cancel, history) and passes `validateBroker`.
+  - **Order flow:** preview → `risk.propose` → `executePaper` (the governor re-checks at fill time, including quote age) → unified ledger, venue `stocks-paper`.
+  - **Orders:** market or marketable-limit only; nothing rests. NYSE regular session only (`robinhoodEquitiesCalendar.marketState`). Fractional shares to 1e-6, $1 minimum. Buys fill at the ask, sells at the bid.
+  - **Fees:** $0 commission, with SEC §31 and FINRA TAF on sells, reusing `robinhoodEquitiesBook.sellFees` (same source and date).
+  - **Liquidity:** the displayed IEX size feeds the governor's liquidity check.
+  - **Quotes:** `AlpacaQuotes` (snapshots, IEX feed) when `ALPACA_KEY_ID` / `ALPACA_SECRET_KEY` are set. No key → NOT CONFIGURED and every order is refused. AUTH ERROR / DEGRADED / DISCONNECTED are tracked.
+  - **No real brokerage:** Robinhood is listed as not live (no official equities order API for this app; policy forbids real money).
+- **Platform/API:** `GET /api/platform/stocks/status?symbols=`, `GET /stocks/bars?symbol=` (daily bars from the equities-lane store, otherwise "no stored bars"), `POST /stocks/fund|preview|submit|cancel`. Orders can be cancelled (`CANCELLED`) while PROPOSED or AWAITING_APPROVAL.
+- **Stocks window** (`public/js/mpo-stocks.js`, desktop icon STK), in both Simple and Advanced panes: session and data-source line, account tiles, watchlist (kept in this browser) with Chart/Trade, daily-close chart, order ticket with the risk decision shown, positions with allocation bars, orders with cancel, paper funding.
+- **Bug found in the browser and fixed:** the status refresh after an action cleared the action's error, so "Market is closed" never showed. Load and action errors are now separate.
+- **This machine:** no Alpaca key, so quotes are unavailable and orders are refused. Correct, not a bug. Add a free Alpaca market-data key to `%APPDATA%Money Printer OS.env` to enable it.
+- **Tests:** 4 new (fills and ledger, SEC/TAF, oversell, cancel; closed market, no key, one-sided quote, non-marketable limit, LIVE refused; stale quote at fill; Alpaca parsing and auth labels). `market-core` 36; `test:all` green.
+
+### Install record (2026-09-26, 17:11 local): trader 793c736 + Lab build
+- **Trader:**
+  - Built from a clean worktree merge of `feature/hud-declutter` (256c36a) and `origin/main` (69b368d). Only the ledger conflicted (union merge). The merge commit is local only, not pushed.
+  - `test:all` passed (27 groups).
+  - Archive: `Desktop\Money Printer OS\Windows-793c736-20260926\app.asar`, sha256 `9cc6f273…`. `smoke:windows` on 18792 passed.
+- **Installed:**
+  - Backup: `resources\app.asar.pre-793c736-backup-20260926-171110`. A polite close was refused, so the app was force-closed.
+  - Live on 8792: HEALTHY. Bing's Alpaca key works: `/api/robinhood-equities` data **FRESH** (bars through 2026-09-25); the next session is 2026-09-28.
+- **Lab:** `Desktop\Money Printer OS\Lab-2ee5e46.asar` (master 2ee5e46, sha256 `6892935e…`). **Not installed**: bing double-clicks `Install Lab 2ee5e46.cmd` in the same folder (it stops the Lab, backs up, swaps and relaunches).
+- **Mac:** bing runs `bash scripts/mac-install-latest.sh` once on the MacBook (it is on main). alpha.53 predates the GitHub update channel, so this first hop has to be manual.
+- **Auto-update status:** the updater (GitHub Releases, signed manifest, 10 min checks) exists but has never been used. No release or tag has been published, the repo is private (API 404) and no `MONEY_PRINTER_UPDATE_TOKEN` is set.
+
+## Batch V (2026-09-26): Market Lab, historical replay without look-ahead, experiment records (Phase 3 + part of Phase 6)
+
+- **New `src/core/replay.js`:** `ReplaySession` reveals records strictly by `availableAt`, and the clock never goes back. `runReplay` is a sequential backtest: a decision at t fills on the first quote available **after** t (ask to buy, bid to sell, fee bps). `lookAheadViolations` must be 0 and is tested. Built-in strategies: buy-and-hold, momentum, mean reversion, with validated params.
+- **Availability rules, and a hazard found:** the crypto tape's `coinbase-candles` rows are one 1-minute candle expanded into four 15 s samples (open, extremes, close), stamped from the candle **start**. Replayed at their stamps, they leak the minute's high/low/close up to 60 s early. Replay now releases them only at the candle close and flags them synthetic (no spread). **Lab follow-up:** check whether the Evolution Lab's Robinhood replay reads candle rows at their stamps. The evidence gate's `maxSyntheticShare 0.1` limits the damage but doesn't remove it.
+  - Alpaca minute bars → available at bar start + 60 s.
+  - Core order-book history → its stored `availableAt`.
+- **Sources:** recorded crypto tape (`<data>/robinhood-tape`), recorded Kalshi/Polymarket order books (core `entity_versions`), and Alpaca minute bars for stocks (key required). The brief's "AAPL, June 10 2025, 9:30" example works once `ALPACA_KEY_ID` / `ALPACA_SECRET_KEY` are set.
+- **Experiments are reproducible:** the append-only `lab_runs` table records source, instrument, window, strategy, params, a **dataset fingerprint** (hash of every revealed record), code version (package version + hash of `replay.js`), machine and seed (none; deterministic), plus the result. Same inputs give the same fingerprint and result (tested).
+- **Market Lab window** (`public/js/mpo-marketlab.js`, desktop icon RPL): source/instrument/start/duration/strategy form; "Run backtest" shows return vs buy-and-hold, max drawdown, trades, synthetic share, look-ahead violations, equity and price charts, and a warning above 10% synthetic; "Start replay" plays with Play/Pause/Step at 10–1800× and reveals the chart progressively; experiment history table.
+- **Engine bug caught by the new test:** fills searched only not-yet-revealed records, so a decision never filled. Fixed (binary search over revealed records per key).
+- **Charts:** `MPOViz` lines take `zero:false` for price series. Before, a $0 baseline flattened every price chart (Stocks and Market Lab).
+- **Isolated live check:** BTC-USD tape (1151 records, 99% candle-derived in this scratch dir), momentum run 0 look-ahead violations, replay playing. Tests: 3 new (`market-core` 39).
+
+## Batch W (2026-09-26): Macro window: FRED indicators plus Kalshi release ladders (Phase 4)
+
+- **New `src/core/macro.js`:** 17 indicators: CPI/core/YoY, PCE, unemployment, payrolls, claims, GDP, Fed funds upper bound, 2y/10y/curve, retail sales, industrial production, housing starts, Michigan sentiment, M2.
+  - **Observation date vs publication time:** with `FRED_API_KEY`, `FredSource.vintages` reads ALFRED vintages (`realtime_start`). A value counts as available only at the **end of its publication day, US/Eastern** (FRED gives dates, not times, so this is late, never early), and `asOf()` returns what was published by a moment. A revision replaces the first print only after it was published (tested).
+  - **Without a key:** the public `fredgraph.csv` gives the latest revised values, labelled "context only". As-of queries are **refused**, so revisions can't leak into backtests.
+  - **Kalshi ladders:** `impliedLadder()` turns an event's "above strike" markets into a market-implied distribution and median. One-sided and non-"greater" rungs are dropped, and the result is labelled as prices, not a model. Kalshi trading closes minutes before each release, so the earliest close is the release calendar (labelled "Kalshi close").
+  - **Units:** payroll strikes are in jobs, FRED in thousands (`kalshiScale`).
+- **Kalshi provider:** contracts carry `strike` / `strikeType`; new `events({series,status})`. The Macro loader paces calls (150 ms) and waits once for the venue's backoff on a 429. The first version was rate-limited by Kalshi, caught in the live check.
+- **API/UI:** `GET /api/platform/macro` (10-minute cache), `GET /macro/asof?id=&asOf=` (key only). **Macro window** (MAC icon): upcoming-release table, one card per indicator (last value, change, 3-year sparkline, Kalshi ladder bars and implied median), as-of explorer when keyed.
+- **Live (2026-09-26, keyless):** jobs report Oct 2 (unemployment 4.07%, payrolls +95.9k implied), CPI Oct 14 (MoM 0.506%, core 0.176%, YoY 3.574%), Fed Oct 28 (upper bound 4.05%), GDP Oct 30 (3.67%). Claims and retail had no two-sided ladder open.
+- Tests: 3 new (vintage as-of, ET end-of-day across DST, transforms, CSV, ladder, per-indicator failure isolation). `market-core` 42.
+- **Polish noted:** with 12 desktop icons the column runs past the bottom at 720 px (System is cut off). Phase 7.

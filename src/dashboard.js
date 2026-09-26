@@ -30,6 +30,7 @@ import updateChannel from '../desktop/update-channel.cjs';
 import { handlePlatformRequest } from './core/http.js';
 import { marketPlatform, closeMarketPlatform } from './core/platform.js';
 import { practiceSnapshot } from './robinhoodPractice.js';
+import { comboPerformance } from './core/comboPerformance.js';
 import { JOURNAL_FILE as RH_JOURNAL_FILE } from './robinhoodJournal.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -485,6 +486,7 @@ export function startDashboard() {
       if (req.method === 'GET' && u.pathname === '/api/polymarket-us/readiness') return json(res, usReadiness());
       if (req.method === 'GET' && u.pathname === '/api/polymarket-us/evidence') { const ev=await import('./polymarketUSEvidence.js'); return json(res, {...ev.evidenceSummary(),lab:{proposal:ev.labComboProposal(),status:labModuleStatuses()['polymarket-combo']||null}}); }
       if (req.method === 'GET' && u.pathname === '/api/polymarket-us/account') return json(res, await polymarketUSAccount());
+      if (req.method === 'GET' && u.pathname === '/api/polymarket-us/combos/journal') { const j=usComboJournalView({historyLimit:500}); return json(res, {...j,performance:comboPerformance(j.history,j.open)}); }
       if (req.method === 'GET' && u.pathname === '/api/polymarket-us/combos') return json(res, await usComboSnapshot());
       if (req.method === 'GET' && u.pathname === '/api/update') return json(res, updaterState());
       if (req.method === 'GET' && u.pathname === '/api/research-monitor') return json(res, researchMonitorState());

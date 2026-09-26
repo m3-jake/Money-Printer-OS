@@ -30,6 +30,23 @@ Version order is numeric on every digit group (`desktop/main.cjs::versionGreater
 `0.5.0-alpha.54` is newer than `0.5.0-alpha.53`. **Do not tick "pre-release"** when publishing:
 GitHub's `latest` skips pre-releases, so the updater would never see it.
 
+## Quick path (two commands)
+
+One-time setup:
+- **Each installed copy (Windows and Mac):** add `MONEY_PRINTER_UPDATE_TOKEN=<read-only token>` to its `.env` (see the next section), then restart the app. The Updater panel then shows the GitHub channel with no error.
+- **The key-holding machine:** keep a second fine-grained token for this repo with **Contents: Read and write**. It is used only by `release:publish`, set per terminal as `MPO_RELEASE_TOKEN`, and never stored in the app's `.env`.
+
+Every release:
+1. `npm run release:cut` on a clean, up-to-date `main`.
+   - It bumps the version (package.json, lock, `src/robinhoodTransport.js` APP_VERSION), commits, tags `v<version>` and pushes.
+   - The push starts the "Release build" workflow, which runs the tests and leaves a draft release.
+   - `--no-push` stops before pushing. An explicit version can be passed: `npm run release:cut -- 0.6.0`.
+2. When the workflow is green, run `npm run release:publish -- --key <release-private-key.pem>`.
+   - It downloads the draft's app.asar, signs and verifies it with `scripts/sign-manifest.mjs`, uploads `manifest.json` (replacing an old one) and publishes the draft as latest.
+   - `--dry-run` checks the token and the download without signing or publishing.
+
+Installed copies then update themselves on their next check, within about 10 minutes. The manual steps below describe the same flow.
+
 ## Private repository → token
 
 While the repository is private the GitHub API answers `404` without credentials. Put a token in

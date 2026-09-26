@@ -11,11 +11,18 @@ import { entity,stableId,units,decimal,availableHistory } from '../src/core/mode
 import { MarketEventBus } from '../src/core/eventBus.js';
 import { evaluateRisk,DEFAULT_LIMITS,validateLimits,portfolioRiskState } from '../src/core/risk.js';
 import { compareContracts,arbitrageQuote } from '../src/core/contracts.js';
-import { normalizeKalshi,normalizeKalshiBook,normalizePolymarket,KalshiProvider } from '../src/core/predictionProviders.js';
+import { normalizeKalshi,normalizeKalshiBook,normalizePolymarket,KalshiProvider,PolymarketProvider } from '../src/core/predictionProviders.js';
 import { ProviderRegistry,JsonProvider } from '../src/core/provider.js';
 import { MarketPlatform } from '../src/core/platform.js';
 import { legacyCoverage,solanaLegacy,usCombosLegacy,legacyTotals } from '../src/core/legacyBooks.js';
 import { syncLabChampions,labEvidence,LAB_CHAMPION_SOURCES } from '../src/core/labSync.js';
+import { comboPerformance,wilson } from '../src/core/comboPerformance.js';
+import { extractTerms,matchTerms,sameName,participants,candidatePairs,termsFingerprint } from '../src/core/contractTerms.js';
+import { VERIFY_PHRASE } from '../src/core/platform.js';
+import { kalshiFeeModel,polymarketFeeModel,takerFee } from '../src/core/fees.js';
+import { AlpacaQuotes,STOCK_VENUE } from '../src/core/brokers.js';
+import { ReplaySession,runReplay,tapeRecords,alpacaMinuteRecords,fetchAlpacaMinutes,strategyParams } from '../src/core/replay.js';
+import { endOfDayEt,transform as macroTransform,parseFredCsv,vintagesFrom,asOf as macroAsOfFn,impliedLadder,FredSource } from '../src/core/macro.js';
 import { StrategyRegistry,promotionCheck,labChampionLifecycle } from '../src/core/strategies.js';
 import { assertGlobalTradingNotHalted } from '../src/core/executionBoundary.js';
 import { localMutationAllowed } from '../src/core/http.js';
@@ -219,4 +226,244 @@ test('Lab champions mirror into the registry through the common gate, never past
   assert.equal(res['lab-robinhood'].state,'PAUSED');assert.equal(r.history('lab-robinhood').length,n);
   assert.equal(LAB_CHAMPION_SOURCES.every(x=>r.get(x.id)?.state!=='LIVE'),true);
   s.close();fs.rmSync(dir,{recursive:true,force:true});
+});
+
+test('combo performance: empty is unknown, not zero; rates, interval, edge and calibration are exact',()=>{
+  const empty=comboPerformance([],[]);
+  assert.equal(empty.winRate,null);assert.equal(empty.netPnlUsd,null);assert.equal(empty.edge,null);assert.equal(empty.winRateCi95,null);assert.deepEqual(empty.curve,[]);
+  const h=[{status:'WON',fillPrice:.8,costUsd:8,pnlUsd:2,settledAt:3},{status:'LOST',fillPrice:.82,costUsd:8.2,pnlUsd:-8.2,settledAt:1},{status:'WON',fillPrice:.9,costUsd:9,pnlUsd:1,settledAt:2},{status:'CANCELLED',fillPrice:.7,pnlUsd:null}];
+  const p=comboPerformance(h,[{costUsd:5,fillVerified:false},{stakeUsd:3,fillVerified:true}]);
+  assert.equal(p.settled,3);assert.equal(p.won,2);assert.equal(p.placed,6);assert.equal(p.netPnlUsd,-5.2);assert.equal(p.costUsd,25.2);
+  assert.deepEqual(p.curve,[-8.2,-7.2,-5.2]);            // ordered by settlement time
+  assert.equal(p.winRate,.6667);assert.equal(p.avgImplied,.84);assert.equal(p.edge,-.1733);
+  assert.equal(p.openCostUsd,8);assert.equal(p.unverifiedOpen,1);assert.match(p.sampleNote,/Only 3/);
+  assert.deepEqual(p.calibration.map(c=>[c.lo,c.n,c.winRate]),[[.8,2,.5],[.9,1,1]]);
+  const ci=wilson(2,3);assert.ok(ci.low<.6667&&ci.high>.6667&&ci.low>=0&&ci.high<=1);
+  assert.equal(comboPerformance([{status:'WON',pnlUsd:1,costUsd:1}]).edge,null); // no fill price -> no edge claim
+});
+
+// Rule text below is copied from live Kalshi / Polymarket markets (2026-09-26).
+const kSpread=normalizeKalshi({ticker:'KXNFLSPREAD-26SEP27KCMIA-KC4',title:'KC Chiefs wins by over 3.5 points?',event_ticker:'KXNFLSPREAD-26SEP27KCMIA',status:'active',expiration_time:'2026-10-11T17:00:00Z',
+  rules_primary:'If Kansas City wins by more than 3.5 points in the Kansas City vs Miami professional football game originally scheduled for Sep 27, 2026, then the market resolves to Yes.'},1000);
+const pSpread=normalizePolymarket({id:'77',question:'Spread: Chiefs (-3.5)',outcomes:'["Chiefs","Dolphins"]',clobTokenIds:'["kc","mia"]',outcomePrices:'["0.55","0.45"]',endDate:'2026-09-27T17:00:00Z',active:true,resolutionSource:'https://www.nfl.com/scores',
+  description:'In the upcoming NFL game, scheduled for September 27 at 1:00 PM ET:  This market will resolve to "Chiefs" if the Chiefs win the game by 4 or more points.  Otherwise, this market will resolve to "Dolphins".',events:[{id:'9',title:'Chiefs vs. Dolphins'}]},1000);
+const kTotal=normalizeKalshi({ticker:'KXMLBTOTAL-X-8',title:'Over 7.5 runs scored',status:'active',expiration_time:'2026-10-03T17:00:00Z',
+  rules_primary:'If the teams in the game collectively score more than 7.5 runs in the Texas vs Minnesota professional baseball game originally scheduled for Sep 26, 2026, then the market resolves to Yes.'},1000);
+const pTotal=normalizePolymarket({id:'78',question:'Texas Rangers vs. Minnesota Twins: O/U 7.5',outcomes:'["Over","Under"]',clobTokenIds:'["o","u"]',outcomePrices:'["0.5","0.5"]',endDate:'2026-09-26T23:00:00Z',active:true,
+  description:'In the upcoming MLB game between the Texas Rangers and Minnesota Twins, scheduled for September 26 at 7:10PM ET: This market will resolve to "Over" if the teams combine to score more than 7.5 runs. If the game is canceled entirely, this market will resolve 50-50.'},1000);
+test('contract terms: real venue text becomes a comparable proposition',()=>{
+  assert.deepEqual(participants('If Chicago C wins the Chicago C vs Boston professional baseball game'),['Chicago C','Boston']);
+  assert.deepEqual(participants('In the upcoming college football game between UConn and Miami (OH), scheduled for'),['UConn','Miami (OH)']);
+  assert.ok(sameName('Chicago C','Chicago Cubs'));assert.ok(!sameName('Chicago C','Chicago White Sox'));assert.ok(!sameName('New York Y','New York Mets'));assert.ok(sameName('Youngstown St.','Youngstown State'));
+  const a=extractTerms(kSpread.data),b=extractTerms(pSpread.data);
+  assert.equal(a.type,'SPREAD');assert.equal(a.line,3.5);assert.equal(a.day,'2026-09-27');assert.equal(b.type,'SPREAD');assert.equal(b.day,'2026-09-27');
+  assert.equal(pSpread.data.binary,true);assert.equal(pSpread.data.yesLabel,'Chiefs');assert.equal(pSpread.data.yesToken,'kc');
+  // Different city/nickname naming: Kansas City vs Chiefs is not assumed equal.
+  assert.equal(matchTerms(a,b).classification,'NOT EQUIVALENT');
+  const t1=extractTerms(kTotal.data),t2=extractTerms(pTotal.data),m=matchTerms(t1,t2);
+  assert.equal(t1.type,'TOTAL');assert.equal(t2.type,'TOTAL');assert.equal(m.classification,'STRONG MATCH');assert.equal(m.orientation,'SAME');
+  assert.ok(m.residualRisks.some(r=>r.startsWith('CANCELLATION')));
+});
+test('contract matching: lines, dates, scope and inverted outcomes; never EXACT automatically',()=>{
+  const base=extractTerms(kTotal.data),other=extractTerms(pTotal.data);
+  assert.equal(matchTerms(base,{...other,line:8.5}).classification,'RELATED');
+  assert.equal(matchTerms(base,{...other,day:'2026-09-27'}).classification,'NOT EQUIVALENT');
+  assert.equal(matchTerms({...base,scope:'REGULATION'},{...other,scope:'INCLUDING_OT'}).classification,'NOT EQUIVALENT');
+  assert.equal(matchTerms(base,{...other,yesMeans:'UNDER'}).orientation,'INVERTED');
+  assert.equal(matchTerms(base,{...other,type:'OTHER'}).classification,'RELATED');
+  for(const x of [matchTerms(base,other),matchTerms(base,base)])assert.notEqual(x.classification,'EXACT MATCH');
+  const pairs=candidatePairs([kTotal,kSpread],[pTotal,pSpread]);assert.equal(pairs.length,1);assert.equal(pairs[0].a,kTotal.id);
+});
+test('EXACT MATCH needs an attestation that dies when either venue edits its rules',async()=>{
+  const p=new MarketPlatform({providers:new ProviderRegistry()});p.store.put(kTotal);p.store.put(pTotal);
+  assert.equal(p.pairMatch(kTotal,pTotal).classification,'STRONG MATCH');
+  assert.throws(()=>p.verifyPair({a:{venue:'kalshi',sourceId:kTotal.sourceId},b:{venue:'polymarket',sourceId:pTotal.sourceId},confirmation:'yes'}),/Type/);
+  const v=p.verifyPair({a:{venue:'kalshi',sourceId:kTotal.sourceId},b:{venue:'polymarket',sourceId:pTotal.sourceId},confirmation:VERIFY_PHRASE,note:'read both'});
+  assert.equal(v.classification,'EXACT MATCH');assert.equal(v.attestation.valid,true);
+  const edited={...pTotal,observedAt:2000,availableAt:2000,data:{...pTotal.data,settlementRules:pTotal.data.settlementRules+' Extra innings excluded.'}};
+  assert.notEqual(termsFingerprint(edited.data),termsFingerprint(pTotal.data));p.store.put(edited);
+  const after=p.pairMatch(kTotal,p.store.get(pTotal.id));assert.equal(after.classification,'STRONG MATCH');assert.equal(after.attestation.valid,false);
+  // A non-matching pair can never be attested.
+  p.store.put(kSpread);p.store.put(pSpread);
+  assert.throws(()=>p.verifyPair({a:{venue:'kalshi',sourceId:kSpread.sourceId},b:{venue:'polymarket',sourceId:pSpread.sourceId},confirmation:VERIFY_PHRASE}),/Only a STRONG MATCH/);
+  p.close();
+});
+test('complement legs are priced from both books with fees; never flagged risk-free',()=>{
+  const book=(y,n)=>({observedAt:1000,yes:{bids:[],asks:[{price:y,quantity:10}]},no:{bids:[],asks:[{price:n,quantity:10}]}});
+  const match={classification:'EXACT MATCH',missing:[],differences:[],fields:[]};
+  const q=arbitrageQuote({venue:'kalshi'},{venue:'polymarket'},book(.4,.62),book(.58,.45),{quantity:1,feeA:0,feeB:0,now:1000,match});
+  // SAME orientation: YES(A) .40 + NO(B) .45 = .85 -> 0.15 locked.
+  assert.equal(q.directions[0].theoreticalLockedReturn.toFixed(2),'0.15');assert.equal(q.directions[0].riskFree,false);
+});
+
+test('regressions from the live check: lazy names; single-market fetch keeps the parent event',async()=>{
+  assert.deepEqual(participants('If Houston wins by more than 2.5 points in the HOU Texans vs IND Colts Pro Football game originally'),['HOU Texans','IND Colts']);
+  let asked=null;const p=new PolymarketProvider({fetchImpl:async url=>{asked=String(url);return {ok:true,json:async()=>[{id:'77',question:'Spread: Texans (-2.5)',outcomes:'["Texans","Colts"]',clobTokenIds:'["h","i"]',active:true,events:[{id:'9',title:'Texans vs. Colts'}]}]};}});
+  const c=await p.market('77');assert.ok(asked.endsWith('/markets?id=77'),asked);assert.equal(c.data.eventTitle,'Texans vs. Colts');assert.deepEqual(extractTerms(c.data).teams,['Texans','Colts']);
+  const empty=new PolymarketProvider({fetchImpl:async()=>({ok:true,json:async()=>[]})});await assert.rejects(empty.market('1'),/not found/);
+});
+
+test('venue taker fees follow the published formulas and fail closed',()=>{
+  // Kalshi docs worked example: $0.055 revenue, model fee 0.00363825 -> fee + rounding = $0.005 (cent precision).
+  const k=kalshiFeeModel({ticker:'S',fee_type:'quadratic',fee_multiplier:1}).model;
+  const p=0.055,c=0.00363825/(0.07*p*(1-p));
+  assert.ok(Math.abs(takerFee(k,[{price:p,quantity:c}])-(0.06-p*c))<1e-6);
+  // 100 contracts at 50c, multiplier 0.5: 0.035*100*.25 = 0.875 -> charged 0.88.
+  assert.equal(takerFee(kalshiFeeModel({fee_type:'quadratic_with_maker_fees',fee_multiplier:.5}).model,[{price:.5,quantity:100}]),0.88);
+  assert.equal(kalshiFeeModel({fee_type:'flat',fee_multiplier:1}).model,null);assert.equal(kalshiFeeModel(null).model,null);
+  // Polymarket sports table: 100 shares at $0.50 -> $1.25; at $0.30 -> $1.05. Fees disabled -> 0.
+  const pm=polymarketFeeModel({feesEnabled:true,feeType:'sports_fees_v3',feeSchedule:{rate:'0.05',exponent:1,takerOnly:true}}).model;
+  assert.equal(takerFee(pm,[{price:.5,quantity:100}]),1.25);assert.equal(takerFee(pm,[{price:.3,quantity:100}]),1.05);
+  assert.equal(takerFee(polymarketFeeModel({feesEnabled:false}).model,[{price:.5,quantity:100}]),0);
+  assert.equal(polymarketFeeModel({feesEnabled:true,feeSchedule:{rate:'0.05',exponent:2}}).model,null);
+  assert.equal(polymarketFeeModel({}).model,null);assert.equal(takerFee(null,[{price:.5,quantity:1}]),null);
+});
+test("arbitrage prices fees on each direction's actual fills; unknown fees block the locked return",()=>{
+  const book=(y,n)=>({observedAt:1000,yes:{bids:[],asks:[{price:y,quantity:100}]},no:{bids:[],asks:[{price:n,quantity:100}]}});
+  const match={classification:'EXACT MATCH',missing:[],differences:[],fields:[]};
+  const k=kalshiFeeModel({fee_type:'quadratic',fee_multiplier:1}).model,pm=polymarketFeeModel({feesEnabled:true,feeSchedule:{rate:'0.05',exponent:1}}).model;
+  const q=arbitrageQuote({venue:'kalshi'},{venue:'polymarket'},book(.4,.62),book(.58,.45),{quantity:100,now:1000,match,feeModels:{a:k,b:pm}});
+  const d=q.directions[0];// YES A @ .40 (fee .07*100*.24=1.68), NO B @ .45 (fee .05*100*.2475=1.2375)
+  assert.equal(d.feeA,1.68);assert.equal(d.feeB,1.2375);assert.equal(d.theoreticalLockedReturn.toFixed(4),(100-40-45-1.68-1.2375).toFixed(4));
+  const none=arbitrageQuote({venue:'kalshi'},{venue:'polymarket'},book(.4,.62),book(.58,.45),{quantity:100,now:1000,match,feeModels:{a:k,b:null}});
+  assert.equal(none.directions[0].theoreticalLockedReturn,null);assert.ok(none.directions[0].blocked.includes('FEES_UNAVAILABLE'));
+});
+test('Kalshi contracts carry the series fee model and settlement source',async()=>{
+  const calls=[];const kp=new KalshiProvider({fetchImpl:async url=>{calls.push(String(url));const u=String(url);
+    if(u.includes('/series/'))return {ok:true,json:async()=>({series:{ticker:'KXMLBGAME',fee_type:'quadratic_with_maker_fees',fee_multiplier:.5,settlement_sources:[{name:'MLB',url:'https://www.mlb.com/'}]}})};
+    return {ok:true,json:async()=>({markets:[{ticker:'KXMLBGAME-26SEP26X-A',event_ticker:'KXMLBGAME-26SEP26X',title:'A wins'},{ticker:'KXMLBGAME-26SEP26X-B',event_ticker:'KXMLBGAME-26SEP26X',title:'B wins'}],cursor:''})};}});
+  const r=await kp.markets({series:'KXMLBGAME'});
+  assert.equal(calls.filter(u=>u.includes('/series/')).length,1);// one lookup per series, cached
+  assert.equal(r.markets[0].data.feeModel.rate,0.035);assert.equal(r.markets[0].data.resolutionSource,'https://www.mlb.com/');
+  const broken=new KalshiProvider({fetchImpl:async url=>String(url).includes('/series/')?{ok:false,status:500}:{ok:true,json:async()=>({markets:[{ticker:'T-1',event_ticker:'T-1',title:'x'}]})}});
+  const b=await broken.markets({});assert.equal(b.markets[0].data.feeModel,null);assert.match(b.markets[0].data.feeModelReason,/not loaded/);
+});
+
+test('paper fills default to the venue fee schedule; no schedule and no typed fee is refused',async()=>{
+  const make=series=>{const registry=new ProviderRegistry();registry.register({id:'kalshi',status:()=>({id:'kalshi',status:'CONNECTED'}),
+    market:async()=>normalizeKalshi({ticker:'TEST',title:'TEST FIXTURE',status:'active',event_ticker:'EVENT'},Date.now(),series),
+    book:async()=>normalizeKalshiBook({orderbook_fp:{yes_dollars:[['0.4','100']],no_dollars:[['0.5','100']]}},Date.now()),markets:async()=>({markets:[],cursor:null})});
+    const p=new MarketPlatform({providers:registry});p.deposit({venue:'kalshi',amount:'100',id:'f'});return p;};
+  const p=make({ticker:'EVENT',fee_type:'quadratic',fee_multiplier:1});
+  const r=await p.propose({id:'v1',venue:'kalshi',sourceId:'TEST',mode:'PAPER',outcome:'YES',side:'BUY',quantity:10});
+  // YES ask = 1 - best NO bid 0.5 = 0.50; fee = ceil_cent(5 + 0.07*10*.25) - 5 = 0.18
+  assert.equal(r.status,'PROPOSED');assert.equal(r.order.fee,'0.180000');assert.equal(r.order.feeModel.kind,'VENUE_SCHEDULE');
+  const typed=await p.propose({id:'v2',venue:'kalshi',sourceId:'TEST',mode:'PAPER',outcome:'YES',side:'BUY',quantity:10,feeBps:100});
+  assert.equal(typed.order.fee,'0.050000');assert.equal(typed.order.feeModel.kind,'USER_MODELED_BPS');p.close();
+  const q=make(null);await assert.rejects(q.propose({id:'v3',venue:'kalshi',sourceId:'TEST',mode:'PAPER',outcome:'YES',side:'BUY',quantity:10}),/Venue fee schedule unavailable/);q.close();
+});
+
+function stockPlatform({quote={bid:99.9,ask:100.1,bidSize:5,askSize:5},state='OPEN',clock=()=>Date.now()}={}){
+  const src={status:()=>({status:'CONNECTED'}),quotes:async syms=>Object.fromEntries(syms.map(x=>[x,{symbol:x,...quote,quoteAt:clock(),receivedAt:clock(),source:'test'}]))};
+  const p=new MarketPlatform({providers:new ProviderRegistry(),stockQuotes:src,stockClock:clock,stockSession:()=>({state})});
+  p.risk.setLimits({maxOrderUsd:1000,maxPositionUsd:1000,maxEventUsd:1000,maxVenueUsd:1000,maxStrategyUsd:1000,maxTotalUsd:1000});return p;
+}
+test('stocks paper broker: preview -> risk -> fill in the unified ledger; sells pay pass-through fees',async()=>{
+  const p=stockPlatform();p.deposit({venue:STOCK_VENUE,amount:'1000',id:'s1'});
+  const b=await p.stocksPreview({symbol:'spy',side:'BUY',notionalUsd:250});
+  assert.equal(b.status,'PROPOSED');assert.equal(b.order.price,100.1);assert.equal(b.order.quantity,2.497502);assert.equal(b.order.fee,'0.000000');
+  assert.equal(p.stocks.account().buyingPower<1000,true);
+  assert.equal(p.stocks.submit(b.id).status,'FILLED');
+  const pos=p.stocks.positions({SPY:{bid:99.9}});assert.equal(pos[0].symbol,'SPY');assert.equal(pos[0].quantity,2.497502);assert.ok(pos[0].unrealized<0);
+  // A sale above $500 would pay SEC; this one is small: no SEC, no TAF (<=50 shares).
+  const s2=await p.stocksPreview({symbol:'SPY',side:'SELL',quantity:1});assert.equal(s2.order.price,99.9);assert.equal(s2.order.fee,'0.000000');p.stocks.submit(s2.id);
+  assert.equal(p.stocks.positions()[0].quantity,1.497502);
+  // Overselling is refused by the governor.
+  const over=await p.stocksPreview({symbol:'SPY',side:'SELL',quantity:5});assert.equal(over.status,'REJECTED');assert.ok(over.decision.reasons.includes('OVERSELL'));
+  // Cancel a pending preview; a filled order cannot be cancelled.
+  const c=await p.stocksPreview({symbol:'QQQ',side:'BUY',quantity:1});assert.equal(p.stocks.cancel(c.id).status,'CANCELLED');assert.throws(()=>p.stocks.cancel(b.id),/FILLED/);
+  p.close();
+});
+test('stocks paper broker refuses closed markets, missing keys, one-sided quotes, non-marketable limits and live mode',async()=>{
+  const closed=stockPlatform({state:'CLOSED'});await assert.rejects(closed.stocksPreview({symbol:'SPY',side:'BUY',quantity:1}),/closed/);closed.close();
+  const oneSided=stockPlatform({quote:{bid:null,ask:100}});await assert.rejects(oneSided.stocksPreview({symbol:'SPY',side:'BUY',quantity:1}),/two-sided/);oneSided.close();
+  const p=stockPlatform();
+  await assert.rejects(p.stocksPreview({symbol:'SPY',side:'BUY',quantity:1,type:'limit',limitPrice:99}),/not marketable/);
+  await assert.rejects(p.stocksPreview({symbol:'SPY',side:'BUY',quantity:1,mode:'LIVE'}),/no real brokerage/);
+  await assert.rejects(p.stocksPreview({symbol:'bad symbol!',side:'BUY',quantity:1}),/Invalid symbol/);
+  const noKey=new AlpacaQuotes({env:{}});await assert.rejects(noKey.quotes(['SPY']),/ALPACA_KEY_ID/);assert.equal(noKey.status().status,'NOT CONFIGURED');
+  const st=await new MarketPlatform({providers:new ProviderRegistry(),stockQuotes:noKey}).stocksStatus('SPY');assert.match(st.quoteError,/unavailable/);assert.deepEqual(st.quotes,{});
+  p.close();
+});
+test('stale stock quote at submit time is rejected by the governor',async()=>{
+  let now=Date.now();const p=stockPlatform({clock:()=>now});p.deposit({venue:STOCK_VENUE,amount:'100',id:'s'});
+  const b=await p.stocksPreview({symbol:'SPY',side:'BUY',quantity:0.5});now+=0;// quote stamped at preview time
+  const real=Date.now;Date.now=()=>now+60000;try{assert.equal(p.stocks.submit(b.id).status,'REJECTED');}finally{Date.now=real;}
+  p.close();
+});
+test('Alpaca snapshot parsing keeps IEX sizes and timestamps; auth errors are labelled',async()=>{
+  const q=new AlpacaQuotes({env:{ALPACA_KEY_ID:'k',ALPACA_SECRET_KEY:'s'},fetchImpl:async()=>({ok:true,json:async()=>({SPY:{latestQuote:{bp:99,ap:101,bs:2,as:3,t:'2026-09-25T15:00:00Z'},latestTrade:{p:100,t:'2026-09-25T15:00:00Z'},prevDailyBar:{c:98}}})})});
+  const r=await q.quotes(['SPY','nope!']);assert.deepEqual(Object.keys(r),['SPY']);assert.equal(r.SPY.ask,101);assert.equal(r.SPY.askSize,3);assert.equal(r.SPY.quoteAt,Date.parse('2026-09-25T15:00:00Z'));
+  const bad=new AlpacaQuotes({env:{ALPACA_KEY_ID:'k',ALPACA_SECRET_KEY:'s'},fetchImpl:async()=>({ok:false,status:403})});await assert.rejects(bad.quotes(['SPY']));assert.equal(bad.status().status,'AUTH ERROR');
+});
+
+test('replay reveals data by availability: candle-derived samples only after their minute closes',()=>{
+  const rec=tapeRecords([{t:60000,bid:10,ask:10,src:'coinbase-candles'},{t:75000,bid:12,ask:12,src:'coinbase-candles'},{t:80000,bid:11,ask:11.1,src:'robinhood'}],'X');
+  assert.deepEqual(rec.map(r=>r.availableAt),[120000,120000,80000]);assert.equal(rec[0].synthetic,true);assert.equal(rec[2].synthetic,false);
+  const sess=new ReplaySession(rec,{start:60000,end:200000});
+  assert.equal(sess.quote('X'),null);// nothing is knowable at 60 s, although two rows are stamped 60 s / 75 s
+  sess.advanceTo(90000);assert.equal(sess.quote('X').bid,11);// the live quote at 80 s
+  sess.advanceTo(130000);assert.equal(sess.history('X').length,3);assert.equal(sess.quote('X').bid,12);
+  sess.advanceTo(100000);assert.equal(sess.clock,130000);// the clock never goes back
+  assert.deepEqual(alpacaMinuteRecords([{t:'2025-06-10T13:30:00Z',c:200}],'AAPL')[0].availableAt,Date.parse('2025-06-10T13:31:00Z'));
+});
+test('replay backtest: decisions see only the past, fills happen on the next available quote',()=>{
+  const rows=[];for(let i=0;i<200;i++)rows.push({t:i*15000,bid:100+i*.1,ask:100.05+i*.1,src:'robinhood'});
+  const rec=tapeRecords(rows,'X'),mk=()=>new ReplaySession(rec,{start:0,end:199*15000});
+  const bh=runReplay(mk(),{key:'X',strategy:'buy-hold',cash:1000});
+  assert.equal(bh.lookAheadViolations,0);assert.equal(bh.trades.length,1);
+  assert.equal(bh.trades[0].decidedAt,0);assert.equal(bh.trades[0].at,15000);assert.ok(Math.abs(bh.trades[0].price-100.15)<1e-9);// ask of the NEXT quote
+  assert.ok(bh.returnPct>0&&bh.returnPct<bh.buyHoldPct+1);
+  const m=runReplay(mk(),{key:'X',strategy:'momentum',params:{lookback:5,thresholdBps:5},feeBps:10});
+  assert.equal(m.lookAheadViolations,0);for(const tr of m.trades)assert.ok(tr.at>tr.decidedAt);
+  assert.throws(()=>strategyParams('momentum',{lookback:-1}),/Invalid/);assert.throws(()=>runReplay(mk(),{key:'X',strategy:'nope'}),/Unknown/);
+});
+test('Market Lab runs are reproducible experiment records (fingerprint, code version, append-only)',async()=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'mpo-lab-'));fs.mkdirSync(path.join(dir,'robinhood-tape'));
+  fs.writeFileSync(path.join(dir,'robinhood-tape','BTC-USD.ndjson'),Array.from({length:120},(_,i)=>JSON.stringify({t:1e12+i*15000,bid:100+Math.sin(i/5),ask:100.1+Math.sin(i/5),src:'robinhood'})).join(String.fromCharCode(10))+String.fromCharCode(10));
+  const p=new MarketPlatform({providers:new ProviderRegistry(),dataDir:dir});
+  assert.equal(p.labSources().tape[0].key,'BTC-USD');
+  const q={source:'tape',key:'BTC-USD',start:1e12,end:1e12+119*15000,strategy:'mean-reversion',params:{lookback:8,thresholdBps:20}};
+  const a=await p.labRun(q),b=await p.labRun(q);
+  assert.equal(a.datasetFp,b.datasetFp);assert.equal(a.finalEquity,b.finalEquity);assert.notEqual(a.id,b.id);assert.match(a.codeVersion,/replay./);
+  assert.equal(p.labRuns().length,2);assert.throws(()=>p.store.db.exec('DELETE FROM lab_runs'),/append-only/);
+  await assert.rejects(p.labRun({...q,start:q.end,end:q.start}),/start before/);
+  const r=await p.labReplayStart({source:'tape',key:'BTC-USD',start:q.start,end:q.end});assert.equal(r.visible.length,1);
+  const st=p.labReplayStep({id:r.id,ms:30000});assert.equal(st.revealed,3);
+  await assert.rejects(fetchAlpacaMinutes({symbol:'AAPL',start:1,end:2,env:{}}),/Alpaca/);
+  p.close();fs.rmSync(dir,{recursive:true,force:true});
+});
+
+test('macro vintages: a revision is invisible before it was published; values count from end of publication day (ET)',()=>{
+  assert.equal(new Date(endOfDayEt('2026-10-14')).toISOString(),'2026-10-15T03:59:59.999Z');// EDT
+  assert.equal(new Date(endOfDayEt('2026-01-14')).toISOString(),'2026-01-15T04:59:59.999Z');// EST
+  const v=vintagesFrom([{date:'2026-08-01',value:'100',realtime_start:'2026-09-11'},{date:'2026-08-01',value:'101',realtime_start:'2026-10-14'},{date:'2026-09-01',value:'102',realtime_start:'2026-10-14'},{date:'2026-07-01',value:'.',realtime_start:'2026-08-12'}]);
+  assert.equal(v.length,3);
+  const sept20=Date.parse('2026-09-20T12:00:00Z'),oct14noon=Date.parse('2026-10-14T16:00:00Z'),oct16=Date.parse('2026-10-16T00:00:00Z');
+  assert.deepEqual(macroAsOfFn(v,sept20).map(r=>r.value),[100]);
+  assert.deepEqual(macroAsOfFn(v,oct14noon).map(r=>r.value),[100]);// published that day, not yet counted
+  assert.deepEqual(macroAsOfFn(v,oct16).map(r=>r.value),[101,102]);// the revision replaces the first print
+  const rows=[{date:'a',value:100},{date:'b',value:101},{date:'c',value:100}];
+  assert.deepEqual(macroTransform(rows,'mom_pct').map(r=>r.value),[1,-0.99]);assert.deepEqual(macroTransform(rows,'diff').map(r=>r.value),[1,-1]);
+  assert.deepEqual(parseFredCsv('observation_date,CPIAUCSL\n2026-07-01,332.813\n2026-08-01,.\n'),[{date:'2026-07-01',value:332.813}]);
+});
+test('macro: keyless FRED refuses as-of history; Kalshi ladder gives an implied median without inventing rungs',async()=>{
+  await assert.rejects(new FredSource({env:{}}).vintages('CPIAUCSL'),/FRED_API_KEY/);
+  const mk=(strike,bid,ask,type='greater')=>({sourceId:'K-'+strike,data:{strike,strikeType:type,yesBid:bid,yesAsk:ask,title:'t',closeAt:2000}});
+  const l=impliedLadder([mk(0.4,.83,.87),mk(0.2,.93,.97),mk(0.3,.93,.97),mk(0.5,.5,.54),mk(0.6,.15,.18),mk(0.7,null,.05),mk(0.9,.01,.02,'less')]);
+  assert.deepEqual(l.rungs.map(r=>r.strike),[0.2,0.3,0.4,0.5,0.6]);// one-sided and non-'greater' rungs dropped
+  assert.ok(l.impliedMedian>0.5&&l.impliedMedian<0.6);assert.equal(l.closeAt,2000);
+  assert.equal(impliedLadder([]).impliedMedian,null);
+});
+test('macro snapshot: FRED and Kalshi failures stay local to their indicator',async()=>{
+  const registry=new ProviderRegistry();
+  registry.register({id:'kalshi',status:()=>({}),events:async({series})=>{if(series==='KXU3')throw new Error('kalshi down');return [{event_ticker:series+'-X',title:series,settlement_sources:[{name:'BLS'}]}];},
+    markets:async({eventTicker})=>({markets:[0.1,0.2,0.3].map((k,i)=>normalizeKalshi({ticker:eventTicker+'-T'+k,event_ticker:eventTicker,title:'x',floor_strike:k,strike_type:'greater',yes_bid_dollars:String(.9-i*.3),yes_ask_dollars:String(.92-i*.3),close_time:new Date(Date.now()+86400000).toISOString()},Date.now()))})});
+  const p=new MarketPlatform({providers:registry});
+  p.fred=new FredSource({env:{},fetchImpl:async url=>String(url).includes('UNRATE')?{ok:false,status:500}:{ok:true,text:async()=>'d,v\n2026-06-01,100\n2026-07-01,101\n'}});
+  const m=await p.macroSnapshot({force:true});
+  const cpi=m.indicators.find(i=>i.id==='CPI'),un=m.indicators.find(i=>i.id==='UNRATE');
+  assert.equal(cpi.last.value,1);assert.ok(cpi.ladder.impliedMedian>0.1);assert.match(un.error,/500/);assert.match(un.ladder.error,/kalshi down/);
+  assert.equal(m.vintageMode,false);assert.match(m.note,/context only/);assert.ok(m.calendar.length>=1);
+  p.close();
 });
