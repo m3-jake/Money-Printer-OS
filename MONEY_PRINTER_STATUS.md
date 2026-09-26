@@ -989,3 +989,18 @@ Kalshi and Robinhood event contracts are already covered by the MPOS core platfo
 - **UI:** EDGAR window (SEC icon). Load latest by form, company lookup by ticker, table (accepted, form, company, items, Form 4 transactions button, analysis column, links), with the not-configured notice.
 - **Tests:** 2 new (fixtures of the documented formats: submissions JSON, Atom, Form 4 XML; analysis separation; User-Agent required and sent; stored availableAt; event published once). `market-core` 44. **Not checked against live SEC**, since no declared contact is configured.
 - **Tooling note:** heredoc-fed node scripts on this machine lose backslashes in regex literals, which broke `edgar.js` once and was caught at import. Use the Edit/Write tools for code with regexes.
+
+## Batch Y (2026-09-26): Weather desk: NWS forecast vs Kalshi daily-high markets, alerts, NHC storms (Phase 4)
+
+- **New `src/core/weather.js`:**
+  - `bucketLadder` turns Kalshi's mutually exclusive temperature buckets (between / ≤ / ≥) into a distribution: the sum of quoted mids is shown as is; median bucket and expected high come from the normalized distribution.
+  - NWS point forecasts become daytime highs by date.
+  - NWS Severe/Extreme alerts are stored as `WeatherAlert` entities available at their **sent** time, and publish `NEWS_RECEIVED` once.
+  - NHC `CurrentStorms.json` for active tropical systems.
+  - `weatherLinks` gives **SPECULATIVE_ANALYSIS** links (sector ETFs by hazard type, and loaded weather/storm market titles).
+- **Finding:** Kalshi's daily-high series now settle on **The Weather Company** (series settlement source), not NWS. The desk says so: the NWS forecast is an input to compare against the market, never the settlement value.
+- **10 cities** (NYC, Chicago, Miami, LA, Austin, Denver, Philadelphia, Atlanta, Seattle, Dallas), today and tomorrow. Kalshi calls are paced like Macro; each city fails on its own.
+- **Bug found by the new test:** an alert missing an optional field (e.g. `urgency`) made storage throw "Non-JSON value" and dropped **every** alert in the batch. Optional fields are now null, and each alert is stored independently.
+- **Live check:** all 10 cities matched, e.g. Philadelphia today NWS 63°F vs market 67–68°F (gap −4.4); LA +3.5; Denver −0.1. 80 alerts; storms Fay (TD), Gonzalo (PTC), Odalys/Polo/Nolo (HU). First load about 9 s (≈30 Kalshi calls, paced), then 10-minute cache.
+- **UI:** Weather window (WX icon): forecast-vs-market table with distribution bars, tropical systems, alert list with ALL/HEAT/FLOOD/TROPICAL/WINTER/FIRE filters, speculative-exposure column.
+- Tests: 3 new (buckets, NWS/NHC parsing, links labelled, snapshot joins forecast and ladder by date, per-city failures). `market-core` 47.

@@ -22,6 +22,7 @@ import fs from 'node:fs';
 import { createHash } from 'node:crypto';
 import { MACRO_INDICATORS,FredSource,transform as macroTransform,impliedLadder,asOf as macroAsOf,indicator as macroIndicator } from './macro.js';
 import { EdgarSource,analyseFiling } from './edgar.js';
+import { WEATHER_CITIES,WeatherSource,bucketLadder,weatherLinks } from './weather.js';
 import { ReplaySession,runReplay,readTape,tapeSymbols,bookRecords,fetchAlpacaMinutes,REPLAY_STRATEGIES,strategyParams } from './replay.js';
 const CODE_VERSION=(()=>{try{const pkg=JSON.parse(fs.readFileSync(new URL('../../package.json',import.meta.url),'utf8'));const h=createHash('sha256').update(fs.readFileSync(new URL('./replay.js',import.meta.url))).digest('hex').slice(0,12);return `${pkg.version}+replay.${h}`;}catch{return 'unknown';}})();
 
@@ -30,7 +31,7 @@ const swapSides=book=>({...book,yes:book.no,no:book.yes});
 
 export class MarketPlatform {
   constructor({file=':memory:',dataDir=null,providers=null,stockQuotes=undefined,stockClock=undefined,stockSession=undefined}={}){
-    this.store=new CoreDatabase(file);this.ledger=new UnifiedLedger(this.store);this.bus=new MarketEventBus();this.risk=new RiskGovernor(this.store,this.ledger,this.bus);this.strategies=new StrategyRegistry(this.store);this.legacyReaders={};this.replays=new Map();this.fred=new FredSource();this.macroCache=null;this.edgar=new EdgarSource();
+    this.store=new CoreDatabase(file);this.ledger=new UnifiedLedger(this.store);this.bus=new MarketEventBus();this.risk=new RiskGovernor(this.store,this.ledger,this.bus);this.strategies=new StrategyRegistry(this.store);this.legacyReaders={};this.replays=new Map();this.fred=new FredSource();this.macroCache=null;this.edgar=new EdgarSource();this.weather=new WeatherSource();this.weatherCache=null;
     this.store.db.exec(`CREATE TABLE IF NOT EXISTS lab_runs(id TEXT PRIMARY KEY, at INTEGER NOT NULL, source TEXT NOT NULL, key TEXT NOT NULL, start_ms INTEGER NOT NULL, end_ms INTEGER NOT NULL,
       strategy TEXT NOT NULL, params TEXT NOT NULL, dataset_fp TEXT NOT NULL, records INTEGER NOT NULL, code_version TEXT NOT NULL, machine TEXT NOT NULL, seed TEXT, result TEXT NOT NULL);
       CREATE TRIGGER IF NOT EXISTS lab_runs_no_update BEFORE UPDATE ON lab_runs BEGIN SELECT RAISE(ABORT,'Experiment records are append-only'); END;
@@ -242,6 +243,36 @@ export class MarketPlatform {
         if(isNew)this.bus.publish('SEC_FILING_RECEIVED',{id,form:f.facts.form,company:f.facts.company,ticker:f.facts.ticker,items:f.facts.items.map(i=>i.code)});}
       return {...f,analysis:analyseFiling(f,contracts)};
     });
+  }
+  // Weather desk: NWS forecast highs next to Kalshi's daily-high bucket markets, severe alerts and NHC
+  // storms. Alerts are stored as WeatherAlert entities available at their NWS "sent" time.
+  async weatherSnapshot({force=false}={}){
+    if(!force&&this.weatherCache&&Date.now()-this.weatherCache.at<600000)return this.weatherCache.data;
+    const kalshi=this.providers.providers.get('kalshi')||null,now=Date.now(),sleep=ms=>new Promise(r=>setTimeout(r,ms));
+    const call=async fn=>{for(let i=0;;i++){try{const out=await fn();await sleep(this.macroPaceMs??150);return out;}catch(e){if(e.code!=='RATE_LIMITED'||i>=2)throw e;await sleep(Math.min(15000,Math.max(1000,(kalshi.health?.backoffUntil||0)-Date.now())));}}};
+    const contracts=this.store.list({kind:'Contract',limit:1000});
+    let alerts=[],alertsError=null,storms=[],stormsError=null;
+    try{alerts=(await this.weather.alerts()).sort((a,b)=>b.sent-a.sent).slice(0,80);for(const a of alerts){const id=stableId('WeatherAlert','nws',a.id),fresh=!this.store.get(id);/* one malformed alert must not drop the rest */try{this.store.put({kind:'WeatherAlert',provider:'nws',sourceId:a.id,data:a,observedAt:a.sent,availableAt:a.sent});}catch{continue;}if(fresh)this.bus.publish('NEWS_RECEIVED',{kind:'WEATHER_ALERT',id,event:a.event,area:a.area,severity:a.severity});}}catch(e){alertsError=e.message;}
+    try{storms=await this.weather.storms();}catch(e){stormsError=e.message;}
+    const cities=[];
+    for(const city of WEATHER_CITIES){
+      const row={...city,forecast:null,forecastError:null,markets:[],marketError:null};
+      try{row.forecast=await this.weather.highs(city);}catch(e){row.forecastError=e.message;}
+      if(kalshi)try{
+        const events=(await call(()=>kalshi.events({series:city.kalshi}))).slice(0,2);
+        for(const e of events){
+          const m=String(e.event_ticker).match(/-(\d{2})([A-Z]{3})(\d{2})$/),months={JAN:1,FEB:2,MAR:3,APR:4,MAY:5,JUN:6,JUL:7,AUG:8,SEP:9,OCT:10,NOV:11,DEC:12};
+          const date=m?`20${m[1]}-${String(months[m[2]]).padStart(2,'0')}-${m[3]}`:null;const {markets}=await call(()=>kalshi.markets({eventTicker:e.event_ticker}));for(const x of markets)this.store.put(x);
+          const ladder=bucketLadder(markets),nws=date?row.forecast?.highs?.[date]?.high??null:null;
+          row.markets.push({eventTicker:e.event_ticker,date,title:e.title,...ladder,nwsHigh:nws,gap:nws!==null&&ladder.expectedHigh!==null?Math.round((nws-ladder.expectedHigh)*10)/10:null,settlement:e.settlement_sources?.[0]?.name||null});
+        }
+      }catch(e){row.marketError=e.message;}
+      else row.marketError='Kalshi provider unavailable';
+      cities.push(row);
+    }
+    const data={at:now,nws:this.weather.status(),cities,alerts:alerts.map(a=>({...a,analysis:weatherLinks(`${a.event} ${a.area}`,contracts)})),alertsError,storms:storms.map(s=>({...s,analysis:weatherLinks(`hurricane tropical storm ${s.name}`,contracts)})),stormsError,
+      note:'Kalshi settles daily highs on The Weather Company reading; the NWS forecast here is an input, not the settlement value. Sector and market links are speculative.'};
+    this.weatherCache={at:now,data};return data;
   }
   async edgarLatest(form='8-K'){return {status:this.edgar.status(),form,filings:this.recordFilings(await this.edgar.latest(form))};}
   async edgarCompany(ticker){const {filingsFromSubmissions}=await import('./edgar.js');const sub=await this.edgar.company(ticker);return {status:this.edgar.status(),company:sub.name,cik:sub.cik,tickers:sub.tickers,sic:sub.sicDescription||null,filings:this.recordFilings(filingsFromSubmissions(sub,{limit:60}))};}

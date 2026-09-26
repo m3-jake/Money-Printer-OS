@@ -16,6 +16,7 @@
 <script src="/js/mpo-marketlab.js"></script>
 <script src="/js/mpo-macro.js"></script>
 <script src="/js/mpo-edgar.js"></script>
+<script src="/js/mpo-weather.js"></script>
 </head>
 <body>
 <div class="desktop" id="desktop">
@@ -494,6 +495,7 @@ const APPS=[
 ['marketlab','Market Lab','RPL','dark'],
 ['macro','Macro','MAC','dark'],
 ['edgar','EDGAR','SEC','dark'],
+['weather','Weather','WX','dark'],
 ['robinhood','Robinhood','RH','dark'],
 ['researchmon','Lab Monitor','LAB','dark','trade'],
 ['journal','Journal','JRN','dark'],
@@ -506,14 +508,14 @@ const APPS=[
 ];
 const ICON_PNG={money:'money.png',trade:'trade.png',sportsbook:'sportsbook.png',robinhood:'robinhood.png',system:'settings.png',network:'network.png',settings:'settings.png'};
 const TAB_LABEL={sportsbook:'Live combos',trade:'Pump.fun',evolution:'Evolution Lab',wallet:'Wallets',risk:'Risk',archive:'Archive',control:'Controls',researchmon:'Lab Monitor',system:'Monitor',economics:'Product',network:'Network',log:'Log',updater:'Updater',settings:'Settings'};
-const DESKTOP_ICONS=['money','command','trade','sportsbook','kalshi','arbitrage','stocks','marketlab','macro','edgar','robinhood','journal','system'];
+const DESKTOP_ICONS=['money','command','trade','sportsbook','kalshi','arbitrage','stocks','marketlab','macro','edgar','weather','robinhood','journal','system'];
 const appMeta=id=>APPS.find(a=>a[0]===id);
 const hostOf=id=>appMeta(id)?.[4]||id;
 const HOSTS=APPS.filter(a=>!a[4]).map(a=>a[0]);
 const tabsOf=host=>[host,...APPS.filter(a=>a[4]===host).map(a=>a[0])];
 const hasTabs=host=>tabsOf(host).length>1;
 const defaultLayout={
-robinhood:{x:200,y:90,w:880,h:720},stocks:{x:170,y:60,w:900,h:680},marketlab:{x:140,y:50,w:940,h:700},macro:{x:110,y:40,w:980,h:720},edgar:{x:130,y:60,w:980,h:680},
+robinhood:{x:200,y:90,w:880,h:720},stocks:{x:170,y:60,w:900,h:680},marketlab:{x:140,y:50,w:940,h:700},macro:{x:110,y:40,w:980,h:720},edgar:{x:130,y:60,w:980,h:680},weather:{x:150,y:70,w:1000,h:700},
 trade:{x:120,y:70,w:790,h:690},sportsbook:{x:250,y:140,w:880,h:600},
 system:{x:660,y:80,w:520,h:470},journal:{x:90,y:56,w:740,h:540},money:{x:320,y:120,w:620,h:520}
 };
@@ -1530,6 +1532,7 @@ function renderAll(force=false){
  window.MPOMarketLab?.render();
  window.MPOMacro?.render();
  window.MPOEdgar?.render();
+ window.MPOWeather?.render();
  if(force)renderSig.clear(); const s=state||{},m=s.system?.metrics||{},e=s.evolutionLoop||{},p=s.portfolio||{}; const t0=performance.now();
  sampleSystem();renderGlances();
  renderChanged('trade',[p.equitySol,p.cashSol,s.dailyPnlSol,s.system?.health,s.system?.paused,s.system?.killSwitch,s.watchlist,s.positions,s.solanaBook],renderTrade);

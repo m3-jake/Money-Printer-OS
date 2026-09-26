@@ -24,6 +24,7 @@ import { AlpacaQuotes,STOCK_VENUE } from '../src/core/brokers.js';
 import { ReplaySession,runReplay,tapeRecords,alpacaMinuteRecords,fetchAlpacaMinutes,strategyParams } from '../src/core/replay.js';
 import { endOfDayEt,transform as macroTransform,parseFredCsv,vintagesFrom,asOf as macroAsOfFn,impliedLadder,FredSource } from '../src/core/macro.js';
 import { filingsFromSubmissions,filingsFromAtom,parseForm4,analyseFiling,userAgent,EdgarSource } from '../src/core/edgar.js';
+import { bucketLadder,dailyHighs,parseAlerts,parseStorms,weatherLinks,WeatherSource } from '../src/core/weather.js';
 import { StrategyRegistry,promotionCheck,labChampionLifecycle } from '../src/core/strategies.js';
 import { assertGlobalTradingNotHalted } from '../src/core/executionBoundary.js';
 import { localMutationAllowed } from '../src/core/http.js';
@@ -501,5 +502,39 @@ test('EDGAR analysis is labelled and separate; filings are stored at acceptance 
   const out=p.recordFilings(filingsFromSubmissions(SUBMISSIONS));p.recordFilings(filingsFromSubmissions(SUBMISSIONS));await nextTurn();await nextTurn();
   assert.equal(out[0].analysis.kind,'RULE_BASED_ANALYSIS');assert.equal(seen.length,2);
   const stored=p.store.get(stableId('Filing','sec','0000320193-26-000101'));assert.equal(stored.availableAt,Date.parse('2026-09-25T16:31:02.000Z'));assert.equal(stored.fact,true);assert.equal(stored.data.catalysts,undefined);
+  p.close();
+});
+
+const wx=(type,floor,cap,bid,ask)=>({sourceId:`W-${type}-${floor}-${cap}`,data:{strikeType:type,floorStrike:floor,capStrike:cap,yesBid:bid,yesAsk:ask,title:'t',closeAt:5000}});
+test('weather buckets: exclusive ranges, tails, median and expected high from the normalized distribution',()=>{
+  const l=bucketLadder([wx('greater',69,null,0,.02),wx('between',68,69,0,.02),wx('between',66,67,.05,.07),wx('between',64,65,.3,.34),wx('between',62,63,.4,.44),wx('less',null,62,.14,.18),wx('between',70,71,null,.5)]);
+  assert.deepEqual(l.buckets.map(b=>[b.lo,b.hi]),[[-Infinity,61],[62,63],[64,65],[66,67],[68,69],[70,Infinity]]);// one-sided bucket dropped
+  assert.equal(l.medianBucket,'62–63');assert.equal(l.sumOfMids,0.98);assert.ok(l.expectedHigh>61&&l.expectedHigh<65);assert.equal(l.closeAt,5000);
+  assert.equal(bucketLadder([]).medianBucket,null);
+});
+test('NWS parsing: daytime highs by date, alerts with sent time, storms; links are labelled speculative',()=>{
+  const h=dailyHighs([{isDaytime:true,temperature:66,temperatureUnit:'F',startTime:'2026-09-26T06:00:00-04:00',name:'Today',shortForecast:'Sunny'},{isDaytime:false,temperature:55,temperatureUnit:'F',startTime:'2026-09-26T18:00:00-04:00'},{isDaytime:true,temperature:19,temperatureUnit:'C',startTime:'2026-09-27T06:00:00-04:00'}]);
+  assert.deepEqual(Object.keys(h),['2026-09-26']);assert.equal(h['2026-09-26'].high,66);
+  const a=parseAlerts({features:[{properties:{id:'urn:1',event:'Flash Flood Warning',severity:'Severe',areaDesc:'Pecos, TX',sent:'2026-09-26T16:19:00-05:00'}},{properties:{event:'no id'}}]});
+  assert.equal(a.length,1);assert.equal(a[0].sent,Date.parse('2026-09-26T21:19:00Z'));assert.deepEqual(a[0].states,['TX']);
+  const s=parseStorms({activeStorms:[{id:'al062026',name:'Fay',classification:'TD',intensity:'30',pressure:'1009',latitudeNumeric:29.8,longitudeNumeric:-43.9}]});assert.equal(s[0].intensityKt,30);
+  const link=weatherLinks('Hurricane Warning Miami-Dade',[{id:'c',provider:'kalshi',data:{title:'Will Hurricane Fay hit Miami?'}},{id:'d',provider:'kalshi',data:{title:'Fed rate?'}}]);
+  assert.equal(link.kind,'SPECULATIVE_ANALYSIS');assert.ok(link.sectors.includes('Insurers (KIE)'));assert.deepEqual(link.markets.map(m=>m.id),['c']);
+});
+test('weather snapshot: NWS forecast compared with the Kalshi ladder for the same date; failures stay per city',async()=>{
+  const registry=new ProviderRegistry(),future=new Date(Date.now()+86400000).toISOString();
+  registry.register({id:'kalshi',status:()=>({}),events:async({series})=>{if(series==='KXHIGHCHI')throw new Error('down');return [{event_ticker:series+'-26SEP26',title:'High',settlement_sources:[{name:'The Weather Company'}]}];},
+    markets:async({eventTicker})=>({markets:[['between',62,63,'.40','.44'],['between',64,65,'.30','.34'],['less',null,62,'.14','.18'],['greater',65,null,'.08','.12']].map(([t,f,c,b,a],i)=>normalizeKalshi({ticker:eventTicker+'-'+i,event_ticker:eventTicker,title:'x',strike_type:t,floor_strike:f,cap_strike:c,yes_bid_dollars:b,yes_ask_dollars:a,close_time:future},Date.now()))})});
+  const p=new MarketPlatform({providers:registry});p.macroPaceMs=0;
+  p.weather=new WeatherSource({fetchImpl:async url=>{const u=String(url);
+    if(u.includes('/alerts'))return {ok:true,json:async()=>({features:[{properties:{id:'urn:a',event:'Heat Advisory',severity:'Severe',areaDesc:'Dallas, TX',sent:new Date().toISOString()}}]})};
+    if(u.includes('CurrentStorms'))return {ok:false,status:503};
+    if(u.includes('/points/'))return {ok:true,json:async()=>({properties:{forecast:'https://api.weather.gov/f/'+u.split('/points/')[1]}})};
+    return {ok:true,json:async()=>({properties:{periods:[{isDaytime:true,temperature:65,temperatureUnit:'F',startTime:'2026-09-26T06:00:00-04:00'}]}})};}});
+  const w=await p.weatherSnapshot({force:true});
+  const ny=w.cities.find(c=>c.id==='NYC'),chi=w.cities.find(c=>c.id==='CHI');
+  assert.equal(ny.markets[0].date,'2026-09-26');assert.equal(ny.markets[0].nwsHigh,65);assert.equal(ny.markets[0].medianBucket,'62–63');assert.ok(ny.markets[0].gap>0);assert.equal(ny.markets[0].settlement,'The Weather Company');
+  assert.match(chi.marketError,/down/);assert.match(w.stormsError,/503/);assert.equal(w.alerts[0].analysis.kind,'SPECULATIVE_ANALYSIS');
+  assert.equal(w.alertsError,null);assert.equal(p.store.list({kind:'WeatherAlert'}).length,1);
   p.close();
 });
