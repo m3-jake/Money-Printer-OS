@@ -14,6 +14,7 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fairExpectancy } from './solanaEconomics.js';
+import { solanaRunningPolicy } from './fitnessLedger.js';
 import { championState, championPaperAllowed } from './championState.js';
 
 export const LAB_LINK_SCHEMA = { status: 'mpo.lab-status.v1', champion: 'mpo.lab-champion.v1', dataset: 'mpo.lab-dataset.v1', trader: 'mpo.lab-trader-status.v1' };
@@ -179,14 +180,14 @@ export function datasetRecord(s, { nodeId = traderNodeId(), name = traderNodeNam
   const rows = (s?.research?.learner?.outcomes || []).filter(usable).map(o => ({ ts: o.ts, entryTs: o.entryTs, sampleKey: o.sampleKey, mint: o.mint, symbol: o.symbol, horizonMin: 5, entryPrice: o.entryPrice, exitPrice: o.exitPrice, returnPct: Number(o.returnPct), predicted: o.predicted, stage: o.stage, entryThreshold: o.entryThreshold, context: o.context || null, isValidation: !!o.isValidation, features: o.features }));
   return { schema: LAB_LINK_SCHEMA.dataset, nodeId, name, version, updatedAt: now, rows: rows.length, latestTs: rows.length ? Math.max(...rows.map(r => Number(r.ts))) : null, rows_: undefined, ...{ rows } };
 }
-export function traderStatusRecord(s, { nodeId = traderNodeId(), name = traderNodeName(), version = process.env.MONEY_PRINTER_VERSION || null, mode = 'paper', now = Date.now() } = {}) {
+export function traderStatusRecord(s, { nodeId = traderNodeId(), name = traderNodeName(), version = process.env.MONEY_PRINTER_VERSION || null, mode = 'paper', now = Date.now(), config = {} } = {}) {
   const p = s?.portfolio || {};
-  return { schema: LAB_LINK_SCHEMA.trader, nodeId, name, version, platform: process.platform, mode, updatedAt: now, equitySol: finite(p.equitySol), sessionPnlSol: finite(s?.dailyPnlSol), openPositions: Array.isArray(s?.positions) ? s.positions.length : 0, activeEvolutionChampionId: s?.runtime?.activeEvolutionChampionId || 'BASE', activeStage: s?.system?.activeEvolutionPolicy?.stage || 'BASE', labLink: s?.labLink ? { connected: !!s.labLink.connected, source: s.labLink.source } : null, solanaFair: fairExpectancy(s?.history) };
+  return { schema: LAB_LINK_SCHEMA.trader, nodeId, name, version, platform: process.platform, mode, updatedAt: now, equitySol: finite(p.equitySol), sessionPnlSol: finite(s?.dailyPnlSol), openPositions: Array.isArray(s?.positions) ? s.positions.length : 0, activeEvolutionChampionId: s?.runtime?.activeEvolutionChampionId || 'BASE', activeStage: s?.system?.activeEvolutionPolicy?.stage || 'BASE', labLink: s?.labLink ? { connected: !!s.labLink.connected, source: s.labLink.source } : null, solanaFair: fairExpectancy(s?.history), runningPolicy: solanaRunningPolicy(s?.runtime, config) };
 }
 
 // Publishes the labeled dataset and a small status line for the lab, throttled and only when
 // the dataset changed. Never blocks trading on a failed write.
-export function publishLabFeed(s, { dir = dataDir(), bridge = bridgeDir(), key = bridgeKey(), now = Date.now(), mode = 'paper', force = false, version } = {}) {
+export function publishLabFeed(s, { dir = dataDir(), bridge = bridgeDir(), key = bridgeKey(), now = Date.now(), mode = 'paper', force = false, version, config = {} } = {}) {
   const out = { datasetLocal: false, datasetBridge: false, status: false, errors: [] };
   const outcomes = s?.research?.learner?.outcomes || [];
   const sig = `${outcomes.length}:${Number(outcomes[0]?.ts || 0)}`;
@@ -206,7 +207,7 @@ export function publishLabFeed(s, { dir = dataDir(), bridge = bridgeDir(), key =
   }
   if (force || now - outbound.statusAt >= TRADER_STATUS_MS) {
     try {
-      const st = traderStatusRecord(s, { nodeId, name, version, mode, now });
+      const st = traderStatusRecord(s, { nodeId, name, version, mode, now, config });
       writeJsonAtomic(path.join(dir, 'lab-link', 'trader-status.json'), st);
       if (bridge && key) writeJsonAtomic(path.join(bridge, 'lab-feed', `${nodeId}.trader-status.json`), signRecord(st, key));
       outbound.statusAt = now; out.status = true;

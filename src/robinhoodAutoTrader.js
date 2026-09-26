@@ -34,6 +34,9 @@ import { gauge } from './robinhoodGauge.js';
 import * as C from './robinhoodChart.js';
 import { championState, championPaperAllowed } from './championState.js';
 import * as RP from './robinhoodPractice.js';
+import { paperRecordFrom } from './fitnessLedger.js';
+import { laneMayPropose } from './evidenceFlags.js';
+import { appendProjectJournal } from './projectJournal.js';
 export const CONFIRM_PLACE='PLACE REAL CRYPTO ORDER', CONFIRM_CANCEL='CANCEL REAL CRYPTO ORDER', CONFIRM_CANCEL_ALL='CANCEL REAL CRYPTO ORDERS', CONFIRM_AUTOPILOT='ENABLE REAL CRYPTO AUTOPILOT', CONFIRM_FORGET='FORGET';
 const clone=x=>structuredClone(x), envNum=(k,d)=>{const n=Number(process.env[k]);return Number.isFinite(n)&&n>0?n:d};
 const TICK_MS=Math.max(5000,envNum('ROBINHOOD_TICK_MS',15000)), PREVIEW_TTL_MS=30000, PREVIEW_CACHE_MS=10000, SNAPSHOT_TTL_MS=5000, ENTRY_TTL_MS=90000, RECONCILE_THROTTLE_MS=5000, NEVER_RECEIVED_MS=600000, NEVER_RECEIVED_LISTINGS=3;
@@ -612,7 +615,7 @@ async function tick(){
   if(jn.autopilot.enabled){try{out.real=await runRobinhoodAutopilotOnce()}catch(e){note('autopilot',e)}}
   const flushed=T.flushTape({now:now()});if(flushed.error&&!flushed.skipped)note('tape',{code:'unknown',message:flushed.error.message});
   return out;
- }finally{tickBusy=false;if(evolveDue()){evolveCheckedAt=now();runRobinhoodEvolveOnce().catch(e=>note('evolve',e))}}
+ }finally{tickBusy=false;if(evolveDue()){evolveCheckedAt=now();runRobinhoodEvolveOnce().catch(e=>note('evolve',e))}if(labPassDue()){labPassAt=now();try{labProposalPass()}catch(e){note('lab-trial',e)}}}
 }
 export async function runRobinhoodPaperOnce(){if(tickBusy||paperBusy)return {ran:false,reason:'busy'};const p=paper();if(p.recoveryRequired)return {ran:false,reason:'paperRecovery'};if(!collectAlways()&&!p.autopilot.enabled&&!p.positions.length)return {ran:false,reason:'idle'};tickBusy=true;try{return await paperPass(p)}catch(e){note('paper-loop',e);return {ran:false,reason:e.code||'unknown',error:safeMessage(e)}}finally{tickBusy=false}}
 const PAPER_PRACTICE_VERSION=1;
@@ -654,6 +657,31 @@ export function robinhoodVolGate(p=paper(),{force=false}={}){
  const ratios=Object.values(bySymbol).map(x=>x.ratio).filter(Number.isFinite);
  const value={at:now(),days:7,bySymbol,maxRatio:ratios.length?Math.max(...ratios):null,binding:ratios.length>0&&ratios.every(r=>r<1)};
  volGateCache={at:now(),key,value};return value;
+}
+// Quote-source mix of the primary pair over the last 7 days (the evidence gate wants >= 90 % Robinhood rows). Cached like the vol gate.
+let evidenceCache={at:0,key:'',value:null};
+function robinhoodEvidence7d(){
+ const primary=robinhoodPrimary().symbol,key=primary;if(evidenceCache.value&&evidenceCache.key===key&&now()-evidenceCache.at<VOL_GATE_TTL_MS)return evidenceCache.value;
+ const rows=T.loadTape(primary,now()-7*864e5),sources={};for(const r of rows){const k=r.src||'unknown';sources[k]=(sources[k]||0)+1}
+ const venue=rows.filter(r=>r.src==='robinhood'),total=rows.length;
+ const value={symbol:primary,rows:total,sources,venueShare:total?venue.length/total:null,syntheticShare:total?(total-venue.length)/total:null,spanDays:venue.length>1?(venue[venue.length-1].t-venue[0].t)/864e5:0};
+ evidenceCache={at:now(),key,value};return value;
+}
+// Parts for the fitness ledger (src/fitnessLedger.js). Read-only.
+export function robinhoodFitnessParts({at=now()}={}){
+ const p=paper(),j=J.loadJournal(),ev=robinhoodEvidence7d(),vg=robinhoodVolGate(p),l=E.loadEvolveLedger(),labDoc=readLabRobinhoodChampion(),tr=loadLabTrial();
+ const rows=p.history.filter(x=>x.status==='CLOSED'&&x.paramsHash===p.paramsHash&&Number.isFinite(Number(x.pnlUsd))).map(x=>({pnl:Number(x.pnlUsd),closedAt:x.closedAt}));
+ const applied=l.applied&&l.applied.paramsHash===p.paramsHash?l.applied:null,trialApplied=tr.active&&tr.active.hash===p.paramsHash?tr.active:null;
+ const fullWeek=ev.spanDays>=7&&ev.venueShare!==null&&ev.venueShare>=0.9;
+ return {
+  running:{hash:p.paramsHash,params:p.params,since:trialApplied?.startedAt??applied?.at??null,source:trialApplied?'lab-auto':applied?'operator':'BASE'},
+  paperRecord:paperRecordFrom(rows,{unit:'USD',startBalance:p.startUsd,now:at}),
+  evidence:{executablePrices:(ev.sources.robinhood||0)>0,spanDays:ev.spanDays,closes:rows.length,venueShare:ev.venueShare,syntheticShare:ev.syntheticShare,quoteSources:ev.sources},
+  proposal:labDoc?{id:labDoc.candidate?.paramsHash||null,stage:labDoc.qualificationStage||labDoc.stage||null,basis:labDoc.basis||null,proposalVersion:labDoc.proposalVersion??null,publishedAt:labDoc.publishedAt||null,paperPromotionAllowed:championPaperAllowed(labDoc)}:null,
+  trial:labTrialView(tr),lastDecision:tr.lastDecision||null,
+  park:fullWeek&&vg.binding?`vol gate binding on every pair after 7 days of Robinhood quotes (best ratio ${vg.maxRatio})`:null,
+  blockers:[...(p.recoveryRequired?['paper book needs recovery']:[]),...(j.recoveryRequired?['journal needs recovery']:[])],
+ };
 }
 export function robinhoodEvolveView(p=paper()){
  const lab=readLabRobinhoodStatus(),labDoc=readLabRobinhoodChampion();
@@ -713,6 +741,71 @@ export function applyRobinhoodEvolution({paramsHash,by='operator'}={}){
  const l2=E.loadEvolveLedger();l2.applied={paramsHash:hash,at:now(),by:by==='autopromote'?'autopromote':'operator'};E.ledgerEvent(l2,'applied',`${l2.applied.by} applied ${hash} to the paper autopilot; qualification reset`,{paramsHash:hash,by:l2.applied.by});E.saveEvolveLedger(l2);
  return {ok:true,applied:true,paramsHash:hash,autopilot,realAutopilot:robinhoodAutopilot()};
 }
+// ------------------------------------------------------------------ Lab paper trials (docs/FITNESS-LEDGER.md)
+// With ROBINHOOD_LAB_AUTO_APPLY_PAPER=true (default false) a cleared Lab proposal is applied to the PAPER params
+// only, as a trial against the incumbent. After TRIAL_CLOSES new closes it is kept only if its profit factor is
+// >= the incumbent's and its drawdown stays within TRIAL_MAX_DD_PCT of the paper start; otherwise, or with no
+// close in TRIAL_IDLE_DAYS, the incumbent params come back and the hash is never applied again. Paper only.
+export const TRIAL_CLOSES=20, TRIAL_MAX_DD_PCT=3, TRIAL_IDLE_DAYS=14, LAB_PASS_MS=5*60000;
+const LAB_TRIAL_FILE=path.join(DATA_DIR,'robinhood-lab-trial.json'), LAB_TRIAL_SCHEMA='mpo.robinhood-lab-trial.v1', PROJECT_JOURNAL_FILE=path.join(DATA_DIR,'project-journal.ndjson');
+let labPassAt=0;
+export const labAutoApplyEnabled=()=>String(process.env.ROBINHOOD_LAB_AUTO_APPLY_PAPER||'').toLowerCase()==='true';
+function loadLabTrial(){try{const v=JSON.parse(fs.readFileSync(LAB_TRIAL_FILE,'utf8'));if(v?.schema===LAB_TRIAL_SCHEMA)return {active:v.active||null,rejected:Array.isArray(v.rejected)?v.rejected.slice(-200):[],lastDecision:v.lastDecision||null,lastCheck:v.lastCheck||null,history:Array.isArray(v.history)?v.history.slice(0,50):[]}}catch{}return {active:null,rejected:[],lastDecision:null,lastCheck:null,history:[]}}
+function saveLabTrial(t){atomicWrite(LAB_TRIAL_FILE,{schema:LAB_TRIAL_SCHEMA,...t})}
+function atomicWrite(file,doc){fs.mkdirSync(path.dirname(file),{recursive:true});const tmp=`${file}.${process.pid}.tmp`,fd=fs.openSync(tmp,'w');try{fs.writeSync(fd,JSON.stringify(doc,null,1));fs.fsyncSync(fd)}finally{fs.closeSync(fd)}fs.renameSync(tmp,file)}
+function trialCloses(p,hash,since){return p.history.filter(x=>x.status==='CLOSED'&&x.paramsHash===hash&&Number.isFinite(Number(x.pnlUsd))&&num(x.closedAt)>=since).map(x=>({pnl:Number(x.pnlUsd),closedAt:x.closedAt}))}
+function labTrialView(t){const a=t.active;if(!a)return t.lastDecision&&['kept','reverted'].includes(t.lastDecision.action)?{status:t.lastDecision.action==='kept'?'KEPT':'REVERTED',hash:t.lastDecision.hash,incumbentHash:t.lastDecision.incumbentHash||null,startedAt:t.lastDecision.startedAt||null,endedAt:t.lastDecision.at,closes:t.lastDecision.closes??null,needed:TRIAL_CLOSES,incumbent:t.lastDecision.incumbent||null,candidate:t.lastDecision.candidate||null}:null;
+ const p=paper(),rec=paperRecordFrom(trialCloses(p,a.hash,a.startedAt),{unit:'USD',startBalance:p.startUsd});
+ return {status:'RUNNING',hash:a.hash,incumbentHash:a.incumbentHash,startedAt:a.startedAt,endedAt:null,closes:rec.closes,needed:TRIAL_CLOSES,incumbent:a.incumbent,candidate:{profitFactor:rec.profitFactor,profitFactorUnbounded:rec.profitFactorUnbounded,closes:rec.closes,maxDrawdownPct:rec.maxDrawdownPct}};}
+function labTrialJournal(title,detail,at){try{appendProjectJournal(PROJECT_JOURNAL_FILE,{kind:'paper-trial',category:'research',module:'robinhood',title,detail,at})}catch{}}
+function decide(t,decision){t.lastDecision=decision;t.history.unshift(decision);t.history=t.history.slice(0,50)}
+// One pass: settle a running trial, or apply a cleared proposal when auto-apply is on. Never throws on refusal.
+export function labProposalPass({at=now()}={}){
+ const t=loadLabTrial(),p=paper();
+ if(p.recoveryRequired)return {ran:false,reason:'paperRecovery'};
+ if(t.active){
+  const a=t.active;
+  if(p.paramsHash!==a.hash){decide(t,{action:'abandoned',reason:'paper params changed during the trial',hash:a.hash,incumbentHash:a.incumbentHash,startedAt:a.startedAt,at,by:'operator'});t.active=null;saveLabTrial(t);labTrialJournal(`Robinhood Lab trial ${a.hash} abandoned`,'The paper params were changed by hand while the trial ran.',at);return {ran:true,decision:'abandoned'}}
+  const rows=trialCloses(p,a.hash,a.startedAt),rec=paperRecordFrom(rows,{unit:'USD',startBalance:p.startUsd,now:at}),lastAt=rows.length?Math.max(...rows.map(r=>num(r.closedAt))):a.startedAt;
+  let verdict=null,reason='';
+  if(rec.closes>=TRIAL_CLOSES){
+   const incPf=a.incumbent?.profitFactorUnbounded?Infinity:a.incumbent?.profitFactor,candPf=rec.profitFactorUnbounded?Infinity:rec.profitFactor,dd=rec.maxDrawdownPct;
+   const pfOk=candPf!==null&&(incPf===null||incPf===undefined||candPf>=incPf),ddOk=dd!==null&&dd<=TRIAL_MAX_DD_PCT;
+   verdict=pfOk&&ddOk?'kept':'reverted';reason=`${rec.closes} closes: PF ${rec.profitFactorUnbounded?'inf':rec.profitFactor} vs incumbent ${a.incumbent?.profitFactorUnbounded?'inf':a.incumbent?.profitFactor??'n/a'}, drawdown ${dd}% (max ${TRIAL_MAX_DD_PCT}%)`;
+  }else if(at-lastAt>=TRIAL_IDLE_DAYS*864e5){verdict='reverted';reason=`no close in ${TRIAL_IDLE_DAYS} days (${rec.closes}/${TRIAL_CLOSES})`}
+  if(!verdict)return {ran:true,decision:'running',closes:rec.closes};
+  if(verdict==='reverted'){
+   const back=setRobinhoodPaperAutopilot({params:a.incumbentParams});
+   if(back.paramsHash!==a.incumbentHash)note('lab-trial',{code:'validation',message:`revert produced ${back.paramsHash}, expected ${a.incumbentHash}`});
+   t.rejected=[...new Set([...t.rejected,a.hash])].slice(-200);
+  }
+  const l=E.loadEvolveLedger();E.ledgerEvent(l,verdict==='kept'?'trial-kept':'trial-reverted',`lab-auto trial ${a.hash}: ${reason}`,{paramsHash:a.hash,incumbentHash:a.incumbentHash});if(verdict==='reverted')l.applied={paramsHash:a.incumbentHash,at,by:'lab-auto-revert'};E.saveEvolveLedger(l);
+  decide(t,{action:verdict,reason,hash:a.hash,incumbentHash:a.incumbentHash,startedAt:a.startedAt,at,by:'lab-auto',closes:rec.closes,incumbent:a.incumbent,candidate:{profitFactor:rec.profitFactor,profitFactorUnbounded:rec.profitFactorUnbounded,closes:rec.closes,maxDrawdownPct:rec.maxDrawdownPct}});
+  t.active=null;saveLabTrial(t);
+  labTrialJournal(`Robinhood Lab trial ${a.hash} ${verdict}`,reason,at);
+  return {ran:true,decision:verdict,reason};
+ }
+ if(!labAutoApplyEnabled())return {ran:false,reason:'autoApplyOff'};
+ const doc=readLabRobinhoodChampion(),c=doc?.candidate;
+ const refuse=reason=>{const sig=`${c?.paramsHash||'none'}:${reason}`;if(t.lastCheck?.sig!==sig){t.lastCheck={sig,at,reason,hash:c?.paramsHash||null};saveLabTrial(t)}return {ran:false,reason}};
+ if(!doc||!c)return refuse('no proposal');
+ if(doc.qualificationStage!=='PAPER_REVIEW'||!championPaperAllowed(doc))return refuse(`proposal is ${doc.qualificationStage||championState(doc).state}, not cleared for paper`);
+ if(c.paramsHash===p.paramsHash)return refuse('proposal is already running');
+ if(t.rejected.includes(c.paramsHash))return refuse('proposal was reverted before');
+ if(doc.basis?.incumbentHash!==p.paramsHash)return refuse(`proposal basis ${doc.basis?.incumbentHash||'missing'} is not the running params ${p.paramsHash}`);
+ if(!E.withinEvolveBounds(c.params))return refuse('proposal params fall outside the evolution bounds');
+ const ev=robinhoodEvidence7d(),incRows=trialCloses(p,p.paramsHash,0),may=laneMayPropose({executablePrices:(ev.sources.robinhood||0)>0,spanDays:ev.spanDays,closes:incRows.length,venueShare:ev.venueShare,syntheticShare:ev.syntheticShare});
+ if(!may.ok)return refuse(`evidence: ${may.blockers.join('; ')}`);
+ const inc=paperRecordFrom(incRows,{unit:'USD',startBalance:p.startUsd,now:at}),incumbentParams=clone(p.params),incumbentHash=p.paramsHash;
+ const applied=setRobinhoodPaperAutopilot({params:c.params});
+ if(applied.paramsHash!==c.paramsHash){setRobinhoodPaperAutopilot({params:incumbentParams});return refuse(`applied hash ${applied.paramsHash} does not match proposal ${c.paramsHash}`)}
+ t.active={hash:c.paramsHash,incumbentHash,incumbentParams,incumbent:{profitFactor:inc.profitFactor,profitFactorUnbounded:inc.profitFactorUnbounded,closes:inc.closes,maxDrawdownPct:inc.maxDrawdownPct},startedAt:at,proposalVersion:doc.proposalVersion??null,proposalId:doc.candidate?.id||c.paramsHash};
+ decide(t,{action:'applied',reason:`Lab proposal v${doc.proposalVersion??'?'} applied to paper as a ${TRIAL_CLOSES}-close trial`,hash:c.paramsHash,incumbentHash,startedAt:at,at,by:'lab-auto'});t.lastCheck=null;saveLabTrial(t);
+ const l=E.loadEvolveLedger();l.applied={paramsHash:c.paramsHash,at,by:'lab-auto'};E.ledgerEvent(l,'applied',`lab-auto applied ${c.paramsHash} to paper as a trial against ${incumbentHash}`,{paramsHash:c.paramsHash,by:'lab-auto'});E.saveEvolveLedger(l);
+ labTrialJournal(`Robinhood Lab trial ${c.paramsHash} started`,`Paper only. Kept after ${TRIAL_CLOSES} closes if PF >= incumbent ${inc.profitFactorUnbounded?'inf':inc.profitFactor??'n/a'} and drawdown <= ${TRIAL_MAX_DD_PCT}%.`,at);
+ return {ran:true,decision:'applied',hash:c.paramsHash};
+}
+function labPassDue(){return !!timer&&now()-labPassAt>=LAB_PASS_MS}
 // ------------------------------------------------------------------ snapshot
 function signalEnum(symbol,row,p,j){
  if(p.positions.some(x=>x.symbol===symbol)||j.open.some(e=>e.symbol===symbol&&['OPEN','CLOSING','CLOSING_UNCERTAIN'].includes(e.status)))return 'LONG';
@@ -762,4 +855,4 @@ export async function robinhoodSnapshot({force=false}={}){
  snapshotFlight=(async()=>{try{if(paperOnlyBuild()||robinhoodReadiness().credentialsReady)await refreshFeed([...new Set([...robinhoodSymbols(),...paper().autopilot.symbols,...J.loadJournal().autopilot.symbols])],force)}catch(e){note('snapshot',e)}return snapshotView()})();
  try{return await snapshotFlight}finally{snapshotFlight=null}
 }
-export const __testing={tick,setClock(fn){clockFn=fn},unlockRealExecutionForTests(v=true){testRealExecutionUnlocked=v===true;sessionArmed=false},reset(){stopRobinhoodLoops();testRealExecutionUnlocked=false;account=null;pairs=new Map();quotes=new Map();feedAt=0;identity='';paperQuoteSource=null;paperFallbackReason=null;paperFallbackUntil=0;lastTickAt=0;lastError=null;paperDirty=false;feedFlight=null;snapshotFlight=null;sessionArmed=false;placeBusy=false;apBusy=false;reconcileBusy=false;lastPreview=null;lastReconcileRun=0;previewCache.clear();evolveBusy=false;evolveCheckedAt=0;warmStatus=null;warmFlight=null;J.__testing.resetPaper();J.__testing.resetJournal();T.__testing.reset();E.__testing.reset()},journalFile:J.JOURNAL_FILE,paperFile:J.PAPER_FILE,envFile:ENV_FILE,TICK_MS,SNAPSHOT_TTL_MS,PREVIEW_TTL_MS,ENTRY_TTL_MS,CONFIRM_PLACE,CONFIRM_CANCEL,CONFIRM_CANCEL_ALL,CONFIRM_AUTOPILOT,get lastPreview(){return lastPreview},get sessionArmed(){return sessionArmed},primaryOrderUsd,evolveFile:E.EVOLVE_FILE,tapeDir:T.TAPE_DIR,exploreFile:J.EXPLORE_FILE,explorePass,get warmStatus(){return warmStatus}};
+export const __testing={tick,setClock(fn){clockFn=fn},unlockRealExecutionForTests(v=true){testRealExecutionUnlocked=v===true;sessionArmed=false},reset(){stopRobinhoodLoops();testRealExecutionUnlocked=false;account=null;pairs=new Map();quotes=new Map();feedAt=0;identity='';paperQuoteSource=null;paperFallbackReason=null;paperFallbackUntil=0;lastTickAt=0;lastError=null;paperDirty=false;feedFlight=null;snapshotFlight=null;sessionArmed=false;placeBusy=false;apBusy=false;reconcileBusy=false;lastPreview=null;lastReconcileRun=0;previewCache.clear();evolveBusy=false;evolveCheckedAt=0;warmStatus=null;warmFlight=null;volGateCache={at:0,key:'',value:null};evidenceCache={at:0,key:'',value:null};labPassAt=0;J.__testing.resetPaper();J.__testing.resetJournal();T.__testing.reset();E.__testing.reset()},journalFile:J.JOURNAL_FILE,paperFile:J.PAPER_FILE,envFile:ENV_FILE,TICK_MS,SNAPSHOT_TTL_MS,PREVIEW_TTL_MS,ENTRY_TTL_MS,CONFIRM_PLACE,CONFIRM_CANCEL,CONFIRM_CANCEL_ALL,CONFIRM_AUTOPILOT,get lastPreview(){return lastPreview},get sessionArmed(){return sessionArmed},primaryOrderUsd,evolveFile:E.EVOLVE_FILE,tapeDir:T.TAPE_DIR,exploreFile:J.EXPLORE_FILE,explorePass,get warmStatus(){return warmStatus},labTrialFile:LAB_TRIAL_FILE,labChampionFile:LAB_RH_CHAMPION_FILE};
