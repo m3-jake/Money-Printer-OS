@@ -15,7 +15,7 @@
   <div class="hill-foreground"></div>
   <div class="money-layer market-fx" id="moneyRain"></div>
   <div class="money-layer market-fx money-pile" id="moneyPile"></div>
-  <div class="brand"><img class="brand-mark brand-corner" src="/assets/money-printer-logo.png" alt="" width="72" height="72"><div class="brand-text">MONEY<br>PRINTER OS<small id="runningVersion"></small></div></div>
+  <div class="brand"><div class="brand-text">MONEY<br>PRINTER OS<small id="runningVersion"></small></div></div>
   <div class="icons" id="icons"></div>
   <div class="money-event-feed" id="moneyEventFeed" aria-live="polite"></div>
   <div id="windows"></div>
@@ -45,7 +45,7 @@ function rhCapture(){for(const id of RH_FOCUS_IDS){const el=document.getElementB
 function rhTyping(){const ae=document.activeElement;if(ae&&(RH_FOCUS_IDS.includes(ae.id)||RH_SECRET_IDS.includes(ae.id)))return true;return RH_SECRET_IDS.some(id=>{const el=document.getElementById(id);return el&&el.value})}
 async function refreshRobinhood(){
  if(rhRefreshBusy)return;rhRefreshBusy=true;
- try{const r=await fetch('/api/robinhood');if(!r.ok)throw Error('Robinhood status request failed');rhState=await r.json();if(windowVisible('robinhood')){renderRobinhood();rhLoadChart()}}
+ try{const r=await fetch('/api/robinhood');if(!r.ok)throw Error('Robinhood status request failed');rhState=await r.json();trackRobinhoodProfitBurst(rhState);if(windowVisible('robinhood')){renderRobinhood();rhLoadChart()}}
  catch(e){rhMessage=e.message;if(windowVisible('robinhood'))renderRobinhood()}finally{rhRefreshBusy=false}
 }
 async function rhAction(action,body,label){
@@ -297,7 +297,7 @@ const money=n=>Number.isFinite(Number(n))?'$'+Number(n).toLocaleString(undefined
 const age=ts=>!ts?'—':Math.max(0,Math.round((Date.now()-ts)/1000))+'s';
 const fmtSol=v=>Number.isFinite(Number(v))?Number(v).toFixed(3)+' SOL':'—';
 let state=null,journal=[],projectJournal={rows:[]},networkState={peers:[],messages:[]},polyUSComboState={},updateState={status:'IDLE'},researchMonitor={status:'idle',running:[],leaderboard:[],rejections:{}},journalFilter='all',journalQuery='',z=20,selectedIcon=null;
-let chartView={range:'session',zoom:1,pan:0,dragging:false,lastX:0,hoverX:null};let fxSig='',fxBurstTimer=null,fxBurstUntil=0,fxLastRealizedSol=null,fxComboPrimed=false,fxAheadAnnounced=false;const fxSeenComboSettlements=new Set(),moneyEvents=[];
+let chartView={range:'session',zoom:1,pan:0,dragging:false,lastX:0,hoverX:null};let fxSig='',fxBurstTimer=null,fxBurstUntil=0,fxLastRealizedSol=null,fxComboPrimed=false,fxRobinhoodPrimed=false,fxAheadAnnounced=false;const fxSeenComboSettlements=new Set(),fxSeenRobinhoodCloses=new Set(),moneyEvents=[];
 const renderSig=new Map();
 const perf={stateKB:0,renderMs:0,refreshMs:0,lastStateAt:0};
 let productEconomicsState=null;
@@ -522,21 +522,33 @@ function makeRainBills(n,intensity){return Array.from({length:n},(_,i)=>{const l
 function makePileBills(n,intensity){return Array.from({length:n},(_,i)=>{const left=Math.max(2,Math.min(94,(i+.25)*100/Math.max(1,n)+Math.random()*8-4)),bottom=Math.max(0,Math.round(Math.random()*20+intensity*12)),rot=(Math.random()*30-15).toFixed(1),scale=(.62+Math.random()*.42).toFixed(2);return `<div class="bill pile" data-market="paper-equity" style="left:${left}%;bottom:${bottom}px;--rot:${rot}deg;--scale:${scale};animation-delay:${(-Math.random()*2).toFixed(2)}s"></div>`}).join('')}
 function renderMoneyEvents(){const el=$('#moneyEventFeed');if(!el)return;el.innerHTML=moneyEvents.slice(-7).map(x=>`<div class="money-event ${x.kind||'profit'}"><span>${new Date(x.at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</span> ${polyEscape(x.text)}</div>`).join('')}
 function noteMoneyEvent(text,kind='profit'){const t=String(text||'').trim();if(!t)return;const last=moneyEvents.at(-1);if(last?.text===t&&Date.now()-last.at<2500)return;moneyEvents.push({at:Date.now(),text:t,kind});if(moneyEvents.length>40)moneyEvents.splice(0,moneyEvents.length-40);renderMoneyEvents()}
+
 function triggerMoneyBurst(amountUsd=1,source='profit',reason='Profit realized'){
- const amount=Math.max(0,Number(amountUsd)||0);if(!(amount>0))return;noteMoneyEvent(`${reason} · +$${amount.toFixed(amount<10?2:0)} effect`);const rain=$('#moneyRain');if(!rain||matchMedia('(prefers-reduced-motion: reduce)').matches)return;const intensity=clamp01(Math.log10(1+amount)/2.2),n=Math.max(7,Math.min(72,Math.round(8+amount*2.4+intensity*18)));
- rain.innerHTML=makeBurstBills(n,intensity,source);rain.style.opacity=String(.62+intensity*.36);fxBurstUntil=Date.now()+7200;if(fxBurstTimer)clearTimeout(fxBurstTimer);fxBurstTimer=setTimeout(()=>{if(Date.now()>=fxBurstUntil){fxSig='';updateDesktopEffects(true)}},7400);
+ const amount=Math.max(0,Number(amountUsd)||0);if(!(amount>0))return;
+ noteMoneyEvent(reason+' · +$'+amount.toFixed(amount<10?2:0)+' effect');
+ const rain=$('#moneyRain'),pile=$('#moneyPile');if(!rain||!pile||matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+ const intensity=clamp01(Math.log10(1+amount)/2.2),n=Math.max(7,Math.min(72,Math.round(8+amount*2.4+intensity*18))),stacks=Math.max(8,Math.min(28,Math.round(10+intensity*18)));
+ rain.innerHTML=makeBurstBills(n,intensity,source);pile.innerHTML=makePileBills(stacks,Math.max(.8,intensity));rain.style.opacity='1';pile.style.opacity='1';
+ fxBurstUntil=Date.now()+7200;if(fxBurstTimer)clearTimeout(fxBurstTimer);fxBurstTimer=setTimeout(()=>{if(Date.now()>=fxBurstUntil){fxSig='';updateDesktopEffects(true)}},7400);
 }
 function trackRealizedProfitBurst(){const v=Number(state?.portfolio?.realizedDayPnlSol);if(!Number.isFinite(v))return;if(fxLastRealizedSol!=null&&v>fxLastRealizedSol+1e-9){const gain=v-fxLastRealizedSol,solUsd=Number(state?.market?.solUsd)||0;triggerMoneyBurst(Math.max(.25,gain*(solUsd||100)),'solana-win',`Pump.fun realized +${gain.toFixed(4)} SOL`)}fxLastRealizedSol=v}
 function trackComboProfitBurst(next){const hist=Array.isArray(next?.journal?.history)?next.journal.history:[],keys=hist.map(x=>String(x?.id||`${x?.symbol||'combo'}:${x?.settledAt||x?.at||''}`));if(!fxComboPrimed){keys.forEach(k=>fxSeenComboSettlements.add(k));fxComboPrimed=true;return}hist.forEach((x,i)=>{const k=keys[i];if(fxSeenComboSettlements.has(k))return;fxSeenComboSettlements.add(k);if(String(x?.status).toUpperCase()==='WON'&&Number(x?.pnlUsd)>0)triggerMoneyBurst(Number(x.pnlUsd),'combo-win',`Polymarket US combo won +$${Number(x.pnlUsd).toFixed(2)}`)})}
+
+function trackRobinhoodProfitBurst(next){
+ const hist=Array.isArray(next?.paper?.history)?next.paper.history:[],keys=hist.map(x=>String(x?.id||String(x?.symbol||'robinhood')+':'+String(x?.closedAt||x?.at||'')));
+ if(!fxRobinhoodPrimed){keys.forEach(k=>fxSeenRobinhoodCloses.add(k));fxRobinhoodPrimed=true;return}
+ hist.forEach((x,i)=>{const k=keys[i];if(fxSeenRobinhoodCloses.has(k))return;fxSeenRobinhoodCloses.add(k);const pnl=Number(x?.pnlUsd);if(String(x?.status).toUpperCase()==='CLOSED'&&pnl>0)triggerMoneyBurst(pnl,'robinhood-win','Robinhood paper win +$'+pnl.toFixed(2))});
+}
+
 function updateDesktopEffects(force=false){
  if(!state)return;const m=sessionFxMetrics(),bursting=Date.now()<fxBurstUntil,key=[m.known?1:0,m.ahead?1:0,Math.round((m.pnlPct||0)*2),Math.round(m.velocity||0),Math.round(m.intensity*10),bursting?1:0].join(':');if(!force&&key===fxSig)return;fxSig=key;
  const rain=$('#moneyRain'),pile=$('#moneyPile');if(!rain||!pile)return;
  if(matchMedia('(prefers-reduced-motion: reduce)').matches){rain.innerHTML='';pile.innerHTML='';rain.style.opacity='0';pile.style.opacity='0';return}
- if(!m.ahead){fxAheadAnnounced=false;if(!bursting){rain.innerHTML='';rain.style.opacity='0'}pile.innerHTML='';pile.style.opacity='0';return}
- if(!fxAheadAnnounced){noteMoneyEvent(`Paper equity above start by +${Number(m.pnlSol||0).toFixed(4)} SOL · ambient cash rain enabled`,'ambient');fxAheadAnnounced=true}
- const pn=Math.max(3,Math.round(4+m.intensity*14));pile.innerHTML=makePileBills(pn,m.intensity);pile.style.opacity=String(.38+m.intensity*.5);
+ if(!m.ahead){fxAheadAnnounced=false;if(!bursting){rain.innerHTML='';rain.style.opacity='0';pile.innerHTML='';pile.style.opacity='0'}return}
+ if(!fxAheadAnnounced){noteMoneyEvent('Paper equity above start by +'+Number(m.pnlSol||0).toFixed(4)+' SOL · ambient single-bill rain enabled','ambient');fxAheadAnnounced=true}
  if(bursting)return;
- const rn=Math.max(6,Math.round(8+m.intensity*22));rain.innerHTML=makeRainBills(rn,m.intensity);rain.style.opacity=String(.42+m.intensity*.5);
+ pile.innerHTML='';pile.style.opacity='0';
+ const rn=Math.max(6,Math.round(8+m.intensity*22));rain.innerHTML=makeRainBills(rn,m.intensity);rain.style.opacity='1';
 }
 function showDialog(title,head,text){$('#dialogTitle').textContent=title;$('#dialogHead').textContent=head;$('#dialogText').textContent=text;$('#dialog').classList.remove('hidden')}
 $('#dialogOk').onclick=$('#dialogX').onclick=()=>$('#dialog').classList.add('hidden');
@@ -769,6 +781,17 @@ const polyCents=(v,d=1)=>polyNum(v)==null?'—':fmt(Number(v)*100,d)+'¢';
 const polyUsd=(v,d=2)=>polyNum(v)==null?'—':'$'+fmt(v,d);
 const polyAgeS=ms=>polyNum(ms)==null?'—':Math.max(0,Math.round(Number(ms)/1000))+'s';
 const polyTime=t=>{const n=Number(t),d=new Date(n);return Number.isFinite(n)&&n>0&&!Number.isNaN(d.getTime())?d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}):'—'};
+function polyShadowHeadline(ev,windowName='NEAR_END'){
+ if(!ev)return '<div class="inset" style="margin-top:6px;padding:6px"><b class="cyan">SHADOW AUTO-COMBO</b> <b class="amber">STARTING</b> <span class="muted">Public-data practice is waiting for its first evidence tick. No real orders.</span></div>';
+ const sh=ev.shadow||{},r=sh[windowName]||Object.values(sh)[0]||{},fit=ev.fitness||{},proposal=ev.lab&&ev.lab.proposal;
+ const settled=Number(r.settled||0),won=Number(r.won||0),lost=Number(r.lost||0),open=Number(r.open||0);
+ const hit=r.winRate==null?'—':(Number(r.winRate)*100).toFixed(1)+'%',roi=r.roi==null?'—':(Number(r.roi)*100).toFixed(1)+'%',pnl=Number(r.pnlUsd||0);
+ let learning;
+ if(proposal&&proposal.valid){learning='Lab '+String(proposal.stage||'proposal');if(proposal.holdout)learning+=' · holdout '+Number(proposal.holdout.combos||0)+' combos · ROI '+(Number(proposal.holdout.roi||0)*100).toFixed(1)+'%'}
+ else learning=fit.searchAllowed?'evidence baseline ready':'learning · '+String((fit.blockers||[])[0]||'collecting settled shadow combos');
+ return '<div class="inset" style="margin-top:6px;padding:6px"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b class="cyan">SHADOW AUTO-COMBO</b><b class="green">RUNNING · PAPER/SHADOW ONLY</b><span>'+polyEscape(String(windowName).replace('_',' '))+': <b>'+settled+'</b> settled · <b>'+won+'W-'+lost+'L</b> · hit <b>'+hit+'</b> · ROI <b class="'+(r.roi==null?'':Number(r.roi)>=0?'green':'red')+'">'+roi+'</b> · P/L <b class="'+(pnl>=0?'green':'red')+'">'+(pnl>=0?'+':'')+'$'+pnl.toFixed(2)+'</b> · '+open+' open</span></div><div class="muted" style="font-size:10px;margin-top:3px">It auto-builds virtual combos from public live data and settles them into the shadow record. '+polyEscape(learning)+' · Expand Research below for every window, calibration, and Lab proposals. No credentials or real-money access are required for this practice lane.</div></div>';
+}
+
 // Any input the operator can be typing into must suppress the 5s re-render.
 const POLY_FOCUS_IDS=['usKeyId','usSecret','usComboStake','usSetFloor','usSetMinutes','usSetLegs'];
 // ---- Polymarket: one module. Live games near the end -> tick up to maxLegs -> one confirmed combo.
@@ -782,7 +805,8 @@ function renderSportsbook(){
  if(body.dataset.shell!=='2'){const keep=captureScroll(body);body.innerHTML=polyShellHtml();body.dataset.shell='2';polyModuleSig='';restoreScroll(body,keep)}
  const ucf=(polyUSComboState||{}).feed||{};
  const strip=$('#polyStatus');
- if(strip)strip.innerHTML=`<div style="display:flex;justify-content:space-between;gap:8px"><div><div class="green" style="font-size:22px">POLYMARKET US</div><div class="muted">Live games about to end · tick up to ${Number((polyUSComboState||{}).settings?.maxLegs||3)} · one confirmed combo</div></div><div style="text-align:right"><b>${ucf.ok===false?'FEED DOWN':'LIVE FEED'}</b><br><span class="${ucf.ok===false?'red':'green'}">${ucf.ok===false?polyEscape(ucf.error||'offline'):`${Number(ucf.eventsLive||0)} live games · ${Number(ucf.candidates||0)} candidates`}</span></div></div>`;
+ const shadowTop=polyShadowHeadline(polyUSEvidence,(polyUSComboState||{}).settings?.window||'NEAR_END');
+ if(strip)strip.innerHTML=`<div style="display:flex;justify-content:space-between;gap:8px"><div><div class="green" style="font-size:22px">POLYMARKET US</div><div class="muted">Live games about to end · tick up to ${Number((polyUSComboState||{}).settings?.maxLegs||3)} · one confirmed combo</div></div><div style="text-align:right"><b>${ucf.ok===false?'FEED DOWN':'LIVE FEED'}</b><br><span class="${ucf.ok===false?'red':'green'}">${ucf.ok===false?polyEscape(ucf.error||'offline'):`${Number(ucf.eventsLive||0)} live games · ${Number(ucf.candidates||0)} candidates`}</span></div></div>`+shadowTop;
  const box=$('#poly-combos');if(!box)return;
  // Never rebuild under the operator's cursor or mid-placement.
  const ae=document.activeElement;
