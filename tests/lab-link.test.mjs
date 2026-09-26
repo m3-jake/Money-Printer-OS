@@ -20,7 +20,7 @@ const { evolutionChampionPolicy } = await import('../src/learner.js');
 
 const write = (file, v) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, JSON.stringify(v)); };
 const goodChampion = (id = 'LAB-CHAMP', promotedAt = 5_000) => ({ id, stage: 'SHADOW', promotedAt, previousId: 'BASE', variant: { id, threshold: 62, stopPct: 1.5, takePct: 100, maxHoldMin: 2, weights: { edge: .05, explosion: .16, execution: .08, momentum: .34, liquidity: .08, freshness: .07, flow: .11, volumeAccel: .04, priceAccel: .07 } }, metrics: { heldOutN: 22, samples: 60, activityPct: 8.1, monteCarloPassPct: 100, stressAvgPct: 18, consistencyPct: 100, robustScore: 40 } });
-const championDoc = (c, now, extra = {}) => ({ schema: LAB_LINK_SCHEMA.champion, labNodeId: 'lab-1', labName: 'WITCHDOCTOR', labVersion: '0.1.0', publishedAt: now, generation: 42, variantsTested: 9000, champion: c, paperPromotionAllowed: true, qualificationStage: 'PAPER_COMPARISON', liveActivationAllowed: false, automaticLivePromotionAllowed: false, ...extra });
+const championDoc = (c, now, extra = {}) => ({ schema: LAB_LINK_SCHEMA.champion, labNodeId: 'lab-1', labName: 'WITCHDOCTOR', labVersion: '0.1.0', publishedAt: now, generation: 42, variantsTested: 9000, champion: c, paperPromotionAllowed: true, qualificationStage: 'PAPER_COMPARISON', liveActivationAllowed: false, automaticLivePromotionAllowed: false, stateSchema: 'mpo.champion-state.v1', state: 'PAPER', ...extra });
 const statusDoc = (now, extra = {}) => ({ schema: LAB_LINK_SCHEMA.status, labNodeId: 'lab-1', labName: 'WITCHDOCTOR', labVersion: '0.1.0', updatedAt: now, status: 'RUNNING', generation: 42, variantsTested: 9000, workerCount: 24, researchMode: 'BEAST', challengers: Array.from({ length: 20 }, (_, i) => ({ id: `C${i}`, metrics: { robustScore: i } })), events: Array.from({ length: 40 }, (_, i) => ({ ts: i, type: 'INFO', message: 'm' })), ...extra });
 
 test('no lab files means not connected, and the trader keeps its BASE policy', () => {
@@ -158,6 +158,17 @@ test('the trader publishes only usable 5m rows, throttled, plus a signed bridge 
   assert.equal(out.datasetBridge, true);
 });
 
+test('trader status still refreshes when the bulky local dataset write fails', () => {
+  resetLabLinkMemory();
+  const dir=path.join(DIR,'status-survives-dataset-failure');
+  fs.mkdirSync(path.join(dir,'lab-link','dataset.json'),{recursive:true});
+  const s={research:{learner:{outcomes:[{ts:10,entryTs:5,sampleKey:'M1:0',mint:'M1',horizonMin:5,returnPct:1,features:{edge:.2}}]}},portfolio:{equitySol:1},positions:[],runtime:{activeEvolutionChampionId:'BASE'},system:{activeEvolutionPolicy:{stage:'BASE'}}};
+  const out=publishLabFeed(s,{dir,bridge:'',now:3_000_000,mode:'paper',force:true});
+  assert.equal(out.datasetLocal,false);assert.equal(out.status,true);assert.ok(out.errors.some(x=>x.startsWith('dataset-local:')));
+  const st=JSON.parse(fs.readFileSync(path.join(dir,'lab-link','trader-status.json'),'utf8'));
+  assert.equal(st.equitySol,1);assert.equal(st.openPositions,0);assert.equal(st.mode,'paper');
+});
+
 test('engine wiring: the lab link runs every cycle, the feed is published, and no scorer ships', () => {
   const src = fs.readFileSync(path.join(ROOT, 'src', 'index.js'), 'utf8');
   assert.match(src, /import \{ syncLabLink, publishLabFeed \} from '\.\/labLink\.js'/);
@@ -175,3 +186,24 @@ test('engine wiring: the lab link runs every cycle, the feed is published, and n
 });
 
 test.after(() => { try { fs.rmSync(DIR, { recursive: true, force: true }); } catch {} });
+
+test('champion gate pins: PAPER_CANARY without promotion, a missing field, a foreign labNodeId and a stale bridge all give no policy', () => {
+  const dir = path.join(DIR, 'pins'), now = 2_500_000;
+  const canary = { ...goodChampion('CANARY'), stage: 'PAPER_CANARY' };
+  const run = (champ, st = statusDoc(now)) => { resetLabLinkMemory(); write(path.join(dir, 'lab-link', 'status.json'), st); write(path.join(dir, 'lab-link', 'champion.json'), champ); const s = {}; syncLabLink(s, { dir, bridge: '', now }); return s; };
+  // The same champion with promotion allowed is a policy, so each refusal below is the gate, not the fixture.
+  assert.equal(evolutionChampionPolicy(run(championDoc(canary, now))).id, 'CANARY');
+  assert.equal(evolutionChampionPolicy(run(championDoc(canary, now, { paperPromotionAllowed: false, qualificationStage: 'PAPER_CANARY' }))), null, 'PAPER_CANARY stage alone grants nothing');
+  const missing = championDoc(canary, now); delete missing.paperPromotionAllowed;
+  assert.equal(evolutionChampionPolicy(run(missing)), null, 'a missing paperPromotionAllowed is not true');
+  const foreign = run(championDoc(canary, now, { labNodeId: 'lab-OTHER' }));
+  assert.equal(foreign.labLink.championId, null); assert.equal(evolutionChampionPolicy(foreign), null, 'champion from a different lab node than the status');
+  // Bridge only (no local files): a status older than BRIDGE_FRESH_MS is disconnected and carries no champion.
+  const bdir = path.join(DIR, 'pins-bridge'), empty = path.join(DIR, 'pins-empty');
+  write(path.join(bdir, 'lab-link', 'status.json'), signRecord(statusDoc(now - BRIDGE_FRESH_MS - 1), 'shared-secret'));
+  write(path.join(bdir, 'lab-link', 'champion.json'), signRecord(championDoc(canary, now - BRIDGE_FRESH_MS - 1), 'shared-secret'));
+  const link = readLabLink({ dir: empty, bridge: bdir, key: 'shared-secret', now });
+  assert.equal(link.source, 'bridge'); assert.equal(link.connected, false); assert.equal(link.champion, null);
+  resetLabLinkMemory(); const s = {}; syncLabLink(s, { dir: empty, bridge: bdir, key: 'shared-secret', now });
+  assert.equal(s.labLink.connected, false); assert.equal(s.labLink.paperPromotionAllowed, false); assert.equal(evolutionChampionPolicy(s), null);
+});

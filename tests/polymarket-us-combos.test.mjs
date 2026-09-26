@@ -39,6 +39,10 @@ function eventsResponse(events){return {events}}
 function jsonRes(obj,status=200){
  return {ok:status>=200&&status<300,status,text:async()=>JSON.stringify(obj)};
 }
+function rfqRows(){
+ const d=path.join(DIR,'research-evidence','raw');
+ try{return fs.readdirSync(d).filter(f=>f.startsWith('polymarket-us-rfq-')).flatMap(f=>fs.readFileSync(path.join(d,f),'utf8').split('\n').filter(Boolean).map(l=>JSON.parse(l)))}catch{return []}
+}
 function textRes(body,status){return {ok:status>=200&&status<300,status,text:async()=>body}}
 
 function installFetch(handler,log){
@@ -259,6 +263,7 @@ test('RFQ flow creates the combo, polls quotes, accepts and confirms',async()=>{
  assert.equal(quote.rfqId,'rfq-77');
  assert.equal(quote.quoteId,'q-best','lowest active buyPrice wins');
  assert.equal(quote.buyPrice,0.815);
+ {const q=rfqRows().filter(r=>r.outcome==='quote').at(-1);assert.ok(q,'RFQ quote logged');assert.equal(q.quoted,0.815);assert.equal(q.markup,+(0.815-q.askProduct).toFixed(4))}
  assert.ok(polls>=2,'quotes are polled until one is active');
 
  const comboReq=log.find(x=>x.method==='POST'&&x.path==='/v1/combos');
@@ -350,33 +355,199 @@ test('auth failures are classified and surfaced in readiness',async()=>{
   return null;
  });
  await assert.rejects(combos.quoteUSCombo({legKeys:keys,stakeUsd:5}),e=>e.code==='betaNotEnabled'&&e.status===403);
+ {const last=rfqRows().at(-1);assert.equal(last.outcome,'error');assert.equal(last.code,'betaNotEnabled');assert.equal(last.quoted,null)}
  assert.equal((await combos.usComboSnapshot({force:true})).betaAccess,'denied');
  assert.equal(us.classifyUSAuthError('rate limit exceeded',429),'rateLimited');
  us.armPolymarketUS(false);
 });
 
-// ------------------------------------------------------------------ item 9
-test('autopilot stays off without the second opt-in and disables itself on auth errors',async()=>{
+// ------------------------------------------------------------------ item 9: AUTO COMBO guards
+// Real auto combos came back (2026-09-26, bing's request) behind guards. These tests pin the guards.
+const EV_STATE=path.join(DIR,'research-evidence','polymarket-us-evidence.json');
+function writeShadow({settled=20,win=true,window='NEAR_END'}={}){
+ const history=Array.from({length:settled},(_,i)=>({id:'sh'+i,status:win?'WON':'LOST',costUsd:2,pnlUsd:win?0.3:-2,settledAt:Date.now()}));
+ fs.mkdirSync(path.dirname(EV_STATE),{recursive:true});
+ fs.writeFileSync(EV_STATE,JSON.stringify({schema:'mpo.polymarket-us-evidence.v1',shadow:{[window]:{open:[],history,cooldowns:{},decisions:[]}}}));
+}
+const feedRows=[];
+function readyForAuto({balance=10,buyingPower=balance}={}){
  reset();
- assert.equal(combos.usComboAutopilot().enabled,false);
- assert.throws(()=>combos.setUSComboAutopilot({enabled:true}),e=>e.code==='confirmation');
- assert.throws(()=>combos.setUSComboAutopilot({enabled:true,confirmation:'ENABLE REAL AUTOPILOT'}),e=>e.code==='notArmed');
+ feedRows.length=0;
+ combos.__testing.setAutoFeedSink(r=>{feedRows.push(r)});
+ combos.__testing.setAccountProvider(async()=>({ok:true,keyStatus:'VERIFIED',balance:{currentBalance:balance,buyingPower}}));
+ writeShadow();
+ us.noteUSAuthResult({code:'ok'});
  us.armPolymarketUS(true);
- const on=combos.setUSComboAutopilot({enabled:true,confirmation:'ENABLE REAL AUTOPILOT',stakeUsd:5,maxLegs:9,maxOpen:2});
- assert.equal(on.enabled,true);
- assert.equal(on.maxLegs,3,'maxLegs is clamped to 2-3');
+}
+const ENABLE={enabled:true,confirmation:'ENABLE REAL AUTOPILOT'};
+function autoFetch({quotes=null,combosStatus=200,log=[]}={}){
  installFetch((u,init)=>{
+  const m=init.method||'GET';
   if(u.pathname==='/v1/events')return jsonRes(eventsResponse(liveEvents()));
-  if(u.pathname==='/v1/combos')return textRes('API key not found',401);
+  if(m==='POST'&&u.pathname==='/v1/combos'){
+   if(combosStatus===403)return textRes('combos are limited to explicitly enabled Retail API users',403);
+   if(combosStatus===401)return textRes('API key not found',401);
+   return jsonRes({combo:{id:'caoc-auto-1',legs:JSON.parse(init.body).legs}});
+  }
+  if(m==='POST'&&u.pathname==='/v1/rfqs')return jsonRes({rfqId:'rfq-a'});
+  if(m==='DELETE'&&u.pathname.startsWith('/v1/rfqs/'))return jsonRes({});
+  if(m==='GET'&&u.pathname==='/v1/rfqs/quotes')return jsonRes({quotes:quotes??[
+   {id:'q-a',rfqId:'rfq-a',symbol:'caoc-auto-1',status:'QUOTE_STATUS_ACTIVE',buyPrice:'0.815',buyQtyDecimal:'2.40',confirmationDeadline:new Date(Date.now()+9000).toISOString()}]});
+  if(m==='PUT'&&/\/accept$/.test(u.pathname))return jsonRes({});
+  if(m==='PUT'&&/\/confirm$/.test(u.pathname))return jsonRes({});
   return null;
- });
- const run=await combos.runUSComboAutopilotOnce();
- assert.equal(run.reason,'keyNotFound');
- assert.equal(run.disabled,true);
- assert.equal(combos.usComboAutopilot().enabled,false,'autopilot must disable itself on auth failure');
- us.armPolymarketUS(false);
- assert.deepEqual(await combos.runUSComboAutopilotOnce(),{ran:false,reason:'disabled'});
+ },log);
+}
+test.afterEach(()=>{combos.__testing.setAccountProvider(null);combos.__testing.setAutoFeedSink(null)});
+
+test('auto combo is OFF by default and after every restart; old journals load with safe, capped config',async()=>{
+ reset();
+ const entry={id:'uc-old',symbol:'caoc-old',legs:[],status:'OPEN',fillVerified:true,stakeUsd:5,at:Date.now()};
+ fs.writeFileSync(combos.__testing.stateFile,JSON.stringify({version:1,combos:{},open:[entry],history:[],stats:{placed:1,won:0,lost:0,pnlUsd:0,hitRate:null},
+  autopilot:{enabled:true,stakeCapUsd:500,maxLegs:9,maxOpen:50,dailyLossCapUsd:900,skipped:'garbage'},cooldowns:{}}));
+ combos.__testing.resetJournal();
+ installFetch(u=>u.pathname==='/v1/events'?jsonRes(eventsResponse([])):null);
+ const snap=await combos.usComboSnapshot({force:true});
+ assert.equal(snap.autopilot.enabled,false,'a persisted enabled flag is ignored');
+ assert.equal(snap.autopilot.stakeCapUsd,25);assert.equal(snap.autopilot.maxLegs,4);assert.equal(snap.autopilot.maxOpen,5);assert.equal(snap.autopilot.dailyLossCapUsd,50);
+ assert.ok(snap.autopilot.blockers.length>0);
+ assert.equal(snap.journal.open[0].id,'uc-old');
+ const d=combos.defaultAutopilot();
+ assert.deepEqual([d.maxLegs,d.stakeCapUsd,d.stakePct,d.maxOpen,d.dailyLossCapUsd,d.balanceFloorUsd,d.stakeMode],[2,2,0.2,2,3,4,'auto']);
+ // enable, then simulate a restart: the in-memory flag is gone
+ readyForAuto();autoFetch();
+ await combos.setUSComboAutopilot(ENABLE);
+ assert.equal(combos.__testing.autoEnabled,true);
+ combos.__testing.resetJournal();
+ assert.equal(combos.__testing.autoEnabled,false);
+ assert.equal((await combos.runUSComboAutopilotOnce()).reason,'disabled');
 });
+
+test('enabling needs the exact phrase, an armed session, a verified key, beta not denied and the shadow gate',async()=>{
+ readyForAuto();autoFetch();
+ await assert.rejects(combos.setUSComboAutopilot({enabled:true,confirmation:'enable real autopilot'}),e=>e.code==='confirmation');
+ us.armPolymarketUS(false);
+ await assert.rejects(combos.setUSComboAutopilot(ENABLE),e=>e.code==='notArmed');
+ us.armPolymarketUS(true);
+ us.noteUSAuthResult({code:'network',message:'offline'});
+ await assert.rejects(combos.setUSComboAutopilot(ENABLE),e=>e.code==='autoBlocked'&&/key not verified/.test(e.message));
+ us.noteUSAuthResult({code:'ok'});
+ combos.__testing.setBetaAccess('denied');
+ await assert.rejects(combos.setUSComboAutopilot(ENABLE),e=>e.code==='autoBlocked'&&/beta/.test(e.message));
+ combos.__testing.setBetaAccess('unknown');
+ writeShadow({settled:19});
+ await assert.rejects(combos.setUSComboAutopilot(ENABLE),e=>e.code==='autoBlocked'&&/19\/20 settled/.test(e.message));
+ writeShadow({settled:25,win:false});
+ await assert.rejects(combos.setUSComboAutopilot(ENABLE),e=>e.code==='autoBlocked'&&/ROI/.test(e.message));
+ writeShadow({settled:20,window:'LATE'});
+ await assert.rejects(combos.setUSComboAutopilot(ENABLE),e=>e.code==='autoBlocked','the gate is per window (NEAR_END has no record)');
+ await combos.setUSComboAutopilot({window:'LATE',...ENABLE});
+ assert.equal(combos.__testing.autoEnabled,true);
+ assert.equal(combos.usComboAutopilot().window,'LATE');
+ assert.equal(feedRows.at(-1).type,'polymarket-auto');assert.match(feedRows.at(-1).message,/AUTO COMBO enabled: window LATE/);
+});
+
+test('auto settings can never exceed the manual caps',async()=>{
+ readyForAuto();
+ for(const bad of [{stakeCapUsd:25.01},{fixedStakeUsd:30},{maxOpen:6},{dailyLossCapUsd:51},{maxLegs:5},{maxLegs:1},{stakePct:0.6},{window:'SOON'},{stakeMode:'yolo'}])
+  await assert.rejects(combos.setUSComboAutopilot(bad),e=>e.code==='settingsInvalid',JSON.stringify(bad));
+ const s=await combos.setUSComboAutopilot({stakeCapUsd:3,maxOpen:1,dailyLossCapUsd:2,stakeMode:'fixed',fixedStakeUsd:1.5});
+ assert.deepEqual([s.stakeCapUsd,s.maxOpen,s.dailyLossCapUsd,s.stakeMode,s.fixedStakeUsd,s.enabled],[3,1,2,'fixed',1.5,false]);
+});
+
+test('bankroll sizing: min($2, 20% of balance), never above buying power, the cap or the balance; floor stops',()=>{
+ const ap=combos.defaultAutopilot();
+ assert.equal(combos.autoStake(ap,{currentBalance:10,buyingPower:10}).stakeUsd,2);
+ assert.equal(combos.autoStake(ap,{currentBalance:6,buyingPower:6}).stakeUsd,1.2);
+ assert.equal(combos.autoStake(ap,{currentBalance:50,buyingPower:1.5}).stakeUsd,1.5,'buying power caps');
+ const floor=combos.autoStake(ap,{currentBalance:3.99,buyingPower:3.99});
+ assert.equal(floor.ok,false);assert.equal(floor.disable,true);assert.match(floor.reason,/below the \$4 floor/);
+ assert.equal(combos.autoStake(ap,{currentBalance:4.5}).ok,false,'20% of $4.50 is under the $1 minimum');
+ assert.equal(combos.autoStake(ap,{}).reason,'balance unknown');
+ assert.equal(combos.autoStake({...ap,stakeMode:'fixed',fixedStakeUsd:3},{currentBalance:10}).stakeUsd,3);
+ assert.equal(combos.autoStake({...ap,stakeMode:'fixed',fixedStakeUsd:25},{currentBalance:100},{maxStakeUsd:5}).stakeUsd,5,'manual cap wins');
+ for(let b=4;b<=40;b+=0.37){const r=combos.autoStake(ap,{currentBalance:b,buyingPower:b});if(r.ok){assert.ok(r.stakeUsd<=2+1e-9&&r.stakeUsd<=0.2*b+1e-9&&r.stakeUsd<=b)}}
+});
+
+test('a guarded pass places one combo through the real place path, journals it and never reuses an event',async()=>{
+ readyForAuto();
+ const log=[];autoFetch({log});
+ await combos.setUSComboAutopilot(ENABLE);
+ const r=await combos.runUSComboAutopilotOnce();
+ assert.equal(r.ran,true,JSON.stringify(r));
+ const j=JSON.parse(fs.readFileSync(combos.__testing.stateFile,'utf8'));
+ assert.equal(j.open.length,1);assert.equal(j.open[0].placedBy,'autopilot');assert.equal(j.open[0].stakeUsd,2);
+ assert.equal(j.open[0].fillVerified,false,'no P/L until the fill is verified');
+ assert.equal(j.autopilot.decisions[0].action,'placed');
+ assert.ok(feedRows.some(x=>/AUTO COMBO placed/.test(x.message)));
+ assert.ok(log.some(x=>x.method==='PUT'&&/\/accept$/.test(x.path)));
+ // Next pass: both eligible events are in the open combo, so nothing new is placed.
+ const r2=await combos.runUSComboAutopilotOnce();
+ assert.equal(r2.reason,'noCandidates');
+ assert.equal(JSON.parse(fs.readFileSync(combos.__testing.stateFile,'utf8')).open.length,1);
+ const r3=await combos.runUSComboAutopilotOnce();
+ const dec=JSON.parse(fs.readFileSync(combos.__testing.stateFile,'utf8')).autopilot.decisions;
+ assert.equal(dec[0].action,'skipped');assert.equal(dec[0].repeats,1,'identical skips collapse');
+ assert.equal(r3.reason,'noCandidates');
+});
+
+test('no signed call is ever made while the session is not armed',async()=>{
+ readyForAuto();
+ const log=[];autoFetch({log});
+ await combos.setUSComboAutopilot(ENABLE);
+ us.armPolymarketUS(false);
+ const r=await combos.runUSComboAutopilotOnce();
+ assert.equal(r.disabled,true);assert.match(r.reason,/disarmed/);
+ assert.equal(log.filter(x=>x.headers['X-PM-Access-Key']).length,0);
+ assert.equal(combos.__testing.autoEnabled,false);
+});
+
+async function expectSelfDisable(setup,reasonRe,opts={}){
+ readyForAuto(opts.acct);
+ const log=[];autoFetch({log,...opts.fetch});
+ await combos.setUSComboAutopilot(ENABLE);
+ await setup?.();
+ const r=await combos.runUSComboAutopilotOnce();
+ assert.equal(r.disabled,true,JSON.stringify(r));assert.match(r.reason,reasonRe);
+ assert.equal(combos.__testing.autoEnabled,false);
+ const j=JSON.parse(fs.readFileSync(combos.__testing.stateFile,'utf8'));
+ assert.equal(j.autopilot.decisions[0].action,'disabled');assert.match(j.autopilot.disabledReason,reasonRe);
+ assert.ok(feedRows.some(x=>/AUTO COMBO disabled/.test(x.message)));
+ assert.equal(j.open.filter(x=>x.placedBy==='autopilot'&&!opts.keepOpen).length,0,'nothing placed');
+ return {log,j};
+}
+test('self-disable: 401 key rejected',async()=>{await expectSelfDisable(null,/401/,{fetch:{combosStatus:401}})});
+test('self-disable: 403 combos beta not enabled',async()=>{await expectSelfDisable(null,/403|beta/,{fetch:{combosStatus:403}})});
+test('self-disable: daily realized loss cap',async()=>{
+ await expectSelfDisable(()=>{const j=JSON.parse(fs.readFileSync(combos.__testing.stateFile,'utf8'));
+  j.history=[{id:'l1',status:'LOST',pnlUsd:-3,stakeUsd:3,settledAt:Date.now(),legs:[]}];fs.writeFileSync(combos.__testing.stateFile,JSON.stringify(j));
+  combos.__testing.reloadJournal();},/daily realized loss/);
+});
+test('self-disable: balance below the floor',async()=>{await expectSelfDisable(null,/below the \$4 floor/,{acct:{balance:3.5}})});
+test('self-disable: three consecutive no-quote RFQs',async()=>{
+ process.env.POLYMARKET_US_AUTO_QUOTE_WAIT_MS='50';
+ try{
+  readyForAuto();autoFetch({quotes:[]});
+  await combos.setUSComboAutopilot(ENABLE);
+  assert.match((await combos.runUSComboAutopilotOnce()).reason,/noQuote/);
+  assert.match((await combos.runUSComboAutopilotOnce()).reason,/noQuote/);
+  const r=await combos.runUSComboAutopilotOnce();
+  assert.equal(r.disabled,true);assert.match(r.reason,/3 consecutive RFQs got no quote/);
+  const dec=JSON.parse(fs.readFileSync(combos.__testing.stateFile,'utf8')).autopilot.decisions.map(d=>d.action);
+  assert.deepEqual(dec.slice(0,4),['disabled','rejected','rejected','enabled']);
+ }finally{delete process.env.POLYMARKET_US_AUTO_QUOTE_WAIT_MS}
+});
+test('self-disable: quote above tolerance is refused and never accepted',async()=>{
+ const {log}=await expectSelfDisable(null,/tolerance/,{fetch:{quotes:[{id:'q-x',rfqId:'rfq-a',symbol:'caoc-auto-1',status:'QUOTE_STATUS_ACTIVE',buyPrice:'0.90',buyQtyDecimal:'2.00',confirmationDeadline:new Date(Date.now()+9000).toISOString()}]}});
+ assert.equal(log.filter(x=>x.method==='PUT').length,0);
+});
+test('self-disable: an unverified auto fill stops everything',async()=>{
+ await expectSelfDisable(()=>{const j=JSON.parse(fs.readFileSync(combos.__testing.stateFile,'utf8'));
+  j.open=[{id:'uc-u',symbol:'caoc-u',legs:[],status:'SUBMITTED',fillVerified:false,placedBy:'autopilot',stakeUsd:2,at:Date.now()-130_000}];
+  fs.writeFileSync(combos.__testing.stateFile,JSON.stringify(j));combos.__testing.reloadJournal();},/unverified fill/,{keepOpen:true});
+});
+test('self-disable: the shadow gate stops being met',async()=>{await expectSelfDisable(()=>writeShadow({settled:25,win:false}),/shadow gate no longer met/)});
+
 
 // ------------------------------------------------------------------ item 8
 test('settlement marks WON/LOST and records the post-settlement cooldown',async()=>{
@@ -406,12 +577,42 @@ test('settlement marks WON/LOST and records the post-settlement cooldown',async(
  us.armPolymarketUS(false);
 });
 
+
+test('settlement accepts the observed {slug,settlement} shape only once the market is RESOLVED; void is UNKNOWN',async()=>{
+ const run=async(settlement,status)=>{
+  reset();
+  us.armPolymarketUS(true);
+  installFetch((u,init)=>{
+   const m=init.method||'GET';
+   if(u.pathname==='/v1/events')return jsonRes(eventsResponse(liveEvents()));
+   if(m==='POST'&&u.pathname==='/v1/combos')return jsonRes({combo:{id:'caoc-obs',legs:[]}});
+   if(m==='GET'&&u.pathname==='/v1/rfqs/quotes')return jsonRes({quotes:[{id:'q1',rfqId:'r1',symbol:'caoc-obs',status:'QUOTE_STATUS_ACTIVE',buyPrice:'0.810',buyQtyDecimal:'6.00',rfqCreatorOrderId:'ord-o1'}]});
+   if(m==='PUT')return jsonRes({});
+   if(m==='GET'&&/^\/v1\/order\//.test(u.pathname))return jsonRes({order:{state:'ORDER_STATE_FILLED',quantity:6,leavesQuantity:0}});
+   if(m==='GET'&&/\/settlement$/.test(u.pathname))return jsonRes({slug:u.pathname.split('/')[3],settlement});
+   if(m==='GET'&&u.pathname==='/v1/markets')return jsonRes({markets:[{slug:u.searchParams.get('slug'),status}]});
+   return null;
+  });
+  const keys=(await combos.usComboSnapshot({force:true})).suggested.legs;
+  await combos.placeUSCombo({legKeys:keys,stakeUsd:5,mode:'rfq',rfqId:'r1',quoteId:'q1',confirmation:'PLACE REAL COMBO'});
+  await combos.settleUSCombos({force:true});
+  us.armPolymarketUS(false);
+  return JSON.parse(fs.readFileSync(combos.__testing.stateFile,'utf8'));
+ };
+ const won=await run(1,'MARKET_STATUS_RESOLVED');
+ assert.equal(won.history[0]?.status,'WON');assert.equal(won.open.length,0);
+ const pending=await run(0.5,'MARKET_STATUS_OPEN');
+ assert.equal(pending.open.length,1,'0.5 on an unresolved market is never a settlement');assert.equal(pending.history.length,0);
+ const voided=await run(0.5,'MARKET_STATUS_RESOLVED');
+ assert.equal(voided.open.length,1);assert.equal(voided.open[0].status,'UNKNOWN');assert.equal(voided.history.length,0,'void books no P/L');
+});
+
 // ----------------------------------------------------------------- item 10
 test('snapshot matches the UI contract and never throws on a dead feed',async()=>{
  reset();
  installFetch(u=>u.pathname==='/v1/events'?jsonRes(eventsResponse(liveEvents())):null);
  const s=await combos.usComboSnapshot({force:true});
- for(const k of ['at','readiness','feed','candidates','suggested','quote','journal','autopilot','limits','betaAccess','lastError'])assert.ok(k in s,'missing '+k);
+ for(const k of ['at','readiness','feed','candidates','suggested','quote','journal','limits','betaAccess','lastError'])assert.ok(k in s,'missing '+k);
  for(const k of ['credentialsReady','sessionArmed','lastAuthError','authCode'])assert.ok(k in s.readiness,'missing readiness.'+k);
  for(const k of ['ok','error','ageMs','eventsInPlay','eventsLive','candidates','rejections'])assert.ok(k in s.feed,'missing feed.'+k);
  assert.deepEqual(Object.keys(s.limits).sort(),['dailyLossCapUsd','maxOpen','maxStakeUsd','priceTolerance']);
@@ -419,7 +620,7 @@ test('snapshot matches the UI contract and never throws on a dead feed',async()=
  assert.ok(Number.isFinite(s.feed.ageMs)&&s.feed.ageMs>=0,'healthy feed age is never negative');
  assert.equal(s.suggested.legs.length,2);
  assert.equal(s.journal.stats.placed,0);
- assert.equal(s.autopilot.enabled,false);
+ assert.equal(s.autopilot.enabled,false);assert.ok(Array.isArray(s.autopilot.blockers));
  const c=s.candidates[0];
  for(const k of ['key','symbol','side','eventSlug','event','league','marketType','question','outcome','price','bid','ask','spread','liveState','etaMinutes','nearEndScore','lateReason','feeCoefficient','feePerContract','netPrice','rank','comboEnabled','minimumTradeQty','freshnessSec'])assert.ok(k in c,'missing candidate.'+k);
  // A failing feed is reported as an error while the last-known events are retained;
@@ -741,6 +942,268 @@ test('settlement responsiveness leaves the real-money safety limits and confirma
  assert.equal(combos.__testing.SETTLE_FETCH_CONCURRENCY,3);
  assert.deepEqual(combos.usComboLimits(),{maxStakeUsd:25,maxOpen:5,dailyLossCapUsd:50,priceTolerance:0.02});
  assert.equal(combos.__testing.CONFIRM_PLACE,'PLACE REAL COMBO');
- assert.equal(combos.__testing.CONFIRM_AUTOPILOT,'ENABLE REAL AUTOPILOT');
- assert.throws(()=>combos.setUSComboAutopilot({enabled:true,confirmation:'anything else'}),e=>e.code==='confirmation');
+});
+
+// ------------------------------------------------------ owner settings (renovation step 3)
+function pricedGame(slug,ask){
+ const bid=(Number(ask)-0.01).toFixed(4);
+ return soccerEvent(slug,88,{markets:[market({slug:`atc-${slug}-home`,bestAskQuote:{value:String(ask)},bestBidQuote:{value:bid}})]});
+}
+
+test('settings default to floor 0.80, 15 minutes, 3 legs and persist in journal.settings',async()=>{
+ reset();
+ assert.deepEqual(combos.usComboSettings(),{priceMin:0.8,maxMinutesLeft:15,maxLegs:3,window:'NEAR_END',rankWeights:combos.DEFAULT_RANK_WEIGHTS});
+ assert.deepEqual(combos.setUSComboSettings({priceMin:0.6}),{priceMin:0.6,maxMinutesLeft:15,maxLegs:3,window:'NEAR_END',rankWeights:combos.DEFAULT_RANK_WEIGHTS});
+ const saved=JSON.parse(fs.readFileSync(combos.__testing.stateFile,'utf8'));
+ assert.deepEqual(saved.settings,{priceMin:0.6,maxMinutesLeft:15,maxLegs:3,window:'NEAR_END',rankWeights:combos.DEFAULT_RANK_WEIGHTS});
+ installFetch(u=>u.pathname==='/v1/events'?jsonRes(eventsResponse([])):null);
+ const snap=await combos.usComboSnapshot({force:true});
+ assert.equal(snap.settings.priceMin,0.6);assert.equal(snap.settingsBounds.priceMin.min,0.6);
+ assert.ok('suggested' in snap);
+});
+
+test('settings reject anything outside the fixed bounds and never widen them',()=>{
+ reset();
+ for(const bad of [{priceMin:0.59},{priceMin:0.99},{priceMin:'x'},{maxLegs:5},{maxLegs:1},{window:'SOON'},{rankWeights:{nearEnd:4}},{rankWeights:{bogus:1}},{maxMinutesLeft:0},{maxMinutesLeft:31}]){
+  assert.throws(()=>combos.setUSComboSettings(bad),e=>e.code==='settingsInvalid',JSON.stringify(bad));
+ }
+ assert.deepEqual(combos.usComboSettings(),{priceMin:0.8,maxMinutesLeft:15,maxLegs:3,window:'NEAR_END',rankWeights:combos.DEFAULT_RANK_WEIGHTS});
+ // A hand-edited journal with out-of-range values falls back to the defaults, not the stored value.
+ fs.writeFileSync(combos.__testing.stateFile,JSON.stringify({open:[],history:[],settings:{priceMin:0.1,maxLegs:9,maxMinutesLeft:15}}));
+ combos.__testing.resetJournal();
+ assert.deepEqual(combos.usComboSettings(),{priceMin:0.8,maxMinutesLeft:15,maxLegs:3,window:'NEAR_END',rankWeights:combos.DEFAULT_RANK_WEIGHTS});
+});
+
+test('a 0.65 leg passes at floor 0.60 and fails at 0.80, in the feed filter and in build',()=>{
+ reset();
+ const events=[pricedGame('sa-aaa-bbb-2026-09-25',0.65),pricedGame('sb-ccc-ddd-2026-09-25',0.9)];
+ const at80=combos.usCandidatesFromEvents(events,Date.now(),{priceMin:0.8,maxMinutesLeft:15,maxLegs:3});
+ assert.equal(at80.candidates.length,1);assert.equal(at80.rejections['price-band'],1);
+ const at60=combos.usCandidatesFromEvents(events,Date.now(),{priceMin:0.6,maxMinutesLeft:15,maxLegs:3});
+ assert.equal(at60.candidates.length,2);
+ const legKeys=at60.candidates.map(c=>c.key);
+ combos.setUSComboSettings({priceMin:0.6});
+ const built=combos.buildUSCombo({legKeys,stakeUsd:5,candidates:at60.candidates});
+ assert.equal(built.legs.length,2);assert.ok(built.price<0.6);
+ // Raising the floor back re-rejects the same pool at build time (quote and place go through build too).
+ combos.setUSComboSettings({priceMin:0.8});
+ assert.throws(()=>combos.buildUSCombo({legKeys,stakeUsd:5,candidates:at60.candidates}),e=>e.code==='priceBand');
+});
+
+test('the minutes-left setting gates the feed',()=>{
+ reset();
+ const events=[pricedGame('sa-aaa-bbb-2026-09-25',0.9)];
+ const eta=combos.usCandidatesFromEvents(events,Date.now(),{priceMin:0.8,maxMinutesLeft:30,maxLegs:3}).candidates[0].etaMinutes;
+ assert.ok(eta>=1,'fixture must be at least a minute from the end');
+ const tight=combos.usCandidatesFromEvents(events,Date.now(),{priceMin:0.8,maxMinutesLeft:Math.floor(eta)-0.5,maxLegs:3});
+ assert.equal(tight.candidates.length,0);assert.equal(tight.rejections['turnover-window'],1);
+});
+
+test('a fourth leg is rejected at maxLegs 3, and a third at maxLegs 2',()=>{
+ reset();
+ const events=['sa','sb','sc','sd'].map(p=>pricedGame(`${p}-aaa-bbb-2026-09-25`,0.95));
+ const {candidates}=combos.usCandidatesFromEvents(events,Date.now(),combos.usComboSettings());
+ assert.equal(candidates.length,4);
+ const keys=candidates.map(c=>c.key);
+ assert.equal(combos.buildUSCombo({legKeys:keys.slice(0,3),stakeUsd:5,candidates}).legs.length,3);
+ assert.throws(()=>combos.buildUSCombo({legKeys:keys,stakeUsd:5,candidates}),e=>e.code==='invalidLegs'&&/at most 3/.test(e.message));
+ combos.setUSComboSettings({maxLegs:2});
+ assert.throws(()=>combos.buildUSCombo({legKeys:keys.slice(0,3),stakeUsd:5,candidates}),e=>e.code==='invalidLegs');
+ assert.equal(combos.chooseUSCombo(candidates,combos.usComboSettings().maxLegs).length,2);
+});
+
+test('settings refuse to overwrite a corrupt journal',()=>{
+ reset();
+ fs.writeFileSync(combos.__testing.stateFile,'{not json');
+ combos.__testing.resetJournal();
+ assert.throws(()=>combos.setUSComboSettings({priceMin:0.6}),e=>e.code==='stateRecovery');
+ assert.equal(fs.readFileSync(combos.__testing.stateFile,'utf8'),'{not json');
+});
+
+// ------------------------------------------- journal before accept (renovation step 4)
+function acceptHarness({accept,confirm}){
+ const log=[],seen={onDiskAtAccept:null};
+ installFetch(async(u,init)=>{
+  const m=init.method||'GET';
+  if(u.pathname==='/v1/events')return jsonRes(eventsResponse(liveEvents()));
+  if(m==='POST'&&u.pathname==='/v1/combos')return jsonRes({combo:{id:'caoc-jba',legs:JSON.parse(init.body).legs}});
+  if(m==='GET'&&u.pathname==='/v1/rfqs/quotes')return jsonRes({quotes:[{id:'q1',rfqId:'r1',symbol:'caoc-jba',status:'QUOTE_STATUS_ACTIVE',buyPrice:'0.810',buyQtyDecimal:'6.00'}]});
+  if(m==='PUT'&&/accept$/.test(u.pathname)){
+   seen.onDiskAtAccept=JSON.parse(fs.readFileSync(combos.__testing.stateFile,'utf8')).open;
+   return accept();
+  }
+  if(m==='PUT'&&/confirm$/.test(u.pathname))return confirm();
+  return null;
+ },log);
+ return {log,seen};
+}
+async function placeReq(){
+ const keys=(await combos.usComboSnapshot({force:true})).suggested.legs;
+ return {legKeys:keys,stakeUsd:5,mode:'rfq',rfqId:'r1',quoteId:'q1',confirmation:'PLACE REAL COMBO'};
+}
+const onDisk=()=>JSON.parse(fs.readFileSync(combos.__testing.stateFile,'utf8'));
+
+test('the journal entry is on disk, SUBMITTED and unverified, before the accept call',async()=>{
+ reset();us.armPolymarketUS(true);
+ const {seen}=acceptHarness({accept:()=>jsonRes({}),confirm:()=>jsonRes({})});
+ const placed=await combos.placeUSCombo(await placeReq());
+ assert.equal(seen.onDiskAtAccept.length,1);
+ assert.equal(seen.onDiskAtAccept[0].id,placed.entry.id);
+ assert.equal(seen.onDiskAtAccept[0].status,'SUBMITTED');assert.equal(seen.onDiskAtAccept[0].fillVerified,false);
+ const j=onDisk();assert.equal(j.open.length,1);assert.equal(j.stats.placed,1);
+ us.armPolymarketUS(false);
+});
+
+test('a definite accept rejection (4xx) removes the pre-written entry and counts nothing',async()=>{
+ reset();us.armPolymarketUS(true);
+ const {log,seen}=acceptHarness({accept:()=>jsonRes({message:'quote no longer active'},400),confirm:()=>jsonRes({})});
+ await assert.rejects(combos.placeUSCombo(await placeReq()),e=>e.status===400);
+ assert.equal(seen.onDiskAtAccept.length,1,'entry existed while accept was in flight');
+ const j=onDisk();assert.equal(j.open.length,0);assert.equal(j.stats.placed,0);
+ assert.equal(log.filter(x=>/confirm$/.test(x.path)).length,0,'never confirms after a failed accept');
+ us.armPolymarketUS(false);
+});
+
+test('an ambiguous accept failure (network or 5xx) keeps the entry for reconcile',async()=>{
+ for(const accept of [()=>{throw new Error('socket hang up')},()=>textRes('upstream down',502)]){
+  reset();us.armPolymarketUS(true);
+  acceptHarness({accept,confirm:()=>jsonRes({})});
+  await assert.rejects(combos.placeUSCombo(await placeReq()));
+  const j=onDisk();
+  assert.equal(j.open.length,1);assert.equal(j.open[0].acceptUncertain,true);
+  assert.equal(j.open[0].status,'SUBMITTED');assert.equal(j.open[0].fillVerified,false);
+  assert.equal(j.stats.placed,1);
+  us.armPolymarketUS(false);
+ }
+});
+
+test('a confirm failure after a good accept keeps the entry unverified',async()=>{
+ reset();us.armPolymarketUS(true);
+ acceptHarness({accept:()=>jsonRes({}),confirm:()=>textRes('confirm window closed',500)});
+ let entryId=null;
+ await assert.rejects(combos.placeUSCombo(await placeReq()),e=>{entryId=e.entryId;return e.status===500});
+ const j=onDisk();
+ assert.equal(j.open.length,1);assert.equal(j.open[0].id,entryId);
+ assert.match(j.open[0].confirmError,/confirm window closed/);
+ assert.equal(j.open[0].status,'SUBMITTED');assert.equal(j.open[0].fillVerified,false);assert.equal(j.open[0].pnlUsd,null);
+ assert.equal(j.stats.placed,1);
+ us.armPolymarketUS(false);
+});
+
+// ------------------------------------------------------- batch 2: every live game
+test('feed pages /v1/events by offset until a short page and reports real totals',async()=>{
+ const offsets=[];
+ const mk=(i,live)=>({id:'e'+i,slug:'ev-'+i,title:'ev '+i,live,closed:false,ended:false,tags:[{slug:'soccer'}],markets:[market({slug:'m'+i,comboEnabled:i%2===0})]});
+ globalThis.fetch=async url=>{const u=new URL(String(url));const off=Number(u.searchParams.get('offset'));offsets.push(off);
+  const n=off<600?300:120;return jsonRes({events:Array.from({length:n},(_,k)=>mk(off+k,(off+k)%10===0))})};
+ const f=await combos.usLiveEvents({force:true});
+ assert.deepEqual(offsets,[0,300,600]);
+ assert.equal(f.total,720);assert.equal(f.pages,3);assert.equal(f.capped,false);
+ assert.equal(f.live,72);assert.equal(f.comboLive,72);
+});
+
+test('feed paging stops at the hard cap',async()=>{
+ let calls=0;
+ globalThis.fetch=async url=>{calls++;const off=Number(new URL(String(url)).searchParams.get('offset'));
+  return jsonRes({events:Array.from({length:300},(_,k)=>({id:'c'+(off+k),live:false}))})};
+ const f=await combos.usLiveEvents({force:true});
+ assert.equal(calls,10);assert.equal(f.total,3000);assert.equal(f.capped,true);
+});
+
+test('board lists every live combo game with its exact rejection reason; window rejects are manually addable',()=>{
+ const now=Date.now();
+ const {candidates,board,rejections}=combos.usCandidatesFromEvents([
+  soccerEvent('near-2026',88),soccerEvent('early-2026',7),
+  soccerEvent('cheap-2026',88,{markets:[market({slug:'atc-cheap',bestAskQuote:{value:'0.40'},bestBidQuote:{value:'0.39'}})]}),
+  {slug:'cs-2026',title:'Vexar vs Bushido',live:true,period:'Map 1',score:'5-3',tags:[{slug:'esports'},{slug:'cs2'}],markets:[market({slug:'cs-m'})],__fetchedAt:now},
+ ],now);
+ assert.deepEqual(candidates.map(c=>c.eventSlug),['near-2026']);
+ const by=Object.fromEntries(board.map(b=>[b.eventSlug,b]));
+ assert.equal(board.length,4);
+ assert.equal(by['near-2026'].eligible,true);
+ assert.equal(by['early-2026'].outsideWindow,true);assert.match(by['early-2026'].reason,/./);
+ assert.equal(by['cheap-2026'].addable,false);
+ assert.ok(['price-band'].includes(by['cheap-2026'].reason),by['cheap-2026'].reason);
+ assert.equal(by['cs-2026'].sport,'esports');assert.match(by['cs-2026'].reason,/manual only: no timing rule for esports/);
+ assert.ok(rejections['price-band']>=1);
+});
+
+test('an outside-window leg can be added by hand and the combo is tagged',()=>{
+ const now=Date.now();
+ const {candidates,board}=combos.usCandidatesFromEvents([soccerEvent('near-2026',88),soccerEvent('early-2026',7)],now);
+ const early=board.find(b=>b.eventSlug==='early-2026');
+ const pool=[...candidates,early];
+ const c=combos.buildUSCombo({legKeys:[candidates[0].key,early.key],stakeUsd:5,candidates:pool,at:now});
+ assert.equal(c.outsideWindow,true);
+ assert.equal(c.legs.find(l=>l.eventSlug==='early-2026').outsideWindow,true);
+ assert.throws(()=>combos.buildUSCombo({legKeys:[candidates[0].key,early.key],stakeUsd:5,candidates,at:now}),/no longer a live candidate/);
+});
+
+test('sport labels: league comes from tags, not a blanket MLB/NBA/NHL',()=>{
+ const n=tags=>combos.normalizeUSLiveState({period:'Top 3',tags:tags.map(slug=>({slug}))});
+ assert.equal(n(['baseball','kbo']).leagueAbbreviation,'kbo baseball');
+ assert.equal(n(['baseball','npb']).leagueAbbreviation,'npb baseball');
+ assert.equal(n(['mlb']).leagueAbbreviation,'mlb baseball');
+ assert.equal(combos.normalizeUSLiveState({period:'P2',tags:[{slug:'hockey'},{slug:'khl'}]}).leagueAbbreviation,'khl hockey');
+ assert.equal(combos.normalizeUSLiveState({period:'Q4',tags:[{slug:'basketball'},{slug:'wnba'}]}).leagueAbbreviation,'wnba basketball');
+ assert.equal(combos.normalizeUSLiveState({period:'Q2',tags:[{slug:'basketball'}]}).leagueAbbreviation,'basketball');
+ assert.equal(combos.normalizeUSLiveState({tags:[{slug:'valorant'}]}).sport,'esports');
+ assert.equal(combos.normalizeUSLiveState({tags:[{slug:'darts'}]}).sport,'other');
+});
+
+// ------------------------------------------------------- batch 3: windows + rank
+test('strategy windows: per-sport rules for NEAR_END, LATE and ANY_LIVE',async()=>{
+ const {windowEstimate}=await import('../src/sportsTiming.js');
+ const soc=(min)=>({period:min>45?'2H':'1H',elapsed:String(min),leagueAbbreviation:'soccer',sport:'soccer'});
+ assert.equal(windowEstimate('NEAR_END',{},soc(60)).ok,false);
+ assert.equal(windowEstimate('LATE',{},soc(60)).ok,true);
+ assert.equal(windowEstimate('LATE',{},soc(30)).ok,false);
+ assert.equal(windowEstimate('NEAR_END',{},soc(88)).ok,true);
+ const bb=inn=>({period:`Top ${inn}`,leagueAbbreviation:'kbo baseball',sport:'baseball'});
+ assert.equal(windowEstimate('LATE',{},bb(7)).ok,true);
+ assert.equal(windowEstimate('LATE',{},bb(6)).ok,false);
+ assert.equal(windowEstimate('NEAR_END',{},bb(7)).ok,false);
+ assert.equal(windowEstimate('LATE',{},{period:'Q3',elapsed:'8:00',leagueAbbreviation:'basketball',sport:'basketball'}).ok,true);
+ assert.equal(windowEstimate('LATE',{},{period:'P2',leagueAbbreviation:'khl hockey',sport:'hockey'}).ok,false);
+ assert.equal(windowEstimate('LATE',{},{period:'P3',elapsed:'12:00',leagueAbbreviation:'khl hockey',sport:'hockey'}).ok,true);
+ // tennis BO3, one set each, third set just started: a potential closing set
+ const ten={period:'SET 3',score:'6-4, 3-6, 1-0',leagueAbbreviation:'tennis atp BO3',sport:'tennis'};
+ assert.equal(windowEstimate('LATE',{},ten).ok,true);
+ assert.equal(windowEstimate('NEAR_END',{},ten).ok,false);
+ assert.equal(windowEstimate('LATE',{},{period:'SET 1',score:'2-1',leagueAbbreviation:'tennis atp BO3',sport:'tennis'}).ok,false);
+ const es={period:'Map 1',sport:'esports'};
+ assert.match(windowEstimate('LATE',{},es).reason,/manual only/);
+ assert.equal(windowEstimate('ANY_LIVE',{},es).ok,true);
+ assert.equal(windowEstimate('ANY_LIVE',{},soc(5)).ok,true);
+});
+
+test('window setting changes which games qualify and is stored with each entry',()=>{
+ const now=Date.now();
+ const ev=[soccerEvent('near-2026',88),soccerEvent('mid-2026',60),soccerEvent('early-2026',7)];
+ const base={priceMin:0.8,maxMinutesLeft:15,maxLegs:3};
+ const n=w=>combos.usCandidatesFromEvents(ev,now,{...base,window:w}).candidates.map(c=>c.eventSlug).sort();
+ assert.deepEqual(n('NEAR_END'),['near-2026']);
+ assert.deepEqual(n('LATE'),['mid-2026','near-2026']);
+ assert.deepEqual(n('ANY_LIVE'),['early-2026','mid-2026','near-2026']);
+ const {candidates}=combos.usCandidatesFromEvents(ev,now,{...base,window:'LATE'});
+ const c=combos.buildUSCombo({legKeys:candidates.map(x=>x.key),stakeUsd:5,candidates,at:now,settings:{...base,window:'LATE'}});
+ assert.equal(c.window,'LATE');
+});
+
+test('rank: default weights reproduce the original formula; weights are tunable and bounded',()=>{
+ const row={nearEndScore:94,price:.92,liquidity:5000,liquidityKnown:true,etaMinutes:6,priorityBonus:35,spread:.01};
+ const old=Math.round(94*4+(100-Math.abs(.92-.90)*260)+Math.min(35,Math.log10(5000)*8)-6*8+35-.01*500);
+ assert.equal(combos.rankBreakdown(row).rank,old);
+ assert.deepEqual(Object.keys(combos.rankBreakdown(row).parts),['nearEnd','priceFit','liquidity','eta','priority','spread']);
+ const noEta=combos.rankBreakdown(row,{...combos.DEFAULT_RANK_WEIGHTS,eta:0}).rank;
+ assert.equal(noEta,old+48);
+ const s=combos.setUSComboSettings({rankWeights:{eta:0.5},window:'LATE'});
+ assert.equal(s.rankWeights.eta,0.5);assert.equal(s.rankWeights.nearEnd,1);assert.equal(s.window,'LATE');
+ combos.setUSComboSettings({rankWeights:combos.DEFAULT_RANK_WEIGHTS,window:'NEAR_END'});
+});
+
+test('stats are recorded per window; outside-window manual combos count as MANUAL',()=>{
+ assert.equal(combos.entryWindow({}),'NEAR_END');
+ assert.equal(combos.entryWindow({window:'LATE'}),'LATE');
+ assert.equal(combos.entryWindow({window:'LATE',outsideWindow:true}),'MANUAL');
 });

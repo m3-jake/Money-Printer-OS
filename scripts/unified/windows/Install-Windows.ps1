@@ -54,10 +54,14 @@ try {
     foreach ($UserRoot in @((Join-Path $env:APPDATA 'Money Printer OS'), (Join-Path $env:APPDATA 'money-printer-os'))) {
         $EnvFile = Join-Path $UserRoot '.env'
         if ((Test-Path -LiteralPath $EnvFile) -and (Select-String -LiteralPath $EnvFile -Pattern '^\s*MODE\s*=\s*["'']?live\b' -Quiet)) { throw 'Live mode is configured. Disarm and switch to paper mode in the app before updating.' }
-        foreach ($Name in @('combo-engine.json', 'polymarket-us-combos.json')) {
+        foreach ($Name in @('combo-engine.json', 'polymarket-us-combos.json', 'robinhood-auto-trader.json')) {
             $StateFile = Join-Path $UserRoot "data\$Name"
             if (-not (Test-Path -LiteralPath $StateFile)) { continue }
             $State = Get-Content -LiteralPath $StateFile -Raw | ConvertFrom-Json
+            if ($Name -eq 'robinhood-auto-trader.json') {
+                if ($null -eq $State -or $State.version -ne 1 -or $State.open -isnot [Array]) { throw 'Robinhood journal schema requires recovery. No update performed.' }
+                if ($State.open.Count) { throw 'Open Robinhood crypto exposure blocks updating.' }
+            }
             if ($State.recoveryRequired -or $State.sessionArmed) { throw "Trading state is armed or needs recovery: $Name. No update performed." }
             if ($Name -eq 'polymarket-us-combos.json' -and @($State.open | Where-Object { $null -ne $_ }).Count) { throw 'Open Polymarket orders/RFQs block updating.' }
             if ($Name -eq 'combo-engine.json') {

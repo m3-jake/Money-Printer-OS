@@ -158,7 +158,7 @@ button, input, select, textarea { font: inherit; }
   place-items: center;
   will-change: transform;
   animation: billFall linear infinite, billFlip 1.45s ease-in-out infinite;
-  opacity: .9;
+  opacity: 1;
   transform-style: preserve-3d;
 }
 .bill.pile {
@@ -246,6 +246,35 @@ button, input, select, textarea { font: inherit; }
   filter: drop-shadow(2px 3px 3px #000a);
 }
 .brand .brand-text { text-align: right; }
+
+.money-event-feed {
+  position: absolute;
+  right: 18px;
+  bottom: calc(var(--task) + 10px);
+  z-index: 7;
+  width: min(520px, calc(100vw - 128px));
+  max-height: 150px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 2px;
+  overflow: hidden;
+  pointer-events: none;
+  font: 700 11px/1.25 Consolas, "Courier New", monospace;
+  color: #e8ffe0;
+  text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 0 0 4px #000;
+}
+.money-event {
+  width: fit-content;
+  max-width: 100%;
+  padding: 2px 5px;
+  background: linear-gradient(90deg, #001c1699, #001c1644 72%, transparent);
+  border-left: 2px solid #66ff66;
+  white-space: normal;
+}
+.money-event span { color: #9db5aa; font-weight: 400; margin-right: 5px; }
+.money-event.ambient { color: #c7ffd0; border-left-color: #5eefff; }
+.money-event.ambient span { color: #8bbbc3; }
 
 .icons {
   position: absolute;
@@ -380,7 +409,7 @@ button, input, select, textarea { font: inherit; }
 }
 .menu span:first-letter { text-decoration: underline; }
 .body {
-  height: calc(100% - 40px);
+  height: calc(100% - var(--mpo-titlebar-h));
   min-height: 0;
   overflow: auto;
   padding: 7px;
@@ -404,7 +433,7 @@ button, input, select, textarea { font: inherit; }
   white-space: nowrap;
 }
 .body.tabbed {
-  height: calc(100% - 40px - 26px);
+  height: calc(100% - var(--mpo-titlebar-h) - var(--mpo-tabs-h));
   padding: 0;
   overflow: hidden;
 }
@@ -794,6 +823,7 @@ textarea:focus-visible,
   background: transparent url('/assets/money-bill.webp') center / contain no-repeat;
   box-shadow: none;
   image-rendering: auto;
+  opacity: 1;
   animation: billFall linear infinite, billFlip 1.45s ease-in-out infinite;
 }
 .bill.burst {

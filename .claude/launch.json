@@ -1,0 +1,45 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "engine-isolated",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "src/index.js"
+      ],
+      "port": 8799,
+      "env": {
+        "DASHBOARD_PORT": "8799",
+        "DASHBOARD_HOST": "127.0.0.1",
+        "MODE": "paper",
+        "MONEY_PRINTER_DATA_DIR": "C:/Users/jakem/AppData/Local/Temp/claude/W--money-printer-os/da1856d7-275e-4e42-9d22-c4473a4e9e05/scratchpad/mpo-data",
+        "DOTENV_CONFIG_PATH": "C:/Users/jakem/AppData/Local/Temp/claude/W--money-printer-os/da1856d7-275e-4e42-9d22-c4473a4e9e05/scratchpad/no.env",
+        "POLYMARKET_AUTOSTART": "false",
+        "ROBINHOOD_API_KEY": "",
+        "ROBINHOOD_PRIVATE_KEY": "",
+        "ROBINHOOD_REAL_ENABLED": "false",
+        "MPO_RESEARCH_COLLECTOR": "false"
+      }
+    },
+    {
+      "name": "engine-controls",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "src/index.js"
+      ],
+      "port": 8811,
+      "env": {
+        "DASHBOARD_PORT": "8811",
+        "DASHBOARD_HOST": "127.0.0.1",
+        "MODE": "paper",
+        "MONEY_PRINTER_DATA_DIR": "C:/Users/jakem/AppData/Local/Temp/claude/W--money-printer-os/1644a937-95cc-42e1-ab38-374dda33cddf/scratchpad/mpo-data",
+        "DOTENV_CONFIG_PATH": "C:/Users/jakem/AppData/Local/Temp/claude/W--money-printer-os/da1856d7-275e-4e42-9d22-c4473a4e9e05/scratchpad/no.env",
+        "POLYMARKET_AUTOSTART": "false",
+        "ROBINHOOD_API_KEY": "",
+        "ROBINHOOD_PRIVATE_KEY": "",
+        "ROBINHOOD_REAL_ENABLED": "false",
+        "MPO_RESEARCH_COLLECTOR": "false"
+      }
+    }
+  ]
+}

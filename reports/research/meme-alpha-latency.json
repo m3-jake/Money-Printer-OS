@@ -1,0 +1,108 @@
+{
+  "version": 1,
+  "title": "Meme alpha + latency research pass",
+  "integrityPass": false,
+  "leadPass": false,
+  "pass": false,
+  "fail": [
+    "cold-sentinel-excluded",
+    "cold-chronological",
+    "cold-walk-forward",
+    "cold-lead",
+    "replay-challengers-not-promotable",
+    "forensics-friction-flip"
+  ],
+  "gates": [
+    {
+      "id": "cold-sentinel-excluded",
+      "ok": false,
+      "detail": "sentinel=n/a raw=n/a economic=n/a"
+    },
+    {
+      "id": "cold-chronological",
+      "ok": false,
+      "detail": "[]"
+    },
+    {
+      "id": "cold-walk-forward",
+      "ok": false,
+      "detail": "[]"
+    },
+    {
+      "id": "cold-lead",
+      "ok": false,
+      "detail": "COLD top-quartile vs rest must hold on count-based chronological and walk-forward splits after sentinel/economic filters"
+    },
+    {
+      "id": "replay-challengers-not-promotable",
+      "ok": false,
+      "detail": "challengers=0 live=false"
+    },
+    {
+      "id": "replay-no-positive-sprint-or-fast",
+      "ok": true,
+      "detail": "FAST pnl=n/a SPRINT pnl=n/a COLD_TOPQ pnl=n/a"
+    },
+    {
+      "id": "forensics-negative-median",
+      "ok": true,
+      "detail": "medianReturnPct=-2.8119"
+    },
+    {
+      "id": "forensics-friction-flip",
+      "ok": false,
+      "detail": "gross=-0.2683 net=-2.8119"
+    },
+    {
+      "id": "forensics-stale-purge-maxhold",
+      "ok": true,
+      "detail": "n=124 cause=maxHold 2-min timer (champion MPO-Gmuavg7mo-2f63)"
+    },
+    {
+      "id": "latency-proposal-mean-explained",
+      "ok": true,
+      "detail": "proposal_ms is source-event-to-proposal (includes discovery); ~500s mean is outlier-inflated end-to-end, not proposal-stage queue"
+    }
+  ],
+  "cold": {
+    "rawN": null,
+    "n": null,
+    "sentinel": null,
+    "subEconomic": null,
+    "chronological": null,
+    "walkForward": null,
+    "chronFail": [],
+    "walkFail": [],
+    "overall": null
+  },
+  "forensics": {
+    "n": 247,
+    "medianReturnPct": -2.8119,
+    "medianGrossReturnPct": -0.2683,
+    "expectancy": 0.013,
+    "profitFactor": 2.437,
+    "stalePurge": 124,
+    "staleCause": "maxHold 2-min timer (champion MPO-Gmuavg7mo-2f63)",
+    "dominantLoss": "stop-loss",
+    "frictionFlip": false
+  },
+  "latency": {
+    "samples": 3910,
+    "bottleneck": "DISCOVERY",
+    "proposalMeanMs": 621684.2811594203,
+    "proposalMedianMs": 99567,
+    "waitMedianMs": 23,
+    "discoveryMedianMs": 89802,
+    "cause": "proposal_ms is source-event-to-proposal (includes discovery); ~500s mean is outlier-inflated end-to-end, not proposal-stage queue"
+  },
+  "replay": {
+    "events": null,
+    "hash": null,
+    "configs": []
+  },
+  "criteria": {
+    "integrity": "Diagnostics, data-quality filters, challenger non-promotion, forensics cause, and latency explanation must pass. The COLD lead itself may fail.",
+    "lead": "COLD economic-liquidity top-quartile vs rest is positive on chronological and walk-forward count-based splits.",
+    "noLive": "Challengers cannot self-promote or enter live."
+  }
+}

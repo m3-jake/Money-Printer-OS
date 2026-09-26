@@ -11,7 +11,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { loopPersistenceCheck } from '../src/labHealth.js';
+import { loopPersistenceCheck, collectorCaptureCheck } from '../src/labHealth.js';
 
 const JSON_OUT = process.argv.includes('--json');
 const TRADER_URL = process.env.MPO_TRADER_URL || 'http://127.0.0.1:8792';
@@ -60,6 +60,23 @@ try {
   if (trader.system?.lastError) add('WARN', 'trader.lastError', String(trader.system.lastError).slice(0, 160));
 } catch (e) {
   add('RED', 'trader', `unreachable at ${TRADER_URL} (${e.message})`);
+}
+
+// ---------------------------------------------------------------- robinhood (optional venue; an older build without the route is only a WARN)
+try {
+  const rh = await getJson(`${TRADER_URL}/api/robinhood`);
+  const r = rh.readiness || {}, loop = rh.loop || {}, ev = rh.evolve || {}, ap = rh.journal?.autopilot || {};
+  const armedOrReal = r.sessionArmed || r.realEnabled;
+  add(armedOrReal ? 'WARN' : 'OK', 'robinhood', `${r.credentialsReady ? 'keys' : 'no keys'} keyValid=${!!r.keyValid} real=${!!r.realEnabled} armed=${!!r.sessionArmed} qualified=${!!r.qualified} auth=${r.authCode || 'n/a'}`);
+  add(loop.running ? 'OK' : 'WARN', 'robinhood loop', loop.running ? `running every ${Math.round((loop.tickMs || 0) / 1000)}s, last tick ${loop.lastTickAt ? Math.round((Date.now() - loop.lastTickAt) / 60000) + 'm ago' : 'never'}` : 'not running (ROBINHOOD_AUTOSTART=false or venue disabled)');
+  if (r.recoveryRequired || r.paperRecoveryRequired) add('RED', 'robinhood state', `${r.recoveryRequired ? 'real journal' : 'paper book'} requires recovery`);
+  if (ap.enabled) add('WARN', 'robinhood real autopilot', `ENABLED on ${(ap.symbols || []).join(',')} (${ap.orderUsd} USD/order)`);
+  const open = (rh.journal?.open || []).length, unverified = rh.journal?.stats?.unverified || 0;
+  if (open) add(unverified ? 'WARN' : 'OK', 'robinhood exposure', `${open} open real row(s), ${unverified} unverified - the updater holds until flat`);
+  const tape = Object.entries(ev.tapeDays || {}).map(([s, d]) => `${s} ${d}d`).join(', ');
+  add(ev.enabled === false ? 'WARN' : 'OK', 'robinhood evolve', `${ev.enabled === false ? 'disabled' : 'gen ' + (ev.generation || 0)}, ${ev.proposed ? 'champion ' + ev.proposed.paramsHash + ' PROPOSED' : 'no proposal'}, autopromote=${!!ev.autopromote}, tape ${tape || 'empty'}`);
+} catch (e) {
+  add('WARN', 'robinhood', `readiness unavailable (${e.message}) - older build or trader down`);
 }
 
 // ---------------------------------------------------------------- lab
@@ -113,6 +130,14 @@ try {
   add(gb > 8 ? 'WARN' : 'OK', 'trader data dir', `${gb.toFixed(2)} GB`);
 } catch (e) {
   add('WARN', 'disk', `could not inspect ${TRADER_DATA} (${e.message})`);
+}
+
+// ---------------------------------------------------------------- tape collector
+{
+  let status = null;
+  try { status = JSON.parse(fs.readFileSync(path.join(TRADER_DATA, 'research-capture-status.json'), 'utf8')); } catch {}
+  const c = collectorCaptureCheck(status || {});
+  add(c.level, 'tape collector', c.detail);
 }
 
 // ---------------------------------------------------------------- report

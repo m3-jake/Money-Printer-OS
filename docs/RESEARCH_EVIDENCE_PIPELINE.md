@@ -24,3 +24,6 @@ Stages remain `RESEARCH_ONLY`, `PAPER_COMPARISON`, and `REVIEW_READY`. `liveProm
 ## Canary
 
 Run `npm run evidence-canary -- --out artifacts/evidence-canary/STATUS.json`. The default canary intentionally has no frozen candidate or observed dataset; it verifies both modules fail closed and lists the evidence still needed. Supplying `--monitor <path>` writes the same research-only status in monitor format.
+## Standalone tape collector
+
+`npm run collector -- --data "<data dir>"` (or `node scripts/run-collector.mjs --data ...`) runs `src/researchCollector.js` without the trader and restarts it with backoff. The collector takes `research-evidence/collector.lock` in the data dir, so the trader's own child collector and a standalone one never append the same day file: the second one exits with code 0 and its supervisor retries (the runner every 30 s, the desktop app with its normal backoff). A lock whose pid is gone or that has not been refreshed for 60 s (`MPO_COLLECTOR_LOCK_STALE_MS`) is taken over. Status/cursor writes are fsynced before rename and retried on transient Windows `EPERM`/`EBUSY`; a failure is recorded as `lastWriteError` in `research-capture-status.json` instead of stopping the collector. Appends after a torn or NUL-extended tail (power loss) start on a fresh line, so readers only lose the damaged line.

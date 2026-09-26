@@ -5,13 +5,25 @@ import { cfg } from './config.js';
 import { strategyNames, defaults as runtimeDefaults } from './runtime.js';
 import { ensureResearch } from './research.js';
 import { ensurePnlLedger, paperIdentity, guardEquityJump } from './accounting.js';
+import { renameSyncWithRetry } from './atomicRename.js';
 
 const dir = path.resolve(process.env.MONEY_PRINTER_DATA_DIR || 'data');
 const stateFile = path.join(dir, 'state.json');
 const backupFile = path.join(dir, 'state.backup.json');
+// The heavy research sections live in research-state.json, written at most every RESEARCH_SAVE_MS; state.json keeps
+// the account plus the small research fields and lists the moved keys in research.externalized. A crash can lose up
+// to a minute of research, never account data. Old state.json files with inline research migrate on the next save.
+const researchFile = path.join(dir, 'research-state.json');
+export const RESEARCH_HEAVY = ['learner', 'universe', 'postmortems', 'walletProfiles', 'deployerProfiles', 'alpha', 'improvementLoop', 'daily', 'experiments', 'lessons', 'challengers'];
+export const RESEARCH_SAVE_MS = 60_000;
+let lastResearchSaveAt = 0;
 const journalFile = path.join(dir, 'market.ndjson');
 const actionFile = path.join(dir, 'actions.ndjson');
 const JOURNAL_MAX_BYTES = 128 * 1024 * 1024;
+// state.json is rewritten every cycle; on 2026-09-26 it was 9.6 MB, 7 MB of it research.
+// The learner trains on the newest 1000 outcomes (learner.js), so 1500 keeps its window.
+export const OUTCOME_KEEP = 1500;
+export const UNIVERSE_KEEP = 1500;
 let lastSaveMs = 0;
 let lastBackupAt = 0;
 let readCache = { stamp: '', value: null };
@@ -172,8 +184,20 @@ function validateAccount(s) {
   return s;
 }
 
+function attachResearch(raw) {
+  const keys = raw?.research?.externalized;
+  if (!Array.isArray(keys)) return raw;
+  delete raw.research.externalized;
+  try {
+    const ext = JSON.parse(fs.readFileSync(researchFile, 'utf8'));
+    for (const k of keys) if (ext && k in ext) raw.research[k] = ext[k];
+  } catch {
+    // Missing or torn research file: the account still loads; ensureResearch rebuilds empty sections.
+  }
+  return raw;
+}
 function parseState(file) {
-  return merge(validateAccount(JSON.parse(fs.readFileSync(file, 'utf8'))));
+  return merge(validateAccount(attachResearch(JSON.parse(fs.readFileSync(file, 'utf8')))));
 }
 
 export function loadState() {
@@ -225,14 +249,14 @@ function pruneState(s) {
 
   if (s.research) {
     if (s.research.feedStats?.unknown) delete s.research.feedStats.unknown;
-    s.research.postmortems = (s.research.postmortems || []).slice(0, 500);
+    s.research.postmortems = (s.research.postmortems || []).slice(0, 200);
     s.research.lessons = (s.research.lessons || []).slice(0, 400);
     s.research.experiments = (s.research.experiments || []).slice(0, 400);
     s.research.daily = (s.research.daily || []).slice(0, 180);
     s.research.challengers = (s.research.challengers || []).slice(-128);
     if (s.research.learner) {
       s.research.learner.pending = (s.research.learner.pending || []).slice(-1800);
-      s.research.learner.outcomes = (s.research.learner.outcomes || []).slice(0, 3000);
+      s.research.learner.outcomes = (s.research.learner.outcomes || []).slice(0, OUTCOME_KEEP);
     }
     const walletEntries = Object.entries(s.research.walletProfiles || {});
     if (walletEntries.length > 10000) {
@@ -253,9 +277,9 @@ function pruneState(s) {
       a.counterfactuals=(a.counterfactuals||[]).slice(-500);a.evidence=(a.evidence||[]).slice(0,20);
     }
     const universeEntries = Object.entries(s.research.universe || {});
-    if (universeEntries.length > 5000) {
+    if (universeEntries.length > UNIVERSE_KEEP) {
       universeEntries.sort((a, b) => Number(b[1]?.lastSeen || 0) - Number(a[1]?.lastSeen || 0));
-      s.research.universe = Object.fromEntries(universeEntries.slice(0, 5000));
+      s.research.universe = Object.fromEntries(universeEntries.slice(0, UNIVERSE_KEEP));
     }
   }
   return s;
@@ -303,7 +327,7 @@ export function saveState(state) {
   // Persist the previous measured save duration; the current duration is returned to the caller.
   s.system.metrics.saveMs = lastSaveMs;
   const temp = `${stateFile}.${process.pid}.tmp`;
-  const json = JSON.stringify(s);
+  const json = JSON.stringify(externalizeResearch(s));
   fs.writeFileSync(temp, json, { flush: true });
   if (fs.existsSync(stateFile) && Date.now() - lastBackupAt > 120_000) {
     const backupTemp = `${backupFile}.${process.pid}.tmp`;
@@ -312,7 +336,7 @@ export function saveState(state) {
       const previous = fs.readFileSync(stateFile, 'utf8');
       validateAccount(JSON.parse(previous));
       fs.writeFileSync(backupTemp, previous, { flush: true });
-      fs.renameSync(backupTemp, backupFile);
+      renameSyncWithRetry(backupTemp, backupFile);
       lastBackupAt = Date.now();
     } catch {
       // The prior backup remains intact if validation or publication fails.
@@ -320,12 +344,29 @@ export function saveState(state) {
       try { fs.rmSync(backupTemp, { force: true }); } catch {}
     }
   }
-  try { fs.renameSync(temp, stateFile); }
+  try { renameSyncWithRetry(temp, stateFile); }
   finally { try { fs.rmSync(temp, { force: true }); } catch {} }
   readCache = { stamp: stateStamp(), value: s };
   publishedBasis = snapshotBasis(s);
   lastSaveMs = Math.round(performance.now() - started);
   return lastSaveMs;
+}
+
+// Returns the object to write as state.json. Writes research-state.json when due; if that write fails the research
+// stays inline, so nothing is ever referenced that was not persisted at least once.
+function externalizeResearch(s) {
+  if (!s.research || typeof s.research !== 'object') return s;
+  const heavy = {}, light = { ...s.research };
+  for (const k of RESEARCH_HEAVY) if (k in light) { heavy[k] = light[k]; delete light[k]; }
+  if (!Object.keys(heavy).length) return s;
+  const now = Date.now();
+  if (now - lastResearchSaveAt >= RESEARCH_SAVE_MS || !fs.existsSync(researchFile)) {
+    const tmp = `${researchFile}.${process.pid}.tmp`;
+    try { fs.writeFileSync(tmp, JSON.stringify(heavy), { flush: true }); renameSyncWithRetry(tmp, researchFile); lastResearchSaveAt = now; }
+    catch { try { fs.rmSync(tmp, { force: true }); } catch {} return s; }
+  }
+  light.externalized = Object.keys(heavy);
+  return { ...s, research: light };
 }
 
 function rotateJournalIfNeeded() {

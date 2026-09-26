@@ -1,5 +1,7 @@
 # alpha.53 — the Evolution Lab becomes its own app
 
+> **Retired 2026-09-26.** The Evolution Lab is no longer used. The engine's lab link is off unless `MPO_LAB_LINK=true`; with it off the engine neither reads `lab-link/` nor exports the dataset. What the trader still needs from search (the Robinhood evolve) stays in the trader with a sealed holdout (`docs/ROBINHOOD-AUTO-TRADER.md` §22.3). This page is kept as history.
+
 ## Why
 
 Every Money Printer OS install (the Mac laptop included) ran the full strategy furnace in

@@ -1,3 +1,10 @@
+import { handleRobinhoodRequest, startRobinhoodLoops, stopRobinhoodLoops } from './robinhoodHttp.js';
+import { exitPresets, customExitPolicy, openLimitFor, aggressionParams, customExitBounds, MAX_OPEN_OVERRIDE } from './runtime.js';
+import { evolutionChampionPolicy } from './learner.js';
+import { dataCoverage } from './dataCoverage.js';
+import { solanaBookView } from './solanaEconomics.js';
+import { traderSwitches } from './killSwitches.js';
+import { robinhoodReadiness } from './robinhoodAutoTrader.js';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -7,9 +14,9 @@ import { cfg } from './config.js';
 import { readEvidenceMonitor } from './researchEvidenceStore.js';
 import { readResearchControlPlane, attachControlPlaneToMonitor, leaderboardRows, championPublicationView } from './researchControlPlane.js';
 import { saveResourcePolicy, resourceSnapshot, systemTelemetry } from './resourcePolicy.js';
-import { polymarketSnapshot, placePaperCombo, placePaperSingle, setAutopilot, runAutopilotOnce, resetPolymarketPaper, realPolymarketReadiness, simulateComboSamples } from './polymarket.js';
-import { polymarketUSSnapshot, usReadiness, configurePolymarketUS, armPolymarketUS, previewPolymarketUSOrder, submitPolymarketUSOrder, closePolymarketUSPosition, cancelPolymarketUSOrder, cancelAllPolymarketUS } from './polymarketUS.js';
-import { usComboSnapshot, buildUSCombo, quoteUSCombo, placeUSCombo, cancelUSRfq, setUSComboAutopilot, settleUSCombos, forgetUSCombo, startUSComboLoops } from './polymarketUSCombos.js';
+// polymarketUS.js is parked except for credentials and the session arm: its scanner and single-order routes are not served.
+import { usReadiness, configurePolymarketUS, armPolymarketUS, polymarketUSAccount } from './polymarketUS.js';
+import { usComboSnapshot, buildUSCombo, quoteUSCombo, placeUSCombo, cancelUSRfq, setUSComboSettings, settleUSCombos, forgetUSCombo, startUSComboLoops, setUSComboAutopilot } from './polymarketUSCombos.js';
 import { readApiUnitEconomics } from './apiUnitEconomics.js';
 import { productEconomics, productIngestionAuthorized, productReadAuthorized } from './productEconomics.js';
 import updateChannel from '../desktop/update-channel.cjs';
@@ -21,6 +28,12 @@ const MAX_BODY = 32 * 1024;
 const DATA_DIR = path.resolve(process.env.MONEY_PRINTER_DATA_DIR || path.join(ROOT,'data'));
 const UPDATE_STATUS_FILE = path.join(DATA_DIR,'update-status.json');
 const UPDATE_REQUEST_FILE = path.join(DATA_DIR,'update-request.json');
+// Desktop-shell preferences (read by desktop/main.cjs every ~1 s): keep collecting when the window is
+// closed, and start with Windows. The shell owns applying them; this only stores the user's choice.
+const DESKTOP_PREFS_FILE = path.join(DATA_DIR,'desktop-prefs.json');
+const DESKTOP_PREF_DEFAULTS = { runInBackground: true, startWithWindows: false };
+function readDesktopPrefs(){try{const v=JSON.parse(fs.readFileSync(DESKTOP_PREFS_FILE,'utf8'));return {...DESKTOP_PREF_DEFAULTS,...(v&&typeof v==='object'?v:{})}}catch{return {...DESKTOP_PREF_DEFAULTS}}}
+function writeDesktopPrefs(patch={}){const next={...readDesktopPrefs()};for(const k of Object.keys(DESKTOP_PREF_DEFAULTS))if(typeof patch[k]==='boolean')next[k]=patch[k];next.updatedAt=Date.now();const tmp=DESKTOP_PREFS_FILE+'.tmp';fs.writeFileSync(tmp,JSON.stringify(next,null,2));fs.renameSync(tmp,DESKTOP_PREFS_FILE);return next}
 const RESEARCH_MONITOR_FILE = path.join(DATA_DIR,'research-monitor.json');
 const RESEARCH_EVIDENCE_MONITOR_FILE = path.join(DATA_DIR,'research-evidence-monitor.json');
 const RESEARCH_CAPTURE_STATUS_FILE = path.join(DATA_DIR,'research-capture-status.json');
@@ -41,7 +54,7 @@ function queue(type, data = {}) {
 }
 // Telemetry failure must never make a completed paper order look rejected.
 function productTelemetry(fn) { try { return fn(productEconomics()); } catch (error) { console.warn('Product telemetry unavailable:', error.message); } }
-function paperOrderResult(req, result) { productTelemetry(ledger => ledger.recordPaperActivation(req, result)); return result; }
+function comboBuildResult(req, result) { productTelemetry(ledger => ledger.recordComboBuildActivation(req, result)); return result; }
 // The channel is whatever desktop/main.cjs resolves from the same env (docs/RELEASE-CHANNEL.md). The
 // supervisor records a `LAN <peer>` label when a cluster peer won the last check; anything else (or a
 // status file written by an older build) shows the configured channel, never a stale URL.
@@ -58,6 +71,7 @@ function requestUpdater(action){
 }
 
 function researchCaptureStatus(){try{return JSON.parse(fs.readFileSync(RESEARCH_CAPTURE_STATUS_FILE,'utf8'))}catch{return {schema:'mpo.research-capture-status.v1',updatedAt:null}}}
+function labModuleStatuses(){const out={};for(const id of ['robinhood','polymarket','polymarket-combo']){try{const v=JSON.parse(fs.readFileSync(path.join(DATA_DIR,'lab-link','modules',`${id}.json`),'utf8'));if(v&&v.module===id)out[id]=v}catch{}}return out}
 function researchPlane(s = loadStateCached(), opts = {}){
   return readResearchControlPlane({dataDir:DATA_DIR,journalLimit:300,state:s,mode:cfg.mode,...opts});
 }
@@ -190,7 +204,7 @@ function researchMonitorState() {
   } catch {
     raw = { ...evolutionFallbackMonitor(s), evidence, capture };
   }
-  return decorateResearchMonitor(attachControlPlaneToMonitor(raw, plane), s);
+  return {...decorateResearchMonitor(attachControlPlaneToMonitor(raw, plane), s),modules:labModuleStatuses()};
 }
 
 function meshRequest(method, pathname, payload) {
@@ -309,8 +323,10 @@ function snapshot() {
     market: s.market || {},
     memeIndex: s.memeIndex || {},
     runtime: s.runtime || {},
+    effectiveControls: (() => { const rt = s.runtime || {}, champ = cfg.mode === 'paper' ? evolutionChampionPolicy(s) : null; return { exit: exitPresets[rt.exitPreset] || customExitPolicy(rt), customExit: customExitPolicy(rt), labChampionExit: champ ? { takePct: champ.takePct, stopPct: champ.stopPct, maxHoldMin: champ.maxHoldMin } : null, openLimit: openLimitFor(rt), autoOpenLimit: aggressionParams(rt.aggression).maxOpenPositions, bounds: { ...customExitBounds, maxOpenPositions: MAX_OPEN_OVERRIDE }, presets: Object.keys(exitPresets) }; })(),
     system: systemView(s.system, plane.activeEvolutionPolicy),
     stats: s.stats || {},
+    solanaBook: solanaBookView(s, cfg),
     portfolio: s.portfolio || null,
     portfolioSeries: compactSeries(s.portfolioSeries,1600,600),
     dailyPnlSol: s.dailyPnlSol || 0,
@@ -355,6 +371,7 @@ export function startDashboard() {
   const server = http.createServer(async (req, res) => {
     try {
       const u = new URL(req.url, 'http://127.0.0.1');
+      if(u.pathname==='/api/robinhood'||u.pathname.startsWith('/api/robinhood/'))return await handleRobinhoodRequest(req,res,u,{json,body});
       if (req.method === 'GET' && u.pathname === '/') {
         productTelemetry(ledger => ledger.recordVisit(req, res, u));
         res.writeHead(200, {
@@ -375,6 +392,16 @@ export function startDashboard() {
         const ext = path.extname(file).toLowerCase();
         const types = {'.jpg':'image/jpeg','.jpeg':'image/jpeg','.png':'image/png','.webp':'image/webp','.gif':'image/gif','.svg':'image/svg+xml'};
         res.writeHead(200, {'content-type': types[ext] || 'application/octet-stream','cache-control':'public, max-age=3600','x-content-type-options':'nosniff'});
+        return fs.createReadStream(file).pipe(res);
+      }
+      if (req.method === 'GET' && u.pathname.startsWith('/js/')) {
+        const rel = decodeURIComponent(u.pathname.slice('/js/'.length));
+        const base = path.join(ROOT, 'public', 'js');
+        const file = path.resolve(base, rel);
+        if (!file.startsWith(path.resolve(base) + path.sep) || !fs.existsSync(file) || !fs.statSync(file).isFile() || path.extname(file).toLowerCase() !== '.js') {
+          res.writeHead(404); return res.end('not found');
+        }
+        res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
         return fs.createReadStream(file).pipe(res);
       }
       if (req.method === 'GET' && u.pathname.startsWith('/css/')) {
@@ -408,6 +435,7 @@ export function startDashboard() {
           lastCycle: s.system?.lastCycle || null,
           metrics: { ...(s.system?.metrics || {}), ...systemTelemetry() },
           diagnostics: s.system?.diagnostics || [],
+          switches: traderSwitches({ readiness: (() => { try { return robinhoodReadiness(); } catch { return null; } })(), state: s }),
         });
       }
       if (req.method === 'GET' && u.pathname === '/api/journal') {
@@ -418,21 +446,21 @@ export function startDashboard() {
       if (req.method === 'GET' && u.pathname === '/api/evolution') { const st = loadStateCached(); return json(res, { ...(st.evolution || {}), loop: evolutionLoopView(st.evolutionLoop || st.evolution?.loop || {}), labLink: labLinkView(st) }); }
       if (req.method === 'GET' && u.pathname === '/api/network') { const r=await meshRequest('GET','/state'); return json(res,r.body,r.status); }
       if (req.method === 'GET' && u.pathname === '/api/resources') return json(res, resourceSnapshot());
+      if (req.method === 'GET' && u.pathname === '/api/data-coverage') return json(res, dataCoverage(DATA_DIR, { force: u.searchParams.get('force') === '1' }));
+      if (req.method === 'GET' && u.pathname === '/api/desktop-prefs') return json(res, readDesktopPrefs());
       if (req.method === 'GET' && u.pathname === '/api/unit-economics') return json(res, readApiUnitEconomics());
       if (req.method === 'GET' && u.pathname === '/api/product-economics') {
         if (!productReadAuthorized(req)) return json(res, {ok:false,error:'Product reporting requires localhost or a server token'}, 403);
         return json(res, productEconomics().summary());
       }
-      if (req.method === 'GET' && u.pathname === '/api/polymarket') return json(res, await polymarketSnapshot());
-      if (req.method === 'GET' && u.pathname === '/api/polymarket/readiness') return json(res, realPolymarketReadiness());
-      if (req.method === 'GET' && u.pathname === '/api/polymarket-us') return json(res, await polymarketUSSnapshot());
       if (req.method === 'GET' && u.pathname === '/api/polymarket-us/readiness') return json(res, usReadiness());
+      if (req.method === 'GET' && u.pathname === '/api/polymarket-us/evidence') { const ev=await import('./polymarketUSEvidence.js'); return json(res, {...ev.evidenceSummary(),lab:{proposal:ev.labComboProposal(),status:labModuleStatuses()['polymarket-combo']||null}}); }
+      if (req.method === 'GET' && u.pathname === '/api/polymarket-us/account') return json(res, await polymarketUSAccount());
       if (req.method === 'GET' && u.pathname === '/api/polymarket-us/combos') return json(res, await usComboSnapshot());
       if (req.method === 'GET' && u.pathname === '/api/update') return json(res, updaterState());
       if (req.method === 'GET' && u.pathname === '/api/research-monitor') return json(res, researchMonitorState());
       if (req.method === 'GET' && u.pathname === '/api/research-control-plane') return json(res, researchPlane());
       if (req.method === 'GET' && u.pathname === '/api/project-journal') return json(res, researchPlane().journal);
-      if (req.method === 'GET' && u.pathname === '/api/polymarket/simulate') return json(res, simulateComboSamples({legProbability:u.searchParams.get('p'),legs:u.searchParams.get('legs'),trials:u.searchParams.get('trials'),stakeUsd:u.searchParams.get('stake'),seed:u.searchParams.get('seed')}));
 
       if (req.method !== 'POST') {
         res.writeHead(404);
@@ -460,30 +488,23 @@ export function startDashboard() {
       if (u.pathname === '/api/clear-error') { queue('clear-error'); return json(res, { ok: true }); }
       if (u.pathname === '/api/resources') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); return json(res,{ok:true,policy:saveResourcePolicy({cpuPercent:b.cpuPercent,memoryGB:b.memoryGB,diskGB:b.diskGB},'manual')}); }
       if (u.pathname === '/api/resources/sync') return json(res,{ok:true,policy:saveResourcePolicy({},'hive')});
-      if (u.pathname === '/api/polymarket/reset') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); return json(res,{ok:true,paper:resetPolymarketPaper(b.amountUsd)}); }
-      if (u.pathname === '/api/polymarket/paper-combo') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); try{return json(res,paperOrderResult(req,placePaperCombo(b)))}catch(e){return json(res,{ok:false,error:String(e.message||e)},400)} }
-      if (u.pathname === '/api/polymarket/paper-single') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); try{return json(res,paperOrderResult(req,placePaperSingle(b)))}catch(e){return json(res,{ok:false,error:String(e.message||e)},400)} }
-      if (u.pathname === '/api/polymarket/autopilot') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); try{return json(res,{ok:true,autopilot:setAutopilot(b)})}catch(e){return json(res,{ok:false,error:String(e.message||e)},400)} }
-      if (u.pathname === '/api/polymarket/autopilot/run') { try{return json(res,{ok:true,...await runAutopilotOnce()})}catch(e){return json(res,{ok:false,error:String(e.message||e)},500)} }
       if (u.pathname === '/api/polymarket-us/config') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); try{return json(res,{ok:true,readiness:configurePolymarketUS(b)})}catch(e){return json(res,{ok:false,error:String(e.message||e)},400)} }
       if (u.pathname === '/api/polymarket-us/arm') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); try{return json(res,{ok:true,readiness:armPolymarketUS(!!b.armed)})}catch(e){return json(res,{ok:false,error:String(e.message||e)},400)} }
-      if (u.pathname === '/api/polymarket-us/preview') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); try{return json(res,{ok:true,preview:await previewPolymarketUSOrder(b)})}catch(e){return json(res,{ok:false,error:String(e.message||e)},400)} }
-      if (u.pathname === '/api/polymarket-us/order') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); try{return json(res,{ok:true,order:await submitPolymarketUSOrder(b)})}catch(e){return json(res,{ok:false,error:String(e.message||e)},400)} }
-      if (u.pathname === '/api/polymarket-us/close') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); try{return json(res,{ok:true,result:await closePolymarketUSPosition(b)})}catch(e){return json(res,{ok:false,error:String(e.message||e)},400)} }
-      if (u.pathname === '/api/polymarket-us/cancel') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); try{return json(res,{ok:true,result:await cancelPolymarketUSOrder(b)})}catch(e){return json(res,{ok:false,error:String(e.message||e)},400)} }
-      if (u.pathname === '/api/polymarket-us/cancel-all') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); try{return json(res,{ok:true,result:await cancelAllPolymarketUS(b)})}catch(e){return json(res,{ok:false,error:String(e.message||e)},400)} }
       if (u.pathname.startsWith('/api/polymarket-us/combos/')) {
         const b = await body(req); if (b.__error) return json(res, { ok:false, error:b.__error }, 400);
         const comboFail = e => json(res, { ok:false, error:String(e.message||e), code:e.code||'unknown' }, 400);
-        if (u.pathname === '/api/polymarket-us/combos/build') { try{return json(res,{ok:true,combo:buildUSCombo({legKeys:b.legKeys,stakeUsd:b.stakeUsd})})}catch(e){return comboFail(e)} }
+        if (u.pathname === '/api/polymarket-us/combos/build') { try{return json(res,comboBuildResult(req,{ok:true,combo:buildUSCombo({legKeys:b.legKeys,stakeUsd:b.stakeUsd})}))}catch(e){return comboFail(e)} }
         if (u.pathname === '/api/polymarket-us/combos/quote') { try{return json(res,{ok:true,quote:await quoteUSCombo({legKeys:b.legKeys,stakeUsd:b.stakeUsd})})}catch(e){return comboFail(e)} }
         if (u.pathname === '/api/polymarket-us/combos/place') { try{return json(res,await placeUSCombo({legKeys:b.legKeys,stakeUsd:b.stakeUsd,mode:b.mode,rfqId:b.rfqId,quoteId:b.quoteId,limitPrice:b.limitPrice,confirmation:b.confirmation,placedBy:'manual'}))}catch(e){return comboFail(e)} }
         if (u.pathname === '/api/polymarket-us/combos/cancel-rfq') { try{return json(res,{ok:true,...await cancelUSRfq({rfqId:b.rfqId})})}catch(e){return comboFail(e)} }
-        if (u.pathname === '/api/polymarket-us/combos/autopilot') { try{return json(res,{ok:true,autopilot:setUSComboAutopilot(b)})}catch(e){return comboFail(e)} }
+        if (u.pathname === '/api/polymarket-us/combos/apply-lab') { try{const ev=await import('./polymarketUSEvidence.js');const p=ev.labComboProposal();if(!p||!p.valid)return json(res,{ok:false,error:p?.reason||'No Lab proposal to apply'},400);if(!p.paperAllowed)return json(res,{ok:false,error:`Lab proposal is ${p.championState}, not cleared for paper`},409);return json(res,{ok:true,settings:setUSComboSettings(p.params),applied:p.id})}catch(e){return comboFail(e)} }
+        if (u.pathname === '/api/polymarket-us/combos/autopilot') { try{return json(res,{ok:true,autopilot:await setUSComboAutopilot(b)})}catch(e){return comboFail(e)} }
+        if (u.pathname === '/api/polymarket-us/combos/settings') { try{return json(res,{ok:true,settings:setUSComboSettings(b)})}catch(e){return comboFail(e)} }
         if (u.pathname === '/api/polymarket-us/combos/settle') { try{return json(res,{ok:true,...await settleUSCombos({force:true})})}catch(e){return comboFail(e)} }
         if (u.pathname === '/api/polymarket-us/combos/forget') { try{return json(res,forgetUSCombo({id:b.id,confirmation:b.confirmation}))}catch(e){return comboFail(e)} }
         res.writeHead(404); return res.end('not found');
       }
+      if (u.pathname === '/api/desktop-prefs') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); return json(res,{ok:true,prefs:writeDesktopPrefs(b)}); }
       if (u.pathname === '/api/update/check') return json(res, requestUpdater('check'));
       if (u.pathname === '/api/update/install') return json(res, requestUpdater('install')); 
       if (u.pathname === '/api/network/chat') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); const r=await meshRequest('POST','/chat',{text:b.text}); return json(res,r.body,r.status); }
@@ -516,8 +537,10 @@ export function startDashboard() {
   });
 
   server.on('clientError', (_, socket) => socket.end('HTTP/1.1 400 Bad Request\r\n\r\n'));
-  // Combo loops are inert unless autopilot is enabled AND the session is armed.
+  // The combo loop only settles journalled combos; it never places anything.
   try { startUSComboLoops(); } catch { /* combo loops are optional */ }
+  startRobinhoodLoops();
+  server.on('close',()=>stopRobinhoodLoops());
   server.listen(cfg.dashboardPort, cfg.dashboardHost, () => console.log(`Dashboard: http://${cfg.dashboardHost}:${cfg.dashboardPort}`));
   return server;
 }

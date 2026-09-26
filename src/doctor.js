@@ -27,6 +27,19 @@ console.log('state', fs.existsSync(stateFile) ? 'present' : 'fresh', 'backup', f
 console.log('journal', fs.existsSync(journalFile) ? `${(fs.statSync(journalFile).size / 1024 / 1024).toFixed(1)} MB` : 'fresh');
 const id = paperIdentity(s);
 console.log('PAPER IDENTITY', 'start', id.start, 'life', id.life, 'unreal', id.unreal, 'openRz', id.openRz, 'equity', id.equity, 'holeExact', id.holeExact, 'okExact', id.okExact);
+// Robinhood Auto Trader readiness from env + files only (the venue module is never imported here; the loop state is
+// reported by scripts/health-check.mjs from the running dashboard). Mirrors the Polymarket US style: keys / real / journal.
+{
+  const rhJournal = path.join(dataDir, 'robinhood-auto-trader.json');
+  const rhPaper = path.join(dataDir, 'robinhood-paper.json');
+  let rhOpen = 'n/a', rhQualified = 'unknown', rhEvolve = 'no ledger';
+  try { const j = JSON.parse(fs.readFileSync(rhJournal, 'utf8')); rhOpen = j.recoveryRequired ? 'RECOVERY' : String((j.open || []).length); } catch (e) { rhOpen = e?.code === 'ENOENT' ? '0' : 'UNREADABLE'; }
+  try { const p = JSON.parse(fs.readFileSync(rhPaper, 'utf8')); rhQualified = p.qualification?.qualified === true ? 'yes' : 'no'; } catch (e) { rhQualified = e?.code === 'ENOENT' ? 'no' : 'UNREADABLE'; }
+  try { const l = JSON.parse(fs.readFileSync(path.join(dataDir, 'robinhood-evolve.json'), 'utf8')); rhEvolve = `gen ${l.generation || 0}${l.champion ? ' champion ' + l.champion.paramsHash : ''}`; } catch {}
+  const keys = process.env.ROBINHOOD_API_KEY && process.env.ROBINHOOD_PRIVATE_KEY ? 'configured' : 'absent';
+  console.log('robinhood', fs.existsSync(rhJournal) ? 'journal present' : 'no journal', 'keys', keys, 'real', process.env.ROBINHOOD_REAL_ENABLED === 'true' ? 'ENABLED' : 'disabled', 'open', rhOpen, 'qualified', rhQualified, 'evolve', rhEvolve, 'autopromote', process.env.ROBINHOOD_EVOLVE_AUTOPROMOTE === 'true' ? 'ON' : 'off');
+  if (process.env.ROBINHOOD_REAL_ENABLED === 'true') console.log('WARN: ROBINHOOD_REAL_ENABLED=true; real crypto orders can be armed in the HUD');
+}
 console.log('Jupiter key', cfg.jupiterApiKey ? 'configured' : 'missing');
 console.log('Alpha worker', cfg.alphaWorkerEnabled ? 'enabled' : 'disabled', 'tx min EDGE', cfg.alphaTxMinEdge);
 console.log('Transaction feed', cfg.txFeedUrl ? 'custom configured' : cfg.heliusApiKey ? 'Helius configured' : 'public RPC fallback');

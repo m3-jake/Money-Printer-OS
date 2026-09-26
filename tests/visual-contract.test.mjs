@@ -25,19 +25,48 @@ test('embedded dashboard script parses as JavaScript', () => {
 });
 
 test('confirmation phrases remain exact in UI and backends', () => {
-  const phrases = [
-    'PLACE REAL COMBO', 'PLACE REAL ORDER', 'CLOSE REAL POSITION',
-    'CANCEL REAL ORDER', 'CANCEL REAL ORDERS', 'ENABLE REAL AUTOPILOT',
-  ];
-  for (const p of phrases) assert.match(html, rx(p));
+  // One Polymarket panel (renovation step 7): only the combo phrase and FORGET remain in the UI.
+  assert.match(html, rx('PLACE REAL COMBO'));
+  for (const gone of ['PLACE REAL ORDER', 'CLOSE REAL POSITION', 'CANCEL REAL ORDER']) assert.doesNotMatch(html, rx(gone));
+  // The phrase field is typed by the operator, never pre-filled from code.
+  assert.match(html, rx("input.value='';input.placeholder='Type '+phrase"));
   assert.match(us, /PLACE REAL ORDER/);
   assert.match(us, /CLOSE REAL POSITION/);
   assert.match(us, /CANCEL REAL ORDER/);
   assert.match(us, /CANCEL REAL ORDERS/);
   assert.match(combos, /CONFIRM_PLACE='PLACE REAL COMBO'|PLACE REAL COMBO/);
-  assert.match(combos, /CONFIRM_AUTOPILOT='ENABLE REAL AUTOPILOT'|ENABLE REAL AUTOPILOT/);
+  // AUTO COMBO is back (opt-in): the phrase lives only in the backend; the UI asks the operator to
+  // type the phrase the server supplies, and the HTTP place route can never place as autopilot.
+  assert.match(combos, /CONFIRM_AUTOPILOT='ENABLE REAL AUTOPILOT'/);
+  assert.doesNotMatch(html, /ENABLE REAL AUTOPILOT/);
+  assert.ok(html.includes("const phrase=ap.confirmPhrase;if(!phrase)return;"));
+  assert.ok(html.includes("id=\"usAutoOn\" ${canEnable?'':'disabled'}"));
+  assert.ok(dashJs.includes("u.pathname === '/api/polymarket-us/combos/autopilot') { try{return json(res,{ok:true,autopilot:await setUSComboAutopilot(b)})}"));
+  assert.match(dashJs, /combos\/place'\)[^\n]*placedBy:'manual'/);
   assert.match(html, /confirmation!=='FORGET'|phrase:\s*'FORGET'/);
   assert.match(combos, /confirmation!=='FORGET'/);
+});
+
+test('Robinhood confirmation phrases remain exact in UI, HTTP surface and backend', () => {
+  const rh = read('src/robinhoodAutoTrader.js');
+  const rhHttp = read('src/robinhoodHttp.js');
+  const panel = read('public/assets/robinhood-panel.js');
+  const phrases = ['PLACE REAL CRYPTO ORDER', 'CANCEL REAL CRYPTO ORDER', 'CANCEL REAL CRYPTO ORDERS', 'ENABLE REAL CRYPTO AUTOPILOT'];
+  for (const p of phrases) { assert.match(html, rx(p)); assert.match(panel, rx(p)); }
+  assert.match(rh, /CONFIRM_PLACE='PLACE REAL CRYPTO ORDER'/);
+  assert.match(rh, /CONFIRM_CANCEL='CANCEL REAL CRYPTO ORDER'/);
+  assert.match(rh, /CONFIRM_CANCEL_ALL='CANCEL REAL CRYPTO ORDERS'/);
+  assert.match(rh, /CONFIRM_AUTOPILOT='ENABLE REAL CRYPTO AUTOPILOT'/);
+  assert.match(rh, /CONFIRM_FORGET='FORGET'/);
+  assert.match(rh, /confirmation!=='FORGET'/);
+  assert.match(rh, /const PAPER_ONLY_BUILD=true/, 'production Robinhood build is paper-only');
+  assert.match(rh, /realEnabled=\(\)=>!paperOnlyBuild\(\)&&String\(process\.env\.ROBINHOOD_REAL_ENABLED\|\|'false'\)\.toLowerCase\(\)==='true'/, 'paper-only build lock wins even if the env requests live mode');
+  assert.match(rhHttp, /confirmation!=='RESET PAPER'/);
+  assert.match(rhHttp, /placedBy:'manual'/, 'HTTP never places as autopilot');
+  assert.match(rhHttp, /'evolve\/apply'/);
+  assert.match(dashJs, /handleRobinhoodRequest\(req,res,u,\{json,body\}\)/);
+  for (const route of ['/api/robinhood', '/api/robinhood/readiness', '/api/robinhood/evolve']) assert.match(rhHttp, rx(`u.pathname==='${route}'`));
+  assert.doesNotMatch(rh, /automaticLivePromotionAllowed\s*[:=]\s*true|liveActivationAllowed\s*[:=]\s*true/);
 });
 
 test('GET /css/ handler exists next to /assets/', () => {
@@ -126,12 +155,14 @@ test('shared workstation recipes ship on laggard panes', () => {
   assert.match(html, /HIVE EQUITY/);
 });
 
-test('chrome stays opaque; glass is opt-in; layout version unchanged', () => {
+test('chrome stays opaque and the simplified alpha56 shell contract is pinned', () => {
   assert.match(css, /\.titlebar\s*\{[^}]*background:\s*var\(--mpo-navy\)/);
   assert.match(css, /\.taskbar\s*\{[^}]*z-index:\s*100/);
   assert.match(css, /\.brand\s*\{[^}]*z-index:\s*6/);
   assert.match(css, /\.boot\s*\{[^}]*background:\s*#008080/);
-  assert.match(html, /LAYOUT_VERSION='2026-09-14-alpha40-consolidated'/);
+  assert.match(html, /LAYOUT_VERSION='2026-09-26-alpha58-live-visuals'/);
+  assert.match(html, /\['trade','Pump\.fun'/);assert.match(html, /\['robinhood','Robinhood'/);assert.match(html, /\['researchmon','Lab Monitor','LAB','dark','trade'/);
+  assert.doesNotMatch(html, /<div class="menu" title="Menus are not wired">/);
   assert.doesNotMatch(html, /mpo-surface-(dark|light)[\s\S]{0,80}poly-strip|poly-strip[\s\S]{0,80}mpo-surface/);
 });
 
@@ -162,6 +193,8 @@ test('integrated FX is profit-only money rain/pile with no fire', () => {
   assert.doesNotMatch(css, /\.fire-sprite|\.horizon-fire|\.bottom-fire/);
   assert.match(css, /url\('\/assets\/money-bill\.webp'\)/);
   assert.match(css, /\.money-pile/);
+  assert.match(css, /\.money-event-feed\s*\{[\s\S]*?right:\s*18px/);
+  assert.match(html, /id="moneyEventFeed"/);
   assert.match(css, /prefers-reduced-motion/);
 });
 
@@ -245,4 +278,52 @@ test('glance telemetry recipes land on laggard panes without restyling Suite', (
   assert.match(html, /rgba\(57,255,104,\.14\)/);
   assert.doesNotMatch(html, /function renderSportsbook\(\)[\s\S]{0,400}mpo-surface/);
   assert.match(html, /window\.prompt/);
+});
+
+test('Polymarket key shows CONNECTED only after a verified signed call, and the balance is served read-only', () => {
+  assert.match(html, /'KEY NOT VERIFIED'/);
+  assert.match(html, /keyOk\?'CONNECTED'/);
+  assert.doesNotMatch(html, /rd\.credentialsReady\?'CONNECTED'/);
+  assert.match(html, /id="usBalance"/);
+  assert.match(dashJs, /req\.method === 'GET' && u\.pathname === '\/api\/polymarket-us\/account'/);
+});
+
+test('Polymarket panel lists the whole live board grouped by sport, renders the suggested combo, and always offers key replacement', () => {
+  assert.match(html, /Array\.isArray\(ucs\.board\)/);
+  assert.match(html, /outside strategy window/);
+  assert.match(html, /id="usUseSuggested"/);
+  assert.match(html, /Replace key \(not verified yet\)/);
+  assert.match(html, /combo-enabled live/);
+});
+
+test('Polymarket panel exposes the strategy window, 2-4 legs, and per-window record', () => {
+  assert.match(html, /id="usSetWindow"/);
+  assert.match(html, /\[2,3,4\]\.map\(/);
+  assert.match(html, /Record by window/);
+});
+
+test('Polymarket panel shows shadow record, calibration and a one-click Lab apply that the server validates', () => {
+  assert.match(html, /function usResearchHtml\(/);
+  assert.match(html, /id="usApplyLab"/);
+  assert.match(html, /\/api\/polymarket-us\/evidence/);
+  assert.match(dashJs, /\/api\/polymarket-us\/combos\/apply-lab/);
+  assert.match(dashJs, /setUSComboSettings\(p\.params\)/);
+});
+
+test('live visuals: one animation engine, served read-only from /js, used by Polymarket, Robinhood and Pump.fun', () => {
+  const viz = read('public/js/mpo-viz.js');
+  const frames = [];
+  const win = { matchMedia: () => ({ matches: false }), devicePixelRatio: 1 };
+  const sandbox = { window: win, document: { hidden: false, querySelectorAll: () => [] }, performance: { now: () => 0 }, requestAnimationFrame: f => frames.push(f), console };
+  vm.runInNewContext(viz, sandbox, { filename: 'mpo-viz.js' });
+  assert.deepEqual([...win.MPOViz.types].sort(), ['bubbles', 'edge', 'funnel', 'gauge', 'hist', 'lanes', 'lines', 'pulse', 'scatter', 'ticker']);
+  assert.match(win.MPOViz.canvas('k', 50, '<t>'), /data-viz="k"[^>]*height:50px/);
+  assert.doesNotMatch(win.MPOViz.canvas('k', 50, '<t>'), /<t>/, 'titles are escaped');
+  assert.equal(JSON.stringify(win.MPOViz.beat('b', 5)), '[5]'); assert.equal(JSON.stringify(win.MPOViz.beat('b', 5)), '[5]', 'same beat not repeated');
+  assert.equal(frames.length, 1, 'a single rAF loop');
+  assert.match(viz, /document\.hidden/); assert.match(viz, /prefers-reduced-motion/);
+  assert.match(html, /<script src="\/js\/mpo-viz\.js"><\/script>/);
+  assert.match(dashJs, /u\.pathname\.startsWith\('\/js\/'\)/);
+  assert.match(dashJs, /path\.extname\(file\)\.toLowerCase\(\) !== '\.js'/);
+  for (const key of ['pm-lanes', 'pm-hist', 'pm-pulse', 'pm-shadow', 'pm-cal', 'rh-edge', 'rh-ticker', 'rh-pulse', 'pf-map', 'pf-meme', 'pf-funnel', 'pf-ticker', 'pf-pulse']) assert.ok(html.includes(`MPOViz.set('${key}'`), key);
 });

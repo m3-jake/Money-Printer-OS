@@ -6,7 +6,7 @@ import path from 'node:path';
 
 const DIR=fs.mkdtempSync(path.join(os.tmpdir(),'mpo-accounting-'));
 process.env.MONEY_PRINTER_DATA_DIR=DIR;
-process.env.POLYMARKET_AUTOSTART='false';
+process.env.POLYMARKET_AUTOSTART='false';process.env.ROBINHOOD_AUTOSTART='false';
 process.env.POLYMARKET_KEY_ID='test-key';
 process.env.POLYMARKET_SECRET_KEY=Buffer.alloc(64,3).toString('base64');
 process.env.POLYMARKET_US_REAL_ENABLED='true';

@@ -132,10 +132,11 @@ export class ProductEconomics {
     // Once per visitor/day/source: refreshing does not manufacture new sessions or conversions.
     return this.record({ eventId: `visit:${anonymousId}:${Math.floor(Date.now()/DAY)}:${hash(JSON.stringify(attribution)).slice(0,16)}`, type: 'visit', anonymousId, attribution });
   }
-  recordPaperActivation(req, result) {
+  // A priced combo build is pure math (no order, no money): the first-value milestone now that the paper lab is gone.
+  recordComboBuildActivation(req, result) {
     const anonymousId = this.visitor(req, null);
-    if (!anonymousId || !result?.ok || !result?.position?.id) return;
-    return this.record({ eventId: `activation:paper:${anonymousId}`, type: 'activation', anonymousId, milestone: 'first-successful-manual-paper-order' });
+    if (!anonymousId || !result?.ok || !(result?.combo?.legs?.length >= 2)) return;
+    return this.record({ eventId: `activation:combo-build:${anonymousId}`, type: 'activation', anonymousId, milestone: 'first-successful-combo-build' });
   }
   summary({ now = Date.now() } = {}) {
     const events = this.db.prepare('SELECT body FROM product_events WHERE ts<=? ORDER BY ts,rowid').all(now).map(row => JSON.parse(row.body));

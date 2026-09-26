@@ -61,6 +61,20 @@ prints it as a `PAPER IDENTITY` line. Live user data (when the packaged app is i
 under `~/Library/Application Support/Money Printer OS/` and is never touched by anything in this
 source tree directly — only read-only copies are used for analysis.
 
+## Robinhood Auto Trader
+
+A self-contained crypto venue module (`src/robinhoodAutoTrader.js`, spec in `docs/ROBINHOOD-AUTO-TRADER.md`)
+that trades spot crypto through Robinhood's official Crypto Trading API. It is paper-first and
+Bitcoin-primary: live quotes feed a local price tape and a fee-aware paper book, `BTC-USD` is sampled
+first and weighted in candidate ranking (`ROBINHOOD_PRIMARY_*`), and other `*-USD` pairs trade by the
+same rules. Real money is off by default (`ROBINHOOD_REAL_ENABLED=false`); real orders need an armed
+session plus a typed phrase, and the real autopilot additionally needs the paper book to qualify the
+strategy. A paper-only evolution loop (`src/robinhoodTape.js`, `src/robinhoodBacktest.js`,
+`src/robinhoodEvolve.js`, spec section 22) replays the recorded price tape walk-forward and proposes
+better strategy parameters in the HUD; they are applied to the paper book only (never to real autopilot)
+and only on APPLY unless `ROBINHOOD_EVOLVE_AUTOPROMOTE=true`. Run `npm run test:robinhood`; nothing in
+the suite touches the network.
+
 ## More
 
 - `.agent-state/PROJECT_STATE.md` — authoritative architecture/version snapshot.

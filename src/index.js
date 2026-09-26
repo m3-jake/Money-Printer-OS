@@ -13,7 +13,7 @@ import { alert } from './alerts.js';
 import { pushTick, microFeatures, explosionScore, moonScore, buildCandles, narrative, walletSignals } from './intelligence.js';
 import { socialSignals } from './providers.js';
 import { startProgramStream } from './stream.js';
-import { aggressionParams, exitPresets, operatingProfiles } from './runtime.js';
+import { aggressionParams, exitPresets, operatingProfiles, customExitPolicy, sanitizeCustomExit, openLimitFor, MAX_OPEN_OVERRIDE } from './runtime.js';
 import { recordUniverse, postmortemTrade } from './research.js';
 import { supervisorTick } from './supervisor.js';
 import { proposeTrade, proposeExit, resolveProposal, expireProposals } from './proposals.js';
@@ -23,9 +23,15 @@ import { fastEdgeScore, queueOutcomeSamples, settleOutcomeSamples, dueOutcomeMin
 import { recordChampionPublication } from './researchControlPlane.js';
 import { syncLabLink, publishLabFeed } from './labLink.js';
 import { estimatePaperExecution, deterministicFillAllowed, estimateRoundTripFrictionPct } from './executionSim.js';
-import { enqueueAlphaEvent } from './alphaQueue.js';
+import { enqueueAlphaEvent as enqueueAlphaRaw } from './alphaQueue.js';
 import { dailyPnl, recentPnl, bookClosedPnl, unrealizedPnl, equity, updatePortfolio } from './accounting.js';
 import { startAlphaWorker, stopAlphaWorker } from './alphaWorkerManager.js';
+// With the alpha worker off (the default since batch 11) nothing drains alpha-queue.ndjson, so don't write it.
+const enqueueAlphaEvent = row => { if (cfg.alphaWorkerEnabled) enqueueAlphaRaw(row); };
+// Evolution Lab is the separate research backend for Money Printer OS. The link is on by default;
+// champions are still re-validated locally and can only affect paper mode. Set MPO_LAB_LINK=false to isolate it.
+const LAB_LINK = String(process.env.MPO_LAB_LINK ?? 'true').toLowerCase() === 'true';
+import { solanaCostGate, paperProfileDemotion } from './solanaEconomics.js';
 import { exitSimulation, paperExitQuote, reviewPositionPrice, entrySizing, paperEntryRejection } from './positionExecution.js';
 import { apiUnitEconomicsSnapshot, persistApiUnitEconomics, attributeScanCycle, strategyNetPnlAfterDataCost } from './apiUnitEconomics.js';
 
@@ -70,11 +76,14 @@ function recordClosed(s, trade) {
   x.avgReturnPct = ((x.avgReturnPct * (x.trades - 1)) + (trade.returnPct || 0)) / x.trades;
 }
 
+// The exit policy updatePositions actually uses: the preset, overridden by a paper champion.
+function exitPolicy(s) {
+  const basePr=preset(s),evolutionExit=cfg.mode==='paper'?evolutionChampionPolicy(s):null;
+  return evolutionExit?{...basePr,tp1:evolutionExit.takePct,tp2:evolutionExit.takePct,stop:evolutionExit.stopPct,maxHold:evolutionExit.maxHoldMin}:basePr;
+}
+
 function preset(s) {
-  return exitPresets[s.runtime.exitPreset] || {
-    tp1: cfg.takeProfit1Pct, tp2: cfg.takeProfit2Pct, stop: cfg.stopLossPct,
-    trail: cfg.trailingStopPct, maxHold: cfg.maxHoldMin,
-  };
+  return exitPresets[s.runtime.exitPreset] || customExitPolicy(s.runtime);
 }
 
 function paperSell(s, p, fraction, price, reason, final = false, market = null) {
@@ -151,6 +160,17 @@ async function enter(s, pick, manual = false) {
   });
   if (size < 0.005) return;
 
+  // Cost gate: tp1 must clear COST_GATE_MULTIPLE x the modeled round trip (both fees plus entry
+  // and exit simulated slippage) for this pick at this size. Refusing is never less safe.
+  const gate = solanaCostGate({ pick, sizeSol: size, solUsd: Number(s.market?.solUsd || 0), tp1: exitPolicy(s).tp1, config: cfg });
+  if (!gate.ok) {
+    s.stats.skipped++;
+    s.stats.skipReasons = { ...(s.stats.skipReasons || {}), costGate: Number(s.stats.skipReasons?.costGate || 0) + 1 };
+    s.stats.lastCostGate = { at: Date.now(), symbol: pick.symbol, tp1: gate.tp1, roundTripPct: gate.roundTripPct, requiredTp1Pct: gate.requiredTp1Pct };
+    appendJournal({ type: 'entry-skip', reason: 'costGate', mint: pick.mint, symbol: pick.symbol, tp1: gate.tp1, roundTripPct: gate.roundTripPct, requiredTp1Pct: gate.requiredTp1Pct });
+    return;
+  }
+
   // History review: weak-liquidity / high-friction SPRINT fills produced the largest avoidable losses.
   // Keep this paper-only so live execution policy is unchanged.
   let sprintPreview = null;
@@ -202,6 +222,7 @@ async function enter(s, pick, manual = false) {
       tp1Done: false, tp2Done: false, breakEvenArmed: false, realizedSol: -entryFee, feesSol: entryFee, manual,
       maxFavorablePct: 0, maxAdversePct: 0, entrySlippageBps:sim.slippageBps, simulatedLatencyMs:sim.latencyMs,
       lastLiquidityUsd:pick.liq, lastMicro:pick.micro, lastPriceAccel:pick.priceAccel,
+      profile: s.runtime.profile || null, exitPreset: s.runtime.exitPreset || null, championId: s.runtime.activeEvolutionChampionId || 'BASE',
     });
     s.stats.signals++;
     appendJournal({ type: 'trade-open', mode: 'paper', mint: pick.mint, symbol: pick.symbol, sizeSol: size, score: pick.score, fastEdgeScore:pick.fastEdgeScore||pick.score, strategy, manual, slippageBps:sim.slippageBps, simulatedFailurePct:sim.failurePct });
@@ -281,7 +302,9 @@ async function actions(s) {
       if (raw.aggression != null) patch.aggression = Math.max(0, Math.min(100, Number(raw.aggression) || 0));
       if (raw.maxCandidates != null) patch.maxCandidates = Math.max(30, Math.min(600, Math.round(Number(raw.maxCandidates) || cfg.maxCandidates)));
       if (raw.entryFrequency != null && ['normal','high','max'].includes(String(raw.entryFrequency))) patch.entryFrequency = String(raw.entryFrequency);
-      if (raw.exitPreset != null && ['ultraScalp','sprint','scalper','runner','moonbag','yolo','custom'].includes(String(raw.exitPreset))) patch.exitPreset = String(raw.exitPreset);
+      if (raw.exitPreset != null && ['ultraScalp','sprint','fair','scalper','runner','moonbag','yolo','custom'].includes(String(raw.exitPreset))) patch.exitPreset = String(raw.exitPreset);
+      if (raw.customExit != null) { patch.customExit = { ...(s.runtime.customExit || {}), ...sanitizeCustomExit(raw.customExit) }; }
+      if (raw.maxOpenPositions !== undefined) { const o = Math.round(Number(raw.maxOpenPositions)); patch.maxOpenPositions = raw.maxOpenPositions === null || raw.maxOpenPositions === '' || !Number.isFinite(o) ? null : Math.max(MAX_OPEN_OVERRIDE[0], Math.min(MAX_OPEN_OVERRIDE[1], o)); }
       if (raw.visualIntensity != null) patch.visualIntensity = Math.max(0, Math.min(100, Number(raw.visualIntensity) || 0));
       Object.assign(s.runtime, patch);
     } else if (a.type === 'evolution-sync') {
@@ -318,8 +341,7 @@ async function actions(s) {
 }
 
 async function updatePositions(s) {
-  const basePr=preset(s),evolutionExit=cfg.mode==='paper'?evolutionChampionPolicy(s):null;
-  const pr=evolutionExit?{...basePr,tp1:evolutionExit.takePct,tp2:evolutionExit.takePct,stop:evolutionExit.stopPct,maxHold:evolutionExit.maxHoldMin}:basePr;
+  const pr=exitPolicy(s);
   const positions = [...s.positions];
   const refreshed = await refreshPositionPairs(positions);
   for (const row of refreshed) {
@@ -391,7 +413,7 @@ function blockStatus(s) {
   const dailyLimit = cfg.mode === 'paper' ? Math.max(cfg.dailyLossLimitSol, start * .05) : cfg.dailyLossLimitSol;
   const hourlyLimit = cfg.mode === 'paper' ? Math.max(cfg.hourlyLossLimitSol, start * .025) : cfg.hourlyLossLimitSol;
   const sprintPaper = cfg.mode === 'paper' && s.runtime.profile === 'SPRINT';
-  const openLimit = cfg.mode === 'paper' ? (sprintPaper ? Math.max(16,ap.maxOpenPositions) : ap.maxOpenPositions) : Math.min(ap.maxOpenPositions, cfg.maxOpenPositions);
+  const openLimit = openLimitFor(s.runtime);
   const currentOpenPnl = unrealizedPnl(s);
   const reasons=[];
   if (s.system.paused) reasons.push('paused');
@@ -424,9 +446,17 @@ async function cycle() {
   s.system.lastError = null;
   s.stats.cycles++;
   await actions(s);
+  // Paper only: a profile the cost gate refuses at the config-floor round trip is demoted to FAIR
+  // through the same path as the profile action. Nothing promotes back to SPRINT automatically.
+  const demotion = paperProfileDemotion({ mode: cfg.mode, runtime: s.runtime, config: cfg });
+  if (demotion) {
+    Object.assign(s.runtime, operatingProfiles.FAIR); s.runtime.profile = 'FAIR';
+    appendJournal({ type: 'profile-auto-demote', ...demotion, reason: 'costGate' });
+  }
   // The Evolution Lab is a separate app now: pull its latest status/champion over the lab link
   // (local files, or the signed bridge for a lab on another machine). Gates are re-checked below.
-  try { syncLabLink(s); } catch (e) { s.labLink = { connected: false, source: 'error', error: compactError(e) }; }
+  if (LAB_LINK) { try { syncLabLink(s); } catch (e) { s.labLink = { connected: false, source: 'error', error: compactError(e) }; } }
+  else s.labLink = { connected: false, source: 'disabled', checkedAt: Date.now() };
   const hotPolicy=cfg.mode==='paper'?evolutionChampionPolicy(s):null;
   if(hotPolicy){
     if(s.runtime.activeEvolutionChampionId!==hotPolicy.id){
@@ -541,7 +571,7 @@ async function cycle() {
   s.system.learner = learnerSnapshot(s);
   s.system.learner.settledThisCycle = settledOutcomes;
   // Feed the lab: labeled outcomes + a status line, throttled, only when something changed.
-  try { publishLabFeed(s, { mode: cfg.mode, version: process.env.MONEY_PRINTER_VERSION || null }); } catch {}
+  if (LAB_LINK) { try { publishLabFeed(s, { mode: cfg.mode, version: process.env.MONEY_PRINTER_VERSION || null }); } catch {} }
 
   s.memeIndex = memeIndex(ranked);
   s.watchlist = ranked.slice(0, Math.min(150, max));
