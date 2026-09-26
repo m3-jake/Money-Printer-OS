@@ -4,7 +4,7 @@
 (`CURRENT_TASKS.md`, `KNOWN_BUGS.md`, `PROJECT_STATE.md`, `RELEASE_STATUS.md`) and in `reports/NEXT-STEPS-2026-09-25.md`.
 Don't re-inventory the repo. Update this file at the end of every batch.
 
-Last updated: 2026-09-26, batch L (Codex platform + sunny desktop finished, merged to `main`). Version `0.5.0-alpha.60`.
+Last updated: 2026-09-26, batch R (self-improving-loop plan, trader side; merged with batches M–Q). Version `0.5.0-alpha.60`.
 
 ## Architecture (inventoried once)
 
@@ -878,3 +878,45 @@ Tests: trader `test:all` green, Lab `test:all` 65/69/75 green. Nothing built or 
 5. Build and install both apps.
 
 Kalshi and Robinhood event contracts are already covered by the MPOS core platform (Batch L), so they weren't rebuilt.
+
+## Batch R (2026-09-26 afternoon, "Money printer OS work" session): the self-improving-loop plan, trader side
+
+bing: "Do everything that we have planned", then "make sure the journal is fully caught up; after the 22nd there's nothing."
+
+Worked in a separate worktree, `W:\mpo-claude`, on branch `claude/planned`. Codex and three other Claude sessions were committing in `W:\money-printer-os` at the same time. The branch merged `feature/hud-declutter` up to `031504c` with no lost work. The one exception: an uncommitted ~20-line `.claude/launch.json` addition by another session was discarded by mistake while restoring that file.
+
+- **Journal catch-up.** The project journal only ever got research events. Those stopped on 09-22 when Lab champions became research-only, and the git backfill never ran for installed apps (no `.git` there).
+  - Both build scripts now ship `PROJECT-MILESTONES.json`; `release.yml` checks out full history for it.
+  - The dashboard seeds the journal at startup: missing commits, plus one "<release> started" entry per release.
+  - The Journal sorts by time, not file position.
+  - Checked in an isolated engine: 157 entries, 139 after the 22nd, newest first.
+- **Fitness ledger (plan C, trader side).**
+  - `src/fitnessLedger.js`, `GET /api/fitness`, and `<data>/lab-link/fitness/<module>.json` written every minute. Contract: `docs/FITNESS-LEDGER.md`.
+  - `src/evidenceFlags.js` `laneMayPropose` is the shared gate, copied verbatim to the Lab. It fails closed and thresholds can only tighten.
+  - `trader-status.json` gains `runningPolicy`, so the Lab can score MPO-RUNNING as the incumbent.
+- **Lab paper trials (plan E2–E3).** `labProposalPass` runs every 5 min from the Robinhood tick, only with `ROBINHOOD_LAB_AUTO_APPLY_PAPER=true` (default **false**).
+  - It applies a PAPER_REVIEW proposal to paper params only, and only if all hold: its basis matches the running hash, evidence passes, params are in bounds, and the hash was never reverted.
+  - After 20 closes the proposal is kept only if PF ≥ the incumbent's and drawdown ≤ 3 %.
+  - Otherwise, or with no close in 14 days, it reverts and the hash is rejected for good. A hand edit abandons the trial.
+  - Decisions go to the evolve ledger and the project journal. This is the 15-second family only; the daily book (batch Q) keeps its own rules.
+- **Unattended ops (plan F1–F4, F6).**
+  - Raw tape retention: 45 days, then oldest-first over 20 GB. Today, yesterday and the Polymarket US evidence are kept until complete.
+  - `writeFileAtomicSync`: lab-link, the Robinhood tape, journal, evolve and equities writers, both Polymarket writers and the fitness files now fsync before rename.
+  - `npm run health -- --json` adds kill switches, Robinhood order POSTs (RED > 0), fitness, Lab generation advancing, Lab modules, disk free and raw retention.
+  - Daily self-report: `<data>/reports/self/<date>.md` and `/api/self-report/latest`. Yesterday's report is finalized into one Journal line.
+  - `scripts/agent-preflight.mjs` and `docs/RUNBOOK-UNATTENDED.md`.
+- **Jupiter quote tape (plan F5).** The collector quotes a 0.1 SOL buy and the matching sell for open positions and top watchlist tokens every 2 min into `raw/jupiter-quotes-*.ndjson`.
+  - Quote GETs only; 10k calls/day cap.
+  - First live sample: MINES 8.46 % and UP 1.64 % round trip, against the paper model's ~2.1 % floor.
+  - Solana fitness shows the tape but stays BLOCKED until an executable-price replay exists.
+- **Dropped in favour of another session's work:** this branch's own copy-trading step 2 and wallet scorecard (commits `966a927`, `2f32de7` on the abandoned `claude/planned-batches`). `918f740` supersedes them: it runs the indexer from the collector, which also fixes the "indexing paused since the alpha worker went off" gap found here.
+- **Decided:** `src/polymarketPaperCombos.js` stays parked. It duplicates the shadow auto-combo lane and has no route, UI or test. `moneyPhysics.js` and `researchLaneRegistry.js` are also tested but unwired.
+- **Tests:** `test:all` **773 pass / 0 fail** on the merged branch (the baseline this morning was 667). New suites:
+  - `fitness-ledger` (6), `robinhood-lab-trial` (5)
+  - `unattended-storage` (5), `self-report` (2), `lab-health` (+2)
+  - `project-journal` (+3)
+
+### Next recommended
+- bing: the Mac (see below); start the Evolution Lab again (it was not running at 15:30); decide `ROBINHOOD_LAB_AUTO_APPLY_PAPER` after reading the first Lab proposal.
+- An executable-price Solana replay over `raw/jupiter-quotes-*` once a few days of tape exist. It is the only way Solana leaves research-only.
+- Design work: a second Polymarket strategy family (fee-free NFL markets or maker posting with a queue model).
