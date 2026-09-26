@@ -900,6 +900,17 @@ Kalshi and Robinhood event contracts are already covered by the MPOS core platfo
 - **Tests:** 5 new tests (fixtures copied from live rule text), `market-core` 28 pass; `npm run test:all` **752 pass, 0 fail**. Live check (isolated engine): 252 Kalshi (MLB game/total, NFL spread) × 1000 Polymarket → 78 candidates, 13 STRONG MATCH (NFL spreads, MLB winners/totals). The live check caught two bugs, both fixed with regression tests: the refetch dropped participants, and the name regex swallowed "Pro Football".
 
 ### Next recommended
-1. Venue fee schedules (Kalshi fee formula, Polymarket CLOB fees) as provider data, so EXACT pairs can show an after-fee locked return.
+1. ~~Venue fee schedules~~ done in batch S.
 2. Team-alias table (city ↔ nickname per league) to raise match recall; keep it fail-safe.
 3. Phase 3: STOCKS window through a `BrokerProvider` adapter (paper-first), then Market Lab replay.
+
+## Batch S (2026-09-26): venue fee schedules in Arbitrage
+
+- **New `src/core/fees.js`:** taker-fee models taken from the venues' published docs (checked 2026-09-26), priced on each direction's **actual book fills**:
+  - **Kalshi:** per series `fee_type` + `fee_multiplier` (Get Series). Taker = 0.07 × multiplier × C × P(1−P). Non-direct accounts settle to the cent per order, modelled as `ceil_cent(cost+fee) − cost`, which reproduces the docs' worked example exactly. `flat` fee type → unavailable. Event-level fee overrides are **not** checked yet (the description says so).
+  - **Polymarket:** per market `feesEnabled` / `feeSchedule` (rate, exponent). Fee = C × rate × p(1−p), rounded up to 5 decimals, takers only. Only exponent 1 is documented, so any other exponent → unavailable. `feesEnabled:false` → $0.
+- **Providers:** Kalshi contracts look up their series once per hour (cached; sequential, so the 4-request concurrency cap never trips). That adds `feeModel`, `seriesTicker` and `resolutionSource` (the series' settlement source). A failed series lookup leaves fees unavailable with a reason instead of failing the market list. Polymarket contracts carry `feeModel` from the market.
+- **Arbitrage:** `arbitrageQuote` takes `feeModels`, per-direction `feeA`/`feeB`, and after-fee spread. The locked return is still only shown for EXACT MATCH and fresh depth, and is blocked with `FEES_UNAVAILABLE` if either model is missing. The UI shows each venue's fee model and a Fees A / B column.
+- **Live check (isolated engine, 10 contracts):** fees resolve for all 13 STRONG pairs. Kalshi NFL spread 10 @ $0.48 → $0.18; Kalshi MLB multiplier 0.5; that Polymarket market is `zero_fees`. **Every live pair is negative after fees** (−0.8 to −4.8 pts), the expected efficient-market result. It also surfaced a real settlement difference: Kalshi's MLB series settles from **ESPN**, Polymarket's from **mlb.com**.
+- **Tests:** 3 new tests (docs examples for both venues, per-fill pricing, series caching and failure) → `market-core` 31 pass; `npm run test:all` **755 pass, 0 fail**.
+- **Not changed:** core paper proposals in the Markets tabs still take a user-entered fee (bps). Switching them to the venue model is a small follow-up.

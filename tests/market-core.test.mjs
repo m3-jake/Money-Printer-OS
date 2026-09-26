@@ -19,6 +19,7 @@ import { syncLabChampions,labEvidence,LAB_CHAMPION_SOURCES } from '../src/core/l
 import { comboPerformance,wilson } from '../src/core/comboPerformance.js';
 import { extractTerms,matchTerms,sameName,participants,candidatePairs,termsFingerprint } from '../src/core/contractTerms.js';
 import { VERIFY_PHRASE } from '../src/core/platform.js';
+import { kalshiFeeModel,polymarketFeeModel,takerFee } from '../src/core/fees.js';
 import { StrategyRegistry,promotionCheck,labChampionLifecycle } from '../src/core/strategies.js';
 import { assertGlobalTradingNotHalted } from '../src/core/executionBoundary.js';
 import { localMutationAllowed } from '../src/core/http.js';
@@ -297,4 +298,40 @@ test('regressions from the live check: lazy names; single-market fetch keeps the
   let asked=null;const p=new PolymarketProvider({fetchImpl:async url=>{asked=String(url);return {ok:true,json:async()=>[{id:'77',question:'Spread: Texans (-2.5)',outcomes:'["Texans","Colts"]',clobTokenIds:'["h","i"]',active:true,events:[{id:'9',title:'Texans vs. Colts'}]}]};}});
   const c=await p.market('77');assert.ok(asked.endsWith('/markets?id=77'),asked);assert.equal(c.data.eventTitle,'Texans vs. Colts');assert.deepEqual(extractTerms(c.data).teams,['Texans','Colts']);
   const empty=new PolymarketProvider({fetchImpl:async()=>({ok:true,json:async()=>[]})});await assert.rejects(empty.market('1'),/not found/);
+});
+
+test('venue taker fees follow the published formulas and fail closed',()=>{
+  // Kalshi docs worked example: $0.055 revenue, model fee 0.00363825 -> fee + rounding = $0.005 (cent precision).
+  const k=kalshiFeeModel({ticker:'S',fee_type:'quadratic',fee_multiplier:1}).model;
+  const p=0.055,c=0.00363825/(0.07*p*(1-p));
+  assert.ok(Math.abs(takerFee(k,[{price:p,quantity:c}])-(0.06-p*c))<1e-6);
+  // 100 contracts at 50c, multiplier 0.5: 0.035*100*.25 = 0.875 -> charged 0.88.
+  assert.equal(takerFee(kalshiFeeModel({fee_type:'quadratic_with_maker_fees',fee_multiplier:.5}).model,[{price:.5,quantity:100}]),0.88);
+  assert.equal(kalshiFeeModel({fee_type:'flat',fee_multiplier:1}).model,null);assert.equal(kalshiFeeModel(null).model,null);
+  // Polymarket sports table: 100 shares at $0.50 -> $1.25; at $0.30 -> $1.05. Fees disabled -> 0.
+  const pm=polymarketFeeModel({feesEnabled:true,feeType:'sports_fees_v3',feeSchedule:{rate:'0.05',exponent:1,takerOnly:true}}).model;
+  assert.equal(takerFee(pm,[{price:.5,quantity:100}]),1.25);assert.equal(takerFee(pm,[{price:.3,quantity:100}]),1.05);
+  assert.equal(takerFee(polymarketFeeModel({feesEnabled:false}).model,[{price:.5,quantity:100}]),0);
+  assert.equal(polymarketFeeModel({feesEnabled:true,feeSchedule:{rate:'0.05',exponent:2}}).model,null);
+  assert.equal(polymarketFeeModel({}).model,null);assert.equal(takerFee(null,[{price:.5,quantity:1}]),null);
+});
+test("arbitrage prices fees on each direction's actual fills; unknown fees block the locked return",()=>{
+  const book=(y,n)=>({observedAt:1000,yes:{bids:[],asks:[{price:y,quantity:100}]},no:{bids:[],asks:[{price:n,quantity:100}]}});
+  const match={classification:'EXACT MATCH',missing:[],differences:[],fields:[]};
+  const k=kalshiFeeModel({fee_type:'quadratic',fee_multiplier:1}).model,pm=polymarketFeeModel({feesEnabled:true,feeSchedule:{rate:'0.05',exponent:1}}).model;
+  const q=arbitrageQuote({venue:'kalshi'},{venue:'polymarket'},book(.4,.62),book(.58,.45),{quantity:100,now:1000,match,feeModels:{a:k,b:pm}});
+  const d=q.directions[0];// YES A @ .40 (fee .07*100*.24=1.68), NO B @ .45 (fee .05*100*.2475=1.2375)
+  assert.equal(d.feeA,1.68);assert.equal(d.feeB,1.2375);assert.equal(d.theoreticalLockedReturn.toFixed(4),(100-40-45-1.68-1.2375).toFixed(4));
+  const none=arbitrageQuote({venue:'kalshi'},{venue:'polymarket'},book(.4,.62),book(.58,.45),{quantity:100,now:1000,match,feeModels:{a:k,b:null}});
+  assert.equal(none.directions[0].theoreticalLockedReturn,null);assert.ok(none.directions[0].blocked.includes('FEES_UNAVAILABLE'));
+});
+test('Kalshi contracts carry the series fee model and settlement source',async()=>{
+  const calls=[];const kp=new KalshiProvider({fetchImpl:async url=>{calls.push(String(url));const u=String(url);
+    if(u.includes('/series/'))return {ok:true,json:async()=>({series:{ticker:'KXMLBGAME',fee_type:'quadratic_with_maker_fees',fee_multiplier:.5,settlement_sources:[{name:'MLB',url:'https://www.mlb.com/'}]}})};
+    return {ok:true,json:async()=>({markets:[{ticker:'KXMLBGAME-26SEP26X-A',event_ticker:'KXMLBGAME-26SEP26X',title:'A wins'},{ticker:'KXMLBGAME-26SEP26X-B',event_ticker:'KXMLBGAME-26SEP26X',title:'B wins'}],cursor:''})};}});
+  const r=await kp.markets({series:'KXMLBGAME'});
+  assert.equal(calls.filter(u=>u.includes('/series/')).length,1);// one lookup per series, cached
+  assert.equal(r.markets[0].data.feeModel.rate,0.035);assert.equal(r.markets[0].data.resolutionSource,'https://www.mlb.com/');
+  const broken=new KalshiProvider({fetchImpl:async url=>String(url).includes('/series/')?{ok:false,status:500}:{ok:true,json:async()=>({markets:[{ticker:'T-1',event_ticker:'T-1',title:'x'}]})}});
+  const b=await broken.markets({});assert.equal(b.markets[0].data.feeModel,null);assert.match(b.markets[0].data.feeModelReason,/not loaded/);
 });

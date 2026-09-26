@@ -14,6 +14,7 @@ import { StrategyRegistry } from './strategies.js';
 import { legacyCoverage } from './legacyBooks.js';
 import { syncLabChampions } from './labSync.js';
 import { extractTerms,matchTerms,termsFingerprint,candidatePairs } from './contractTerms.js';
+import { describeFeeModel } from './fees.js';
 
 export const VERIFY_PHRASE='I READ BOTH RULE TEXTS AND THEY SETTLE IDENTICALLY';
 const swapSides=book=>({...book,yes:book.no,no:book.yes});
@@ -104,7 +105,8 @@ export class MarketPlatform {
     const [left,right]=await Promise.all([this.book(a.venue,a.sourceId),this.book(b.venue,b.sourceId)]),match=this.pairMatch(left.contract,right.contract);
     // INVERTED: YES on A pays when NO on B pays, so B's sides are swapped before pricing complements.
     const bookB=match.orientation==='INVERTED'?swapSides(right.book):right.book;
-    return {a:left.contract,b:right.contract,...arbitrageQuote(left.contract.data,right.contract.data,left.book,bookB,{quantity:Number(quantity),match})};
+    const fees={a:left.contract.data.feeModel||null,b:right.contract.data.feeModel||null};
+    return {a:left.contract,b:right.contract,fees:{a:describeFeeModel(fees.a,left.contract.data.feeModelReason),b:describeFeeModel(fees.b,right.contract.data.feeModelReason)},...arbitrageQuote(left.contract.data,right.contract.data,left.book,bookB,{quantity:Number(quantity),match,feeModels:fees})};
   }
   verifyPair({a,b,confirmation,note=''}){
     if(confirmation!==VERIFY_PHRASE)throw new Error(`Type "${VERIFY_PHRASE}" to attest`);
