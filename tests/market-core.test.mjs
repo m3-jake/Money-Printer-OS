@@ -29,7 +29,7 @@ import { bucketLadder,dailyHighs,parseAlerts,parseStorms,weatherLinks,WeatherSou
 import { sportOf,familyOf,buildSportsEvents,mlbLive,nhlLive,attachLive } from '../src/core/sports.js';
 import { parseRss,extractEntities,relatedMarkets,importance,categoriesOf } from '../src/core/wire.js';
 import { tokenGraph,whaleFlow,walletView } from '../src/core/whales.js';
-import { buildEventPages } from '../src/core/correlation.js';
+import { buildEventPages,sportsPages,weatherPages,corporatePages } from '../src/core/correlation.js';
 import { solanaPlan,practicePlan } from '../src/core/legacyImport.js';
 import { StrategyRegistry,promotionCheck,labChampionLifecycle } from '../src/core/strategies.js';
 import { assertGlobalTradingNotHalted } from '../src/core/executionBoundary.js';
@@ -262,7 +262,7 @@ const pTotal=normalizePolymarket({id:'78',question:'Texas Rangers vs. Minnesota 
 test('contract terms: real venue text becomes a comparable proposition',()=>{
   assert.deepEqual(participants('If Chicago C wins the Chicago C vs Boston professional baseball game'),['Chicago C','Boston']);
   assert.deepEqual(participants('In the upcoming college football game between UConn and Miami (OH), scheduled for'),['UConn','Miami (OH)']);
-  assert.ok(sameName('Chicago C','Chicago Cubs'));assert.ok(!sameName('Chicago C','Chicago White Sox'));assert.ok(!sameName('New York Y','New York Mets'));assert.ok(sameName('Youngstown St.','Youngstown State'));
+  assert.ok(sameName('Chicago C','Chicago Cubs'));assert.ok(sameName('Los Angeles Angels','Los Angeles A'));assert.ok(!sameName('Los Angeles A','Los Angeles Dodgers'));// same word count (regression)assert.ok(!sameName('Chicago C','Chicago White Sox'));assert.ok(!sameName('New York Y','New York Mets'));assert.ok(sameName('Youngstown St.','Youngstown State'));
   const a=extractTerms(kSpread.data),b=extractTerms(pSpread.data);
   assert.equal(a.type,'SPREAD');assert.equal(a.line,3.5);assert.equal(a.day,'2026-09-27');assert.equal(b.type,'SPREAD');assert.equal(b.day,'2026-09-27');
   assert.equal(pSpread.data.binary,true);assert.equal(pSpread.data.yesLabel,'Chiefs');assert.equal(pSpread.data.yesToken,'kc');
@@ -726,4 +726,16 @@ test('legacy mirror: a book that cannot reconcile is reported, not adjusted; unr
   const pr=practicePlan({startUsd:100,cashUsd:95,createdAt:1,positions:[],history:[{id:'h1',symbol:'BTC-USD',status:'CLOSED',qty:.001,costUsd:10,pnlUsd:-5,exit:{proceedsUsd:5,reason:'stop'},openedAt:2,closedAt:3}]});
   assert.deepEqual(pr.entries.map(e=>e.kind),['DEPOSIT','BUY','SELL']);assert.equal(pr.expectedCash,95);
   p.close();
+});
+
+test('event pages for sports, weather and corporate events share one generic, labelled shape',()=>{
+  const ev={id:'MLB:2026-09-26:x',sport:'MLB',family:'MLB',day:'2026-09-26',participants:['Atlanta Braves','Miami Marlins'],venues:['kalshi','polymarket'],fastSettling:false,
+    live:{state:'In Progress',score:[6,2],period:'Bottom 4',feed:'MLB Stats API'},winner:[{participant:'Atlanta Braves',venues:{kalshi:.915,polymarket:.895}},{participant:'Miami Marlins',venues:{kalshi:.085,polymarketComplement:.105}}],
+    contracts:[{id:'contract:kalshi:A',venue:'kalshi',title:'Atlanta wins',type:'GAME_WINNER',yesMid:.915,closeAt:5},{id:'contract:polymarket:B',venue:'polymarket',title:'Braves vs. Marlins',type:'GAME_WINNER',yesMid:.895,closeAt:7}]};
+  const sp=sportsPages([ev,{...ev,id:'x2',venues:['kalshi'],live:null,fastSettling:false}],{held:new Set(['contract:kalshi:A']),heldCost:new Map([['contract:kalshi:A',9]]),wire:[{title:'Atlanta Braves vs Miami Marlins: In Progress',source:'MLB',importance:20,entities:[{type:'team',key:'Atlanta Braves'}]}]});
+  assert.equal(sp.length,1);assert.equal(sp[0].kind,'SPORTS');assert.equal(sp[0].metrics[3].value,'2.0 pts');assert.match(sp[0].metrics[2].value,/6–2/);assert.equal(sp[0].exposure.costUsd,9);assert.equal(sp[0].sections[1].items.length,1);
+  const wp=weatherPages({storms:[{id:'ep1',name:'Odalys',classification:'HU',intensityKt:80,pressureMb:980,lat:15,lon:-110,analysis:{sectors:['Insurers (KIE)'],markets:[],note:'speculative'}},{id:'x',name:'Low',classification:'LO'}],alerts:[{id:'a',event:'Tornado Warning',severity:'Extreme',area:'X; Y',sent:1,analysis:{sectors:[],markets:[]}}]});
+  assert.deepEqual(wp.map(p=>p.title),['HURRICANE ODALYS','TORNADO WARNING — X']);assert.match(wp[0].provenance,/speculative/);
+  const cp=corporatePages([{facts:{form:'8-K',company:'Apple Inc.',ticker:'AAPL',accession:'1',acceptedAt:10,items:[{code:'2.02',name:'Results'}],url:'u'},analysis:{catalysts:['EARNINGS'],relatedMarkets:[],note:'n'}},{facts:{form:'8-K',company:'B',accession:'2',acceptedAt:11,items:[{code:'8.01',name:'Other'}]},analysis:{catalysts:[],relatedMarkets:[]}}],{assets:{AAPL:{price:231,source:'alpaca-iex'}}});
+  assert.equal(cp.length,1);assert.equal(cp[0].title,'AAPL — EARNINGS');assert.equal(cp[0].metrics[2].value,'231');
 });

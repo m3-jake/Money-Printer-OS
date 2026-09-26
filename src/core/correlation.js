@@ -51,3 +51,56 @@ export function buildEventPages({ macro, contracts = [], wire = [], held = new S
 }
 
 export const macroIdsWithPages = Object.keys(EVENT_TEMPLATES).filter(id => MACRO_INDICATORS.some(m => m.id === id && m.kalshi));
+
+// ---------------------------------------------------------------- other event kinds
+// Generic page shape for non-macro events: { id, kind, title, when, whenLabel, metrics:[{label,value,sub}],
+// sections:[{title, note, items:[{text, sub, url}]}], exposure, provenance }.
+const pct = v => (v === null || v === undefined ? '—' : `${(v * 100).toFixed(1)}%`);
+function wireFor(wire, test) { return wire.filter(test).slice(0, 8).map(w => ({ text: w.title, sub: `${w.source} · importance ${w.importance}`, url: w.url || null, at: w.at })); }
+function heldIn(ids, held, heldCost) { const hit = ids.filter(id => held.has(id)); return { contracts: hit.map(id => ({ id, costUsd: heldCost.get(id) ?? null })), costUsd: hit.reduce((s, id) => s + (heldCost.get(id) || 0), 0) }; }
+const venuePrice = v => `K ${pct(v?.kalshi)} · P ${pct(v?.polymarket ?? v?.polymarketComplement)}`;
+
+export function sportsPages(events = [], { wire = [], held = new Set(), heldCost = new Map(), limit = 8 } = {}) {
+  const score = e => (e.live ? 2 : 0) + (e.venues.length > 1 ? 1 : 0);
+  const ranked = [...events].filter(e => e.venues?.length > 1 || e.live || e.fastSettling).sort((a, b) => score(b) - score(a));
+  return ranked.slice(0, limit).map(e => {
+    const w = e.winner || [], names = e.participants, lower = names.map(n => n.toLowerCase());
+    const gap = [0, 1].map(i => { const v = w[i]?.venues || {}, p = v.polymarket ?? v.polymarketComplement; return v.kalshi !== undefined && p !== undefined ? Math.abs(v.kalshi - p) : null; }).find(x => x !== null) ?? null;
+    const liveText = e.live ? `${e.live.state}${e.live.score?.[0] != null ? ' ' + e.live.score.join('–') : ''}` : 'no feed';
+    return { id: `sports:${e.id}`, kind: 'SPORTS', title: `${e.sport}: ${names[0]} vs ${names[1]}`, when: e.contracts.map(c => c.closeAt).filter(Boolean).sort((a, b) => a - b)[0] ?? null, whenLabel: `game day ${e.day}`,
+      metrics: [{ label: names[0], value: venuePrice(w[0]?.venues), sub: 'winner price' }, { label: names[1], value: venuePrice(w[1]?.venues), sub: 'winner price' },
+        { label: 'Live', value: liveText, sub: e.live?.period || e.live?.feed || '' }, { label: 'Venue gap', value: gap === null ? '—' : `${(gap * 100).toFixed(1)} pts`, sub: e.fastSettling ? 'fast-settling' : `${e.contracts.length} contracts` }],
+      sections: [{ title: 'Markets on this game', note: 'Clustered by sport, day and names (heuristic).', items: e.contracts.slice(0, 12).map(c => ({ text: `${c.venue}: ${c.title}`, sub: `${c.type}${c.line != null ? ' ' + c.line : ''} · YES ${pct(c.yesMid)}` })) },
+        { title: 'Wire', items: wireFor(wire, x => (x.entities || []).some(en => en.type === 'team' && lower.some(n => n.includes(en.key.toLowerCase()) || en.key.toLowerCase().includes(n)))) }],
+      exposure: heldIn(e.contracts.map(c => c.id), held, heldCost), provenance: 'Prices are listing mids; live state from official feeds only; clustering is heuristic.' };
+  });
+}
+
+const exposureOf = an => [...(an?.sectors || []).map(x => ({ text: x })), ...(an?.markets || []).map(m => ({ text: `${m.venue}: ${m.title}` }))];
+export function weatherPages(weather, { wire = [], limit = 6 } = {}) {
+  if (!weather) return [];
+  const storms = (weather.storms || []).filter(s => /HU|TS|PTC|STS/.test(s.classification || '')).map(s => ({
+    id: `weather:storm:${s.id}`, kind: 'WEATHER', title: `${s.classification === 'HU' ? 'HURRICANE' : 'TROPICAL SYSTEM'} ${String(s.name).toUpperCase()}`, when: s.updated, whenLabel: 'NHC update',
+    metrics: [{ label: 'Wind', value: s.intensityKt ? `${s.intensityKt} kt` : '—', sub: s.classification }, { label: 'Pressure', value: s.pressureMb ? `${s.pressureMb} mb` : '—', sub: '' }, { label: 'Position', value: `${s.lat ?? '?'}, ${s.lon ?? '?'}`, sub: s.movement || '' }, { label: 'Linked markets', value: String(s.analysis?.markets?.length || 0), sub: 'speculative' }],
+    sections: [{ title: 'Possible exposure (speculative)', note: s.analysis?.note, items: exposureOf(s.analysis) }, { title: 'NHC', items: s.advisory ? [{ text: 'Public advisory', url: s.advisory }] : [] },
+      { title: 'Wire', items: wireFor(wire, x => x.kind === 'WEATHER' && /tropical|hurricane|storm/i.test(x.title)) }],
+    exposure: { contracts: [], costUsd: 0 }, provenance: 'NHC facts; market and sector links are speculative analysis.' }));
+  const extreme = (weather.alerts || []).filter(a => a.severity === 'Extreme').slice(0, 3).map(a => ({
+    id: `weather:alert:${a.id}`, kind: 'WEATHER', title: `${String(a.event).toUpperCase()} — ${String(a.area || '').split(';')[0]}`, when: a.sent, whenLabel: 'NWS sent',
+    metrics: [{ label: 'Severity', value: a.severity, sub: `${a.urgency || ''} / ${a.certainty || ''}` }, { label: 'Expires', value: a.expires ? new Date(a.expires).toISOString().slice(0, 16).replace('T', ' ') + 'Z' : '—', sub: '' }, { label: 'Sectors', value: String(a.analysis?.sectors?.length || 0), sub: 'speculative' }, { label: 'Markets', value: String(a.analysis?.markets?.length || 0), sub: 'speculative' }],
+    sections: [{ title: 'Area', items: [{ text: a.area }] }, { title: 'Possible exposure (speculative)', note: a.analysis?.note, items: exposureOf(a.analysis) }],
+    exposure: { contracts: [], costUsd: 0 }, provenance: 'NWS alert facts; links are speculative analysis.' }));
+  return [...storms, ...extreme].slice(0, limit);
+}
+
+export function corporatePages(filings = [], { wire = [], assets = {}, held = new Set(), heldCost = new Map(), limit = 6 } = {}) {
+  const keep = ['EARNINGS', 'M&A', 'CHANGE_OF_CONTROL', 'BANKRUPTCY', 'RESTATEMENT', 'DILUTION', 'EXECUTIVE_CHANGE', 'MATERIAL_AGREEMENT'];
+  return filings.filter(f => (f.analysis?.catalysts || []).some(c => keep.includes(c))).sort((a, b) => (b.facts.acceptedAt || 0) - (a.facts.acceptedAt || 0)).slice(0, limit).map(f => {
+    const x = f.facts, a = f.analysis, px = x.ticker ? assets[x.ticker] : null;
+    return { id: `corporate:${x.accession}`, kind: 'CORPORATE', title: `${x.ticker || x.company} — ${a.catalysts.join(', ')}`, when: x.acceptedAt, whenLabel: `SEC accepted (${x.form})`,
+      metrics: [{ label: 'Form', value: x.form, sub: x.company }, { label: 'Items', value: String(x.items.length), sub: x.items.map(i => i.code).join(', ') }, { label: 'Price', value: px?.price != null ? String(px.price) : 'unavailable', sub: px?.source || '' }, { label: 'Linked markets', value: String(a.relatedMarkets.length), sub: 'rule-based' }],
+      sections: [{ title: 'Filing facts', items: [...x.items.map(i => ({ text: `${i.code} ${i.name}` })), { text: 'Filing document', url: x.url }] }, { title: 'Related markets (rule-based)', note: a.note, items: a.relatedMarkets.map(m => ({ text: `${m.venue}: ${m.title}` })) },
+        { title: 'Wire', items: wireFor(wire, w => x.ticker && (w.entities || []).some(e => e.type === 'ticker' && e.key === x.ticker)) }],
+      exposure: heldIn(a.relatedMarkets.map(m => m.id), held, heldCost), provenance: 'Filing facts as declared to the SEC; catalysts and links are rule-based analysis.' };
+  });
+}

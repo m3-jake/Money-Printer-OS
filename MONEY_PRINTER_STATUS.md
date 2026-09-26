@@ -1122,3 +1122,14 @@ Kalshi and Robinhood event contracts are already covered by the MPOS core platfo
 - **UI:** Command Center ledger accounts show currency (SOL is no longer printed as dollars) and mark mirrored legacy accounts. The Legacy books section adds a Ledger mirror table (status, book vs ledger cash, difference, last sync, notes) and "Sync legacy books now".
 - **Live (isolated data):** Solana 111 entries, RECONCILED (ledger 0.641811 vs book 0.641820 SOL, a −0.000009 rounding difference across 111 entries); 6 open positions match; second sync appends 0. Robinhood practice RECONCILED at $500.
 - Tests: 2 new (partial exit → close by deltas, reset → new epoch, unreconcilable book reported and never adjusted, unreadable book, practice plan). `market-core` 59.
+
+## Batch AH (2026-09-26): event pages for sports, weather and corporate events
+
+- `correlation.js` has three new page builders that share one generic shape (headline metrics + detail sections + exposure + provenance):
+  - **sportsPages:** live and cross-venue games first. Winner prices per venue, live state, venue gap, every contract on the game, Wire items for the teams, held exposure.
+  - **weatherPages:** hurricanes and tropical systems (NHC), plus Extreme NWS alerts. Wind, pressure, position, speculative sector/market exposure, NHC advisory link.
+  - **corporatePages:** filings with material catalysts (earnings, M&A, change of control, bankruptcy, restatement, dilution, executive change, material agreement). Item facts, filing link, price when Alpaca is keyed, rule-based related markets, ticker Wire items.
+- `eventPages()` adds them from the Sports/Weather/EDGAR desks and reports counts per kind. Command Center Events has an ALL/MACRO/SPORTS/WEATHER/CORPORATE filter with counts and colour-coded cards; generic cards expand into sections.
+- **Bug found in the live check:** `sameName` failed when both names had the same word count ("Los Angeles A" vs "Los Angeles Angels"), so the Angels' Kalshi price was dropped from the event. The abbreviated name is now always the short side (regression test added).
+- **Live:** 19 pages (7 macro, 8 sports, 4 weather: Gonzalo, Odalys, Polo, Nolo; corporate 0 until SEC_USER_AGENT is set). First load ≈60–90 s (all desks); cached 5 minutes.
+- Tests: 1 new (+ sameName regression). `market-core` 60.

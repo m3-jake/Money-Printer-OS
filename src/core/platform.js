@@ -25,7 +25,7 @@ import { MACRO_INDICATORS,FredSource,transform as macroTransform,impliedLadder,a
 import { EdgarSource,analyseFiling } from './edgar.js';
 import { WEATHER_CITIES,WeatherSource,bucketLadder,weatherLinks } from './weather.js';
 import { buildSportsEvents,mlbLive,nhlLive,attachLive } from './sports.js';
-import { buildEventPages,EVENT_TEMPLATES } from './correlation.js';
+import { buildEventPages,EVENT_TEMPLATES,sportsPages,weatherPages,corporatePages } from './correlation.js';
 import { tokenGraph,whaleFlow,walletView,authorityOf } from './whales.js';
 import { WIRE_FEEDS,WIRE_FILTERS,parseRss,extractEntities,relatedMarkets,importance,categoriesOf } from './wire.js';
 export const SPORTS_SERIES=['KXMLBGAME','KXNFLGAME','KXNCAAFGAME','KXNHLGAME','KXNBAGAME','KXWNBAGAME','KXATPMATCH','KXWTAMATCH','KXTTSTARMATCH','KXTTELITEMATCH','KXUEFANLGAME','KXMLSGAME','KXEPLGAME'];
@@ -444,9 +444,14 @@ export class MarketPlatform {
     for(const [sym,tape] of [['BTC','BTC-USD'],['ETH','ETH-USD'],['SOL','SOL-USD']]){const r=readTape(dir,tape,{start:now-6*3600000,end:now});const last=r.at(-1);if(last)assets[sym]={price:(last.bid+last.ask)/2,at:last.availableAt,source:last.synthetic?'tape (candle-derived)':'tape'};}
     try{const q=await this.stocks.quotes(['SPY','QQQ','TLT','XRT']);for(const [s,x] of Object.entries(q))if(x.last||x.bid)assets[s]={price:x.last??(x.bid+x.ask)/2,at:x.quoteAt,source:x.source};}catch(e){errors.push('stock quotes: '+e.message);}
     const pages=buildEventPages({macro,contracts:this.store.list({kind:'Contract',limit:1000}),wire,held,heldCost,assets,now});
+    // Other event kinds come from the Sports, Weather and EDGAR desks (their own caches).
+    const sports=await this.sportsSnapshot().catch(e=>{errors.push('sports: '+e.message);return null;});
+    const weather=await this.weatherSnapshot().catch(e=>{errors.push('weather: '+e.message);return null;});
+    const contracts=this.store.list({kind:'Contract',limit:1000}),filings=this.store.list({kind:'Filing',limit:200}).map(f=>({facts:f.data,analysis:analyseFiling({facts:f.data},contracts)}));
+    const others=[...sportsPages(sports?.events||[],{wire,held,heldCost}),...weatherPages(weather,{wire}),...corporatePages(filings,{wire,assets,held,heldCost})];
     for(const pg of pages){try{const ev=this.store.put({kind:'Event',provider:'mpos',sourceId:pg.eventTicker,data:{title:pg.title,indicator:pg.indicator,when:pg.when},observedAt:now,availableAt:now,fact:false});
       for(const id of pg.relatedContractIds){if(!this.store.get(id))continue;this.store.relate({sourceId:id,targetId:ev.id,relation:'MARKET_FOR_EVENT',evidence:id.startsWith('contract:kalshi:')?'Same Kalshi event':'Keyword template match',fact:id.startsWith('contract:kalshi:'),at:now});}}catch(e){errors.push('store: '+e.message);}}
-    const data={at:now,pages,errors,note:'Kalshi links are the venue\'s own event grouping; Polymarket, asset and signal links are rule-based. Exposure covers the core ledger only.'};
+    const data={at:now,pages:[...pages,...others],counts:{MACRO:pages.length,SPORTS:others.filter(p=>p.kind==='SPORTS').length,WEATHER:others.filter(p=>p.kind==='WEATHER').length,CORPORATE:others.filter(p=>p.kind==='CORPORATE').length},errors,note:'Kalshi links are the venue\'s own event grouping; Polymarket, asset and signal links are rule-based. Exposure covers the core ledger only.'};
     this.eventsCache={at:now,data};return data;
   }
   // Diagnostics across every source and subsystem. Values that cannot be measured are "unavailable".

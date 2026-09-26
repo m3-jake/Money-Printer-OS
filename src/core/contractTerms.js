@@ -22,7 +22,10 @@ export function normName(v) {
 export function sameName(a, b) {
   const x = normName(a).split(' ').filter(Boolean), y = normName(b).split(' ').filter(Boolean);
   if (!x.length || !y.length) return false;
-  const [s, l] = x.length <= y.length ? [x, y] : [y, x];
+  // The abbreviated name (trailing one-letter word) is always the "short" side, even when both
+  // names have the same number of words ("Los Angeles A" / "Los Angeles Angels").
+  const abbrev = w => w[w.length - 1].length === 1;
+  const [s, l] = abbrev(x) !== abbrev(y) ? (abbrev(x) ? [x, y] : [y, x]) : x.length <= y.length ? [x, y] : [y, x];
   // A trailing one-letter word is a venue abbreviation ("Chicago C", "New York Y"): it matches the
   // word in the same position that starts with that letter, after identical leading words.
   const last = s.length - 1;

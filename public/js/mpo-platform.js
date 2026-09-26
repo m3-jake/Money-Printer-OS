@@ -114,7 +114,7 @@ window.MPOSPlatform = (() => {
   }
   // Event pages (one event, many markets). Heavier than /status, so fetched every 5 minutes while
   // Command Center is open, without blocking the rest of the window.
-  let events=null,eventsAt=0,eventsBusy=false,openEvent=null;
+  let events=null,eventsAt=0,eventsBusy=false,openEvent=null,eventKind='ALL';
   function loadEvents(force=false){
     const w=document.querySelector('.window[data-app="command"]');if(!w||w.classList.contains('hidden')||eventsBusy||(!force&&Date.now()-eventsAt<300000))return;
     eventsBusy=true;request('/events'+(force?'?force=1':'')).then(v=>{events=v;eventsAt=Date.now();}).catch(e=>{events={error:e.message,pages:[]};eventsAt=Date.now()-240000;}).finally(()=>{eventsBusy=false;render();});
@@ -122,7 +122,13 @@ window.MPOSPlatform = (() => {
   function eventsCard(){
     if(!events)return `<h3>Events <small>One event → many markets</small></h3><p class="core-muted">${eventsBusy?'Joining macro, Kalshi, Polymarket, assets and the Wire…':'Loading…'}</p>`;
     const fmt=(v,u)=>v===null||v===undefined?'—':`${Number(v).toLocaleString(undefined,{maximumFractionDigits:3})}${u==='%'?'%':u?' '+u:''}`;
-    const card=pg=>{const k=pg.predictionMarkets.kalshi,open=openEvent===pg.id;
+    // Non-macro pages share one generic shape: metrics + sections (correlation.js).
+    const generic=pg=>{const open=openEvent===pg.id;
+      return `<section class="event-card kind-${escape(pg.kind.toLowerCase())} ${open?'open':''}"><header><button class="linkbtn" type="button" data-core-action="event" data-id="${escape(pg.id)}"><b>${escape(pg.title)}</b></button><small>${escape(pg.kind)} · ${pg.when?escape(new Date(pg.when).toLocaleString()):'—'} · ${escape(pg.whenLabel||'')}</small></header>
+        <div class="event-grid">${pg.metrics.map(m=>`<div><small>${escape(m.label)}</small><b>${escape(m.value)}</b><small>${escape(m.sub||'')}</small></div>`).join('')}</div>
+        ${open?`<div class="event-detail">${pg.sections.map(s=>`<h4>${escape(s.title)}${s.note?` <small>${escape(s.note)}</small>`:''}</h4>${s.items.length?s.items.map(i=>`<p>${i.url?`<a href="${escape(i.url)}" target="_blank" rel="noreferrer">${escape(i.text)}</a>`:escape(i.text)}${i.sub?` <small>${escape(i.sub)}</small>`:''}</p>`).join(''):'<p class="core-muted">None.</p>'}`).join('')}
+          <h4>Exposure</h4><p>${pg.exposure.contracts.length?`${pg.exposure.contracts.length} held contract(s), cost ${dollars(pg.exposure.costUsd)}`:'No core-ledger positions linked.'}</p><p class="core-muted">${escape(pg.provenance)}</p></div>`:''}</section>`;};
+    const card=pg=>{if(pg.kind!=='MACRO')return generic(pg);const k=pg.predictionMarkets.kalshi,open=openEvent===pg.id;
       return `<section class="event-card ${open?'open':''}"><header><button class="linkbtn" type="button" data-core-action="event" data-id="${escape(pg.id)}"><b>${escape(pg.title)}</b></button><small>${escape(new Date(pg.when).toLocaleString())} · ${escape(pg.whenLabel)}</small></header>
         <div class="event-grid"><div><small>Kalshi</small><b>${fmt(k.impliedMedian,k.unit)}</b><small>implied median</small></div>
           <div><small>Polymarket</small><b>${pg.predictionMarkets.polymarket.length}</b><small>linked markets</small></div>
@@ -136,7 +142,7 @@ window.MPOSPlatform = (() => {
           <h4>Signals</h4>${pg.signals.map(s=>`<p><small>${escape(new Date(s.at).toLocaleString())} · ${escape(s.source)} · ${s.importance}</small><br>${s.url?`<a href="${escape(s.url)}" target="_blank" rel="noreferrer">${escape(s.title)}</a>`:escape(s.title)}</p>`).join('')||'<p class="core-muted">None.</p>'}
           <p class="core-muted">${escape(pg.provenance)}</p></div>`:''}</section>`;};
     return `<h3>Events <small>One event → many markets · ${escape(events.note||'')}</small></h3>${events.error?`<p class="core-error">${escape(events.error)}</p>`:''}
-      <div class="event-list">${(events.pages||[]).map(card).join('')||'<p class="core-muted">No upcoming events with Kalshi ladders.</p>'}</div>${(events.errors||[]).length?`<p class="core-muted">${events.errors.map(escape).join(' · ')}</p>`:''}`;
+      <div class="core-toolbar">${['ALL','MACRO','SPORTS','WEATHER','CORPORATE'].map(k=>`<button class="btn ${eventKind===k?'on':''}" type="button" data-core-action="event-kind" data-kind="${k}">${k}${k!=='ALL'&&events.counts?` <small>${events.counts[k]??0}</small>`:''}</button>`).join('')}</div><div class="event-list">${(events.pages||[]).filter(p=>eventKind==='ALL'||p.kind===eventKind).map(card).join('')||'<p class="core-muted">No upcoming events with Kalshi ladders.</p>'}</div>${(events.errors||[]).length?`<p class="core-muted">${events.errors.map(escape).join(' · ')}</p>`:''}`;
   }
   async function refresh(){const [s,e,d]=await Promise.all([request('/status'),request('/entities?kind=Contract'),request('/diagnostics').catch(()=>null),refreshScoreboard()]);snapshot=s;contracts=e.entities;diag=d;loadEvents();render();}
   async function action(fn){if(busy)return;busy=true;error='';render();try{await fn();await refresh();}catch(e){error=e.message;}finally{busy=false;render();}}
@@ -146,6 +152,7 @@ window.MPOSPlatform = (() => {
       const btn=e.target.closest('[data-core-action]');if(!btn)return;const id=btn.closest('[data-core-id]')?.dataset.coreId,a=btn.dataset.coreAction,st=states[id];
       // Expanding an event page is local UI state: never blocked by a refresh in progress.
       if(a==='event'){openEvent=openEvent===btn.dataset.id?null:btn.dataset.id;render();return;}
+      if(a==='event-kind'){eventKind=btn.dataset.kind;render();return;}
       if(a==='halt'){request('/risk/halt',{}).then(refresh).catch(e=>{error=e.message;render();});return;}
       if(a.startsWith('open-')){const dest={kalshi:'kalshi',poly:'predictionmarkets',arbitrage:'arbitrage'}[a.slice(5)];api.open(dest);render();return;}
       action(async()=>{
