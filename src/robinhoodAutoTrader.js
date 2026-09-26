@@ -614,7 +614,18 @@ async function tick(){
  }finally{tickBusy=false;if(evolveDue()){evolveCheckedAt=now();runRobinhoodEvolveOnce().catch(e=>note('evolve',e))}}
 }
 export async function runRobinhoodPaperOnce(){if(tickBusy||paperBusy)return {ran:false,reason:'busy'};const p=paper();if(p.recoveryRequired)return {ran:false,reason:'paperRecovery'};if(!collectAlways()&&!p.autopilot.enabled&&!p.positions.length)return {ran:false,reason:'idle'};tickBusy=true;try{return await paperPass(p)}catch(e){note('paper-loop',e);return {ran:false,reason:e.code||'unknown',error:safeMessage(e)}}finally{tickBusy=false}}
-export function startRobinhoodLoops(){if(timer)return timer;const setting=process.env.ROBINHOOD_AUTOSTART??'true'; /* §23: no longer falls back to POLYMARKET_AUTOSTART */if(String(setting).toLowerCase()==='false')return null;timer=setInterval(()=>{tick().catch(()=>{})},TICK_MS);timer.unref?.();if(collectAlways()&&String(process.env.ROBINHOOD_WARM_START??'true').toLowerCase()!=='false')warmStartRobinhood().then(()=>tick()).catch(()=>{});return timer}
+const PAPER_PRACTICE_VERSION=1;
+function ensureRobinhoodPaperPractice(){
+ const p=paper();
+ if(p.recoveryRequired||Number(p.paperPracticeVersion||0)>=PAPER_PRACTICE_VERSION)return p;
+ // alpha.60 migration: the strict Robinhood PAPER book should actually practice by default.
+ // This only flips the simulated book. PAPER_ONLY_BUILD still hard-blocks every real order path.
+ p.autopilot={...p.autopilot,enabled:true};
+ p.paperPracticeVersion=PAPER_PRACTICE_VERSION;
+ J.savePaper(p,{force:true});
+ return p;
+}
+export function startRobinhoodLoops(){if(timer)return timer;const setting=process.env.ROBINHOOD_AUTOSTART??'true'; /* §23: no longer falls back to POLYMARKET_AUTOSTART */if(String(setting).toLowerCase()==='false')return null;try{ensureRobinhoodPaperPractice()}catch(e){note('paper-practice-default',e)}timer=setInterval(()=>{tick().catch(()=>{})},TICK_MS);timer.unref?.();if(collectAlways()&&String(process.env.ROBINHOOD_WARM_START??'true').toLowerCase()!=='false')warmStartRobinhood().then(()=>tick()).catch(()=>{});return timer}
 export function stopRobinhoodLoops(){if(timer)clearInterval(timer);timer=null;if(paperDirty){try{J.savePaper(paper(),{force:true});paperDirty=false}catch(e){note('paper-save',e)}}T.flushTape({force:true,now:now()})}
 // ------------------------------------------------------------------ evolution (§22, paper-only)
 const LAB_RH_STATUS_FILE=path.join(DATA_DIR,'lab-link','modules','robinhood.json');
