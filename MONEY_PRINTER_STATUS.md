@@ -4,7 +4,7 @@
 (`CURRENT_TASKS.md`, `KNOWN_BUGS.md`, `PROJECT_STATE.md`, `RELEASE_STATUS.md`) and in `reports/NEXT-STEPS-2026-09-25.md`.
 Don't re-inventory the repo. Update this file at the end of every batch.
 
-Last updated: 2026-09-26, batch 10. Branch `feature/polymarket-combo-only`, version `0.5.0-alpha.56`.
+Last updated: 2026-09-26, batch 10 + Solana/Robinhood/Lab review (read-only). Branch `feature/polymarket-combo-only`, version `0.5.0-alpha.56`.
 
 ## Architecture (inventoried once)
 
@@ -248,3 +248,42 @@ Last updated: 2026-09-26, batch 10. Branch `feature/polymarket-combo-only`, vers
 3. Refresh or retire the stale admin scripts (report section 2.8). They live outside this repo, so ask bing where first.
 4. Design work (not compute): a second Polymarket strategy family. Options are fee-free NFL-only markets or maker/limit posting with a queue model (report section 2.5).
 5. Optional: an end-to-end `enter()` test harness, which needs dependency injection for config, store and network.
+
+### Solana / Robinhood / Lab track (from `reports/SOLANA-ROBINHOOD-LAB-REVIEW-2026-09-26.md`)
+
+Verdicts:
+- **Solana SPRINT: park it.** 124 paper closes, profit factor 0.85, −1.15% per trade. A 4% take-profit against about 2.5% round-trip cost needs a hit rate of about 83%.
+- **Robinhood: no evidence yet.** There are 5 minutes of tape and 0 trades, and the paper quotes come from Coinbase, not Robinhood.
+
+**Batch 11: slim the trader (no strategy change)**
+1. **bing:** take the Solana profile off SPRINT and stop it in the HUD. Done when there are no new `history` rows for 24 h.
+2. Default `ROBINHOOD_EVOLVE_ENABLED` to `false`; "Run now" keeps working.
+   - Files: `src/robinhoodEvolve.js`, `docs/ROBINHOOD-AUTO-TRADER.md` §13/§22.
+   - Tests: Robinhood evolve and auto-trader.
+   - Done when the default tick never calls `runRobinhoodEvolveOnce`.
+3. Gate the `alphaWorkerManager` start (`src/index.js:655`) behind `MPO_ALPHA_WORKER`, default off.
+   - Tests: selftest plus a supervision assert.
+   - Done when a default boot has 3 Node children.
+4. Cap `state.research` and split it out to `<data>/learner.json`, written atomically.
+   - Files: `src/learner.js`, `src/store.js`.
+   - Tests: selftest and store.
+   - Done when a copy of the live `state.json` (9.6 MB, 7 MB of it `research`) round-trips to under 2 MB.
+5. Measure the engine's idle CPU/RSS with an isolated data dir, `ROBINHOOD_AUTOSTART=false` and no `.env`. Record the numbers here.
+
+**Batch 12: Robinhood data before search**
+1. **bing:** run the Robinhood paper loop continuously with read-only credentials, so the tape is Robinhood's own quotes. Done when there are at least 7 days of `robinhood-tape/BTC-USD.ndjson`.
+2. Tag each tape row with `src` (`rh` or `cb`) and show the split in the HUD.
+   - Files: `src/robinhoodTape.js`, `src/robinhoodAutoTrader.js`.
+   - Tests: the tape tests.
+3. Add `scripts/rh-tape-stats.mjs`, a read-only CLI that prints coverage, spread p50/p90, the share of time the expected move is ≥ 1.5×C, and projected trades per day.
+   - Tests: a fixture test.
+   - Done when it prints one line per symbol.
+4. After 7 days, record the verdict here: can the strategy trade at all at Robinhood's costs?
+
+**Batch 13: lab-link tape v1 and moving the search out**
+1. `src/labLink.js` `publishTape()`: sealed daily segments, `mpo.lab-tape-manifest.v1`, a 1 GB quota, and pruning on `mpo.lab-ack.v1`.
+   - Tests: new `tests/lab-link-tape.test.mjs` covering caps, atomicity, quota, Lab off and a torn tail.
+2. Route `mpo.lab-champion.v1` by `family` into `applyRobinhoodEvolution`. Refuse a champion unless `quoteSource` is `robinhood` and it has ≥ 100 test closes.
+   - Tests: lab-link and Robinhood HTTP.
+3. **bing:** schedule a Lab-repo session after Codex's branch lands. It will ingest the tape and port the backtest and evolve with a sealed holdout and a deflated score.
+4. Move `replayLab`, `polymarketResearchEval`, `executableReplay*` and the Robinhood evolve to the Lab, and delete `alphaLab`. Done when the trader's `src/` has no search, replay or scoring modules.
