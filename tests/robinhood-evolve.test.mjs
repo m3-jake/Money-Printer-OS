@@ -91,7 +91,7 @@ test('trader: no run without 3 days of primary tape; a run proposes a champion b
  const view=RH.robinhoodEvolveView();assert.equal(view.autopromote,false);assert.ok(view.generation>=1);assert.equal(view.proposed.paramsHash,r.bestHash);assert.equal(view.champion.paramsHash,r.bestHash);assert.ok(view.tapeDays['BTC-USD']>=3.9);assert.equal(view.applied,null);
  assert.equal(J.loadPaper().paramsHash,hashBefore,'paper params untouched without APPLY');assert.equal(mock.writes().length,0,'evolution never posts to Robinhood');
  const ledger=JSON.parse(fs.readFileSync(RH.__testing.evolveFile,'utf8'));assert.equal(ledger.champion.paramsHash,r.bestHash);assert.equal(ledger.history[0].beats,true);assert.equal(ledger.events[0].type,'champion');
- const snap=await RH.robinhoodSnapshot({force:true});assert.deepEqual(Object.keys(snap),['at','readiness','outbound','account','pairs','quotes','tape','paper','practice','journal','limits','qualificationThresholds','strategy','loop','equities','evolve','explore','gauges','lastError']);assert.equal(snap.evolve.proposed.paramsHash,r.bestHash);
+ const snap=await RH.robinhoodSnapshot({force:true});assert.deepEqual(Object.keys(snap),['at','readiness','outbound','account','pairs','quotes','tape','paper','practice','daily','journal','limits','qualificationThresholds','strategy','loop','equities','evolve','explore','gauges','lastError']);assert.equal(snap.evolve.proposed.paramsHash,r.bestHash);
 });
 test('trader: APPLY changes the paper params only, resets qualification and disables real autopilot with paramsChanged',async()=>{
  reset();writeTape('BTC-USD',4,{drift:0.0006});
@@ -149,6 +149,16 @@ test('sealed holdout: the search never sees the newest 20%, context only warms i
  Object.assign(process.env,{ROBINHOOD_EVOLVE_MAX_TAPE_DAYS:'5',ROBINHOOD_EVOLVE_MIN_TAPE_DAYS:'3',ROBINHOOD_EVOLVE_HOLDOUT_MIN_CLOSES:'1',ROBINHOOD_EVOLVE_HOLDOUT_MIN_PF:'0.01',ROBINHOOD_EVOLVE_REQUIRE_RH_QUOTES:'false'});
 });
 
+test('the evolve view passes the Lab daily-bar verdict through untouched (and null without a Lab record)', () => {
+ reset();
+ assert.equal(RH.robinhoodEvolveView().daily,null);
+ const dir=path.join(process.env.MONEY_PRINTER_DATA_DIR,'lab-link','modules');fs.mkdirSync(dir,{recursive:true});
+ const daily={schema:'mpo.lab-robinhood-daily.v1',phase:'NO_EDGE',leader:{id:'trend-200-2',family:'trend'},proposal:null,blockers:['holdout trend-200-2 Sharpe 0.8 vs buy-and-hold 1.1'],traderExecutable:false,liveActivationAllowed:false};
+ fs.writeFileSync(path.join(dir,'robinhood.json'),JSON.stringify({module:'robinhood',status:'RUNNING',phase:'WARMING',updatedAt:mock.state.time,daily}));
+ const v=RH.robinhoodEvolveView();assert.equal(v.source,'evolution-lab');assert.deepEqual(v.daily,daily);
+ fs.writeFileSync(path.join(dir,'robinhood.json'),JSON.stringify({module:'robinhood',status:'RUNNING',updatedAt:mock.state.time}));
+ assert.equal(RH.robinhoodEvolveView().daily,null,'an older Lab record without a daily block');
+});
 test('a fresh Evolution Lab Robinhood lane stands the trader\'s own automatic search down', () => {
  reset();
  const dir=path.join(process.env.MONEY_PRINTER_DATA_DIR,'lab-link','modules');fs.mkdirSync(dir,{recursive:true});

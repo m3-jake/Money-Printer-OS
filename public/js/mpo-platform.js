@@ -6,6 +6,7 @@ window.MPOSPlatform = (() => {
   const when = v => v?new Date(v).toLocaleString():'Unavailable';
   const states={kalshi:{rows:[],cursor:null,search:'',category:'',detail:null},predictionmarkets:{rows:[],cursor:null,search:'',category:'',detail:null}};
   let snapshot=null,contracts=[],comparison=null,error='',busy=false,hostApi=null;
+  let scoreboard=null,scoreboardError='';
   const venues={kalshi:'kalshi',predictionmarkets:'polymarket'};
   const ids=['command','kalshi','arbitrage','predictionmarkets'];
   const button=(action,label,extra='')=>`<button class="btn" data-core-action="${action}" ${extra} ${busy&&action!=='halt'?'disabled':''}>${label}</button>`;
@@ -14,18 +15,43 @@ window.MPOSPlatform = (() => {
     const value=await r.json();if(!r.ok||value.ok===false)throw new Error(value.error||'Request failed');return data===undefined?value:value.result;
   }
   const table=(headers,rows,empty='No records yet.')=>`<div class="core-table-wrap"><table class="table"><thead><tr>${headers.map(h=>`<th>${escape(h)}</th>`).join('')}</tr></thead><tbody>${rows||`<tr><td colspan="${headers.length}">${escape(empty)}</td></tr>`}</tbody></table></div>`;
+  // SCOREBOARD: every module's paper book, after fees, against its own baseline (GET /api/scoreboard).
+  const sbAmount=(v,unit)=>{if(v===null||v===undefined)return '—';const n=Number(v),sign=n>0?'+':n<0?'−':'',a=Math.abs(n);
+    return unit==='USD'?sign+'$'+a.toFixed(2):unit==='SOL'?sign+a.toFixed(4)+' SOL':unit==='%'?sign+a.toFixed(2)+'%':sign+a.toFixed(4);};
+  const sbAge=ms=>ms===null||ms===undefined?'':ms<60e3?Math.round(ms/1e3)+'s':ms<3600e3?Math.round(ms/60e3)+'m':ms<172800e3?Math.round(ms/3600e3)+'h':Math.round(ms/86400e3)+'d';
+  const sbSpark=c=>{if(!Array.isArray(c)||c.length<2)return '';const lo=Math.min(0,...c),hi=Math.max(0,...c),span=hi-lo||1,y=v=>(15-(v-lo)/span*14).toFixed(1);
+    return `<svg class="core-spark" viewBox="0 0 60 16" preserveAspectRatio="none" aria-hidden="true"><line x1="0" x2="60" y1="${y(0)}" y2="${y(0)}" class="zero"/><polyline class="${c.at(-1)>=0?'up':'down'}" points="${c.map((v,i)=>(i*60/(c.length-1)).toFixed(1)+','+y(v)).join(' ')}"/></svg>`;};
+  function scoreboardCard(){
+    if(!scoreboard)return `<h3>Scoreboard</h3><p class="core-muted">${escape(scoreboardError||'Reading every module…')}</p>`;
+    const s=scoreboard.summary,led=v=>v==='YES'?'yes':v==='NO'?'no':'wait';
+    const rows=scoreboard.rows.map(r=>{const pf=r.profitFactor==='infinity'?'∞':r.profitFactor===null||r.profitFactor===undefined?'—':Number(r.profitFactor).toFixed(2),f=r.freshness||{};
+      return `<tr class="sb-${led(r.beatsBaseline)}"><td><span class="core-led ${led(r.beatsBaseline)}" aria-hidden="true"></span>${escape(r.module)}<small>${escape(r.book)}${r.kind==='lab'?' · '+escape(r.state):''}</small></td>
+        <td class="num">${sbAmount(r.netPnl,r.unit)}${sbSpark(r.curve)}</td><td class="num">${r.closes}${r.per==='session'?'<small>sessions</small>':''}</td>
+        <td class="num">${r.hitRate===null||r.hitRate===undefined?'—':(r.hitRate*100).toFixed(0)+'%'} · ${pf}</td><td class="num">${sbAmount(r.netPerTrade,r.unit)}</td>
+        <td>${escape(r.baseline.label)}<small>${r.baseline.netPnl===null?'unavailable':sbAmount(r.baseline.netPnl,r.unit)}</small></td>
+        <td title="${escape(r.reason||'')}"><b class="sb-verdict">${escape(r.beatsBaseline)}</b></td>
+        <td class="num${r.outlier?' sb-outlier':''}" title="${r.bestTrade?'Best trade '+sbAmount(r.bestTrade.pnl,r.unit):''}">${sbAmount(r.netWithoutBest,r.unit)}${r.outlier?'<small>ONE TRADE</small>':''}</td>
+        <td class="sb-fresh ${escape(String(f.status||'').toLowerCase())}">${escape(f.status||'—')}<small>${sbAge(f.ageMs)}</small></td></tr>`;}).join('');
+    return `<h3>Scoreboard <small>Is each module working? Net after fees, against its own baseline. Paper and shadow only.</small></h3>
+      <div class="core-lcd" role="status"><span><span class="core-led yes"></span>${s.beating} beating</span><span><span class="core-led no"></span>${s.notBeating} not</span><span><span class="core-led wait"></span>${s.notEnoughData} not enough data</span><span>${s.outlierDriven} one-trade</span><span>${s.stale} stale</span></div>
+      ${table(['Module / book','Net after fees','Closes','Hit · PF','Net / trade','Baseline','Beats?','Without best','Data'],rows,'No modules reported.')}
+      <p class="core-muted">${escape(scoreboard.rules)}${scoreboard.errors?.length?' Unreadable: '+escape(scoreboard.errors.map(e=>e.source).join(', '))+'.':''}</p>`;
+  }
   function command(){
     if(!snapshot)return '<p>Connecting to the common ledger…</p>';
     const r=snapshot.risk,accounts=snapshot.portfolio.accounts;
-    return `<div class="core-heading"><span class="core-light ${r.halted?'halted':''}"></span><h2>COMMAND CENTER</h2><span class="mpo-badge">CORE · PAPER</span></div>
-      <div class="core-risk"><strong>${r.state}</strong><span>${r.halted?'All further live submissions and core paper fills are stopped.': 'Core paper proposals are checked before every fill.'}</span>${button('halt','STOP ALL LIVE TRADING','class="core-stop"')}</div>
+    return `<div class="core-heading"><span class="core-light ${String(r.state).toLowerCase()}"></span><h2>COMMAND CENTER</h2><span class="mpo-badge">CORE · PAPER</span></div>
+      <div class="core-risk"><strong>${r.state}</strong>${(r.stateReasons||[]).length&&!r.halted?`<span class="core-muted">${r.stateReasons.join(' · ')}</span>`:''}<span>${r.halted?'All further live submissions and core paper fills are stopped.': 'Core paper proposals are checked before every fill.'}</span>${button('halt','STOP ALL LIVE TRADING','class="core-stop"')}</div>
       <p class="core-muted">The stop persists across restarts. Orders already at a venue require reconciliation or cancellation in that program.</p>
       ${r.halted?button('resume','Resume core paper trading'):''}
-      <div class="core-toolbar">${button('open-kalshi','KALSHI.EXE')}${button('open-poly','POLYMARKET.EXE')}${button('open-arbitrage','ARBITRAGE.EXE')}${button('refresh','Refresh')}</div>
+      <div class="core-toolbar">${button('open-kalshi','Kalshi')}${button('open-poly','Polymarket')}${button('open-arbitrage','Arbitrage')}${button('refresh','Refresh')}</div>
+      ${scoreboardCard()}
       <h3>Ledger accounts <small>Simulated funds</small></h3>
       ${table(['Venue / account','Cash','Realized P/L','Fees','Positions'],accounts.map(a=>`<tr><td>${escape(a.venue)} / ${escape(a.account)}</td><td>${dollars(a.cash)}</td><td>${dollars(a.realized)}</td><td>${dollars(a.fees)}</td><td>${a.positions.length}</td></tr>`).join(''),'No core accounts have been funded. Add an explicit simulated deposit in Markets to begin.')}
       <p class="core-notice">${escape(snapshot.coverage.note)} Risk currently values these paper positions at cost basis; live account reconciliation and marked drawdown are unavailable.</p>
       <h3>Provider connectivity</h3>${table(['Provider','State','Last success','Latency','WebSocket'],snapshot.providers.map(p=>`<tr><td>${escape(p.id)}</td><td>${escape(p.status)}</td><td>${when(p.lastSuccess)}</td><td>${p.latencyMs===null?'—':p.latencyMs+' ms'}</td><td>${escape(p.websocket)}</td></tr>`).join(''))}
+      <h3>Legacy books <small>Read-only; not in the core ledger; currencies never converted</small></h3>${table(['Book','Mode','Status','Cash','Open','Open cost','Realized P/L'],((snapshot.legacy||{}).books||[]).map(b=>{const amt=v=>v===null||v===undefined?'unavailable':`${Number(v).toFixed(b.currency==='SOL'?4:2)} ${escape(b.currency)}`;return `<tr><td>${escape(b.label)}</td><td>${escape(b.mode)}</td><td>${escape(b.status)}${b.reason?`<small>${escape(b.reason)}</small>`:''}${b.unverifiedFills?`<small>${b.unverifiedFills} fill(s) unverified</small>`:''}</td><td>${amt(b.cash)}</td><td>${b.openPositions??'—'}</td><td>${amt(b.openCost)}</td><td>${amt(b.realized)}${b.realizedScope?`<small>${escape(b.realizedScope)}</small>`:''}</td></tr>`;}).join(''),'Legacy coverage unavailable.')}
+      <h3>Strategies <small>Lifecycle DRAFT → BACKTESTING → PAPER → CANDIDATE; promotion needs sample, out-of-sample net after costs, drawdown and fold stability</small></h3>${table(['Strategy','Version','Markets','State','Mode','Lab state','Gate blockers','Updated'],(snapshot.strategies||[]).map(x=>{const l=(snapshot.labSync?.results||[]).find(r=>r.id===x.id);return `<tr><td>${escape(x.name)}</td><td>${escape(String(x.version).slice(0,28))}</td><td>${escape(x.markets.join(', '))}</td><td>${escape(x.state)}</td><td>${escape(x.executionMode)}</td><td>${l?escape(l.labState||'none'):'—'}</td><td>${l?.blockers?.length?escape(l.blockers.join(', ')):l?.skipped?`<small>${escape(l.skipped)}</small>`:'—'}</td><td>${when(x.updatedAt)}</td></tr>`}).join(''),'No strategies registered in the core yet.')}
       <h3>Order proposals</h3>${table(['Time','Venue / outcome','Mode','Status','Risk decision'],snapshot.proposals.map(p=>`<tr><td>${when(p.created_at)}</td><td>${escape(p.payload.venue)} / ${escape(p.payload.outcome)}</td><td>${escape(p.payload.mode)}</td><td>${escape(p.status)}</td><td>${escape(p.decision.reasons.join(', ')||p.decision.state)}</td></tr>`).join(''))}
       <details><summary>Risk limits / diagnostics</summary><form data-core-form="limits" class="core-limit-grid">${Object.entries(r.limits).map(([k,v])=>`<label>${escape(k)}<input name="${escape(k)}" type="number" min="0.001" step="any" value="${v}" required></label>`).join('')}<button class="btn" type="submit">Save limits</button></form><p>Database ${snapshot.database.status}; ${snapshot.database.ledgerEntries} ledger entries; event queue ${snapshot.eventBus.queueDepth}; dropped ${snapshot.eventBus.dropped}; listener errors ${snapshot.eventBus.listenerErrors}.</p></details>
       <h3>Recent ledger</h3>${table(['Time','Venue','Kind','Quantity','Gross','Fee'],snapshot.ledger.slice(0,30).map(e=>`<tr><td>${when(e.at)}</td><td>${escape(e.venue)}</td><td>${escape(e.kind)}</td><td>${escape(e.quantity)}</td><td>${dollars(e.gross)}</td><td>${dollars(e.fee)}</td></tr>`).join(''))}`;
@@ -34,7 +60,7 @@ window.MPOSPlatform = (() => {
     const st=states[id],venue=venues[id],categories=[...new Set(st.rows.map(m=>m.data.category).filter(Boolean))];
     const watched=new Set((snapshot?.watchlist||[]).map(w=>w.entity_id));
     const rows=st.rows.filter(m=>(!st.search||`${m.data.title} ${m.sourceId}`.toLowerCase().includes(st.search.toLowerCase()))&&(!st.category||m.data.category===st.category));
-    return `<div class="core-heading"><h2>${venue==='kalshi'?'KALSHI.EXE':'POLYMARKET · MARKETS'}</h2><span class="mpo-badge">PUBLIC DATA / PAPER</span></div>
+    return `<div class="core-heading"><h2>${venue==='kalshi'?'KALSHI':'POLYMARKET · MARKETS'}</h2><span class="mpo-badge">PUBLIC DATA / PAPER</span></div>
       <div class="core-toolbar">${button('load','Load active markets')}${button('next','Next page',!st.cursor?'disabled':'')}<label>Search loaded markets <input name="search" value="${escape(st.search)}" placeholder="Event or ticker"></label><label>Category <select name="category"><option value="">All available</option>${categories.map(c=>`<option ${st.category===c?'selected':''}>${escape(c)}</option>`).join('')}</select></label></div>
       <p class="core-muted">${venue==='polymarket'?'Global Polymarket order books. The US Combo Engine remains a separate venue in this suite.':'Kalshi public market metadata and reciprocal YES/NO order-book depth.'} Prices are observations, not model forecasts. ${st.rows.length} loaded.</p>
       ${table(['Watch','Event / contract','YES bid / ask','NO bid / ask','Volume','Expiry',''],rows.map(m=>`<tr><td>${button('watch',watched.has(m.id)?'★':'☆',`data-id="${escape(m.id)}" data-on="${!watched.has(m.id)}" aria-label="Watch ${escape(m.data.title)}"`)}</td><td>${escape(m.data.title)}<small>${escape(m.sourceId)}</small></td><td>${pct(m.data.yesBid)} / ${pct(m.data.yesAsk)}</td><td>${pct(m.data.noBid)} / ${pct(m.data.noAsk)}</td><td>${m.data.volume===null?'—':Number(m.data.volume).toLocaleString()}</td><td>${when(m.data.expiresAt)}</td><td>${button('inspect','Inspect',`data-id="${escape(m.sourceId)}"`)}</td></tr>`).join(''),'Load active markets to fetch provider data.')}
@@ -52,7 +78,7 @@ window.MPOSPlatform = (() => {
   }
   function arbitrage(){
     const options=v=>contracts.filter(c=>c.provider===v).map(c=>`<option value="${escape(c.sourceId)}">${escape(c.data.title)}</option>`).join('');
-    return `<div class="core-heading"><h2>ARBITRAGE.EXE</h2><span class="mpo-badge">RESEARCH / NO AUTO EXECUTION</span></div><p>Compare complementary contracts using current depth. Settlement equivalence is assessed separately from the price difference.</p>
+    return `<div class="core-heading"><h2>ARBITRAGE</h2><span class="mpo-badge">RESEARCH / NO AUTO EXECUTION</span></div><p>Compare complementary contracts using current depth. Settlement equivalence is assessed separately from the price difference.</p>
       <form data-core-form="compare" class="core-compare"><label>Kalshi<select name="a" required><option value="">Select a loaded contract</option>${options('kalshi')}</select></label><label>Polymarket<select name="b" required><option value="">Select a loaded contract</option>${options('polymarket')}</select></label><label>Contracts<input name="quantity" type="number" min="1" step="1" value="1" required></label><button class="btn" type="submit">Compare rules and depth</button></form><p class="core-muted">Load markets in each venue first. Missing rules or fees block a locked-return calculation.</p>
       ${comparison?`<h3>${escape(comparison.classification)}</h3><p>${escape(comparison.note)}</p>${table(['Settlement field','Kalshi','Polymarket'],comparison.fields.map(f=>`<tr><td>${escape(f.field)}</td><td>${escape(f.a??'Unavailable')}</td><td>${escape(f.b??'Unavailable')}</td></tr>`).join(''))}
       ${table(['Legs','A / B prices','Gross spread','Available size','After fees','Locked return'],comparison.directions.map(d=>`<tr><td>${d.sideA} + ${d.sideB}</td><td>${pct(d.venueA.averagePrice)} / ${pct(d.venueB.averagePrice)}</td><td><span class="core-spread" style="--spread:${Math.min(100,Math.abs(d.grossSpread||0)*100)}%">${pct(d.grossSpread)}</span></td><td>${d.availableExecutableSize}</td><td>${pct(d.effectiveSpread)}</td><td>${d.theoreticalLockedReturn===null?'Unavailable':dollars(d.theoreticalLockedReturn)}</td></tr>`).join(''))}<p class="core-notice">${escape([...new Set(comparison.directions.flatMap(d=>d.blocked))].join(' · '))}</p>`:''}`;
@@ -65,7 +91,8 @@ window.MPOSPlatform = (() => {
     root.innerHTML=`<div class="core-app" data-core-id="${id}">${error?`<p class="core-error" role="alert">${escape(error)}</p>`:''}${busy?'<p role="status">Working…</p>':''}${id==='command'?command():id==='arbitrage'?arbitrage():marketProgram(id)}</div>`;root.scrollTop=top;
   }
   function render(){ids.forEach(draw);}
-  async function refresh(){const [s,e]=await Promise.all([request('/status'),request('/entities?kind=Contract')]);snapshot=s;contracts=e.entities;render();}
+  async function refreshScoreboard(){try{const r=await fetch('/api/scoreboard',{cache:'no-store'});const v=await r.json();if(!r.ok||!Array.isArray(v.rows))throw new Error(v.error||'Scoreboard unavailable');scoreboard=v;scoreboardError='';}catch(e){scoreboardError=e.message;}}
+  async function refresh(){const [s,e]=await Promise.all([request('/status'),request('/entities?kind=Contract'),refreshScoreboard()]);snapshot=s;contracts=e.entities;render();}
   async function action(fn){if(busy)return;busy=true;error='';render();try{await fn();await refresh();}catch(e){error=e.message;}finally{busy=false;render();}}
   function install(api){
     hostApi=api;

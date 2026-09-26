@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { ensureLearner, learnerSnapshot } from './learner.js';
+import { isWalletAddress } from './walletScorecard.js';
 const clamp=(x,a=0,b=100)=>Math.max(a,Math.min(b,Number(x)||0));
 const mean=a=>a.length?a.reduce((s,x)=>s+Number(x||0),0)/a.length:0;
 const sd=a=>{const m=mean(a);return Math.sqrt(mean(a.map(x=>(Number(x||0)-m)**2)))};
@@ -26,7 +27,10 @@ export function recordUniverse(s,a){
   if(!u){s.research.universe[a.mint]={mint:a.mint,symbol:a.symbol,firstSeen:now,lastSeen:now,firstPrice:a.priceUsd,lastPrice:a.priceUsd,maxPrice:a.priceUsd,minPrice:a.priceUsd,observations:1,maxFastEdge:a.fastEdgeScore||a.edgeScore||a.score};s.discoveryStats.discovered++;}
   else{u.lastSeen=now;u.lastPrice=a.priceUsd;u.maxPrice=Math.max(Number(u.maxPrice||0),Number(a.priceUsd||0));u.minPrice=Math.min(Number(u.minPrice||a.priceUsd||0),Number(a.priceUsd||0));u.observations=(u.observations||0)+1;u.maxFastEdge=Math.max(Number(u.maxFastEdge||0),Number(a.fastEdgeScore||a.edgeScore||a.score||0));}
   for(const src of a.discovery?.sources||['unknown']){const f=s.research.feedStats[src]||(s.research.feedStats[src]={seen:0,lastSeen:0,errors:0,latencyMs:0});f.seen++;f.lastSeen=now;}
-  for(const h of a.risk?.largest||[]){const id=h.owner||h.address;if(!id)continue;const w=s.research.walletProfiles[id]||(s.research.walletProfiles[id]={address:id,seen:0,tokens:{},lastSeen:0,recurrenceScore:50});w.lastSeen=now;w.tokens[a.mint]=1;w.seen=Object.keys(w.tokens).length;w.recurrenceScore=clamp(50+Math.log10(w.seen+1)*6);}
+  // Holder recurrence, not profit (the PnL scorecard is walletScorecard.js). Only on-curve owners are wallets: pools,
+  // bonding curves and program authorities are PDAs, and a bare token-account address (owner unresolved) is not a wallet.
+  if(!s.research.walletProfilesPruned){for(const k of Object.keys(s.research.walletProfiles))if(!isWalletAddress(k))delete s.research.walletProfiles[k];s.research.walletProfilesPruned=1;}
+  for(const h of a.risk?.largest||[]){const id=h.owner;if(!id||!isWalletAddress(id))continue;const w=s.research.walletProfiles[id]||(s.research.walletProfiles[id]={address:id,seen:0,tokens:{},lastSeen:0,recurrenceScore:50});w.lastSeen=now;w.tokens[a.mint]=1;w.seen=Object.keys(w.tokens).length;w.recurrenceScore=clamp(50+Math.log10(w.seen+1)*6);}
   if(a.risk?.mintAuthority){const key=a.risk.mintAuthority;const d=s.research.deployerProfiles[key]||(s.research.deployerProfiles[key]={address:key,tokens:0,mints:{},lastSeen:0});d.mints ||= {};d.mints[a.mint]=1;d.tokens=Object.keys(d.mints).length;d.lastSeen=now;}
   s.discoveryStats.analyzed++; if(a.stage==='READY')s.discoveryStats.ready++;else if(a.stage==='WATCH')s.discoveryStats.watch++;else s.discoveryStats.rejected++;
 }
