@@ -12,7 +12,7 @@
     green: '#39ff68', cyan: '#00c8ff', amber: '#ffb000', red: '#ff5b70', white: '#e8fff0', violet: '#b388ff', pink: '#ff6ad5',
   };
   const REG = new Map(), ST = new Map();
-  const reduce = () => window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const reduce = () => document.documentElement.classList.contains('mpo-low-motion') || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
   const num = (x, d = 0) => (Number.isFinite(Number(x)) ? Number(x) : d);
   const hash = s => { let h = 2166136261; for (const ch of String(s)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); } return (h >>> 0) / 4294967295; };
@@ -287,7 +287,7 @@
     const minGap = reduce() ? 500 : 33;
     if (now - lastDraw < minGap) return;
     const dt = Math.min(0.25, (now - last) / 1000); last = now; lastDraw = now;
-    const t = now / 1000;
+    const t = now / 1000, drawStarted=performance.now();
     for (const c of document.querySelectorAll('canvas[data-viz]')) {
       if (!visible(c)) continue;
       const key = c.dataset.viz, spec = REG.get(key); if (!spec || !T[spec.type]) continue;
@@ -296,6 +296,7 @@
       const x = c.getContext('2d'); x.clearRect(0, 0, W, H);
       try { T[spec.type](x, W, H, dpr, t, spec.data || {}, state(key), dt); } catch (e) { if (!spec.err) { spec.err = true; console.warn('viz', key, e); } }
     }
+    window.MPOHud?.measure('charts',performance.now()-drawStarted);
   }
   requestAnimationFrame(frame);
 

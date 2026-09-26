@@ -188,10 +188,11 @@ function rhExploreSection(st){
 // §24 charts: inline SVG fed by the read-only GET /api/robinhood/chart (at most 800 points per series).
 async function rhLoadChart(force=false){
  if(rhChart.busy||(!force&&Date.now()-rhChart.at<15000))return;
- const sym=rhChart.symbol||Object.keys(rhState?.tape||{})[0]||'BTC-USD';rhChart.busy=true;
- try{const r=await fetch('/api/robinhood/chart?symbol='+encodeURIComponent(sym)+'&range='+encodeURIComponent(rhChart.range));const d=await r.json();if(!r.ok||d.ok===false)throw Error(d.error||'chart request failed');rhChart={...rhChart,symbol:sym,data:d,at:Date.now(),error:null}}
- catch(e){rhChart={...rhChart,symbol:sym,at:Date.now(),error:e.message}}
- finally{rhChart.busy=false;if(windowVisible('robinhood'))renderRobinhood()}
+ const sym=rhChart.symbol||Object.keys(rhState?.tape||{})[0]||'BTC-USD',range=rhChart.range;rhChart.busy=true;
+ const current=()=>sym===(rhChart.symbol||Object.keys(rhState?.tape||{})[0]||'BTC-USD')&&range===rhChart.range;
+ try{const r=await fetch('/api/robinhood/chart?symbol='+encodeURIComponent(sym)+'&range='+encodeURIComponent(range));const d=await r.json();if(!r.ok||d.ok===false)throw Error(d.error||'chart request failed');if(current())rhChart={...rhChart,symbol:sym,data:d,at:Date.now(),error:null}}
+ catch(e){if(current()&&e.name!=='AbortError')rhChart={...rhChart,at:0,error:e.message}}
+ finally{rhChart.busy=false;if(windowVisible('robinhood')){if(!current())rhLoadChart(true);else renderRobinhood()}}
 }
 const RH_C={band:'rgba(0,200,255,.16)',mid:'#e6f3ff',don:'#ffb000',ef:'#39ff68',es:'#ff5bd0',entry:'#39ff68',exit:'#ff5b70',explore:'#ffb000',stop:'#ff5b70',take:'#39ff68',trail:'#ffffff',grid:'#2b3640',text:'#b8c7d3'};
 function rhChartDims(h){h=Math.round(h*0.8);const narrow=typeof window!=='undefined'&&window.innerWidth<600;return {W:narrow?420:800,H:narrow?Math.round(h*0.9):h,pl:6,pr:narrow?58:72,pt:12,pb:20}}

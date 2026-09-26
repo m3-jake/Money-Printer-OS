@@ -8,6 +8,8 @@
 <link rel="stylesheet" href="/css/mpo-shell.css">
 <link rel="stylesheet" href="/css/mpo-workstation.css">
 <link rel="stylesheet" href="/css/mpo-glance.css">
+<link rel="stylesheet" href="/css/mpo-hud-resilience.css">
+<script src="/js/mpo-hud-runtime.js"></script>
 <script src="/js/mpo-viz.js"></script>
 <link rel="stylesheet" href="/css/mpo-platform.css">
 <script src="/js/mpo-platform.js"></script>
@@ -45,11 +47,12 @@
   <div class="money-event-feed" id="moneyEventFeed" aria-live="polite"></div>
   <div id="windows"></div>
   <div class="startmenu" id="startMenu"><div class="rail">MONEY PRINTER OS</div><div class="menuitems" id="startItems"></div></div>
-  <div class="taskbar"><button class="start" id="startBtn"><img class="tico" src="/assets/icons/money.png" alt=""> Start</button><div class="tasks" id="tasks"></div><button class="task-tool" id="tileBtn" title="Tile: arrange every open window to fill the desktop, no overlap">▦ Tile</button><div class="mode-switch" role="group" aria-label="Window mode"><button class="task-tool" id="modeSimple" title="Simple mode: every window shows its clean glance">Simple</button><button class="task-tool" id="modeAdvanced" title="Advanced mode: every window shows its full workstation">Advanced</button></div><div class="tray"><span class="led" id="feedLed"></span><span class="mpo-badge mpo-badge--paper" id="trayMode">PAPER</span><span id="clock"></span></div></div>
-  <div class="dialog-layer" id="dialogLayer"><div class="dialog hidden" id="dialog"><div class="titlebar"><div class="title" id="dialogTitle">Money Printer OS</div><div class="win-buttons"><button type="button" id="dialogX">×</button></div></div><div class="msg"><div class="mpo-dialog-ico" aria-hidden="true">!</div><div><b id="dialogHead"></b><p id="dialogText"></p><button class="btn" id="dialogOk">OK</button></div></div></div><div class="dialog mpo-dialog hidden" id="polyConfirm" role="dialog" aria-modal="true"><div class="titlebar"><div class="title" id="polyConfirmTitle">Confirm</div><div class="win-buttons"><button type="button" id="polyConfirmX">×</button></div></div><div class="msg"><span class="mpo-dialog-ico" aria-hidden="true">!</span><div><b id="polyConfirmHead"></b><div id="polyConfirmBody"></div><p id="polyConfirmCountdown"></p><input class="field" id="polyConfirmPhrase" autocomplete="off" spellcheck="false"><div class="toolbar"><button class="btn" id="polyConfirmRequote" hidden>Re-quote</button><button class="btn" id="polyConfirmCancel">Cancel</button><button class="btn" id="polyConfirmOk" disabled>Confirm</button></div></div></div></div></div>
-  <div class="boot" id="boot"><div class="bootbox"><div class="titlebar"><div class="title">Money Printer OS</div></div><div class="bootbody dark terminal"><img class="bootmark" src="/assets/money-printer-logo.png" alt="" width="64" height="64"><div class="bootlogo">MONEY <span>PRINTER</span> OS</div><div class="bootline" id="bootText">Starting system services...</div><div class="progress bootprog"><i id="bootBar"></i></div></div></div></div>
+  <div class="taskbar"><button class="start" id="startBtn"><img class="tico" src="/assets/icons/money.png" alt=""> Start</button><div class="tasks" id="tasks"></div><button class="task-tool" id="tileBtn" title="Tile: arrange every open window to fill the desktop, no overlap">▦ Tile</button><div class="mode-switch" role="group" aria-label="Window mode"><button class="task-tool" id="modeSimple" title="Simple mode: every window shows its clean glance">Simple</button><button class="task-tool" id="modeAdvanced" title="Advanced mode: every window shows its full workstation">Advanced</button></div><div class="tray"><span class="led" id="feedLed"></span><span class="mpo-badge mpo-badge--paper" id="trayMode">PAPER</span><span id="hudReadStatus" role="status">Connecting…</span><span id="clock"></span></div></div>
+  <div class="dialog-layer" id="dialogLayer"><div class="dialog hidden" id="dialog" role="dialog" aria-modal="true" aria-labelledby="dialogTitle"><div class="titlebar"><div class="title" id="dialogTitle">Money Printer OS</div><div class="win-buttons"><button type="button" id="dialogX">×</button></div></div><div class="msg"><div class="mpo-dialog-ico" aria-hidden="true">!</div><div><b id="dialogHead"></b><p id="dialogText"></p><button class="btn" id="dialogOk">OK</button></div></div></div><div class="dialog mpo-dialog hidden" id="polyConfirm" role="dialog" aria-modal="true" aria-labelledby="polyConfirmTitle"><div class="titlebar"><div class="title" id="polyConfirmTitle">Confirm</div><div class="win-buttons"><button type="button" id="polyConfirmX">×</button></div></div><div class="msg"><span class="mpo-dialog-ico" aria-hidden="true">!</span><div><b id="polyConfirmHead"></b><div id="polyConfirmBody"></div><p id="polyConfirmCountdown"></p><input class="field" id="polyConfirmPhrase" autocomplete="off" spellcheck="false"><div class="toolbar"><button class="btn" id="polyConfirmRequote" hidden>Re-quote</button><button class="btn" id="polyConfirmCancel">Cancel</button><button class="btn" id="polyConfirmOk" disabled>Confirm</button></div></div></div></div></div>
+  <div class="boot" id="boot"><div class="bootbox"><div class="titlebar"><div class="title">Money Printer OS</div></div><div class="bootbody dark terminal"><img class="bootmark" src="/assets/money-printer-logo.png" alt="" width="64" height="64"><div class="bootlogo">MONEY <span>PRINTER</span> OS</div><div class="bootline" id="bootText">Loading desktop…</div><div class="progress bootprog"><i id="bootBar"></i></div></div></div></div>
 </div>
 <script>
+const fetch=window.MPOHud.fetch;
 // BEGIN ROBINHOOD PAPER PANEL
 // Robinhood panel. This release is paper-only: API credentials feed authenticated market data,
 // while the backend hard-rejects Robinhood real-order, cancel, reconcile and real-autopilot mutations.
@@ -241,10 +244,11 @@ function rhExploreSection(st){
 // §24 charts: inline SVG fed by the read-only GET /api/robinhood/chart (at most 800 points per series).
 async function rhLoadChart(force=false){
  if(rhChart.busy||(!force&&Date.now()-rhChart.at<15000))return;
- const sym=rhChart.symbol||Object.keys(rhState?.tape||{})[0]||'BTC-USD';rhChart.busy=true;
- try{const r=await fetch('/api/robinhood/chart?symbol='+encodeURIComponent(sym)+'&range='+encodeURIComponent(rhChart.range));const d=await r.json();if(!r.ok||d.ok===false)throw Error(d.error||'chart request failed');rhChart={...rhChart,symbol:sym,data:d,at:Date.now(),error:null}}
- catch(e){rhChart={...rhChart,symbol:sym,at:Date.now(),error:e.message}}
- finally{rhChart.busy=false;if(windowVisible('robinhood'))renderRobinhood()}
+ const sym=rhChart.symbol||Object.keys(rhState?.tape||{})[0]||'BTC-USD',range=rhChart.range;rhChart.busy=true;
+ const current=()=>sym===(rhChart.symbol||Object.keys(rhState?.tape||{})[0]||'BTC-USD')&&range===rhChart.range;
+ try{const r=await fetch('/api/robinhood/chart?symbol='+encodeURIComponent(sym)+'&range='+encodeURIComponent(range));const d=await r.json();if(!r.ok||d.ok===false)throw Error(d.error||'chart request failed');if(current())rhChart={...rhChart,symbol:sym,data:d,at:Date.now(),error:null}}
+ catch(e){if(current()&&e.name!=='AbortError')rhChart={...rhChart,at:0,error:e.message}}
+ finally{rhChart.busy=false;if(windowVisible('robinhood')){if(!current())rhLoadChart(true);else renderRobinhood()}}
 }
 const RH_C={band:'rgba(0,200,255,.16)',mid:'#e6f3ff',don:'#ffb000',ef:'#39ff68',es:'#ff5bd0',entry:'#39ff68',exit:'#ff5b70',explore:'#ffb000',stop:'#ff5b70',take:'#39ff68',trail:'#ffffff',grid:'#2b3640',text:'#b8c7d3'};
 function rhChartDims(h){h=Math.round(h*0.8);const narrow=typeof window!=='undefined'&&window.innerWidth<600;return {W:narrow?420:800,H:narrow?Math.round(h*0.9):h,pl:6,pr:narrow?58:72,pt:12,pb:20}}
@@ -527,23 +531,25 @@ system:{x:660,y:80,w:520,h:470},journal:{x:90,y:56,w:740,h:540},money:{x:320,y:1
 };
 const DEFAULT_OPEN=['trade'];
 const LAYOUT_VERSION='2026-09-26-glance';
-let saved=JSON.parse(localStorage.getItem('mpo-layout')||'{}');
-let openSet=new Set(JSON.parse(localStorage.getItem('mpo-open')||JSON.stringify(DEFAULT_OPEN)));
+const readPref=(k,d)=>window.MPOHud.preferences.read(k,d);
+const writePref=(k,v)=>window.MPOHud.preferences.write(k,v);
+const removePref=k=>window.MPOHud.preferences.remove(k);
+let saved=window.MPOHud.sanitizeLayout(readPref('mpo-layout',{}),HOSTS,id=>defaultLayout[id]||{x:40,y:40,w:640,h:500});
+let openSet=new Set(readPref('mpo-open',DEFAULT_OPEN));
 // Layout changes must migrate, never wipe: a version bump only records the new version and keeps the
 // saved spots and open windows. #setResetLayout is the only thing allowed to clear mpo-layout.
-if(localStorage.getItem('mpo-layout-version')!==LAYOUT_VERSION)localStorage.setItem('mpo-layout-version',LAYOUT_VERSION);
+if(readPref('mpo-layout-version','')!==LAYOUT_VERSION)writePref('mpo-layout-version',LAYOUT_VERSION);
 // Windows only exist for hosts now; drop anything left over from a pre-consolidation layout.
 saved=Object.fromEntries(Object.entries(saved||{}).filter(([k])=>HOSTS.includes(k)));
 openSet=new Set([...openSet].filter(id=>HOSTS.includes(id)));
 if(!openSet.size)openSet=new Set(DEFAULT_OPEN);
-let activeTab=(()=>{try{const t=JSON.parse(localStorage.getItem('mpo-tabs')||'{}');return t&&typeof t==='object'?t:{}}catch{return {}}})();
+let activeTab=readPref('mpo-tabs',{});
 for(const h of HOSTS)if(!tabsOf(h).includes(activeTab[h]))activeTab[h]=h;
 // Display: text size is the fit-zoom ceiling; windows open in Simple mode (the glance) unless the taskbar
 // Simple | Advanced switch or a window's own button says Advanced; only the last-used window opens at launch.
-const readPref=(k,d)=>{try{const v=JSON.parse(localStorage.getItem(k));return v??d}catch{return d}};
-const writePref=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}};
 const TEXT_SCALES={S:.9,M:1.1,L:1.3};
 let displayPrefs={textSize:'M',fullDetail:false,restoreAll:true,...readPref('mpo-display',{})};
+displayPrefs={textSize:Object.hasOwn(TEXT_SCALES,displayPrefs.textSize)?displayPrefs.textSize:'M',fullDetail:displayPrefs.fullDetail===true,restoreAll:displayPrefs.restoreAll!==false,lowMotion:displayPrefs.lowMotion===true};
 // Older builds saved restoreAll:false inside mpo-display; flip it once so every open window reopens.
 if(!readPref('mpo-restore-migrated',false)){displayPrefs.restoreAll=true;writePref('mpo-display',displayPrefs);writePref('mpo-restore-migrated',true)}
 // One-time 12% shrink of saved window sizes (Simple mode got smaller); positions are kept.
@@ -551,14 +557,17 @@ if(!readPref('mpo-size-migrated-0927',false)){for(const L of Object.values(saved
 // The user's intended spot for each window. Clamping to a small viewport is visual only and never
 // overwrites this; persist() takes DOM geometry only from windows the user actually moved.
 let intended={...saved};
-const detailSet=new Set(readPref('mpo-detail',[]));
+const detailSet=new Set(readPref('mpo-detail',[]).filter(id=>HOSTS.includes(id)));
 const isDetail=host=>displayPrefs.fullDetail||detailSet.has(host);
 const textScale=()=>TEXT_SCALES[displayPrefs.textSize]||TEXT_SCALES.M;
-const bootFocus=(()=>{const f=readPref('mpo-last-focus','trade');const id=HOSTS.includes(f)?f:'trade';openSet.add(id);return id})();
+function motionReduced(){return displayPrefs.lowMotion||matchMedia('(prefers-reduced-motion: reduce)').matches}
+function applyMotion(){document.documentElement.classList.toggle('mpo-low-motion',motionReduced())}
+applyMotion();matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change',()=>{applyMotion();updateDesktopEffects()});
+const bootFocus=(()=>{const f=readPref('mpo-last-focus','trade');const id=openSet.has(f)?f:[...openSet][0]||'trade';openSet.add(id);return id})();
 // A window without a saved spot opens centred and large: one clear thing on the desktop.
 const HERO_MAX_H={money:500,journal:600};
 function heroLayout(id){const W=window.innerWidth||1280,H=(window.innerHeight||800)-36,w=Math.round(Math.min(880,Math.max(520,W*.7))),h=Math.round(Math.min(HERO_MAX_H[id]||700,Math.max(420,H*.9)));return{x:Math.max(0,Math.round((W-w)/2)),y:Math.max(8,Math.round((H-h)/2)),w,h}}
-let layoutResetting=false;
+let layoutResetting=false,tileSnapshot=null;
 function persist(){
  // Never persist a transient layout (boot overlay, pane still opening) and never record a hidden
  // window as 0x0 — reuse its styled size (or the last saved one) so it reopens at a real size.
@@ -567,22 +576,22 @@ function persist(){
  const d=$('#desktop');if(d&&(d.clientWidth<480||d.clientHeight<320))return;
  const o={}; $$('.window').forEach(w=>{const id=w.dataset.app,prev=saved[id]||defaultLayout[id]||{},hidden=w.classList.contains('hidden');
   const ww=hidden?(parseInt(w.style.width)||prev.w||480):w.offsetWidth,hh=hidden?(parseInt(w.style.height)||prev.h||350):w.offsetHeight;
-  const I=intended[id],geo=(w.dataset.userMoved==='1'||!I)?{x:parseInt(w.style.left)||0,y:parseInt(w.style.top)||0,w:Math.max(260,ww||260),h:Math.max(150,hh||150)}:{x:I.x,y:I.y,w:I.w,h:I.h};
-  o[id]={...geo,min:hidden,max:w.classList.contains('max')};intended[id]={...geo};delete w.dataset.userMoved});
+  const I=tileSnapshot?.[id]||intended[id],geo=(!tileSnapshot&&(w.dataset.userMoved==='1'||!I))?{x:parseInt(w.style.left)||0,y:parseInt(w.style.top)||0,w:Math.max(260,ww||260),h:Math.max(150,hh||150)}:{x:I.x,y:I.y,w:I.w,h:I.h};
+  o[id]={...geo,min:hidden,max:tileSnapshot?.[id]?.max??w.classList.contains('max')};intended[id]={...geo};delete w.dataset.userMoved});
  saved=o;
- localStorage.setItem('mpo-layout',JSON.stringify(o)); localStorage.setItem('mpo-open',JSON.stringify([...openSet])); localStorage.setItem('mpo-tabs',JSON.stringify(activeTab));
+ writePref('mpo-layout',o);writePref('mpo-open',[...openSet]);writePref('mpo-tabs',activeTab);
 }
 // Scroll preservation: every innerHTML render path goes through setBody/renderSportsbook so a
 // 1.5s refresh never throws the operator back to the top of a table, log or feed.
 function captureScroll(root){const list=[];if(!root)return list;const cands=[root,...root.querySelectorAll('*')].filter(e=>e.scrollHeight>e.clientHeight+1||e.scrollWidth>e.clientWidth+1);cands.forEach((e,i)=>{if(e.scrollTop||e.scrollLeft)list.push({key:e.dataset?.scroll||null,i,top:e.scrollTop,left:e.scrollLeft,pinned:e.scrollHeight-e.scrollTop-e.clientHeight<24})});return list}
 function restoreScroll(root,list){if(!root||!list||!list.length)return;const cands=[root,...root.querySelectorAll('*')].filter(e=>e.scrollHeight>e.clientHeight+1||e.scrollWidth>e.clientWidth+1);for(const s of list){const el=(s.key&&(root.matches&&root.matches(`[data-scroll="${s.key}"]`)?root:root.querySelector(`[data-scroll="${s.key}"]`)))||cands[s.i];if(!el)continue;if(el.dataset?.pin==='bottom'&&s.pinned)el.scrollTop=el.scrollHeight;else{el.scrollTop=s.top;el.scrollLeft=s.left}}}
-function setBody(id,html){const el=document.getElementById('body-'+id);if(!el)return null;const saved=captureScroll(el);el.innerHTML=html;restoreScroll(el,saved);return el}
+function setBody(id,html){const el=document.getElementById('body-'+id);if(!el)return null;if(el.contains(document.activeElement)&&document.activeElement.matches('input,select,textarea,[contenteditable=true]'))return el;const saved=captureScroll(el);el.innerHTML=html;restoreScroll(el,saved);return el}
 function iconFallback(img){const s=img?.parentNode;if(!s)return;s.classList.remove('png');if(img.dataset.cls)s.classList.add(img.dataset.cls);s.innerHTML=`<b class="pixel-glyph">${img.dataset.glyph||'?'}</b>`}
 function iconHtml(id,glyph,cls=''){const png=ICON_PNG[id];return png?`<span class="ico png"><img src="/assets/icons/${png}" alt="" draggable="false" data-glyph="${glyph}" data-cls="${cls}" onerror="iconFallback(this)"></span>`:`<span class="ico ${cls}"><b class="pixel-glyph">${glyph}</b></span>`}
 const taskIcon=id=>ICON_PNG[id]?`<img class="tico" src="/assets/icons/${ICON_PNG[id]}" alt="">`:`<b>${appMeta(id)?.[2]||''}</b>`;
 function buildIcons(){
- $('#icons').innerHTML=DESKTOP_ICONS.map(id=>{const a=appMeta(id);return a?`<div class="icon" data-app="${id}" title="${a[1]}">${iconHtml(id,a[2],id==='money'?'money':'dark')}<div>${a[1]}</div></div>`:''}).join('');
- $$('.icon').forEach(el=>{el.onclick=()=>{ $$('.icon').forEach(x=>x.classList.remove('sel'));el.classList.add('sel');selectedIcon=el.dataset.app};el.ondblclick=()=>openApp(el.dataset.app)});
+ $('#icons').innerHTML=DESKTOP_ICONS.map(id=>{const a=appMeta(id);return a?`<div class="icon" data-app="${id}" role="button" tabindex="0" aria-label="Open ${a[1]}" title="${a[1]}">${iconHtml(id,a[2],id==='money'?'money':'dark')}<div>${a[1]}</div></div>`:''}).join('');
+ $$('.icon').forEach(el=>{el.onclick=()=>{ $$('.icon').forEach(x=>x.classList.remove('sel'));el.classList.add('sel');selectedIcon=el.dataset.app};el.ondblclick=()=>openApp(el.dataset.app);el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openApp(el.dataset.app)}}});
 }
 function appShell(id,title){
  const L=saved[id]||heroLayout(id);
@@ -593,8 +602,8 @@ function appShell(id,title){
  const strip=tabbed?`<div class="tabs win-tabs" data-host="${id}">${tabs.map(t=>`<button class="tab98 ${t===act?'on':''}" data-host="${id}" data-tab="${t}">${TAB_LABEL[t]||appMeta(t)?.[1]||t}</button>`).join('')}</div>`:'';
  const body=tabbed?`<div class="body tabbed">${tabs.map(t=>`<div class="tabpane ${t===act?'on':''}" id="body-${t}" data-scroll="pane-${t}"></div>`).join('')}</div>`:`<div class="body" id="body-${id}" data-scroll="body-${id}"></div>`;
  return `<section class="window ${L.max?'max':''} ${shown?'':'hidden'} ${detail?'':'glance'}" data-app="${id}" style="left:${L.x}px;top:${L.y}px;width:${L.w}px;height:${L.h}px">
- <div class="titlebar"><div class="title">${title}</div><span class="fit-pct"></span><div class="win-buttons"><button data-act="detail" class="detail-btn" title="${detail?'Simple view for this window':'Advanced view for this window'}">${detail?'Simple':'Advanced'}</button><button data-act="fit" class="fit-btn ${fitOff.has(id)?'':'on'}" title="Fit to window">⤢</button><button data-act="min">_</button><button data-act="max">□</button><button data-act="close">×</button></div></div>
- ${strip}${body}<div class="glancepane" id="glance-${id}"></div><div class="resize"></div></section>`;
+ <div class="titlebar"><div class="title">${title}</div><span class="fit-pct"></span><div class="win-buttons"><button data-act="detail" class="detail-btn" title="${detail?'Simple view for this window':'Advanced view for this window'}">${detail?'Simple':'Advanced'}</button><button data-act="fit" class="fit-btn ${fitOff.has(id)?'':'on'}" title="Fit to window">⤢</button><button data-act="min" aria-label="Minimize ${title}">_</button><button data-act="max" aria-label="Maximize or restore ${title}">□</button><button data-act="close" aria-label="Close ${title}">×</button></div></div>
+ <div class="hud-data-status" role="status" hidden></div>${strip}${body}<div class="glancepane" id="glance-${id}"></div><div class="resize"></div></section>`;
 }
 function buildWindows(){
  $('#windows').innerHTML=HOSTS.map(id=>appShell(id,appMeta(id)[1])).join('');
@@ -650,7 +659,7 @@ function clampWin(w){
 function clampAll(){$$('.window').forEach(clampWin)}
 // Put every non-maximized window back at its intended spot, then clamp visually to the current
 // viewport: a window squeezed by a small viewport returns to its saved place when the viewport grows.
-function reflowAll(){$$('.window').forEach(w=>{const I=intended[w.dataset.app];if(I&&!w.classList.contains('max')){w.style.left=I.x+'px';w.style.top=I.y+'px';w.style.width=I.w+'px';w.style.height=I.h+'px'}clampWin(w)})}
+function reflowAll(){if(tileSnapshot){tileWindows(true);return}$$('.window').forEach(w=>{const I=intended[w.dataset.app];if(I&&!w.classList.contains('max')){w.style.left=I.x+'px';w.style.top=I.y+'px';w.style.width=I.w+'px';w.style.height=I.h+'px'}clampWin(w)})}
 // Fit to window: the visible pane (window body or active tab) is scaled with CSS zoom so its whole
 // content fits the window and shrinks as the window shrinks. The pane carries the zoom itself with
 // an explicit size of box/zoom, so it still fills exactly its box and #body-x>… selectors keep
@@ -664,10 +673,12 @@ function fitTry(pane,z,W,H){pane.style.zoom=z;pane.style.width=(W/z)+'px';pane.s
 function fitWindow(w){
  if(!w||w.classList.contains('hidden'))return;
  const pane=fitPaneOf(w);if(!pane)return;
+ // Research desks contain long tables and forms. Keep their text readable and scroll the content.
+ const scrollDesk=!!pane.querySelector('.core-app');
  w.querySelectorAll('.tabpane,.body,.glancepane').forEach(p=>{if(p!==pane)p.style.zoom=p.style.width=p.style.height=p.style.overflow=''});
  pane.style.zoom=pane.style.width=pane.style.height=pane.style.overflow='';
  // Fit off: actual size at the chosen text size, scrolling if it does not fit.
- if(fitOff.has(w.dataset.app)){const z=textScale(),W=pane.offsetWidth,H=pane.offsetHeight;if(z!==1&&W>=40&&H>=40){pane.style.zoom=z;pane.style.width=(W/z)+'px';pane.style.height=(H/z)+'px';pane.style.overflow='auto'}fitZoom.delete(pane.id);fitBadge(w,null);if(w.classList.contains('glance')&&w.dataset.app==='trade')drawGlanceChart();return}
+ if(fitOff.has(w.dataset.app)||scrollDesk){const z=textScale(),W=pane.offsetWidth,H=pane.offsetHeight;if(z!==1&&W>=40&&H>=40){pane.style.zoom=z;pane.style.width=(W/z)+'px';pane.style.height=(H/z)+'px';pane.style.overflow='auto'}fitZoom.delete(pane.id);fitBadge(w,null);if(scrollDesk){const button=w.querySelector('[data-act=fit]');if(button)button.title='This desk uses readable text and scrolling. Text size is set in Settings.'}if(w.classList.contains('glance')&&w.dataset.app==='trade')drawGlanceChart();return}
  const W=pane.offsetWidth,H=pane.offsetHeight;if(W<40||H<40)return;
  pane.style.overflow='hidden';
  const prev=fitZoom.get(pane.id);let z;
@@ -686,7 +697,7 @@ function fitBadge(w,z){
  b.title=z===null?'Fit to window is off (content scrolls). Click to fit.':`Fit to window is on (${Math.round(z*100)}%). Click for actual size.`;
  if(pct)pct.textContent=z!==null&&z<.995?Math.round(z*100)+'%':'';
 }
-function scheduleFit(w){if(!w)return;fitQueue.add(w);if(!fitRaf)fitRaf=requestAnimationFrame(()=>{fitRaf=0;const ws=[...fitQueue];fitQueue.clear();for(const x of ws)fitWindow(x)})}
+function scheduleFit(w){if(!w)return;fitQueue.add(w);if(!fitRaf)fitRaf=requestAnimationFrame(()=>{fitRaf=0;const ws=[...fitQueue];fitQueue.clear();const at=performance.now();for(const x of ws)fitWindow(x);window.MPOHud.measure('layoutAndFit',performance.now()-at)})}
 function fitAll(){$$('.window').forEach(scheduleFit)}
 const fitResize=typeof ResizeObserver==='function'?new ResizeObserver(es=>{for(const e of es)scheduleFit(e.target)}):null;
 const fitMutations=new MutationObserver(ms=>{for(const m of ms){const n=m.target.nodeType===1?m.target:m.target.parentElement;const w=n&&n.closest&&n.closest('.window');if(w)scheduleFit(w)}});
@@ -699,14 +710,19 @@ function tileGrid(ws,x0,y0,W,H,gap){
  ws.forEach((w,i)=>{const r=Math.floor(i/cols),inRow=r===rows-1?n-r*cols:cols,c=i-r*cols,cw=(W-gap)/inRow,rh=(H-gap)/rows;
   w.classList.remove('max');w.dataset.userMoved='1';w.style.left=Math.round(x0+gap+c*cw)+'px';w.style.top=Math.round(y0+gap+r*rh)+'px';w.style.width=Math.round(cw-gap)+'px';w.style.height=Math.round(rh-gap)+'px'});
 }
-function tileWindows(){
+function restoreTile(){
+ if(!tileSnapshot)return;const old=tileSnapshot;tileSnapshot=null;for(const w of $$('.window')){const L=old[w.dataset.app];if(!L)continue;intended[w.dataset.app]={...L};w.classList.toggle('max',L.max);delete w.dataset.userMoved}reflowAll();persist();fitAll();$('#tileBtn').textContent='▦ Tile';$('#tileBtn').setAttribute('aria-pressed','false');$('#tileBtn').title='Tile: arrange every open window to fill the desktop, no overlap';
+}
+function tileWindows(reflow=false){
+ if(tileSnapshot&&!reflow){restoreTile();return}
+ if(!tileSnapshot){persist();tileSnapshot=Object.fromEntries(Object.entries(saved).map(([id,L])=>[id,{...L}]))}
  const d=$('#desktop'),bar=$('.taskbar');if(!d)return;
  const ws=$$('.window').filter(w=>!w.classList.contains('hidden')).sort((a,b)=>(Number(b.style.zIndex)||0)-(Number(a.style.zIndex)||0));if(!ws.length)return;
  const W=d.clientWidth,H=d.clientHeight-(bar?bar.offsetHeight:36),gap=4;
  const main=ws.filter(w=>TILE_PRIMARY.includes(w.dataset.app)),rest=ws.filter(w=>!TILE_PRIMARY.includes(w.dataset.app));
  if(main.length&&rest.length){const top=Math.round(H*.64);tileGrid(main,0,0,W,top,gap);tileGrid(rest,0,top-gap,W,H-top+gap,gap)}
  else tileGrid(ws,0,0,W,H,gap);
- persist();fitAll();
+ $('#tileBtn').textContent='▦ Restore';$('#tileBtn').setAttribute('aria-pressed','true');$('#tileBtn').title='Restore the previous free-window layout';persist();fitAll();
 }
 // Collapsible sections that survive innerHTML re-renders: templates call keepOpen('key') inside
 // <details data-keep="key">, and a capturing toggle listener remembers what the operator opened.
@@ -716,18 +732,18 @@ document.addEventListener('toggle',e=>{const k=e.target?.dataset?.keep;if(!k)ret
 function initWindow(w){
  const bar=w.querySelector('.titlebar'),resize=w.querySelector('.resize'); let sx,sy,ox,oy,ow,oh,mode;
  const EDGE=10;
- const begin=(e,m)=>{if(w.classList.contains('max'))return;focus(w);mode=m;sx=e.clientX;sy=e.clientY;ox=parseInt(w.style.left);oy=parseInt(w.style.top);ow=w.offsetWidth;oh=w.offsetHeight;w.setPointerCapture?.(e.pointerId);document.onpointermove=move;document.onpointerup=end;e.preventDefault()};
+ const begin=(e,m)=>{if(tileSnapshot)restoreTile();if(w.classList.contains('max'))return;focus(w);mode=m;sx=e.clientX;sy=e.clientY;ox=parseInt(w.style.left);oy=parseInt(w.style.top);ow=w.offsetWidth;oh=w.offsetHeight;w.setPointerCapture?.(e.pointerId);document.onpointermove=move;document.onpointerup=end;e.preventDefault()};
  const move=e=>{const dx=e.clientX-sx,dy=e.clientY-sy;if(mode==='drag'){w.style.left=(ox+dx)+'px';w.style.top=Math.max(0,oy+dy)+'px';clampWin(w);return}let x=ox,y=oy,nw=ow,nh=oh;if(mode.includes('e'))nw=Math.max(260,ow+dx);if(mode.includes('s'))nh=Math.max(150,oh+dy);if(mode.includes('w')){nw=Math.max(260,ow-dx);x=ox+(ow-nw)}if(mode.includes('n')){nh=Math.max(150,oh-dy);y=oy+(oh-nh)}w.style.left=Math.max(0,x)+'px';w.style.top=Math.max(0,y)+'px';w.style.width=nw+'px';w.style.height=nh+'px';clampWin(w)};
  const end=()=>{document.onpointermove=null;document.onpointerup=null;mode=null;clampWin(w);w.dataset.userMoved='1';persist()};
  bar.onpointerdown=e=>{if(e.target.tagName!=='BUTTON')begin(e,'drag')};resize.onpointerdown=e=>begin(e,'se');
- bar.ondblclick=e=>{if(e.target.tagName==='BUTTON')return;w.classList.toggle('max');if(!w.classList.contains('max'))reflowAll();persist()};
+ bar.ondblclick=e=>{if(e.target.tagName==='BUTTON')return;if(tileSnapshot)restoreTile();w.classList.toggle('max');if(!w.classList.contains('max'))reflowAll();persist()};
  w.addEventListener('pointermove',e=>{if(mode||e.target.closest('.titlebar,.resize,.win-buttons,.win-tabs'))return;const r=w.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;let m='';if(y<EDGE)m+='n';else if(r.height-y<EDGE)m+='s';if(x<EDGE)m+='w';else if(r.width-x<EDGE)m+='e';w.style.cursor=m?(m==='n'||m==='s'?'ns-resize':m==='e'||m==='w'?'ew-resize':m==='ne'||m==='sw'?'nesw-resize':'nwse-resize'):''});
  w.addEventListener('pointerdown',e=>{if(e.target.closest('.titlebar,.resize,.win-buttons,.win-tabs,button,input,select,textarea'))return;const r=w.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;let m='';if(y<EDGE)m+='n';else if(r.height-y<EDGE)m+='s';if(x<EDGE)m+='w';else if(r.width-x<EDGE)m+='e';if(m)begin(e,m)});
  w.onpointerdown=()=>focus(w);
  w.querySelector('[data-act=detail]').onclick=e=>{e.stopPropagation();setDetail(w.dataset.app,!isDetail(w.dataset.app))};
  w.querySelector('[data-act=fit]').onclick=e=>{e.stopPropagation();const id=w.dataset.app;if(fitOff.has(id))fitOff.delete(id);else fitOff.add(id);try{localStorage.setItem('mpo-fit-off',JSON.stringify([...fitOff]))}catch{}scheduleFit(w)};
- w.querySelector('[data-act=min]').onclick=e=>{e.stopPropagation();w.classList.add('hidden');persist();renderTasks()};
- w.querySelector('[data-act=close]').onclick=e=>{e.stopPropagation();w.classList.add('hidden');openSet.delete(w.dataset.app);persist();renderTasks()};
+ w.querySelector('[data-act=min]').onclick=e=>{e.stopPropagation();w.classList.add('hidden');window.MPOHud.transport.cancel(key=>readOwner(key)===w.dataset.app);window.dispatchEvent(new CustomEvent('mpo:window-close',{detail:{id:w.dataset.app}}));persist();renderTasks()};
+ w.querySelector('[data-act=close]').onclick=e=>{e.stopPropagation();w.classList.add('hidden');openSet.delete(w.dataset.app);window.MPOHud.transport.cancel(key=>readOwner(key)===w.dataset.app);window.dispatchEvent(new CustomEvent('mpo:window-close',{detail:{id:w.dataset.app}}));persist();renderTasks();$(`.icon[data-app="${w.dataset.app}"]`)?.focus()};
  w.querySelector('[data-act=max]').onclick=e=>{e.stopPropagation();w.classList.toggle('max');if(!w.classList.contains('max'))reflowAll();persist()};
 }
 function focus(w){$$('.window').forEach(x=>x.classList.add('inactive'));w.classList.remove('inactive');w.style.zIndex=++z;writePref('mpo-last-focus',w.dataset.app);renderTasks()}
@@ -844,7 +860,7 @@ function noteMoneyEvent(text,kind='profit'){const t=String(text||'').trim();if(!
 function triggerMoneyBurst(amountUsd=1,source='profit',reason='Profit realized'){
  const amount=Math.max(0,Number(amountUsd)||0);if(!(amount>0))return;
  noteMoneyEvent(reason+' · +$'+amount.toFixed(amount<10?2:0)+' effect');
- const rain=$('#moneyRain'),pile=$('#moneyPile');if(!rain||!pile||matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+ const rain=$('#moneyRain'),pile=$('#moneyPile');if(!rain||!pile||motionReduced())return;
  const intensity=clamp01(Math.log10(1+amount)/2.2),n=Math.max(5,Math.min(34,Math.round(5+amount*1.2+intensity*10))),stacks=Math.max(8,Math.min(28,Math.round(10+intensity*18)));
  fxRainHost(rain);rain.insertAdjacentHTML('beforeend',makeBurstBills(n,intensity,source));rain.style.opacity='1';
  fxBurstUntil=Date.now()+10500;if(fxBurstTimer)clearTimeout(fxBurstTimer);fxBurstTimer=setTimeout(()=>{if(Date.now()>=fxBurstUntil){fxSig='';updateDesktopEffects(true)}},10700);
@@ -861,14 +877,16 @@ function trackRobinhoodProfitBurst(next){
 function updateDesktopEffects(force=false){
  if(!state)return;const m=sessionFxMetrics(),bursting=Date.now()<fxBurstUntil,key=[m.known?1:0,m.ahead?1:0,Math.round((m.pnlPct||0)*2),Math.round(m.velocity||0),Math.round(m.intensity*10),bursting?1:0].join(':');if(!force&&key===fxSig)return;fxSig=key;
  const rain=$('#moneyRain'),pile=$('#moneyPile');if(!rain||!pile)return;
- if(matchMedia('(prefers-reduced-motion: reduce)').matches){rain.innerHTML='';pile.innerHTML='';rain.style.opacity='0';pile.style.opacity='0';return}
+ if(motionReduced()){rain.innerHTML='';pile.innerHTML='';rain.style.opacity='0';pile.style.opacity='0';return}
  if(!m.ahead){fxAheadAnnounced=false;rain.querySelectorAll('.rain').forEach(b=>b.remove());pile.innerHTML='';pile.style.opacity='0';return}
  if(!fxAheadAnnounced){noteMoneyEvent('Paper equity above start by +'+Number(m.pnlSol||0).toFixed(4)+' SOL · ambient single-bill rain enabled','ambient');fxAheadAnnounced=true}
  pile.innerHTML='';pile.style.opacity='0';
  fxRainHost(rain);const rn=Math.max(3,Math.round(4+m.intensity*10)),have=[...rain.querySelectorAll('.rain')];if(have.length<rn)rain.insertAdjacentHTML('beforeend',makeRainBills(rn-have.length,m.intensity));else have.slice(rn).forEach(b=>b.remove());rain.style.opacity='1';
 }
-function showDialog(title,head,text){$('#dialogTitle').textContent=title;$('#dialogHead').textContent=head;$('#dialogText').textContent=text;$('#dialog').classList.remove('hidden')}
-$('#dialogOk').onclick=$('#dialogX').onclick=()=>$('#dialog').classList.add('hidden');
+let dialogFocus=null;
+function showDialog(title,head,text){dialogFocus=document.activeElement;$('#dialogTitle').textContent=title;$('#dialogHead').textContent=head;$('#dialogText').textContent=text;$('#dialog').classList.remove('hidden');$('#dialogLayer').classList.add('mpo-modal-open');$('#dialogOk').focus()}
+$('#dialogOk').onclick=$('#dialogX').onclick=()=>{$('#dialog').classList.add('hidden');$('#dialogLayer').classList.remove('mpo-modal-open');dialogFocus?.focus()};
+document.addEventListener('keydown',e=>{const dlg=$$('.dialog').find(d=>!d.classList.contains('hidden'));if(!dlg)return;if(e.key==='Escape'){e.preventDefault();dlg.querySelector('#polyConfirmCancel,#dialogOk')?.click();return}if(e.key==='Tab'){const nodes=[...dlg.querySelectorAll('button:not([disabled]):not([hidden]),input:not([disabled]),a[href]')].filter(x=>x.offsetParent!==null),first=nodes[0],last=nodes.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus()}}});
 
 function chartSeries(){
  const all=(state?.portfolioSeries||[]).filter(q=>Number.isFinite(Number(q.ts))&&Number.isFinite(Number(q.equitySol))).sort((a,b)=>a.ts-b.ts);if(!all.length&&state?.portfolio)return [{ts:Date.now(),equitySol:Number(state.portfolio.equitySol||0)}];
@@ -939,8 +957,8 @@ function renderSystem(){
  const cpu=Number(m.cpuPct||0),mem=Number(m.memoryPct||0);
  const mode=r.autoCoordinate?'HIVE COORDINATED':'LOCAL CUSTOM';
  const barTone=v=>v>=90?'hot':v>=70?'warn':'';
- const telemetry=`<div class="mpo-status"><b>SYSTEM MONITOR</b><b class="mpo-badge ${r.autoCoordinate?'mpo-badge--live':'mpo-badge--degraded'}">${mode}</b><span class="muted">test lane ${polyEscape(r.testLane||'—')}</span></div>${[['CPU',cpu],['Memory',mem],['Scanner',Math.min(100,Number(m.cycleMs||0)/40)],['Evolution',e.status==='RUNNING'&&(!s.labLink||s.labLink.connected)?72:e.status==='COLLECTING'?30:8]].map(([n,v])=>`<div class="mpo-sysrow"><b>${n}</b><div class="sysbar ${barTone(v)}"><i style="width:${Math.max(2,v)}%"></i></div><span>${fmt(v,0)}%</span></div>`).join('')}
- <div class="kv"><span>RAM used:</span><b>${fmt(m.memoryUsedGB,1)} / ${fmt(m.memoryTotalGB,1)} GB</b><span>Worker slots:</span><b>${r.maxWorkerSlots||1}</b></div>`;
+ const telemetry=`<div class="mpo-status"><b>SYSTEM MONITOR</b><b class="mpo-badge ${r.autoCoordinate?'mpo-badge--live':'mpo-badge--degraded'}">${mode}</b><span class="muted">test lane ${polyEscape(r.testLane||'—')}</span></div>${[['CPU',cpu],['Memory',mem]].map(([n,v])=>`<div class="mpo-sysrow"><b>${n}</b><div class="sysbar ${barTone(v)}"><i style="width:${Math.max(2,v)}%"></i></div><span>${fmt(v,0)}%</span></div>`).join('')}
+ <div class="kv"><span>RAM used:</span><b>${fmt(m.memoryUsedGB,1)} / ${fmt(m.memoryTotalGB,1)} GB</b><span>Worker slots:</span><b>${r.maxWorkerSlots||1}</b><span>Research state:</span><b>${polyEscape(e.status||'Unknown')}</b><span>Scanner cycle:</span><b>${fmt(m.cycleMs,0)} ms</b></div><div class="muted">HUD · all renderers ${fmt(perf.renderMs,1)} ms · fit/layout ${fmt(window.MPOHud.metrics().layoutAndFit?.p95,1)} ms p95 · frames ${fmt(window.MPOHud.metrics().frame?.p95,1)} ms p95 · feedback ${fmt(window.MPOHud.metrics().feedback?.p95,1)} ms p95 · long tasks ${window.MPOHud.metrics().longTasks}. Rolling samples include charts and layout in frame timings.</div>`;
  // Telemetry changes every second; the allocation form must survive those refreshes or the
  // user's slider/number edits get wiped before they can click "Use My Limits".
  const policySig=JSON.stringify([r.cpuPercent,r.memoryGB,r.diskGB,r.source,r.updatedAt]);
@@ -1248,7 +1266,7 @@ function polyConfirm({title,head,html,phrase,confirmLabel='Confirm',expiresAt=nu
   const dlg=$('#polyConfirm'),layer=$('#dialogLayer'),input=$('#polyConfirmPhrase'),ok=$('#polyConfirmOk'),rq=$('#polyConfirmRequote'),cd=$('#polyConfirmCountdown'),bodyEl=$('#polyConfirmBody');
   $('#polyConfirmTitle').textContent=title;$('#polyConfirmHead').textContent=head;bodyEl.innerHTML=html;
   input.value='';input.placeholder='Type '+phrase;ok.textContent=confirmLabel;
-  let exp=expiresAt,busy=false,timer=null;
+  let exp=expiresAt,busy=false,timer=null;const previousFocus=document.activeElement;
   const expired=()=>exp!=null&&Date.now()>=exp;
   const sync=()=>{
    if(exp==null)cd.textContent='';
@@ -1256,7 +1274,7 @@ function polyConfirm({title,head,html,phrase,confirmLabel='Confirm',expiresAt=nu
    ok.disabled=busy||input.value!==phrase||expired();
    rq.hidden=!(requote&&expired());rq.disabled=busy;
   };
-  const close=v=>{clearInterval(timer);dlg.classList.add('hidden');layer.classList.remove('mpo-modal-open');input.oninput=ok.onclick=rq.onclick=null;$('#polyConfirmCancel').onclick=$('#polyConfirmX').onclick=null;resolve(v)};
+  const close=v=>{clearInterval(timer);dlg.classList.add('hidden');layer.classList.remove('mpo-modal-open');input.oninput=ok.onclick=rq.onclick=null;$('#polyConfirmCancel').onclick=$('#polyConfirmX').onclick=null;previousFocus?.focus();resolve(v)};
   input.oninput=sync;
   ok.onclick=()=>{if(input.value===phrase&&!expired())close(input.value)};
   $('#polyConfirmCancel').onclick=$('#polyConfirmX').onclick=()=>close(null);
@@ -1362,14 +1380,15 @@ function renderSimple(id){
  }
  if(id==='settings'){
   const mode=String(s.mode||'paper').toUpperCase(),health=s.system?.health||'Starting';
-  setBody('settings',`<div class="mpo-surface-light" style="padding:12px;color:#111;min-height:100%"><div class="mpo-status"><b>SETTINGS</b><b class="mpo-badge ${mode==='LIVE'?'mpo-badge--armed':'mpo-badge--paper'}">${polyEscape(mode)}</b><b class="mpo-badge ${health==='DEGRADED'?'mpo-badge--degraded':'mpo-badge--live'}">${polyEscape(health)}</b></div><fieldset class="mpo-fieldset"><legend>Machine</legend><p>CPU / RAM / disk limits live in System → Monitor.</p><button class="btn" id="setGoMonitor">Open Monitor</button></fieldset><fieldset class="mpo-fieldset"><legend>Trading runtime</legend><p>Profile, aggression and paper testing live in Pump.fun → Controls.</p><button class="btn" id="setGoControls">Open Controls</button></fieldset><fieldset class="mpo-fieldset"><legend>Display</legend><div class="toolbar"><span>Text size:</span>${Object.entries({S:'Small',M:'Medium',L:'Large'}).map(([k,v])=>`<button class="btn ${displayPrefs.textSize===k?'on':''}" data-textsize="${k}">${v}</button>`).join('')}</div><label><input type="checkbox" id="setFullDetail" ${displayPrefs.fullDetail?'checked':''}> Advanced mode in every window (same as the taskbar Simple | Advanced switch; each window's own button still flips just that window)</label><br><label><input type="checkbox" id="setRestoreAll" ${displayPrefs.restoreAll?'checked':''}> Reopen every window at launch (otherwise only the last one you used)</label></fieldset><fieldset class="mpo-fieldset"><legend>Desktop</legend><button class="btn" id="setResetLayout">Reset window layout</button><p class="muted" title="Reset restores the default desktop layout and tabs, then reloads the interface.">Restores default layout, then reloads.</p></fieldset></div>`);
+  setBody('settings',`<div class="mpo-surface-light" style="padding:12px;color:#111;min-height:100%"><div class="mpo-status"><b>SETTINGS</b><b class="mpo-badge ${mode==='LIVE'?'mpo-badge--armed':'mpo-badge--paper'}">${polyEscape(mode)}</b><b class="mpo-badge ${health==='DEGRADED'?'mpo-badge--degraded':'mpo-badge--live'}">${polyEscape(health)}</b></div><fieldset class="mpo-fieldset"><legend>Machine</legend><p>CPU / RAM / disk limits live in System → Monitor.</p><button class="btn" id="setGoMonitor">Open Monitor</button></fieldset><fieldset class="mpo-fieldset"><legend>Trading runtime</legend><p>Profile, aggression and paper testing live in Pump.fun → Controls.</p><button class="btn" id="setGoControls">Open Controls</button></fieldset><fieldset class="mpo-fieldset"><legend>Display</legend><div class="toolbar"><span>Text size:</span>${Object.entries({S:'Small',M:'Medium',L:'Large'}).map(([k,v])=>`<button class="btn ${displayPrefs.textSize===k?'on':''}" data-textsize="${k}">${v}</button>`).join('')}</div><label><input type="checkbox" id="setFullDetail" ${displayPrefs.fullDetail?'checked':''}> Advanced mode in every window (same as the taskbar Simple | Advanced switch; each window's own button still flips just that window)</label><br><label><input type="checkbox" id="setRestoreAll" ${displayPrefs.restoreAll?'checked':''}> Reopen every window at launch (otherwise only the last one you used)</label><br><label><input type="checkbox" id="setLowMotion" ${displayPrefs.lowMotion?'checked':''}> Reduce animation and visual effects</label></fieldset><fieldset class="mpo-fieldset"><legend>Desktop</legend><button class="btn" id="setResetLayout">Reset window layout</button><p class="muted" title="Reset restores the default desktop layout and tabs, then reloads the interface.">Restores default layout, then reloads.</p></fieldset></div>`);
   $('#setGoMonitor')?.addEventListener('click',()=>{openApp('system');setTab('system','system')});
   $('#setGoControls')?.addEventListener('click',()=>openApp('control'));
   const saveDisplay=()=>{writePref('mpo-display',displayPrefs);FIT_MAX=textScale();$$('.window').forEach(applyMode);renderSig.clear();renderAll();fitAll()};
   $$('[data-textsize]').forEach(b=>b.onclick=()=>{displayPrefs.textSize=b.dataset.textsize;saveDisplay()});
   $('#setFullDetail')?.addEventListener('change',e=>setGlobalMode(e.target.checked));
   $('#setRestoreAll')?.addEventListener('change',e=>{displayPrefs.restoreAll=e.target.checked;saveDisplay()});
-  $('#setResetLayout')?.addEventListener('click',()=>{layoutResetting=true;localStorage.removeItem('mpo-layout');localStorage.removeItem('mpo-last-focus');localStorage.removeItem('mpo-tabs');localStorage.setItem('mpo-open',JSON.stringify(DEFAULT_OPEN));location.reload()});
+  $('#setLowMotion')?.addEventListener('change',e=>{displayPrefs.lowMotion=e.target.checked;writePref('mpo-display',displayPrefs);applyMotion();updateDesktopEffects()});
+  $('#setResetLayout')?.addEventListener('click',()=>{layoutResetting=true;removePref('mpo-layout');removePref('mpo-last-focus');removePref('mpo-tabs');writePref('mpo-open',DEFAULT_OPEN);location.reload()});
   renderBackgroundSettings();
   return;
  }
@@ -1420,7 +1439,7 @@ function glanceTrade(){
  const s=state||{},p=s.portfolio||{},b=s.solanaBook||{},sys=s.system||{},sol=Number(s.market?.solUsd)||0,eq=Number(p.equitySol);
  const killed=!!sys.killSwitch,paused=!!sys.paused,wl=s.watchlist||[],ready=wl.filter(x=>String(x.stage||'').toUpperCase()==='READY').length;
  const h=s.walletIntel?.holderRpc,gen=Number(s.evolutionLoop?.generation);
- const pill=killed?{label:'Kill switch',tone:'bad'}:paused?{label:'Paused',tone:'warn'}:sys.health==='DEGRADED'?{label:'Degraded',tone:'bad'}:sys.health==='CAUTION'?{label:'Trading · caution',tone:'warn'}:{label:'Trading',tone:'ok'};
+ const pill=!state?{label:'Connecting',tone:'warn'}:killed?{label:'Kill switch',tone:'bad'}:paused?{label:'Paused',tone:'warn'}:sys.health==='DEGRADED'?{label:'Degraded',tone:'bad'}:sys.health==='CAUTION'?{label:'Trading · caution',tone:'warn'}:{label:'Trading',tone:'ok'};
  // tradeViz registers the live visuals (ticker, meme gauge, opportunity map, funnel); the glance shows them without the tables.
  const viz=window.MPOViz?(tradeViz(s),`${MPOViz.canvas('pf-ticker',20)}<div class="g-fill"><canvas class="g-graph" id="glanceChart" aria-label="Equity this session"></canvas></div><div class="g-row3">${MPOViz.canvas('pf-meme',104,'meme market')}${MPOViz.canvas('pf-map',104,'opportunity map')}${MPOViz.canvas('pf-funnel',104,'entry funnel')}</div>`):'<div class="g-fill"><canvas class="g-graph" id="glanceChart"></canvas></div>';
  setGlance('trade',glance({title:`Pump.fun · ${s.mode||'paper'}`,pill,
@@ -1532,6 +1551,7 @@ function renderProductEconomics(){
  setBody('economics',`<div class="mpo-module"><header><span>Product revenue and pilot progress</span></header><div class="mpo-module-body"><p>${t.visitors} visitors → ${t.activatedUsers} activated → ${t.payingUsers} paid · ${t.signups} verified signups</p><p>Activation: first successful manual paper order. Trading results do not count as product revenue.</p><p>Revenue ${dollars(t.netRevenueUsd)} · Recorded costs ${dollars(t.knownCostsUsd)} · Contribution ${dollars(t.contributionUsd)} · Margin ${pct(t.contributionMargin)}</p><p>${t.unpricedCosts} unpriced cost records · ${t.missingCostCategories.length} cost categories awaiting records. Known-cost contribution: ${dollars(t.knownCostContributionUsd)}; incomplete costs cannot establish profitability.</p><p>Signup: ${polyEscape(p.connections.signup)} · Payments: ${polyEscape(p.connections.payment)} · Serving costs: ${polyEscape(p.connections.servingCosts)}</p><p>Return retention D1 ${pct(p.retention.d1.rate)} · D7 ${pct(p.retention.d7.rate)} · D30 ${pct(p.retention.d30.rate)} · Support ${fmt(t.supportMinutes,1)} minutes</p></div></div><table class="table"><thead><tr><th>Source</th><th>Visits</th><th>Active</th><th>Paid</th><th>Net revenue</th><th>Contribution</th></tr></thead><tbody>${rows||'<tr><td colspan="6">No visits recorded yet.</td></tr>'}</tbody></table><div class="mpo-module-body"><p>Each browser is an anonymous visitor until a verified account links it. These local records are not a completed customer pilot.</p></div>`);
 }
 function renderAll(force=false){
+ const t0=performance.now();
  window.MPOSPlatform?.render();
  window.MPOPolymarket?.render();
  window.MPOStocks?.render();
@@ -1542,7 +1562,7 @@ function renderAll(force=false){
  window.MPOSports?.render();
  window.MPOWire?.render();
  window.MPOWhales?.render();
- if(force)renderSig.clear(); const s=state||{},m=s.system?.metrics||{},e=s.evolutionLoop||{},p=s.portfolio||{}; const t0=performance.now();
+ if(force)renderSig.clear(); const s=state||{},m=s.system?.metrics||{},e=s.evolutionLoop||{},p=s.portfolio||{};
  sampleSystem();renderGlances();
  renderChanged('trade',[p.equitySol,p.cashSol,s.dailyPnlSol,s.system?.health,s.system?.paused,s.system?.killSwitch,s.watchlist,s.positions,s.solanaBook],renderTrade);
  renderChanged('sportsbook',polyUSComboState,renderSportsbook);
@@ -1564,17 +1584,28 @@ function renderAll(force=false){
  const mode=String(s.mode||'paper').toUpperCase();
  $('#trayMode').textContent=mode;
  $('#trayMode').className='mpo-badge '+(mode==='LIVE'?'mpo-badge--armed':mode==='PAPER'?'mpo-badge--paper':'mpo-badge--degraded');
- const led=$('#feedLed');if(led){const bad=s.system?.health==='DEGRADED';led.classList.toggle('bad',bad);led.style.background=bad?'var(--mpo-led-bad)':'var(--mpo-led-ok)';}
- perf.renderMs=performance.now()-t0;
+ paintReadStatus();
+ perf.renderMs=performance.now()-t0;window.MPOHud.measure('allRenderers',perf.renderMs);
 }
 async function post(url,obj){return fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(obj||{})}).then(r=>r.json())}
 async function refreshState(){
  const t0=performance.now();
  try{
    const sr=await fetch('/api/state',{cache:'no-store'});
-   if(sr.status!==304){state=await sr.json();$('#runningVersion').textContent=state?.build?.version?'v'+state.build.version:'';perf.stateKB=Number(sr.headers.get('x-payload-bytes')||0)/1024;perf.lastStateAt=Date.now()}
+   if(sr.status!==304){const parseStart=performance.now(),next=await sr.json();perf.parseMs=performance.now()-parseStart;window.MPOHud.measure('stateParse',perf.parseMs);if(!next||typeof next!=='object'||Array.isArray(next)||!next.system)throw Error('Invalid trading service snapshot');state=next;$('#runningVersion').textContent=state?.build?.version?'v'+state.build.version:'';perf.stateKB=Number(sr.headers.get('x-payload-bytes')||0)/1024;perf.lastStateAt=Date.now();perf.stateError=null}
    perf.refreshMs=performance.now()-t0;trackRealizedProfitBurst();updateDesktopEffects();renderAll();
- }catch(e){const led=$('#feedLed');if(led){led.classList.add('bad');led.style.background='var(--mpo-led-bad)'}if(!state)showDialog('Money Printer OS','Backend connection lost','The desktop is running, but the local trading service is unavailable. Money Printer OS will keep retrying automatically.')}
+ }catch(e){if(e.name!=='AbortError')perf.stateError=e.message;paintReadStatus()}
+}
+function readOwner(key){
+ if(key.startsWith('/api/robinhood'))return 'robinhood';if(key.startsWith('/api/polymarket-us'))return 'sportsbook';
+ if(key.startsWith('/api/project-journal'))return 'journal';if(key.startsWith('/api/research-monitor'))return 'trade';
+ const lane=key.match(/^\/api\/platform\/(stocks|lab|macro|edgar|weather|sports|wire|whales)(?:[/?]|$)/)?.[1];return lane==='lab'?'marketlab':lane==='whales'?'trade':lane||(/^\/api\/platform|^\/api\/scoreboard/.test(key)?'command':key.startsWith('/api/state')?'trade':'system');
+}
+function paintReadStatus(){
+ const status=window.MPOHud.transport.status(),ageMs=perf.lastStateAt?Date.now()-perf.lastStateAt:Infinity,stale=!!perf.stateError||!!window.MPOHud.transport.state('/api/state').error||ageMs>10000;
+ const led=$('#feedLed');if(led){const bad=stale||state?.system?.health==='DEGRADED';led.classList.toggle('bad',bad);led.style.background=bad?'var(--mpo-led-bad)':'var(--mpo-led-ok)';led.title=stale?'Trading service data stale; last successful snapshot '+(perf.lastStateAt?age(perf.lastStateAt)+' ago':'never'):'Trading service snapshot received '+age(perf.lastStateAt)+' ago'}
+ const banner=$('#hudReadStatus');if(banner){const issue=window.MPOHud.storageErrors.size?'Preferences could not be saved or were repaired. ':'';const text=issue+(stale?(perf.lastStateAt?'STALE · service snapshot '+age(perf.lastStateAt)+' old':'WAITING · trading service'):(status.failures.length?status.failures.length+' data source'+(status.failures.length===1?'':'s')+' unavailable':'Connected'));if(banner.textContent!==text)banner.textContent=text;banner.classList.toggle('bad',stale||status.failures.length>0);banner.title=[perf.stateError,...status.failures.map(x=>x.error)].filter(Boolean).join('\n')||'Local service connected; strategy readiness is shown in each module.'}
+ for(const w of $$('.window')){const bad=status.failures.filter(x=>readOwner(x.key)===w.dataset.app),node=w.querySelector('.hud-data-status');if(node){const text=bad.length?'STALE · retained values · '+bad.map(x=>x.key.split('?')[0]).join(', '):'';if(node.textContent!==text)node.textContent=text;node.hidden=!text}}
 }
 function scheduleUSComboBuild(){
  if(usComboBuildTimer)clearTimeout(usComboBuildTimer);
@@ -1697,11 +1728,15 @@ async function refreshResearchMonitor(){
  try{const r=await fetch('/api/research-monitor',{cache:'no-store',signal:AbortSignal.timeout(4000)});if(r.ok)researchMonitor=await r.json();else researchMonitor={...researchMonitor,status:'error',error:'monitor HTTP '+r.status}}catch(e){researchMonitor={...researchMonitor,status:'error',error:e.message||'research monitor unavailable'}}renderSig.delete('researchmon');renderAll()
 }
 function boot(){
- const steps=[['Checking database...',20],['Starting market scanner...',42],['Starting Evolution service...',65],['Restoring desktop...',86],['Ready.',100]];
- if(matchMedia('(prefers-reduced-motion: reduce)').matches){$('#bootText').textContent='Ready.';$('#bootBar').style.width='100%';$('#boot').classList.add('hide');return;}
- let i=0;
- const tick=()=>{if(i>=steps.length){setTimeout(()=>$('#boot').classList.add('hide'),250);return}$('#bootText').textContent=steps[i][0];$('#bootBar').style.width=steps[i][1]+'%';i++;setTimeout(tick,180)};tick();
+ $('#bootText').textContent='Desktop loaded · connecting to local services…';$('#bootBar').style.width='100%';
+ requestAnimationFrame(()=>$('#boot').classList.add('hide'));
 }
+// One refresh includes fetching, parsing and applying the result. A slow request cannot queue
+// multiple renders of the same payload behind the transport's single in-flight read.
+function singleFlightRefresh(fn){let pending=null;return(...args)=>pending||(pending=Promise.resolve().then(()=>fn(...args)).finally(()=>{pending=null}))}
+refreshState=singleFlightRefresh(refreshState);refreshNetwork=singleFlightRefresh(refreshNetwork);
+refreshJournal=singleFlightRefresh(refreshJournal);refreshProjectJournal=singleFlightRefresh(refreshProjectJournal);
+refreshUpdater=singleFlightRefresh(refreshUpdater);refreshProductEconomics=singleFlightRefresh(refreshProductEconomics);refreshResearchMonitor=singleFlightRefresh(refreshResearchMonitor);
 buildIcons();buildWindows();buildStart();boot();refreshRobinhood();refreshJournal();refreshProjectJournal();refreshNetwork();refreshUSComboSnapshot();refreshUpdater();refreshResearchMonitor();refreshState();
 window.MPOSPlatform?.install({open(id){openApp(id);setDetail(hostOf(id),true);if(id==='predictionmarkets')setTab('sportsbook',id);}});
 refreshProductEconomics();
@@ -1725,5 +1760,8 @@ window.addEventListener('pagehide',persist);
 // Electron's before-quit calls this so the layout is on disk before the process exits.
 window.__mpoPersist=()=>{persist()};
 setInterval(()=>{if(!document.hidden&&windowShown('robinhood'))refreshRobinhood()},15000);
+window.addEventListener('mpo:read-status',paintReadStatus);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){refreshState();paintReadStatus()}});
+setInterval(()=>{if(!document.hidden)paintReadStatus()},1000);
 </script>
 </body></html>

@@ -1,0 +1,10 @@
+/* Keep health visible independently of refreshed content and keyboard focus legible. */
+#hudReadStatus{max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px}
+#hudReadStatus.bad{color:#8b1b12;font-weight:bold}
+.hud-data-status{background:#fff1c7;color:#602900;border-bottom:1px solid #b78325;padding:3px 6px;font:11px/1.35 monospace;flex:none}
+.hud-data-status[hidden]{display:none}
+.icon:focus-visible,button:focus-visible,.menuitem:focus-visible,a:focus-visible{outline:2px solid #ffca28;outline-offset:2px}
+.mpo-low-motion .sky-cloud,.mpo-low-motion .brand .shine{animation-play-state:paused!important}
+.mpo-low-motion .money-layer{display:none!important}
+.mpo-low-motion *, .mpo-low-motion *::before,.mpo-low-motion *::after{scroll-behavior:auto!important;transition-duration:0s!important}
+@media(max-width:850px){#hudReadStatus{max-width:120px}.taskbar .tasks .task span{max-width:100px}}

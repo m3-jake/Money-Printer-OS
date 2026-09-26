@@ -71,7 +71,11 @@
   const readForm = () => { const f = root()?.querySelector('[data-lab-form=run]'); if (!f) return; const i = Object.fromEntries(new FormData(f)); Object.assign(form, { source: i.source, key: i.key, strategy: i.strategy, minutes: Number(i.minutes) || 60, feeBps: Number(i.feeBps) || 0, cash: Number(i.cash) || 1000, stepMs: (Number(i.stepSec) || 15) * 1000, start: i.start ? new Date(i.start).getTime() : form.start }); if (i.lookback) form.lookback = Number(i.lookback); if (i.thresholdBps) form.thresholdBps = Number(i.thresholdBps); };
   const query = () => ({ source: form.source, key: form.key, start: form.start, end: form.start + form.minutes * 60000 });
   const stopTimer = () => { if (timer) clearInterval(timer); timer = null; };
-  async function step(ms) { if (!replay) return; const r = await api('/lab/replay/step', { id: replay.id, ms }); const res = r.result; replay = { ...replay, clock: res.clock, revealed: res.revealed, done: res.done, mids: replay.mids.concat(res.fresh.map(x => (x.bid + x.ask) / 2)) }; if (res.done) stopTimer(); stamp++; draw(true); }
+  let stepping=false;
+  async function step(ms) { if (!replay||stepping) return;const id=replay.id;stepping=true;try{ const r = await api('/lab/replay/step', { id, ms });if(!replay||replay.id!==id)return; const res = r.result; replay = { ...replay, clock: res.clock, revealed: res.revealed, done: res.done, mids: replay.mids.concat(res.fresh.map(x => (x.bid + x.ask) / 2)) }; if (res.done) stopTimer(); stamp++; draw(true); }finally{stepping=false} }
+  window.addEventListener('mpo:window-close',e=>{if(e.detail?.id==='marketlab'){stopTimer();stamp++}});
+  document.addEventListener('visibilitychange',()=>{if(document.hidden){stopTimer();stamp++}});
+  window.addEventListener('pagehide',stopTimer);
 
   document.addEventListener('change', e => {
     if (!root()?.contains(e.target)) return;

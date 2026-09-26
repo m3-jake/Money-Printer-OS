@@ -27,6 +27,7 @@ import * as J from './robinhoodJournal.js';
 import * as S from './robinhoodStrategy.js';
 import * as T from './robinhoodTape.js';
 import * as E from './robinhoodEvolve.js';
+import { ROBINHOOD_BACKTEST_VERSION } from './robinhoodBacktest.js';
 import { volGateStats, realisticSpreads } from './robinhoodEvidence.js';
 import { fetchPublicPaperMarket, fetchPublicCandles } from './robinhoodPaperFeed.js';
 import * as W from './robinhoodWarmStart.js';
@@ -552,7 +553,9 @@ async function paperPass(initial){
    position.peakBid=exit.peakBid;position.trailStop=exit.trailStop;position.maxFavorablePct=Math.max(position.maxFavorablePct||0,q.bid/position.fillPrice-1);position.maxAdversePct=Math.min(position.maxAdversePct||0,q.bid/position.fillPrice-1);
    if(exit.exit){closePaperAt(p,position.id,exit.reason,'strategy');changed=true;p.autopilot.lastAction={action:'close',symbol:position.symbol,reason:exit.reason,at:now()}}
   }
-  if(p.autopilot.enabled){const rows=featureRows(p,[...p.autopilot.symbols,...p.positions.map(x=>x.symbol)]),eligible=Object.fromEntries(Object.entries(rows).filter(([,r])=>r.signal.enter));
+  const trialGuard=labTrialRisk(p,loadLabTrial(),now());
+  if(trialGuard.blocked)p.autopilot.skipped.push({symbol:'ALL',reason:trialGuard.reason});
+  if(p.autopilot.enabled&&!trialGuard.blocked){const rows=featureRows(p,[...p.autopilot.symbols,...p.positions.map(x=>x.symbol)]),eligible=Object.fromEntries(Object.entries(rows).filter(([,r])=>r.signal.enter));
    for(const [symbol,row]of Object.entries(rows))if(!row.signal.enter)p.autopilot.skipped.push({symbol,reason:row.signal.reason});
    for(const symbol of S.pickCandidates(eligible,p.positions.map(p=>p.symbol),p.cooldowns,Math.min(p.autopilot.maxOpen,robinhoodLimits().maxOpen),now(),primaryWeights())){
     try{openPaperAt(p,symbol,p.autopilot.orderUsd,'paper-autopilot');changed=true;p.autopilot.lastAction={action:'buy',symbol,at:now()}}catch(e){p.autopilot.skipped.push({symbol,reason:e.code||safeMessage(e)})}
@@ -679,13 +682,13 @@ export function robinhoodFitnessParts({at=now()}={}){
  const applied=l.applied&&l.applied.paramsHash===p.paramsHash?l.applied:null,trialApplied=tr.active&&tr.active.hash===p.paramsHash?tr.active:null;
  const fullWeek=ev.spanDays>=7&&ev.venueShare!==null&&ev.venueShare>=0.9;
  return {
-  running:{hash:p.paramsHash,params:p.params,since:trialApplied?.startedAt??applied?.at??null,source:trialApplied?'lab-auto':applied?'operator':'BASE'},
+  running:{hash:p.paramsHash,params:p.params,since:trialApplied?.startedAt??applied?.at??null,source:trialApplied?(trialApplied.by||'lab-auto'):applied?'operator':'BASE'},
   paperRecord:paperRecordFrom(rows,{unit:'USD',startBalance:p.startUsd,now:at}),
   evidence:{executablePrices:(ev.sources.robinhood||0)>0,spanDays:ev.spanDays,closes:rows.length,venueShare:ev.venueShare,syntheticShare:ev.syntheticShare,quoteSources:ev.sources},
   proposal:labDoc?{id:labDoc.candidate?.paramsHash||null,stage:labDoc.qualificationStage||labDoc.stage||null,basis:labDoc.basis||null,proposalVersion:labDoc.proposalVersion??null,publishedAt:labDoc.publishedAt||null,paperPromotionAllowed:championPaperAllowed(labDoc)}:null,
-  trial:labTrialView(tr),lastDecision:tr.lastDecision||null,
+  trial:labTrialView(tr,at),lastDecision:tr.lastDecision||null,
   park:fullWeek&&vg.binding?`vol gate binding on every pair after 7 days of Robinhood quotes (best ratio ${vg.maxRatio})`:null,
-  blockers:[...(p.recoveryRequired?['paper book needs recovery']:[]),...(j.recoveryRequired?['journal needs recovery']:[])],
+  blockers:[...(p.recoveryRequired?['paper book needs recovery']:[]),...(j.recoveryRequired?['journal needs recovery']:[]),...(tr.recoveryRequired?['paper trial authority needs recovery']:[]),...(tr.active&&tr.active.phase!=='RUNNING'?['paper trial '+tr.active.phase]:[])],
  };
 }
 export function robinhoodEvolveView(p=paper()){
@@ -718,7 +721,7 @@ export async function runRobinhoodEvolveOnce({manual=false}={}){
   let promoted=false,proposed=false;
   if(beats){
    const already=l.champion&&l.champion.paramsHash===r.best.paramsHash;
-   if(!already||r.best.score>l.champion.score){l.champion={params:r.best.params,paramsHash:r.best.paramsHash,score:r.best.score,metrics:{...r.best.metrics,holdout},bySymbol:r.best.bySymbol,at:now(),generation};E.ledgerEvent(l,'champion',`G${generation}: ${r.best.paramsHash} scored ${r.best.score.toFixed(3)} vs incumbent ${r.incumbent.score.toFixed(3)} (+${r.gainPct}%)`,{paramsHash:r.best.paramsHash,gainPct:r.gainPct})}
+   if(!already||r.best.score>l.champion.score){l.champion={params:r.best.params,paramsHash:r.best.paramsHash,score:r.best.score,metrics:{...r.best.metrics,holdout},bySymbol:r.best.bySymbol,at:now(),generation,basis:{incumbentHash:p.paramsHash},evidence:{evaluatorVersion:ROBINHOOD_BACKTEST_VERSION,datasetHash:createHash('sha256').update(JSON.stringify(tapes)).digest('hex'),beatsIncumbent:r.beats,holdout:gate}};E.ledgerEvent(l,'champion',`G${generation}: ${r.best.paramsHash} scored ${r.best.score.toFixed(3)} vs incumbent ${r.incumbent.score.toFixed(3)} (+${r.gainPct}%)`,{paramsHash:r.best.paramsHash,gainPct:r.gainPct})}
    proposed=true;
   }
   l.history=[{generation,at:now(),elapsedMs:r.elapsedMs,timedOut:r.timedOut,evaluated:r.evaluated.length,symbols:Object.keys(tapes),tapeDays,synthetic,incumbentHash:r.incumbent.paramsHash,incumbentScore:Math.round(r.incumbent.score*1000)/1000,bestHash:r.best?.paramsHash||null,bestScore:r.best?Math.round(r.best.score*1000)/1000:null,gainPct:r.gainPct,beats,searchBeats:r.beats,holdout,promoted:false},...l.history].slice(0,E.__testing.HISTORY_CAP);
@@ -735,16 +738,14 @@ export async function runRobinhoodEvolveOnce({manual=false}={}){
 // paramsChanged disable inside setRobinhoodPaperAutopilot. Qualification resets because the paramsHash changes.
 export function applyRobinhoodEvolution({paramsHash,by='operator'}={}){
  const hash=String(paramsHash||'').trim(),labDoc=readLabRobinhoodChampion(),labCandidate=labDoc?.candidate;
- if(labCandidate&&labCandidate.paramsHash===hash){if(!championPaperAllowed(labDoc))fail('notQualified',`Evolution Lab candidate is ${championState(labDoc).state}, not cleared for paper`);if(!E.withinEvolveBounds(labCandidate.params))fail('validation','Lab candidate parameters fall outside the evolution bounds');const p=paper();if(hash===p.paramsHash)return {ok:true,applied:false,paramsHash:p.paramsHash,autopilot:clone(p.autopilot),realAutopilot:robinhoodAutopilot()};const autopilot=setRobinhoodPaperAutopilot({params:labCandidate.params});if(autopilot.paramsHash!==hash)fail('validation',`Applied params hash ${autopilot.paramsHash} does not match Lab candidate ${hash}`);return {ok:true,applied:true,paramsHash:hash,autopilot,realAutopilot:robinhoodAutopilot(),source:'evolution-lab'};}
- const l=E.loadEvolveLedger();
- if(!l.champion)fail('notFound','No evolution champion has been proposed yet');
- if(!hash||l.champion.paramsHash!==hash)fail('validation',`paramsHash must match the proposed champion ${l.champion.paramsHash}`);
- if(!E.withinEvolveBounds(l.champion.params))fail('validation','Champion parameters fall outside the evolution bounds');
- const p=paper();if(l.champion.paramsHash===p.paramsHash)return {ok:true,applied:false,paramsHash:p.paramsHash,autopilot:clone(p.autopilot),realAutopilot:robinhoodAutopilot()};
- const autopilot=setRobinhoodPaperAutopilot({params:l.champion.params});
- if(autopilot.paramsHash!==hash)fail('validation',`Applied params hash ${autopilot.paramsHash} does not match champion ${hash}`);
- const l2=E.loadEvolveLedger();l2.applied={paramsHash:hash,at:now(),by:by==='autopromote'?'autopromote':'operator'};E.ledgerEvent(l2,'applied',`${l2.applied.by} applied ${hash} to the paper autopilot; qualification reset`,{paramsHash:hash,by:l2.applied.by});E.saveEvolveLedger(l2);
- return {ok:true,applied:true,paramsHash:hash,autopilot,realAutopilot:robinhoodAutopilot()};
+ let doc=labCandidate?.paramsHash===hash?labDoc:null;
+ if(!doc){const c=E.loadEvolveLedger().champion;if(!c)fail('notFound','No evolution champion has been proposed yet');if(!hash||c.paramsHash!==hash)fail('validation',`paramsHash must match the proposed champion ${c.paramsHash}`);
+  doc={candidate:c,basis:c.basis,evidence:c.evidence,publishedAt:c.at,qualificationStage:'PAPER_REVIEW',stateSchema:'mpo.champion-state.v1',state:'PAPER',paperPromotionAllowed:true,liveExecution:'manual',liveActivationAllowed:false,automaticLivePromotionAllowed:false};}
+ if(!E.withinEvolveBounds(doc.candidate.params))fail('validation','Champion parameters fall outside the evolution bounds');
+ const p=paper(),t=loadLabTrial();if(p.recoveryRequired||t.recoveryRequired)fail('stateRecovery','Paper trial state needs recovery');
+ if(hash===p.paramsHash)return {ok:true,applied:false,paramsHash:hash,autopilot:clone(p.autopilot),realAutopilot:robinhoodAutopilot()};
+ const result=startPaperTrial(doc,p,t,now(),by==='autopromote'?'autopromote':'operator');if(!result.ran)fail('notQualified',result.reason);
+ return {ok:true,applied:true,paramsHash:hash,autopilot:{...clone(paper().autopilot),paramsHash:hash},realAutopilot:robinhoodAutopilot(),source:doc===labDoc?'evolution-lab':'local-evolution',trial:labTrialView(loadLabTrial())};
 }
 // ------------------------------------------------------------------ Lab paper trials (docs/FITNESS-LEDGER.md)
 // With ROBINHOOD_LAB_AUTO_APPLY_PAPER=true (default false) a cleared Lab proposal is applied to the PAPER params
@@ -755,32 +756,91 @@ export const TRIAL_CLOSES=20, TRIAL_MAX_DD_PCT=3, TRIAL_IDLE_DAYS=14, LAB_PASS_M
 const LAB_TRIAL_FILE=path.join(DATA_DIR,'robinhood-lab-trial.json'), LAB_TRIAL_SCHEMA='mpo.robinhood-lab-trial.v1', PROJECT_JOURNAL_FILE=path.join(DATA_DIR,'project-journal.ndjson');
 let labPassAt=0;
 export const labAutoApplyEnabled=()=>String(process.env.ROBINHOOD_LAB_AUTO_APPLY_PAPER||'').toLowerCase()==='true';
-function loadLabTrial(){try{const v=JSON.parse(fs.readFileSync(LAB_TRIAL_FILE,'utf8'));if(v?.schema===LAB_TRIAL_SCHEMA)return {active:v.active||null,rejected:Array.isArray(v.rejected)?v.rejected.slice(-200):[],lastDecision:v.lastDecision||null,lastCheck:v.lastCheck||null,history:Array.isArray(v.history)?v.history.slice(0,50):[]}}catch{}return {active:null,rejected:[],lastDecision:null,lastCheck:null,history:[]}}
+function loadLabTrial(){
+ const empty={active:null,rejected:[],lastDecision:null,lastCheck:null,history:[]};
+ try{if(fs.statSync(LAB_TRIAL_FILE).size>256*1024)return {...empty,recoveryRequired:true};const v=JSON.parse(fs.readFileSync(LAB_TRIAL_FILE,'utf8'));
+   const a=v?.active,hash=x=>typeof x==='string'&&/^[a-f0-9]{12}$/.test(x);
+   if(v?.schema!==LAB_TRIAL_SCHEMA||!Array.isArray(v.rejected)||!v.rejected.every(hash)||!Array.isArray(v.history)||a!==null&&(!a||typeof a!=='object'||Array.isArray(a))||a&&(!hash(a.hash)||!hash(a.incumbentHash)||!E.withinEvolveBounds(a.incumbentParams)||S.paramsHash(S.normalizeParams({...a.incumbentParams,sampleMs:TICK_MS}))!==a.incumbentHash||!Number.isFinite(a.startedAt)||a.startedAt<=0||a.startedAt>now()||!Number.isFinite(a.startEquityUsd)||a.startEquityUsd<=0||!['PREPARING','RUNNING','ROLLBACK_PENDING'].includes(a.phase)||!(a.incumbent?.closes>=20)||!(a.incumbent.profitFactorUnbounded===true||Number.isFinite(a.incumbent.profitFactor)&&a.incumbent.profitFactor>=0)))return {...empty,recoveryRequired:true};
+   return {...empty,...v,rejected:v.rejected.slice(-200),history:v.history.slice(0,50)};
+ }catch(e){return {...empty,recoveryRequired:e.code!=='ENOENT'}}
+}
 function saveLabTrial(t){writeFileAtomicSync(LAB_TRIAL_FILE,JSON.stringify({schema:LAB_TRIAL_SCHEMA,...t},null,1))}
-function trialCloses(p,hash,since){return p.history.filter(x=>x.status==='CLOSED'&&x.paramsHash===hash&&Number.isFinite(Number(x.pnlUsd))&&num(x.closedAt)>=since).map(x=>({pnl:Number(x.pnlUsd),closedAt:x.closedAt}))}
-function labTrialView(t){const a=t.active;if(!a)return t.lastDecision&&['kept','reverted'].includes(t.lastDecision.action)?{status:t.lastDecision.action==='kept'?'KEPT':'REVERTED',hash:t.lastDecision.hash,incumbentHash:t.lastDecision.incumbentHash||null,startedAt:t.lastDecision.startedAt||null,endedAt:t.lastDecision.at,closes:t.lastDecision.closes??null,needed:TRIAL_CLOSES,incumbent:t.lastDecision.incumbent||null,candidate:t.lastDecision.candidate||null}:null;
- const p=paper(),rec=paperRecordFrom(trialCloses(p,a.hash,a.startedAt),{unit:'USD',startBalance:p.startUsd});
- return {status:'RUNNING',hash:a.hash,incumbentHash:a.incumbentHash,startedAt:a.startedAt,endedAt:null,closes:rec.closes,needed:TRIAL_CLOSES,incumbent:a.incumbent,candidate:{profitFactor:rec.profitFactor,profitFactorUnbounded:rec.profitFactorUnbounded,closes:rec.closes,maxDrawdownPct:rec.maxDrawdownPct}};}
+function trialCloses(p,hash,since,at=now()){const seen=new Set();return p.history.filter(x=>{const id=x.positionId||x.id||`${x.symbol}:${x.closedAt}:${x.paramsHash}`;if(seen.has(id)||x.status!=='CLOSED'||x.paramsHash!==hash||!Number.isFinite(x.pnlUsd)||!Number.isFinite(x.closedAt)||x.closedAt<since||x.closedAt>at)return false;seen.add(id);return true}).map(x=>({pnl:x.pnlUsd,closedAt:x.closedAt}))}
+function labTrialRisk(p,t,at){
+ if(t.recoveryRequired)return {blocked:true,reason:'labTrialRecovery'};
+ if(!t.active)return {blocked:false};
+ if(t.active.phase!=='RUNNING')return {blocked:true,reason:'trialRecovery'};
+ const a=t.active,held=p.positions.filter(x=>x.paramsHash===a.hash);
+ if(held.some(x=>!fresh(quotes.get(x.symbol))))return {blocked:true,reason:'trialStaleMark'};
+ const realized=trialCloses(p,a.hash,a.startedAt,at).reduce((s,r)=>s+r.pnl,0),unrealized=held.reduce((s,x)=>s+S.markToMarket(x,quotes.get(x.symbol).bid,fee()),0);
+ const base=a.startEquityUsd||p.startUsd,lossPct=base>0?-100*(realized+unrealized)/base:Infinity;
+ return {blocked:lossPct>=TRIAL_MAX_DD_PCT,reason:'trialLossBudget',lossPct,pnl:realized+unrealized};
+}
+function labTrialView(t,at=now()){const a=t.active;if(!a)return t.lastDecision&&['kept','reverted'].includes(t.lastDecision.action)?{status:t.lastDecision.action==='kept'?'KEPT':'REVERTED',hash:t.lastDecision.hash,incumbentHash:t.lastDecision.incumbentHash||null,startedAt:t.lastDecision.startedAt||null,endedAt:t.lastDecision.at,closes:t.lastDecision.closes??null,needed:TRIAL_CLOSES,incumbent:t.lastDecision.incumbent||null,candidate:t.lastDecision.candidate||null}:null;
+ const p=paper(),rec=paperRecordFrom(trialCloses(p,a.hash,a.startedAt,at),{unit:'USD',startBalance:a.startEquityUsd,now:at});
+ return {status:a.phase,hash:a.hash,incumbentHash:a.incumbentHash,startedAt:a.startedAt,endedAt:null,closes:rec.closes,needed:TRIAL_CLOSES,incumbent:a.incumbent,candidate:{profitFactor:rec.profitFactor,profitFactorUnbounded:rec.profitFactorUnbounded,closes:rec.closes,maxDrawdownPct:rec.maxDrawdownPct}};}
 function labTrialJournal(title,detail,at){try{appendProjectJournal(PROJECT_JOURNAL_FILE,{kind:'paper-trial',category:'research',module:'robinhood',title,detail,at})}catch{}}
 function decide(t,decision){t.lastDecision=decision;t.history.unshift(decision);t.history=t.history.slice(0,50)}
+// Manual and scheduled promotion share admission and the same persisted rollback authority.
+function proposalRefusal(doc,p,t,at){
+ const c=doc?.candidate,e=doc?.evidence,h=e?.holdout;
+ if(p.recoveryRequired||t.recoveryRequired)return 'paper trial state needs recovery';
+ if(t.active)return 'a paper trial is already active';
+ if(!doc||!c)return 'no proposal';
+ if(doc.liveExecution!=='manual'||doc.liveActivationAllowed!==false||doc.automaticLivePromotionAllowed!==false)return 'proposal safety contract mismatch';
+ if(!Number.isFinite(doc.publishedAt)||doc.publishedAt>at||at-doc.publishedAt>7*864e5)return 'proposal stale or future dated';
+ if(doc.qualificationStage!=='PAPER_REVIEW'||!championPaperAllowed(doc))return `proposal is ${doc.qualificationStage||championState(doc).state}, not cleared for paper`;
+ if(e?.evaluatorVersion!==ROBINHOOD_BACKTEST_VERSION||!(/^[a-f0-9]{64}$/i.test(e?.datasetHash||'')))return 'proposal evaluator or dataset fingerprint is incompatible';
+ const pf=h?.profitFactor==='infinity'?Infinity:h?.profitFactor;
+ if(e.beatsIncumbent!==true||h?.pass!==true||!(h.closes>=20)||!(pf>=1.2)||!(h.pnlUsd>0)||!(h.robinhoodShare>=.9)||!Number.isFinite(h.through)||h.through>at||at-h.through>7*864e5)return 'proposal holdout evidence is incomplete or stale';
+ if(c.paramsHash===p.paramsHash)return 'proposal is already running';
+ if(t.rejected.includes(c.paramsHash))return 'proposal was reverted before';
+ if(doc.basis?.incumbentHash!==p.paramsHash)return `proposal basis ${doc.basis?.incumbentHash||'missing'} is not the running params ${p.paramsHash}`;
+ if(!E.withinEvolveBounds(c.params))return 'proposal params fall outside the evolution bounds';
+ if(S.paramsHash(S.normalizeParams({...p.params,...c.params,sampleMs:TICK_MS}))!==c.paramsHash)return 'proposal params hash does not match the executable policy';
+ if(p.positions.length)return 'paper portfolio must be flat before a trial starts';
+ if(!Number.isFinite(p.cashUsd)||p.cashUsd<=0)return 'paper trial needs positive known cash equity';
+ const ev=robinhoodEvidence7d(),incRows=trialCloses(p,p.paramsHash,0,at),may=laneMayPropose({executablePrices:(ev.sources.robinhood||0)>0,spanDays:ev.spanDays,closes:incRows.length,venueShare:ev.venueShare,syntheticShare:ev.syntheticShare});
+ if(!may.ok)return `evidence: ${may.blockers.join('; ')}`;
+ return null;
+}
+function startPaperTrial(doc,p,t,at,by='lab-auto'){
+ const reason=proposalRefusal(doc,p,t,at);if(reason)return {ran:false,reason};
+ const c=doc.candidate,inc=paperRecordFrom(trialCloses(p,p.paramsHash,0,at),{unit:'USD',startBalance:p.startUsd,now:at}),incumbentParams=clone(p.params),incumbentHash=p.paramsHash;
+ t.active={hash:c.paramsHash,incumbentHash,incumbentParams,incumbent:{profitFactor:inc.profitFactor,profitFactorUnbounded:inc.profitFactorUnbounded,closes:inc.closes,maxDrawdownPct:inc.maxDrawdownPct},startedAt:at,startEquityUsd:p.cashUsd,phase:'PREPARING',by,proposalVersion:doc.proposalVersion??null,proposalId:c.id||c.paramsHash,evaluatorVersion:doc.evidence.evaluatorVersion,datasetHash:doc.evidence.datasetHash};
+ saveLabTrial(t);
+ try{const applied=setRobinhoodPaperAutopilot({params:c.params});if(applied.paramsHash!==c.paramsHash||paper().paramsHash!==c.paramsHash)throw Error('Applied policy hash does not match proposal');}
+ catch(e){t.active.applyError=safeMessage(e);saveLabTrial(t);return {ran:false,reason:'trial preparation needs recovery: '+safeMessage(e)}}
+ t.active.phase='RUNNING';decide(t,{action:'applied',reason:`Proposal applied to paper as a ${TRIAL_CLOSES}-close trial`,hash:c.paramsHash,incumbentHash,startedAt:at,at,by});t.lastCheck=null;saveLabTrial(t);
+ const l=E.loadEvolveLedger();l.applied={paramsHash:c.paramsHash,at,by};E.ledgerEvent(l,'applied',`${by} applied ${c.paramsHash} to paper as a trial against ${incumbentHash}`,{paramsHash:c.paramsHash,by});E.saveEvolveLedger(l);
+ labTrialJournal(`Robinhood Lab trial ${c.paramsHash} started`,`Paper only. Requires ${TRIAL_CLOSES} new closes; ${TRIAL_MAX_DD_PCT}% marked loss budget.`,at);
+ return {ran:true,decision:'applied',hash:c.paramsHash};
+}
 // One pass: settle a running trial, or apply a cleared proposal when auto-apply is on. Never throws on refusal.
 export function labProposalPass({at=now()}={}){
  const t=loadLabTrial(),p=paper();
  if(p.recoveryRequired)return {ran:false,reason:'paperRecovery'};
+ if(t.recoveryRequired)return {ran:false,reason:'labTrialRecovery'};
  if(t.active){
   const a=t.active;
-  if(p.paramsHash!==a.hash){decide(t,{action:'abandoned',reason:'paper params changed during the trial',hash:a.hash,incumbentHash:a.incumbentHash,startedAt:a.startedAt,at,by:'operator'});t.active=null;saveLabTrial(t);labTrialJournal(`Robinhood Lab trial ${a.hash} abandoned`,'The paper params were changed by hand while the trial ran.',at);return {ran:true,decision:'abandoned'}}
-  const rows=trialCloses(p,a.hash,a.startedAt),rec=paperRecordFrom(rows,{unit:'USD',startBalance:p.startUsd,now:at}),lastAt=rows.length?Math.max(...rows.map(r=>num(r.closedAt))):a.startedAt;
+  if(a.phase==='PREPARING'&&p.paramsHash===a.hash){a.phase='RUNNING';saveLabTrial(t)}
+  if(a.phase==='PREPARING'&&p.paramsHash!==a.incumbentHash)return {ran:false,reason:'trial preparation hash needs recovery'};
+  if(a.phase!=='ROLLBACK_PENDING'&&p.paramsHash!==a.hash){decide(t,{action:'abandoned',reason:a.phase==='PREPARING'?'paper trial preparation did not commit':'paper params changed during the trial',hash:a.hash,incumbentHash:a.incumbentHash,startedAt:a.startedAt,at,by:'operator'});t.active=null;saveLabTrial(t);labTrialJournal(`Robinhood Lab trial ${a.hash} abandoned`,'The proposed paper policy is not running.',at);return {ran:true,decision:'abandoned'}}
+  const rows=trialCloses(p,a.hash,a.startedAt,at),rec=paperRecordFrom(rows,{unit:'USD',startBalance:a.startEquityUsd,now:at}),lastAt=rows.length?Math.max(...rows.map(r=>num(r.closedAt))):a.startedAt;
   let verdict=null,reason='';
-  if(rec.closes>=TRIAL_CLOSES){
+  const trialRisk=labTrialRisk(p,t,at);
+  if(a.phase==='ROLLBACK_PENDING'){verdict='reverted';reason=a.rollbackReason||'resuming interrupted rollback'}
+  else if(trialRisk.reason==='trialLossBudget'&&trialRisk.blocked){verdict='reverted';reason=`marked trial loss ${trialRisk.lossPct.toFixed(2)}% reached ${TRIAL_MAX_DD_PCT}% budget`;}
+  else if(rec.closes>=TRIAL_CLOSES&&!p.positions.length){
    const incPf=a.incumbent?.profitFactorUnbounded?Infinity:a.incumbent?.profitFactor,candPf=rec.profitFactorUnbounded?Infinity:rec.profitFactor,dd=rec.maxDrawdownPct;
    const pfOk=candPf!==null&&(incPf===null||incPf===undefined||candPf>=incPf),ddOk=dd!==null&&dd<=TRIAL_MAX_DD_PCT;
-   verdict=pfOk&&ddOk?'kept':'reverted';reason=`${rec.closes} closes: PF ${rec.profitFactorUnbounded?'inf':rec.profitFactor} vs incumbent ${a.incumbent?.profitFactorUnbounded?'inf':a.incumbent?.profitFactor??'n/a'}, drawdown ${dd}% (max ${TRIAL_MAX_DD_PCT}%)`;
+   verdict=pfOk&&ddOk&&candPf>1&&rec.netPnl>0&&!trialRisk.blocked?'kept':'reverted';reason=`${rec.closes} closes: PF ${rec.profitFactorUnbounded?'inf':rec.profitFactor} vs incumbent ${a.incumbent?.profitFactorUnbounded?'inf':a.incumbent?.profitFactor??'n/a'}, net ${rec.netPnl}, drawdown ${dd}% (max ${TRIAL_MAX_DD_PCT}%)`;
   }else if(at-lastAt>=TRIAL_IDLE_DAYS*864e5){verdict='reverted';reason=`no close in ${TRIAL_IDLE_DAYS} days (${rec.closes}/${TRIAL_CLOSES})`}
   if(!verdict)return {ran:true,decision:'running',closes:rec.closes};
   if(verdict==='reverted'){
-   const back=setRobinhoodPaperAutopilot({params:a.incumbentParams});
-   if(back.paramsHash!==a.incumbentHash)note('lab-trial',{code:'validation',message:`revert produced ${back.paramsHash}, expected ${a.incumbentHash}`});
+   a.phase='ROLLBACK_PENDING';a.rollbackReason=reason;saveLabTrial(t);
+   try{const back=setRobinhoodPaperAutopilot({params:a.incumbentParams});if(back.paramsHash!==a.incumbentHash||paper().paramsHash!==a.incumbentHash)throw Error(`revert produced ${back.paramsHash}, expected ${a.incumbentHash}`);}
+   catch(e){a.rollbackError=safeMessage(e);saveLabTrial(t);note('lab-trial',e);return {ran:false,reason:'trialRollbackRecovery'}}
    t.rejected=[...new Set([...t.rejected,a.hash])].slice(-200);
   }
   const l=E.loadEvolveLedger();E.ledgerEvent(l,verdict==='kept'?'trial-kept':'trial-reverted',`lab-auto trial ${a.hash}: ${reason}`,{paramsHash:a.hash,incumbentHash:a.incumbentHash});if(verdict==='reverted')l.applied={paramsHash:a.incumbentHash,at,by:'lab-auto-revert'};E.saveEvolveLedger(l);
@@ -792,22 +852,7 @@ export function labProposalPass({at=now()}={}){
  if(!labAutoApplyEnabled())return {ran:false,reason:'autoApplyOff'};
  const doc=readLabRobinhoodChampion(),c=doc?.candidate;
  const refuse=reason=>{const sig=`${c?.paramsHash||'none'}:${reason}`;if(t.lastCheck?.sig!==sig){t.lastCheck={sig,at,reason,hash:c?.paramsHash||null};saveLabTrial(t)}return {ran:false,reason}};
- if(!doc||!c)return refuse('no proposal');
- if(doc.qualificationStage!=='PAPER_REVIEW'||!championPaperAllowed(doc))return refuse(`proposal is ${doc.qualificationStage||championState(doc).state}, not cleared for paper`);
- if(c.paramsHash===p.paramsHash)return refuse('proposal is already running');
- if(t.rejected.includes(c.paramsHash))return refuse('proposal was reverted before');
- if(doc.basis?.incumbentHash!==p.paramsHash)return refuse(`proposal basis ${doc.basis?.incumbentHash||'missing'} is not the running params ${p.paramsHash}`);
- if(!E.withinEvolveBounds(c.params))return refuse('proposal params fall outside the evolution bounds');
- const ev=robinhoodEvidence7d(),incRows=trialCloses(p,p.paramsHash,0),may=laneMayPropose({executablePrices:(ev.sources.robinhood||0)>0,spanDays:ev.spanDays,closes:incRows.length,venueShare:ev.venueShare,syntheticShare:ev.syntheticShare});
- if(!may.ok)return refuse(`evidence: ${may.blockers.join('; ')}`);
- const inc=paperRecordFrom(incRows,{unit:'USD',startBalance:p.startUsd,now:at}),incumbentParams=clone(p.params),incumbentHash=p.paramsHash;
- const applied=setRobinhoodPaperAutopilot({params:c.params});
- if(applied.paramsHash!==c.paramsHash){setRobinhoodPaperAutopilot({params:incumbentParams});return refuse(`applied hash ${applied.paramsHash} does not match proposal ${c.paramsHash}`)}
- t.active={hash:c.paramsHash,incumbentHash,incumbentParams,incumbent:{profitFactor:inc.profitFactor,profitFactorUnbounded:inc.profitFactorUnbounded,closes:inc.closes,maxDrawdownPct:inc.maxDrawdownPct},startedAt:at,proposalVersion:doc.proposalVersion??null,proposalId:doc.candidate?.id||c.paramsHash};
- decide(t,{action:'applied',reason:`Lab proposal v${doc.proposalVersion??'?'} applied to paper as a ${TRIAL_CLOSES}-close trial`,hash:c.paramsHash,incumbentHash,startedAt:at,at,by:'lab-auto'});t.lastCheck=null;saveLabTrial(t);
- const l=E.loadEvolveLedger();l.applied={paramsHash:c.paramsHash,at,by:'lab-auto'};E.ledgerEvent(l,'applied',`lab-auto applied ${c.paramsHash} to paper as a trial against ${incumbentHash}`,{paramsHash:c.paramsHash,by:'lab-auto'});E.saveEvolveLedger(l);
- labTrialJournal(`Robinhood Lab trial ${c.paramsHash} started`,`Paper only. Kept after ${TRIAL_CLOSES} closes if PF >= incumbent ${inc.profitFactorUnbounded?'inf':inc.profitFactor??'n/a'} and drawdown <= ${TRIAL_MAX_DD_PCT}%.`,at);
- return {ran:true,decision:'applied',hash:c.paramsHash};
+ const result=startPaperTrial(doc,p,t,at);return result.ran?result:refuse(result.reason);
 }
 function labPassDue(){return !!timer&&now()-labPassAt>=LAB_PASS_MS}
 // ------------------------------------------------------------------ snapshot

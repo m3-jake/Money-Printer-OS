@@ -164,7 +164,7 @@ export function defaultLedger(){return {version:1,generation:0,champion:null,inc
 const isObj=v=>!!v&&typeof v==='object'&&!Array.isArray(v);
 export function normalizeLedger(s){
  const d=defaultLedger(),src=isObj(s)?s:{};
- const cand=c=>isObj(c)&&isObj(c.params)&&typeof c.paramsHash==='string'?{params:S.normalizeParams(c.params),paramsHash:c.paramsHash,score:num(c.score),metrics:isObj(c.metrics)?c.metrics:{},bySymbol:isObj(c.bySymbol)?c.bySymbol:{},at:num(c.at),generation:num(c.generation)}:null;
+ const cand=c=>isObj(c)&&isObj(c.params)&&typeof c.paramsHash==='string'?{params:S.normalizeParams(c.params),paramsHash:c.paramsHash,score:num(c.score),metrics:isObj(c.metrics)?c.metrics:{},bySymbol:isObj(c.bySymbol)?c.bySymbol:{},at:num(c.at),generation:num(c.generation),basis:isObj(c.basis)?c.basis:null,evidence:isObj(c.evidence)?c.evidence:null}:null;
  return {version:1,generation:Math.max(0,Math.floor(num(src.generation))),champion:cand(src.champion),incumbent:cand(src.incumbent),applied:isObj(src.applied)&&typeof src.applied.paramsHash==='string'?{paramsHash:src.applied.paramsHash,at:num(src.applied.at),by:String(src.applied.by||'operator')}:null,
   history:(Array.isArray(src.history)?src.history.filter(isObj):[]).slice(0,HISTORY_CAP),events:(Array.isArray(src.events)?src.events.filter(isObj):[]).slice(0,EVENT_CAP),lastRunAt:num(src.lastRunAt),lastError:isObj(src.lastError)?src.lastError:null,holdoutLookedThrough:num(src.holdoutLookedThrough),...(d.version?{}:{})};
 }

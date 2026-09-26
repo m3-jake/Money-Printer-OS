@@ -33,7 +33,7 @@ function addCloses(hash, n, pnl, startAt) {
   J.savePaper(p, { force: true });
 }
 function propose(params, basisHash, extra = {}) {
-  const norm = S.normalizeParams({ ...params, sampleMs: RH.__testing.TICK_MS }), doc = { schema: 'mpo.lab-module-champion.v1', module: 'robinhood', stateSchema: 'mpo.champion-state.v1', state: 'PAPER', paperPromotionAllowed: true, qualificationStage: 'PAPER_REVIEW', liveActivationAllowed: false, automaticLivePromotionAllowed: false, liveExecution: 'manual', proposalVersion: 1, supersedes: null, basis: { incumbentHash: basisHash, trials: 12 }, publishedAt: T0, candidate: { params: norm, paramsHash: S.paramsHash(norm) }, ...extra };
+  const norm = S.normalizeParams({ ...params, sampleMs: RH.__testing.TICK_MS }), doc = { schema: 'mpo.lab-module-champion.v1', module: 'robinhood', stateSchema: 'mpo.champion-state.v1', state: 'PAPER', paperPromotionAllowed: true, qualificationStage: 'PAPER_REVIEW', liveActivationAllowed: false, automaticLivePromotionAllowed: false, liveExecution: 'manual', proposalVersion: 1, supersedes: null, basis: { incumbentHash: basisHash, trials: 12 }, publishedAt: T0, evidence:{evaluatorVersion:'robinhood-backtest.v2',datasetHash:'a'.repeat(64),beatsIncumbent:true,holdout:{pass:true,closes:25,profitFactor:2,pnlUsd:25,robinhoodShare:1,through:T0}}, candidate: { params: norm, paramsHash: S.paramsHash(norm) }, ...extra };
   fs.mkdirSync(path.dirname(RH.__testing.labChampionFile), { recursive: true }); fs.writeFileSync(RH.__testing.labChampionFile, JSON.stringify(doc));
   return doc.candidate.paramsHash;
 }
@@ -104,4 +104,60 @@ test('a trial with no close in 14 days reverts; a hand edit abandons it', () => 
   assert.equal(RH.labProposalPass({ at: T0 }).decision, 'applied');
   RH.setRobinhoodPaperAutopilot({ params: { ...paper().params, maxHoldMin: 45 } });
   assert.equal(RH.labProposalPass({ at: T0 + 1000 }).decision, 'abandoned');
+});
+
+test('corrupt trial authority refuses application without overwriting evidence',()=>{
+ reset();const p=paper();addCloses(p.paramsHash,25,1,T0-3*DAY);propose(candidateParams(p.params),p.paramsHash);
+ const file=path.join(process.env.MONEY_PRINTER_DATA_DIR,'robinhood-lab-trial.json');fs.writeFileSync(file,'{torn');
+ assert.equal(RH.labProposalPass({at:T0}).reason,'labTrialRecovery');assert.equal(fs.readFileSync(file,'utf8'),'{torn');assert.equal(paper().paramsHash,p.paramsHash);
+});
+test('loss budget reverts before 20 outcomes; stale and future proposals are refused',()=>{
+ reset();const p=paper(),inc=p.paramsHash;addCloses(inc,25,1,T0-3*DAY);
+ propose(candidateParams(p.params),inc,{publishedAt:T0-8*DAY});assert.match(RH.labProposalPass({at:T0}).reason,/stale/);
+ propose(candidateParams(p.params),inc,{publishedAt:T0+1});assert.match(RH.labProposalPass({at:T0}).reason,/future/);
+ const hash=propose(candidateParams(p.params),inc);assert.equal(RH.labProposalPass({at:T0}).decision,'applied');
+ addCloses(hash,1,-40,T0);const r=RH.labProposalPass({at:T0+DAY});assert.equal(r.decision,'reverted');assert.match(r.reason,/budget/);assert.equal(paper().paramsHash,inc);
+});
+test('manual Lab apply uses the same safety, provenance, evidence and bounded trial gate',()=>{
+ reset();const p=paper(),inc=p.paramsHash;addCloses(inc,25,1,T0-3*DAY);const params=candidateParams(p.params);
+ for(const extra of [{publishedAt:T0-8*DAY},{basis:{incumbentHash:'wrong'}},{qualificationStage:'RESEARCH_ONLY'},{liveExecution:'automatic'},{liveActivationAllowed:true},{evidence:{evaluatorVersion:'v1',datasetHash:'a'.repeat(64)}},{evidence:{evaluatorVersion:'robinhood-backtest.v2',datasetHash:'not-a-hash'}}]){
+  const hash=propose(params,inc,extra);assert.throws(()=>RH.applyRobinhoodEvolution({paramsHash:hash}),e=>e.code==='notQualified');assert.equal(paper().paramsHash,inc);
+ }
+ const hash=propose(params,inc);delete process.env.ROBINHOOD_LAB_AUTO_APPLY_PAPER;
+ const result=RH.applyRobinhoodEvolution({paramsHash:hash});assert.equal(result.applied,true);assert.equal(result.trial.status,'RUNNING');assert.equal(result.trial.incumbentHash,inc);assert.equal(E.loadEvolveLedger().applied.by,'operator');
+ assert.equal(RH.applyRobinhoodEvolution({paramsHash:hash}).applied,false);addCloses(hash,1,-40,T0);assert.equal(RH.labProposalPass({at:T0+DAY}).decision,'reverted');assert.equal(paper().paramsHash,inc);
+});
+test('trial state missing its epoch or equity and inconsistent rollback policy fail closed without overwriting authority',()=>{
+ for(const change of [a=>{delete a.startedAt},a=>{delete a.startEquityUsd},a=>{a.startedAt=T0+1},a=>{a.incumbentParams=candidateParams(a.incumbentParams)},a=>{a.phase='UNKNOWN'}]){
+  reset();const p=paper();addCloses(p.paramsHash,25,1,T0-3*DAY);const hash=propose(candidateParams(p.params),p.paramsHash);assert.equal(RH.labProposalPass({at:T0}).decision,'applied');
+  const file=path.join(process.env.MONEY_PRINTER_DATA_DIR,'robinhood-lab-trial.json'),state=JSON.parse(fs.readFileSync(file));change(state.active);fs.writeFileSync(file,JSON.stringify(state));const before=fs.readFileSync(file,'utf8');
+  addCloses(hash,20,2,T0-DAY);assert.equal(RH.labProposalPass({at:T0+DAY}).reason,'labTrialRecovery');assert.equal(fs.readFileSync(file,'utf8'),before);assert.equal(paper().paramsHash,hash);
+ }
+});
+test('PREPARING and interrupted rollback reconcile durable policy on restart',()=>{
+ reset();const p=paper(),inc=p.paramsHash;addCloses(inc,25,1,T0-3*DAY);const hash=propose(candidateParams(p.params),inc);assert.equal(RH.labProposalPass({at:T0}).decision,'applied');
+ const file=path.join(process.env.MONEY_PRINTER_DATA_DIR,'robinhood-lab-trial.json'),state=JSON.parse(fs.readFileSync(file));state.active.phase='PREPARING';fs.writeFileSync(file,JSON.stringify(state));
+ assert.equal(RH.labProposalPass({at:T0}).decision,'running');assert.equal(JSON.parse(fs.readFileSync(file)).active.phase,'RUNNING');
+ state.active.phase='ROLLBACK_PENDING';state.active.rollbackReason='interrupted budget rollback';fs.writeFileSync(file,JSON.stringify(state));RH.setRobinhoodPaperAutopilot({params:state.active.incumbentParams});
+ const r=RH.labProposalPass({at:T0});assert.equal(r.decision,'reverted');assert.equal(paper().paramsHash,inc);assert.equal(JSON.parse(fs.readFileSync(file)).active,null);assert.equal(E.loadEvolveLedger().applied.paramsHash,inc);
+});
+test('a candidate with mismatched hash or open positions cannot start a trial',()=>{
+ reset();const p=paper(),inc=p.paramsHash;addCloses(inc,25,1,T0-3*DAY);const hash=propose(candidateParams(p.params),inc);
+ const file=RH.__testing.labChampionFile,doc=JSON.parse(fs.readFileSync(file));doc.candidate.paramsHash='0'.repeat(12);fs.writeFileSync(file,JSON.stringify(doc));assert.match(RH.labProposalPass({at:T0}).reason,/params hash/);assert.equal(paper().paramsHash,inc);
+ propose(candidateParams(p.params),inc);const held=J.loadPaper();held.positions=[{id:'held',status:'OPEN',symbol:'BTC-USD',qty:.01,costUsd:1,entryPrice:100,paramsHash:inc}];J.savePaper(held,{force:true});assert.match(RH.labProposalPass({at:T0}).reason,/must be flat/);assert.equal(paper().paramsHash,inc);assert.notEqual(hash,inc);
+});
+test('failed rollback retains its authority and actual applied hash until a successful retry',()=>{
+ reset();const p=paper(),inc=p.paramsHash;addCloses(inc,25,1,T0-3*DAY);const hash=propose(candidateParams(p.params),inc);assert.equal(RH.labProposalPass({at:T0}).decision,'applied');addCloses(hash,1,-40,T0);
+ const native=fs.renameSync;fs.renameSync=(from,to,...rest)=>{if(to===J.PAPER_FILE)throw Object.assign(Error('injected paper disk failure'),{code:'EIO'});return native(from,to,...rest)};
+ try{assert.equal(RH.labProposalPass({at:T0+DAY}).reason,'trialRollbackRecovery')}finally{fs.renameSync=native}
+ const state=JSON.parse(fs.readFileSync(RH.__testing.labTrialFile));assert.equal(state.active.phase,'ROLLBACK_PENDING');assert.equal(state.lastDecision.action,'applied');assert.equal(paper().paramsHash,hash);assert.equal(E.loadEvolveLedger().applied.paramsHash,hash);
+ assert.equal(RH.labProposalPass({at:T0+DAY}).decision,'reverted');assert.equal(paper().paramsHash,inc);assert.equal(E.loadEvolveLedger().applied.paramsHash,inc);assert.equal(JSON.parse(fs.readFileSync(RH.__testing.labTrialFile)).active,null);
+});
+test('future candidate outcomes never count as prospective evidence',()=>{
+ reset();const p=paper(),inc=p.paramsHash;addCloses(inc,25,1,T0-3*DAY);const hash=propose(candidateParams(p.params),inc);assert.equal(RH.labProposalPass({at:T0}).decision,'applied');addCloses(hash,20,2,T0+DAY);const result=RH.labProposalPass({at:T0+1});assert.equal(result.decision,'running');assert.equal(result.closes,0);
+});
+test('a successful keep waits for a flat portfolio even after twenty closes',()=>{
+ reset();const p=paper(),inc=p.paramsHash;addCloses(inc,25,1,T0-3*DAY);const hash=propose(candidateParams(p.params),inc);assert.equal(RH.labProposalPass({at:T0}).decision,'applied');addCloses(hash,20,2,T0);
+ const held=J.loadPaper();held.positions=[{id:'held',status:'OPEN',symbol:'BTC-USD',qty:.01,costUsd:1,entryPrice:100,paramsHash:hash}];J.savePaper(held,{force:true});const wait=RH.labProposalPass({at:T0+DAY});assert.equal(wait.decision,'running');assert.equal(wait.closes,20);assert.ok(JSON.parse(fs.readFileSync(RH.__testing.labTrialFile)).active);
+ const flat=J.loadPaper();flat.positions=[];J.savePaper(flat,{force:true});assert.equal(RH.labProposalPass({at:T0+DAY}).decision,'kept');
 });
