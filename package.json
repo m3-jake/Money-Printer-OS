@@ -59,7 +59,7 @@
     "release:windows-asar": "node scripts/build-windows-asar.mjs",
     "smoke:windows": "node scripts/smoke-windows.mjs",
     "test:product-economics": "node --test tests/product-economics.test.mjs tests/product-economics-http.test.mjs",
-    "test:unit-economics": "node --test tests/api-unit-economics.test.mjs tests/transaction-indexer-economics.test.mjs",
+    "test:unit-economics": "node --test tests/api-unit-economics.test.mjs tests/transaction-indexer-economics.test.mjs tests/transaction-indexer-sol.test.mjs",
     "sync:robinhood-panel": "node scripts/sync-robinhood-panel.mjs",
     "robinhood:keygen": "node scripts/robinhood-keygen.mjs",
     "collector": "node scripts/run-collector.mjs",
