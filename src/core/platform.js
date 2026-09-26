@@ -40,6 +40,7 @@ export class MarketPlatform {
   constructor({file=':memory:',dataDir=null,providers=null,stockQuotes=undefined,stockClock=undefined,stockSession=undefined}={}){
     this.store=new CoreDatabase(file);this.ledger=new UnifiedLedger(this.store);this.bus=new MarketEventBus();this.risk=new RiskGovernor(this.store,this.ledger,this.bus);this.strategies=new StrategyRegistry(this.store);this.legacyReaders={};this.replays=new Map();this.fred=new FredSource();this.macroCache=null;this.edgar=new EdgarSource();this.weather=new WeatherSource();this.weatherCache=null;this.sportsCache=null;this.sportsLive=new Map();this.sportsFetch=(url,opt)=>globalThis.fetch(url,opt);this.wireFetch=(url,opt)=>globalThis.fetch(url,opt);this.wireFeeds=new Map();this.whaleSeenTs=Date.now();this.eventsCache=null;
     this.store.db.exec(`CREATE TABLE IF NOT EXISTS wallet_labels(address TEXT PRIMARY KEY, label TEXT NOT NULL, note TEXT NOT NULL, at INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS integration_milestones(id TEXT PRIMARY KEY, at INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS wallet_label_events(seq INTEGER PRIMARY KEY AUTOINCREMENT, address TEXT NOT NULL, label TEXT, note TEXT NOT NULL, at INTEGER NOT NULL);`);
     this.store.db.exec(`CREATE TABLE IF NOT EXISTS lab_runs(id TEXT PRIMARY KEY, at INTEGER NOT NULL, source TEXT NOT NULL, key TEXT NOT NULL, start_ms INTEGER NOT NULL, end_ms INTEGER NOT NULL,
       strategy TEXT NOT NULL, params TEXT NOT NULL, dataset_fp TEXT NOT NULL, records INTEGER NOT NULL, code_version TEXT NOT NULL, machine TEXT NOT NULL, seed TEXT, result TEXT NOT NULL);
@@ -418,6 +419,11 @@ export class MarketPlatform {
       {id:'alpaca-iex',kind:'stock quotes',...this.stocks.quoteSource.status()},{id:'fred',kind:'macro',...this.fred.status()},{id:'nws',kind:'weather',...this.weather.status()},{id:'sec-edgar',kind:'filings',...this.edgar.status()},
       ...(this.sportsCache?.data?.feeds||[]).map(f=>({id:f.sport.toLowerCase()+'-live',kind:'sports live',status:f.status,lastSuccess:this.sportsCache.at,lastError:f.error||null})),
       ...[...this.wireFeeds.values()].map(v=>({id:'rss-'+v.status.id,kind:'wire feed',status:v.status.status,lastSuccess:v.status.status==='CONNECTED'?v.at:null,lastError:v.status.error||null}))];
+    // Journal: the first time each source connects in this data dir is a project milestone.
+    if(this.dataDir)for(const s of sources.filter(s=>s.status==='CONNECTED')){
+      if(this.store.db.prepare('SELECT 1 FROM integration_milestones WHERE id=?').get(s.id))continue;
+      try{appendProjectJournal(path.join(this.dataDir,'project-journal.ndjson'),{kind:'integration',title:`Integration connected: ${s.id}`,detail:`${s.kind} source first connected in this data folder.`,at:now});this.store.db.prepare('INSERT INTO integration_milestones VALUES(?,?)').run(s.id,now);}catch{this.journalError='Could not append integration milestone';}
+    }
     return {at:now,sources,eventBus:this.bus.snapshot(),database:{...this.store.health(),bytes:dbBytes,tables:counts},
       caches:{macroAgeMs:age(this.macroCache),weatherAgeMs:age(this.weatherCache),sportsAgeMs:age(this.sportsCache),eventsAgeMs:age(this.eventsCache),openReplays:this.replays.size},
       process:{rssMb:Math.round(mem.rss/1048576),heapUsedMb:Math.round(mem.heapUsed/1048576),uptimeSec:Math.round(process.uptime()),cpuCount:os.cpus().length,loadAvg1:process.platform==='win32'?'unavailable (not provided on Windows)':Math.round(load[0]*100)/100,gpu:'unavailable (not measured by MPOS core)'},

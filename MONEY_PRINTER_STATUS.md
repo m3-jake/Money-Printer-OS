@@ -1092,3 +1092,19 @@ Kalshi and Robinhood event contracts are already covered by the MPOS core platfo
   - engine process RSS/heap/uptime/CPU count. Load average is **"unavailable (not provided on Windows)"** and GPU is **"unavailable (not measured by MPOS core)"**, per the no-fake-metrics rule.
 - **Source states:** every source reports **IDLE** until first contact instead of a misleading DISCONNECTED.
 - Tests unchanged in count (57 core); `test:all` green.
+
+## Batch AF (2026-09-26): integration milestones in the Journal; architecture doc
+
+- The first time each source connects in a data folder, the core writes a project-journal milestone ("Integration connected: fred", …) once (`integration_milestones` table). Risk halts, strategy moves and paper funding already journal.
+- `docs/MPOS-UNIFICATION.md` now has the as-built architecture map (core / providers / engines / apps), the facts-vs-analysis, availability-time, unknown-stays-unknown and no-real-money rules, the optional keys and what they unlock, and the remaining work.
+
+## Unification brief: where it stands (after batches M–AF)
+
+- **Phases 0–1:** done (Codex's core, plus risk-state and sell-trap fixes, strategy registry, legacy coverage, Lab sync).
+- **Phase 2:** Kalshi, Polymarket suite and Arbitrage with structured terms, human-attested EXACT and venue fees.
+- **Phase 3:** Stocks (BrokerProvider paper broker) and Market Lab replay.
+- **Phase 4:** Macro, EDGAR, Wire, Sports, Weather, Whale Watch.
+- **Phase 5:** event pages.
+- **Phase 6:** walk-forward, Monte Carlo, evidence to the gate.
+- **Phase 7:** icons, diagnostics, strategy actions, docs.
+- **Needs bing** (optional keys): Alpaca, FRED, SEC_USER_AGENT; and the Evolution Lab candle look-ahead fix (side task offered). Real-money execution stays off by policy.

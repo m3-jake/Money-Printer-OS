@@ -41,6 +41,41 @@ All new orders go through proposal validation and the Risk Governor. Live adapte
 
 Kalshi uses fixed-point dollar strings and reciprocal YES/NO bids. Do not interpret dollar strings as cents. Global Polymarket CLOB token IDs must stay distinct from US market slugs.
 
-## Remaining phase gates
+## Architecture as built (2026-09-26, batches M–AE)
 
-Phase completion requires executable tests and a running desktop. Account reconciliation and live venue certification, a full legacy-ledger migration, advanced strategy lifecycle, and additional data subscriptions are separate work items; a registry entry or empty window does not complete them.
+Everything below lives in `src/core/` behind `/api/platform/*` (`src/core/http.js`, localhost + same-origin + JSON for mutations) and one `MarketPlatform` instance (`src/core/platform.js`) that owns `mpos-core.sqlite`. Each desktop window is a small renderer in `public/js/` that reads those endpoints. Window names are plain ("Kalshi", never "KALSHI.EXE").
+
+| Layer | Module | What it does |
+| --- | --- | --- |
+| Core | `model.js`, `database.js`, `eventBus.js` | Canonical entity kinds and source-qualified IDs; `observedAt` vs `availableAt` on every entity; append-only ledger/transition triggers; bounded event bus (`MARKET_PRICE_UPDATED` … `RISK_STATE_CHANGED`, `SEC_FILING_RECEIVED`, `SPORT_EVENT_UPDATED`, `WALLET_ACTIVITY`, `NEWS_RECEIVED`) |
+| Core | `ledger.js`, `risk.js`, `executionBoundary.js` | Unified fixed-point ledger (portfolio reconstructed from entries only); Risk Governor GREEN/YELLOW/RED/HALTED with persistent STOP; every live transport refuses while accounts are unreconciled |
+| Providers | `predictionProviders.js`, `provider.js` | Kalshi (series fee model + settlement source, strikes, events) and Polymarket (named-outcome binaries, fee schedule, public search); health IDLE/CONNECTED/DEGRADED/DISCONNECTED/AUTH ERROR/STALE |
+| Providers | `brokers.js`, `macro.js`, `edgar.js`, `weather.js`, `sports.js` feeds, `wire.js` RSS | Alpaca IEX quotes (key), FRED CSV/ALFRED vintages (key for as-of), SEC EDGAR (declared User-Agent required), NWS + NHC, MLB Stats API + NHL web API, Fed/BEA/CFTC RSS |
+| Engines | `contractTerms.js`, `contracts.js`, `fees.js` | Contract propositions → STRONG/RELATED/NOT EQUIVALENT; EXACT only by human attestation bound to rule-text fingerprints; venue taker fees per fill |
+| Engines | `strategies.js`, `labSync.js`, `replay.js` | Strategy registry + lifecycle + multi-criteria promotion gate; Lab champions mirrored through it; availability-ordered replay, walk-forward, seeded Monte Carlo, reproducible `lab_runs` |
+| Engines | `correlation.js`, `whales.js`, `legacyBooks.js`, `comboPerformance.js` | Event pages (one event → many markets); Solana wallet graph/flags; read-only legacy books; combo performance with Wilson CI |
+| Apps | Command Center, Kalshi, Polymarket (Live combos / Markets / Positions / History / Performance), Arbitrage, Stocks, Market Lab, Macro, EDGAR, Weather, Sports, Wire, Whale Watch (Solana tab) | `public/js/mpo-*.js` |
+
+### Rules every module follows
+
+- **Facts vs analysis.** Venue/agency data is stored as fact with its own timestamp. Links, catalysts, entities, importance, sector exposure and flags are labelled RULE_BASED / SPECULATIVE / HEURISTIC and never written into the facts. No language model is used anywhere in the core.
+- **Availability time.** Backtests and replays reveal records by `availableAt`: candle-derived tape rows at candle close, Alpaca bars at bar close, FRED vintages at end of the publication day (ET), SEC filings at acceptance time, RSS items at min(published, received).
+- **Unknown stays unknown.** Missing fees, terms, quotes, keys or metrics are shown as unavailable and block any number that would depend on them (locked returns, orders, as-of history).
+- **No real money.** PAPER and MANUAL_APPROVAL only; LIVE is refused by the proposal path, the broker, the strategy registry and the execution boundary.
+
+### Keys that unlock more (all optional; nothing is borrowed or invented)
+
+| Setting (`%APPDATA%\Money Printer OS\.env`) | Unlocks |
+| --- | --- |
+| `ALPACA_KEY_ID`, `ALPACA_SECRET_KEY` | Stock quotes (Stocks orders), Market Lab minute-bar replay, equities lane bars |
+| `FRED_API_KEY` | As-of (vintage) macro history for backtests |
+| `SEC_USER_AGENT="Name you@example.com"` | EDGAR filings (SEC requires a declared contact) |
+| `NWS_USER_AGENT` | Optional contact in NWS requests |
+
+## Remaining work (not done)
+
+- Live venue certification and account reconciliation (policy: no real money).
+- A reconciled import of legacy books into the ledger (they are shown read-only).
+- Event pages for sports, weather and corporate events (they exist in their own windows and the Wire).
+- Kalshi event-level fee overrides; soccer three-way, player-prop and non-sports contract terms.
+- Distributed Market Lab sweeps (the Evolution Lab/Furnace does heavy search).
