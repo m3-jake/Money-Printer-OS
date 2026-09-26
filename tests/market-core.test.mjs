@@ -20,6 +20,7 @@ import { comboPerformance,wilson } from '../src/core/comboPerformance.js';
 import { extractTerms,matchTerms,sameName,participants,candidatePairs,termsFingerprint } from '../src/core/contractTerms.js';
 import { VERIFY_PHRASE } from '../src/core/platform.js';
 import { kalshiFeeModel,polymarketFeeModel,takerFee } from '../src/core/fees.js';
+import { AlpacaQuotes,STOCK_VENUE } from '../src/core/brokers.js';
 import { StrategyRegistry,promotionCheck,labChampionLifecycle } from '../src/core/strategies.js';
 import { assertGlobalTradingNotHalted } from '../src/core/executionBoundary.js';
 import { localMutationAllowed } from '../src/core/http.js';
@@ -348,4 +349,48 @@ test('paper fills default to the venue fee schedule; no schedule and no typed fe
   const typed=await p.propose({id:'v2',venue:'kalshi',sourceId:'TEST',mode:'PAPER',outcome:'YES',side:'BUY',quantity:10,feeBps:100});
   assert.equal(typed.order.fee,'0.050000');assert.equal(typed.order.feeModel.kind,'USER_MODELED_BPS');p.close();
   const q=make(null);await assert.rejects(q.propose({id:'v3',venue:'kalshi',sourceId:'TEST',mode:'PAPER',outcome:'YES',side:'BUY',quantity:10}),/Venue fee schedule unavailable/);q.close();
+});
+
+function stockPlatform({quote={bid:99.9,ask:100.1,bidSize:5,askSize:5},state='OPEN',clock=()=>Date.now()}={}){
+  const src={status:()=>({status:'CONNECTED'}),quotes:async syms=>Object.fromEntries(syms.map(x=>[x,{symbol:x,...quote,quoteAt:clock(),receivedAt:clock(),source:'test'}]))};
+  const p=new MarketPlatform({providers:new ProviderRegistry(),stockQuotes:src,stockClock:clock,stockSession:()=>({state})});
+  p.risk.setLimits({maxOrderUsd:1000,maxPositionUsd:1000,maxEventUsd:1000,maxVenueUsd:1000,maxStrategyUsd:1000,maxTotalUsd:1000});return p;
+}
+test('stocks paper broker: preview -> risk -> fill in the unified ledger; sells pay pass-through fees',async()=>{
+  const p=stockPlatform();p.deposit({venue:STOCK_VENUE,amount:'1000',id:'s1'});
+  const b=await p.stocksPreview({symbol:'spy',side:'BUY',notionalUsd:250});
+  assert.equal(b.status,'PROPOSED');assert.equal(b.order.price,100.1);assert.equal(b.order.quantity,2.497502);assert.equal(b.order.fee,'0.000000');
+  assert.equal(p.stocks.account().buyingPower<1000,true);
+  assert.equal(p.stocks.submit(b.id).status,'FILLED');
+  const pos=p.stocks.positions({SPY:{bid:99.9}});assert.equal(pos[0].symbol,'SPY');assert.equal(pos[0].quantity,2.497502);assert.ok(pos[0].unrealized<0);
+  // A sale above $500 would pay SEC; this one is small: no SEC, no TAF (<=50 shares).
+  const s2=await p.stocksPreview({symbol:'SPY',side:'SELL',quantity:1});assert.equal(s2.order.price,99.9);assert.equal(s2.order.fee,'0.000000');p.stocks.submit(s2.id);
+  assert.equal(p.stocks.positions()[0].quantity,1.497502);
+  // Overselling is refused by the governor.
+  const over=await p.stocksPreview({symbol:'SPY',side:'SELL',quantity:5});assert.equal(over.status,'REJECTED');assert.ok(over.decision.reasons.includes('OVERSELL'));
+  // Cancel a pending preview; a filled order cannot be cancelled.
+  const c=await p.stocksPreview({symbol:'QQQ',side:'BUY',quantity:1});assert.equal(p.stocks.cancel(c.id).status,'CANCELLED');assert.throws(()=>p.stocks.cancel(b.id),/FILLED/);
+  p.close();
+});
+test('stocks paper broker refuses closed markets, missing keys, one-sided quotes, non-marketable limits and live mode',async()=>{
+  const closed=stockPlatform({state:'CLOSED'});await assert.rejects(closed.stocksPreview({symbol:'SPY',side:'BUY',quantity:1}),/closed/);closed.close();
+  const oneSided=stockPlatform({quote:{bid:null,ask:100}});await assert.rejects(oneSided.stocksPreview({symbol:'SPY',side:'BUY',quantity:1}),/two-sided/);oneSided.close();
+  const p=stockPlatform();
+  await assert.rejects(p.stocksPreview({symbol:'SPY',side:'BUY',quantity:1,type:'limit',limitPrice:99}),/not marketable/);
+  await assert.rejects(p.stocksPreview({symbol:'SPY',side:'BUY',quantity:1,mode:'LIVE'}),/no real brokerage/);
+  await assert.rejects(p.stocksPreview({symbol:'bad symbol!',side:'BUY',quantity:1}),/Invalid symbol/);
+  const noKey=new AlpacaQuotes({env:{}});await assert.rejects(noKey.quotes(['SPY']),/ALPACA_KEY_ID/);assert.equal(noKey.status().status,'NOT CONFIGURED');
+  const st=await new MarketPlatform({providers:new ProviderRegistry(),stockQuotes:noKey}).stocksStatus('SPY');assert.match(st.quoteError,/unavailable/);assert.deepEqual(st.quotes,{});
+  p.close();
+});
+test('stale stock quote at submit time is rejected by the governor',async()=>{
+  let now=Date.now();const p=stockPlatform({clock:()=>now});p.deposit({venue:STOCK_VENUE,amount:'100',id:'s'});
+  const b=await p.stocksPreview({symbol:'SPY',side:'BUY',quantity:0.5});now+=0;// quote stamped at preview time
+  const real=Date.now;Date.now=()=>now+60000;try{assert.equal(p.stocks.submit(b.id).status,'REJECTED');}finally{Date.now=real;}
+  p.close();
+});
+test('Alpaca snapshot parsing keeps IEX sizes and timestamps; auth errors are labelled',async()=>{
+  const q=new AlpacaQuotes({env:{ALPACA_KEY_ID:'k',ALPACA_SECRET_KEY:'s'},fetchImpl:async()=>({ok:true,json:async()=>({SPY:{latestQuote:{bp:99,ap:101,bs:2,as:3,t:'2026-09-25T15:00:00Z'},latestTrade:{p:100,t:'2026-09-25T15:00:00Z'},prevDailyBar:{c:98}}})})});
+  const r=await q.quotes(['SPY','nope!']);assert.deepEqual(Object.keys(r),['SPY']);assert.equal(r.SPY.ask,101);assert.equal(r.SPY.askSize,3);assert.equal(r.SPY.quoteAt,Date.parse('2026-09-25T15:00:00Z'));
+  const bad=new AlpacaQuotes({env:{ALPACA_KEY_ID:'k',ALPACA_SECRET_KEY:'s'},fetchImpl:async()=>({ok:false,status:403})});await assert.rejects(bad.quotes(['SPY']));assert.equal(bad.status().status,'AUTH ERROR');
 });

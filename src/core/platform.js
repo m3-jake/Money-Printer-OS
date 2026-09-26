@@ -15,13 +15,15 @@ import { legacyCoverage } from './legacyBooks.js';
 import { syncLabChampions } from './labSync.js';
 import { extractTerms,matchTerms,termsFingerprint,candidatePairs } from './contractTerms.js';
 import { describeFeeModel,takerFee } from './fees.js';
+import { PaperBroker,STOCK_VENUE,cleanSymbols,EQUITY_FEE_MODEL } from './brokers.js';
+import { readBarStore } from '../robinhoodEquitiesData.js';
 
 export const VERIFY_PHRASE='I READ BOTH RULE TEXTS AND THEY SETTLE IDENTICALLY';
 const swapSides=book=>({...book,yes:book.no,no:book.yes});
 
 export class MarketPlatform {
-  constructor({file=':memory:',dataDir=null,providers=null}={}){
-    this.store=new CoreDatabase(file);this.ledger=new UnifiedLedger(this.store);this.bus=new MarketEventBus();this.risk=new RiskGovernor(this.store,this.ledger,this.bus);this.strategies=new StrategyRegistry(this.store);this.legacyReaders={};this.dataDir=dataDir;
+  constructor({file=':memory:',dataDir=null,providers=null,stockQuotes=undefined,stockClock=undefined,stockSession=undefined}={}){
+    this.store=new CoreDatabase(file);this.ledger=new UnifiedLedger(this.store);this.bus=new MarketEventBus();this.risk=new RiskGovernor(this.store,this.ledger,this.bus);this.strategies=new StrategyRegistry(this.store);this.legacyReaders={};this.stocks=new PaperBroker({platform:this,...(stockQuotes?{quotes:stockQuotes}:{}),...(stockClock?{clock:stockClock}:{}),...(stockSession?{session:stockSession}:{})});this.dataDir=dataDir;
     this.providers=providers||new ProviderRegistry();if(!providers){this.providers.register(new KalshiProvider());this.providers.register(new PolymarketProvider());}
     this.journalError=null;
     if(dataDir)this.bus.on('RISK_STATE_CHANGED',event=>{
@@ -46,7 +48,7 @@ export class MarketPlatform {
     this.bus.publish('ORDERBOOK_UPDATED',{contractId:contract.id,observedAt:book.observedAt});return {contract,book};}
   watch(id,on){if(!this.store.get(id))throw new Error('Unknown instrument');if(on)this.store.db.prepare('INSERT OR IGNORE INTO watchlist VALUES(?,?)').run(id,Date.now());else this.store.db.prepare('DELETE FROM watchlist WHERE entity_id=?').run(id);return {ok:true};}
   deposit({venue,amount,id}){
-    this.providers.get(venue);const n=units(amount);if(n<=0n||n>1000000000000n)throw new Error('Paper funding must be between 0 and 1,000,000 USD');
+    if(venue!==STOCK_VENUE)this.providers.get(venue);const n=units(amount);if(n<=0n||n>1000000000000n)throw new Error('Paper funding must be between 0 and 1,000,000 USD');
     const sourceKey=`paper-deposit:${id||randomUUID()}`,prior=this.store.db.prepare('SELECT * FROM ledger WHERE source_key=?').get(sourceKey);
     if(prior){if(prior.venue!==venue||prior.gross_units!==String(n))throw new Error('Funding ID reused');return this.ledger.portfolio();}
     this.store.transaction(()=>{this.ledger.append({sourceKey,at:Date.now(),mode:'PAPER',venue,account:'manual',currency:'USD',kind:'DEPOSIT',gross:amount,reference:'User-authorized simulated funding'});this.store.record('PAPER_FUNDED',{venue,amount:String(amount)});});
@@ -91,7 +93,7 @@ export class MarketPlatform {
       // The same observed depth cannot be consumed by multiple simulated fills.
       const used=this.store.db.prepare("SELECT payload FROM proposals WHERE status='FILLED'").all().some(r=>{const p=JSON.parse(r.payload);return p.bookFingerprint===order.bookFingerprint&&p.instrumentId===order.instrumentId&&p.side===order.side;});
       if(used)throw new Error('Book snapshot already consumed; request a fresh preview');
-      this.ledger.append({sourceKey:`paper-fill:${id}`,at:Date.now(),mode:'PAPER',venue:order.venue,account:order.account,currency:order.currency,kind:order.side,instrumentId:order.instrumentId,strategyId:order.strategyId,eventId:order.eventId,quantity:String(order.quantity),gross:order.gross,fee:order.fee,reference:`Simulated depth fill; proposal ${id}; ${order.feeModel.kind==='USER_MODELED_BPS'?`modeled fee ${order.feeModel.bps} bps`:`venue fee schedule (${order.feeModel.model}, rate ${order.feeModel.rate})`}`});
+      this.ledger.append({sourceKey:`paper-fill:${id}`,at:Date.now(),mode:'PAPER',venue:order.venue,account:order.account,currency:order.currency,kind:order.side,instrumentId:order.instrumentId,strategyId:order.strategyId,eventId:order.eventId,quantity:String(order.quantity),gross:order.gross,fee:order.fee,reference:`Simulated depth fill; proposal ${id}; ${order.feeModel.kind==='USER_MODELED_BPS'?`modeled fee ${order.feeModel.bps} bps`:order.feeModel.kind==='VENUE_SCHEDULE'?`venue fee schedule (${order.feeModel.model}, rate ${order.feeModel.rate})`:order.feeModel.describe||order.feeModel.kind}`});
       this.store.db.prepare("UPDATE proposals SET status='FILLED',decision=?,updated_at=? WHERE id=?").run(JSON.stringify(decision),Date.now(),id);this.store.record('ORDER_FILLED',{id,mode:'PAPER',simulated:true});
       return {id,status:'FILLED',simulated:true,order};
     });
@@ -141,6 +143,20 @@ export class MarketPlatform {
   }
   // Sync, read-only accessors supplied by the host (dashboard). Keys: solana, robinhoodPractice, usCombos.
   setLegacyReaders(readers={}){this.legacyReaders={...readers};}
+  // Stocks (paper broker). Quotes are fetched per call; a missing key or failure is reported, never filled in.
+  async stocksStatus(symbols=[]){
+    const list=cleanSymbols(symbols);let quotes={},quoteError=null;
+    const held=this.stocks.positions().map(p=>p.symbol),want=cleanSymbols([...list,...held]);
+    if(want.length){try{quotes=await this.stocks.quotes(want);}catch(e){quoteError=e.message;}}
+    return {at:Date.now(),session:this.stocks.session(Date.now()),dataSource:this.stocks.quoteSource.status(),quoteError,quotes,account:this.stocks.account(quotes),positions:this.stocks.positions(quotes),
+      orders:this.stocks.history().slice(0,50),fees:EQUITY_FEE_MODEL.describe,brokers:[{id:STOCK_VENUE,label:'MPOS paper broker',live:false},{id:'robinhood',label:'Robinhood',live:false,note:'No official equities order API is connected; real-money execution is disabled by policy.'}]};
+  }
+  stocksBars(symbol){
+    const sym=cleanSymbols([symbol])[0];if(!sym)throw new Error('Invalid symbol');
+    const dir=this.dataDir||path.resolve(process.env.MONEY_PRINTER_DATA_DIR||'data'),store=readBarStore(dir),bars=store.bars?.[sym]||[];
+    return {symbol:sym,source:store.provider||null,fetchedAt:store.fetchedAt||null,bars:bars.slice(-260),note:bars.length?'Daily bars from the Robinhood equities lane store (split/dividend adjusted).':'No stored daily bars for this symbol (the equities lane fetches bars only with an Alpaca key, for its own symbols).'};
+  }
+  async stocksPreview(input){return this.stocks.preview({...input,id:input.id||randomUUID()});}
   close(){this.store.close();}
 }
 let platform;

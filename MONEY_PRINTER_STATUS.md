@@ -921,3 +921,18 @@ Kalshi and Robinhood event contracts are already covered by the MPOS core platfo
 - Core paper proposals (the Kalshi and Polymarket Markets tabs): the fee field is now optional. Left blank, the fill is charged the venue's published taker fee on the actual fills (`fees.js`), recorded as `feeModel {kind:'VENUE_SCHEDULE', model, rate, source}` and named in the ledger reference. A typed bps still overrides it. No schedule and no typed fee → refused with the reason.
 - **Team-alias table: not built.** On live data Kalshi's NFL/MLB rule text already uses matching names ("KC Chiefs", "Atlanta"), and trailing-letter abbreviations ("Chicago C") are handled, so an alias table would add little. Revisit if NBA/NHL pairs show misses.
 - Tests: +1 (`market-core` 32). `test:all` green (count below).
+
+## Batch U (2026-09-26): Stocks window over a BrokerProvider paper broker (Phase 3)
+
+- **New `src/core/brokers.js`:** `PaperBroker` implements the existing `BROKER_METHODS` contract (account, positions, instruments, quotes, preview, submit, orderStatus, cancel, history) and passes `validateBroker`.
+  - **Order flow:** preview → `risk.propose` → `executePaper` (the governor re-checks at fill time, including quote age) → unified ledger, venue `stocks-paper`.
+  - **Orders:** market or marketable-limit only; nothing rests. NYSE regular session only (`robinhoodEquitiesCalendar.marketState`). Fractional shares to 1e-6, $1 minimum. Buys fill at the ask, sells at the bid.
+  - **Fees:** $0 commission, with SEC §31 and FINRA TAF on sells, reusing `robinhoodEquitiesBook.sellFees` (same source and date).
+  - **Liquidity:** the displayed IEX size feeds the governor's liquidity check.
+  - **Quotes:** `AlpacaQuotes` (snapshots, IEX feed) when `ALPACA_KEY_ID` / `ALPACA_SECRET_KEY` are set. No key → NOT CONFIGURED and every order is refused. AUTH ERROR / DEGRADED / DISCONNECTED are tracked.
+  - **No real brokerage:** Robinhood is listed as not live (no official equities order API for this app; policy forbids real money).
+- **Platform/API:** `GET /api/platform/stocks/status?symbols=`, `GET /stocks/bars?symbol=` (daily bars from the equities-lane store, otherwise "no stored bars"), `POST /stocks/fund|preview|submit|cancel`. Orders can be cancelled (`CANCELLED`) while PROPOSED or AWAITING_APPROVAL.
+- **Stocks window** (`public/js/mpo-stocks.js`, desktop icon STK), in both Simple and Advanced panes: session and data-source line, account tiles, watchlist (kept in this browser) with Chart/Trade, daily-close chart, order ticket with the risk decision shown, positions with allocation bars, orders with cancel, paper funding.
+- **Bug found in the browser and fixed:** the status refresh after an action cleared the action's error, so "Market is closed" never showed. Load and action errors are now separate.
+- **This machine:** no Alpaca key, so quotes are unavailable and orders are refused. Correct, not a bug. Add a free Alpaca market-data key to `%APPDATA%Money Printer OS.env` to enable it.
+- **Tests:** 4 new (fills and ledger, SEC/TAF, oversell, cancel; closed market, no key, one-sided quote, non-marketable limit, LIVE refused; stale quote at fill; Alpaca parsing and auth labels). `market-core` 36; `test:all` green.
