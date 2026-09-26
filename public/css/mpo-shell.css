@@ -243,7 +243,7 @@ button, input, select, textarea { font: inherit; }
 /* Persistent corner product mark: the spiked-cash render sits beside the text
    logo at all times (same asset as the boot mark, Money and Updater panels). */
 .mpo-logo{position:relative;animation:mpoFloat 6s ease-in-out infinite}
-.brand-logo{display:block;width:320px;height:auto;animation:mpoBreathe 4.5s ease-in-out infinite}
+.brand-logo{display:block;width:160px;height:auto;animation:mpoBreathe 4.5s ease-in-out infinite}
 .shine{position:absolute;inset:0;overflow:hidden;mask:url('/assets/mpo-logo-3d.webp') center/100% 100% no-repeat;-webkit-mask:url('/assets/mpo-logo-3d.webp') center/100% 100% no-repeat}
 .shine::before{content:'';position:absolute;inset:0 auto 0 0;width:28%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.55),transparent);mix-blend-mode:screen;animation:mpoShine 9s linear infinite}
 @keyframes mpoFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
@@ -793,7 +793,7 @@ textarea:focus-visible,
 
 @media (max-width: 1000px) {
   .brand { font-size: 22px; }
-  .brand-logo { width: 220px; }
+  .brand-logo { width: 120px; }
   .icons { gap: 5px; }
   .window { max-width: calc(100vw - 100px); }
 }
