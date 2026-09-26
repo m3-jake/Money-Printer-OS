@@ -158,7 +158,7 @@ button, input, select, textarea { font: inherit; }
   place-items: center;
   will-change: transform;
   animation: billFall linear infinite, billFlip 1.45s ease-in-out infinite;
-  opacity: .9;
+  opacity: 1;
   transform-style: preserve-3d;
 }
 .bill.pile {
@@ -823,6 +823,7 @@ textarea:focus-visible,
   background: transparent url('/assets/money-bill.webp') center / contain no-repeat;
   box-shadow: none;
   image-rendering: auto;
+  opacity: 1;
   animation: billFall linear infinite, billFlip 1.45s ease-in-out infinite;
 }
 .bill.burst {
