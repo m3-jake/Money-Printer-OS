@@ -1,0 +1,252 @@
+/* Glance: every window opens as one calm card, dressed as higher-tech Windows 98 — grey bevelled
+   chrome, one big sunken LCD readout, three small readouts, one sunken visual (a Task Manager style
+   graph, a list box or LCD tiles) and a sunken status bar. The full workstation (tabs, tables,
+   controls) sits behind the title-bar Details button, or everywhere via Settings > Display.
+   Color carries meaning only: green = up/ok, red = down/fault, amber = needs attention. */
+:root {
+  --g-lcd: #020502;
+  --g-lcd-ink: #caffe0;
+  --g-lcd-dim: #5f8f6c;
+  --g-lcd-font: Consolas, "Lucida Console", "Courier New", monospace;
+  --g-pos: #38ff68;
+  --g-neg: #ff5b70;
+  --g-warn: #ffd75a;
+  --g-sunken: #808080 #fff #fff #808080;
+  --g-raised: #fff #404040 #404040 #fff;
+}
+
+/* Window modes: a glance window shows its glance pane; a detail window shows tabs + body. */
+.window .glancepane { display: none; }
+.window.glance .glancepane { display: block; }
+.window.glance > .body,
+.window.glance > .win-tabs { display: none; }
+.glancepane {
+  height: calc(100% - var(--mpo-titlebar-h));
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+  background: var(--mpo-chrome);
+  container-type: inline-size;
+}
+
+/* Title-bar Details / Simple switch: a word, not an icon, so it explains itself. */
+.win-buttons button.detail-btn {
+  width: auto;
+  padding: 0 7px;
+  margin-right: 4px;
+  font: bold 11px var(--mpo-font-chrome);
+}
+
+/* Taskbar Simple | Advanced switch: two joined Win98 buttons, the active one pressed in. */
+.mode-switch { display: flex; margin-left: 4px; }
+.mode-switch .task-tool { padding: 0 10px; }
+.mode-switch .task-tool + .task-tool { margin-left: -2px; }
+.mode-switch .task-tool.on {
+  border-style: inset;
+  background: repeating-conic-gradient(#c0c0c0 0% 25%, #fff 0% 50%) 0 0 / 2px 2px;
+}
+
+.glance {
+  box-sizing: border-box;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 10px 8px;
+  color: #000;
+  font: 12px var(--mpo-font-chrome);
+  background: var(--mpo-chrome);
+  overflow: hidden;
+}
+
+/* Header: window caption on the left, a sunken status field with an LED on the right. */
+.g-head { display: flex; align-items: center; gap: 10px; min-height: 22px; }
+.g-title { font-weight: bold; font-size: 12px; }
+.g-pill {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px 2px 6px;
+  border: 1px solid;
+  border-color: var(--g-sunken);
+  background: var(--mpo-chrome-mid);
+  font-weight: bold;
+  font-size: 11px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.g-pill i,
+.g-row .g-dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border: 1px solid #202020;
+  background: #5a5a5a;
+}
+.g-pill.ok i, .g-row .g-dot.ok { background: var(--mpo-led-ok); box-shadow: 0 0 5px var(--mpo-led-ok); }
+.g-pill.warn i, .g-row .g-dot.warn { background: var(--g-warn); box-shadow: 0 0 5px var(--g-warn); }
+.g-pill.bad i, .g-row .g-dot.bad { background: var(--mpo-led-bad); box-shadow: 0 0 5px var(--mpo-led-bad); }
+
+/* The hero: one sunken LCD, big phosphor digits, the unit and a note in dim phosphor. */
+.g-hero {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px 10px;
+  border: 2px solid;
+  border-color: var(--g-sunken);
+  background:
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 3px),
+    var(--g-lcd);
+  font-family: var(--g-lcd-font);
+}
+.g-hero-val {
+  font-size: 44px;
+  font-weight: bold;
+  line-height: 1;
+  color: var(--g-pos);
+  text-shadow: 0 0 10px rgba(56, 255, 104, 0.45);
+  white-space: nowrap;
+}
+.g-hero-val.g-hero-text { font-size: 26px; }
+.g-hero-val small { margin-left: 8px; font-size: 16px; color: var(--g-lcd-dim); text-shadow: none; }
+.g-hero-sub { font-size: 12px; color: var(--g-lcd-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Three small readouts: a grey label over a sunken LCD. */
+.g-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.g-stat { min-width: 0; }
+.g-stat label { display: block; margin: 0 0 3px 1px; font-size: 11px; }
+.g-stat b {
+  display: block;
+  padding: 5px 8px;
+  border: 2px solid;
+  border-color: var(--g-sunken);
+  background: var(--g-lcd);
+  font: bold 20px var(--g-lcd-font);
+  color: var(--g-lcd-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.g-pos { color: var(--g-pos) !important; }
+.g-neg { color: var(--g-neg) !important; text-shadow: 0 0 10px rgba(255, 91, 112, 0.4); }
+.g-warn { color: var(--g-warn) !important; }
+.g-hero-sub .g-pos, .g-hero-sub .g-neg { text-shadow: none; }
+
+/* The visual well: the window's graphs, each in its own sunken black panel; fills the spare height. */
+.g-visual { flex: 1; min-height: 90px; position: relative; display: flex; flex-direction: column; gap: 8px; }
+.g-fill { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.g-graph {
+  flex: 1;
+  width: 100%;
+  min-height: 90px;
+  display: block;
+  box-sizing: border-box;
+  border: 2px solid;
+  border-color: var(--g-sunken);
+  background: var(--g-lcd);
+}
+.g-row2, .g-row3 { display: grid; gap: 8px; min-height: 0; }
+.g-row2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.g-row3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.glance .mpo-viz {
+  margin: 0;
+  border: 2px solid;
+  border-color: var(--g-sunken);
+  border-radius: 0;
+  background: var(--g-lcd);
+}
+.glance .mpo-viz__title { padding: 3px 7px 0; font: bold 10px var(--g-lcd-font); color: var(--g-lcd-dim); }
+.g-fill > .mpo-viz { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.g-fill > .mpo-viz > canvas { flex: 1; min-height: 70px; height: auto !important; }
+
+/* Status bar: each note in its own sunken cell, a raised Win98 button on the right. */
+.g-foot { display: flex; align-items: center; gap: 3px; min-height: 22px; }
+.g-foot span {
+  padding: 2px 7px;
+  border: 1px solid;
+  border-color: var(--g-sunken);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.g-foot .g-sep { display: none; }
+.g-action {
+  margin-left: auto;
+  padding: 3px 14px;
+  border: 2px solid;
+  border-color: var(--g-raised);
+  background: var(--mpo-chrome);
+  font: bold 11px var(--mpo-font-chrome);
+  color: #000;
+  cursor: pointer;
+}
+.g-action:active { border-color: var(--g-sunken); }
+
+/* List box: white, sunken, one row per item, an LED where status matters. */
+.g-rows {
+  display: flex;
+  flex-direction: column;
+  border: 2px solid;
+  border-color: var(--g-sunken);
+  background: #fff;
+  overflow: hidden;
+}
+.g-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-bottom: 1px dotted #b0b0b0;
+  font-size: 12px;
+  min-width: 0;
+}
+.g-row:last-child { border-bottom: 0; }
+.g-row .g-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.g-row .g-meta { color: #555; white-space: nowrap; }
+.g-row .g-fig { min-width: 44px; text-align: right; font: bold 13px var(--g-lcd-font); white-space: nowrap; }
+
+/* LCD tiles: three equal sunken readouts for live prices. */
+.g-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.g-tile {
+  padding: 8px 10px;
+  border: 2px solid;
+  border-color: var(--g-sunken);
+  background: var(--g-lcd);
+  font-family: var(--g-lcd-font);
+  min-width: 0;
+}
+.g-tile label { display: block; font-size: 11px; color: var(--g-lcd-dim); margin-bottom: 4px; }
+.g-tile b { display: block; font-size: 18px; color: var(--g-lcd-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.g-tile span { display: block; margin-top: 3px; font-size: 11px; color: var(--g-lcd-dim); }
+
+.g-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid;
+  border-color: var(--g-sunken);
+  background: #fff;
+  color: #555;
+}
+.g-brand { display: flex; align-items: center; gap: 16px; padding: 12px; }
+.g-brand img { width: 80px; height: 80px; object-fit: contain; }
+.g-brand-name { font: italic bold 26px var(--mpo-font-brand); letter-spacing: 0.02em; }
+.g-brand .g-hero-sub { color: #333; white-space: normal; }
+
+.g-rows.g-grow { flex: 1; }
+
+/* Narrow windows: two readouts, a smaller hero, graph rows stack. */
+@container (max-width: 520px) {
+  .g-row2, .g-row3 { grid-template-columns: minmax(0, 1fr); }
+  .g-row3 > :nth-child(n+2) { display: none; }
+  .g-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .g-stat:nth-child(3) { display: none; }
+  .g-hero-val { font-size: 34px; }
+  .g-hero-sub { display: none; }
+}

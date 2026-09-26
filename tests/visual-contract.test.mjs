@@ -160,7 +160,7 @@ test('chrome stays opaque and the simplified alpha56 shell contract is pinned', 
   assert.match(css, /\.taskbar\s*\{[^}]*z-index:\s*100/);
   assert.match(css, /\.brand\s*\{[^}]*z-index:\s*6/);
   assert.match(css, /\.boot\s*\{[^}]*background:\s*#008080/);
-  assert.match(html, /LAYOUT_VERSION='2026-09-26-alpha58-live-visuals'/);
+  assert.match(html, /LAYOUT_VERSION='2026-09-26-glance'/);
   assert.match(html, /\['trade','Pump\.fun'/);assert.match(html, /\['robinhood','Robinhood'/);assert.match(html, /\['researchmon','Lab Monitor','LAB','dark','trade'/);
   assert.doesNotMatch(html, /<div class="menu" title="Menus are not wired">/);
   assert.doesNotMatch(html, /mpo-surface-(dark|light)[\s\S]{0,80}poly-strip|poly-strip[\s\S]{0,80}mpo-surface/);
@@ -326,4 +326,23 @@ test('live visuals: one animation engine, served read-only from /js, used by Pol
   assert.match(dashJs, /u\.pathname\.startsWith\('\/js\/'\)/);
   assert.match(dashJs, /path\.extname\(file\)\.toLowerCase\(\) !== '\.js'/);
   for (const key of ['pm-lanes', 'pm-hist', 'pm-pulse', 'pm-shadow', 'pm-cal', 'rh-edge', 'rh-ticker', 'rh-pulse', 'pf-map', 'pf-meme', 'pf-funnel', 'pf-ticker', 'pf-pulse']) assert.ok(html.includes(`MPOViz.set('${key}'`), key);
+});
+
+test('glance design: every window opens as one calm card, full detail is an option, text size sets the fit ceiling', () => {
+  const glanceCss = read('public/css/mpo-glance.css');
+  assert.match(html, /<link rel="stylesheet" href="\/css\/mpo-glance\.css">/);
+  assert.match(html, /DEFAULT_OPEN=\['trade'\]/, 'launch opens one window');
+  assert.match(html, /const shown=openSet\.has\(id\)&&\(displayPrefs\.restoreAll\?!L\.min:id===bootFocus\)/, 'only the last-used window is shown unless Reopen all is on');
+  for (const host of ['trade', 'sportsbook', 'robinhood', 'system', 'journal', 'money']) assert.match(html, new RegExp(`\\n ${host}:\\{render:glance`), `${host} has a glance`);
+  assert.match(html, /data-act="detail" class="detail-btn"/, 'every title bar has its own Simple / Advanced button');
+  assert.match(html, /<div class="mode-switch" role="group" aria-label="Window mode"><button class="task-tool" id="modeSimple"[^>]*>Simple<\/button><button class="task-tool" id="modeAdvanced"[^>]*>Advanced<\/button><\/div>/, 'taskbar switch flips every window');
+  assert.match(html, /\$\('#modeSimple'\)\.onclick=\(\)=>setGlobalMode\(false\);\$\('#modeAdvanced'\)\.onclick=\(\)=>setGlobalMode\(true\);/);
+  assert.match(html, /const TEXT_SCALES=\{S:1,M:1\.25,L:1\.5\}/);
+  assert.match(html, /const FIT_MIN=\.5;let FIT_MAX=textScale\(\);/, 'text size is the fit-zoom ceiling');
+  assert.match(html, /id="setFullDetail"/);assert.match(html, /id="setRestoreAll"/);assert.match(html, /data-textsize=/);
+  assert.match(html, /if\(!w\|\|w\.classList\.contains\('hidden'\)\|\|w\.classList\.contains\('glance'\)\)return false;/, 'detail renderers skip glance windows');
+  for (const id of ['sportsbook', 'journal', 'robinhood']) assert.match(html, new RegExp(`windowShown\\('${id}'\\)\\)refresh`), `${id} data keeps flowing for its glance`);
+  assert.match(glanceCss, /\.window\.glance > \.body,\s*\.window\.glance > \.win-tabs \{ display: none; \}/);
+  assert.match(glanceCss, /\.glancepane \{[^}]*container-type: inline-size/);
+  assert.doesNotMatch(html.slice(html.indexOf('function glance('), html.indexOf('function renderGlances')), /mpo-brand-title/);
 });

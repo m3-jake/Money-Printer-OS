@@ -7,6 +7,7 @@
 <style>html,body{margin:0;background:#008080}</style>
 <link rel="stylesheet" href="/css/mpo-shell.css">
 <link rel="stylesheet" href="/css/mpo-workstation.css">
+<link rel="stylesheet" href="/css/mpo-glance.css">
 <script src="/js/mpo-viz.js"></script>
 </head>
 <body>
@@ -20,7 +21,7 @@
   <div class="money-event-feed" id="moneyEventFeed" aria-live="polite"></div>
   <div id="windows"></div>
   <div class="startmenu" id="startMenu"><div class="rail">MONEY PRINTER OS</div><div class="menuitems" id="startItems"></div></div>
-  <div class="taskbar"><button class="start" id="startBtn"><img class="tico" src="/assets/icons/money.png" alt=""> Start</button><div class="tasks" id="tasks"></div><button class="task-tool" id="tileBtn" title="Tile: arrange every open window to fill the desktop, no overlap">▦ Tile</button><div class="tray"><span class="led" id="feedLed"></span><span class="mpo-badge mpo-badge--paper" id="trayMode">PAPER</span><span id="clock"></span></div></div>
+  <div class="taskbar"><button class="start" id="startBtn"><img class="tico" src="/assets/icons/money.png" alt=""> Start</button><div class="tasks" id="tasks"></div><button class="task-tool" id="tileBtn" title="Tile: arrange every open window to fill the desktop, no overlap">▦ Tile</button><div class="mode-switch" role="group" aria-label="Window mode"><button class="task-tool" id="modeSimple" title="Simple mode: every window shows its clean glance">Simple</button><button class="task-tool" id="modeAdvanced" title="Advanced mode: every window shows its full workstation">Advanced</button></div><div class="tray"><span class="led" id="feedLed"></span><span class="mpo-badge mpo-badge--paper" id="trayMode">PAPER</span><span id="clock"></span></div></div>
   <div class="dialog-layer" id="dialogLayer"><div class="dialog hidden" id="dialog"><div class="titlebar"><div class="title" id="dialogTitle">Money Printer OS</div><div class="win-buttons"><button type="button" id="dialogX">×</button></div></div><div class="msg"><div class="mpo-dialog-ico" aria-hidden="true">!</div><div><b id="dialogHead"></b><p id="dialogText"></p><button class="btn" id="dialogOk">OK</button></div></div></div><div class="dialog mpo-dialog hidden" id="polyConfirm" role="dialog" aria-modal="true"><div class="titlebar"><div class="title" id="polyConfirmTitle">Confirm</div><div class="win-buttons"><button type="button" id="polyConfirmX">×</button></div></div><div class="msg"><span class="mpo-dialog-ico" aria-hidden="true">!</span><div><b id="polyConfirmHead"></b><div id="polyConfirmBody"></div><p id="polyConfirmCountdown"></p><input class="field" id="polyConfirmPhrase" autocomplete="off" spellcheck="false"><div class="toolbar"><button class="btn" id="polyConfirmRequote" hidden>Re-quote</button><button class="btn" id="polyConfirmCancel">Cancel</button><button class="btn" id="polyConfirmOk" disabled>Confirm</button></div></div></div></div></div>
   <div class="boot" id="boot"><div class="bootbox"><div class="titlebar"><div class="title">Money Printer OS</div></div><div class="bootbody dark terminal"><img class="bootmark" src="/assets/money-printer-logo.png" alt="" width="64" height="64"><div class="bootlogo">MONEY <span>PRINTER</span> OS</div><div class="bootline" id="bootText">Starting system services...</div><div class="progress bootprog"><i id="bootBar"></i></div></div></div></div>
 </div>
@@ -334,8 +335,8 @@ robinhood:{x:200,y:90,w:880,h:720},
 trade:{x:120,y:70,w:790,h:690},sportsbook:{x:250,y:140,w:880,h:600},
 system:{x:660,y:80,w:520,h:470},journal:{x:90,y:56,w:740,h:540},money:{x:320,y:120,w:620,h:520}
 };
-const DEFAULT_OPEN=['trade','sportsbook','system'];
-const LAYOUT_VERSION='2026-09-26-alpha58-live-visuals';
+const DEFAULT_OPEN=['trade'];
+const LAYOUT_VERSION='2026-09-26-glance';
 let saved=JSON.parse(localStorage.getItem('mpo-layout')||'{}');
 let openSet=new Set(JSON.parse(localStorage.getItem('mpo-open')||JSON.stringify(DEFAULT_OPEN)));
 if(localStorage.getItem('mpo-layout-version')!==LAYOUT_VERSION){localStorage.removeItem('mpo-layout');localStorage.setItem('mpo-open',JSON.stringify(DEFAULT_OPEN));localStorage.setItem('mpo-layout-version',LAYOUT_VERSION);saved={};openSet=new Set(DEFAULT_OPEN)}
@@ -345,9 +346,25 @@ openSet=new Set([...openSet].filter(id=>HOSTS.includes(id)));
 if(!openSet.size)openSet=new Set(DEFAULT_OPEN);
 let activeTab=(()=>{try{const t=JSON.parse(localStorage.getItem('mpo-tabs')||'{}');return t&&typeof t==='object'?t:{}}catch{return {}}})();
 for(const h of HOSTS)if(!tabsOf(h).includes(activeTab[h]))activeTab[h]=h;
+// Display: text size is the fit-zoom ceiling; windows open in Simple mode (the glance) unless the taskbar
+// Simple | Advanced switch or a window's own button says Advanced; only the last-used window opens at launch.
+const readPref=(k,d)=>{try{const v=JSON.parse(localStorage.getItem(k));return v??d}catch{return d}};
+const writePref=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}};
+const TEXT_SCALES={S:1,M:1.25,L:1.5};
+let displayPrefs={textSize:'M',fullDetail:false,restoreAll:false,...readPref('mpo-display',{})};
+const detailSet=new Set(readPref('mpo-detail',[]));
+const isDetail=host=>displayPrefs.fullDetail||detailSet.has(host);
+const textScale=()=>TEXT_SCALES[displayPrefs.textSize]||TEXT_SCALES.M;
+const bootFocus=(()=>{const f=readPref('mpo-last-focus','trade');const id=HOSTS.includes(f)?f:'trade';openSet.add(id);return id})();
+// A window without a saved spot opens centred and large: one clear thing on the desktop.
+const HERO_MAX_H={money:560,journal:680};
+function heroLayout(id){const W=window.innerWidth||1280,H=(window.innerHeight||800)-36,w=Math.round(Math.min(1000,Math.max(520,W*.7))),h=Math.round(Math.min(HERO_MAX_H[id]||800,Math.max(420,H*.9)));return{x:Math.max(0,Math.round((W-w)/2)),y:Math.max(8,Math.round((H-h)/2)),w,h}}
+let layoutResetting=false;
 function persist(){
  // Never persist a transient layout (boot overlay, pane still opening) and never record a hidden
  // window as 0x0 — reuse its styled size (or the last saved one) so it reopens at a real size.
+ // A layout reset reloads the page; the beforeunload save must not write the old layout back.
+ if(layoutResetting)return;
  const d=$('#desktop');if(d&&(d.clientWidth<480||d.clientHeight<320))return;
  const o={}; $$('.window').forEach(w=>{const id=w.dataset.app,prev=saved[id]||defaultLayout[id]||{},hidden=w.classList.contains('hidden');
   const ww=hidden?(parseInt(w.style.width)||prev.w||480):w.offsetWidth,hh=hidden?(parseInt(w.style.height)||prev.h||350):w.offsetHeight;
@@ -368,13 +385,15 @@ function buildIcons(){
  $$('.icon').forEach(el=>{el.onclick=()=>{ $$('.icon').forEach(x=>x.classList.remove('sel'));el.classList.add('sel');selectedIcon=el.dataset.app};el.ondblclick=()=>openApp(el.dataset.app)});
 }
 function appShell(id,title){
- const L=saved[id]||defaultLayout[id]||{x:200,y:150,w:480,h:350};
- const tabs=tabsOf(id),tabbed=tabs.length>1,act=activeTab[id]||id;
+ const L=saved[id]||heroLayout(id);
+ // Launch shows only the last-used window; the rest wait in the taskbar (Settings can reopen all).
+ const shown=openSet.has(id)&&(displayPrefs.restoreAll?!L.min:id===bootFocus);
+ const tabs=tabsOf(id),tabbed=tabs.length>1,act=activeTab[id]||id,detail=isDetail(id);
  const strip=tabbed?`<div class="tabs win-tabs" data-host="${id}">${tabs.map(t=>`<button class="tab98 ${t===act?'on':''}" data-host="${id}" data-tab="${t}">${TAB_LABEL[t]||appMeta(t)?.[1]||t}</button>`).join('')}</div>`:'';
  const body=tabbed?`<div class="body tabbed">${tabs.map(t=>`<div class="tabpane ${t===act?'on':''}" id="body-${t}" data-scroll="pane-${t}"></div>`).join('')}</div>`:`<div class="body" id="body-${id}" data-scroll="body-${id}"></div>`;
- return `<section class="window ${L.max?'max':''} ${L.min||!openSet.has(id)?'hidden':''}" data-app="${id}" style="left:${L.x}px;top:${L.y}px;width:${L.w}px;height:${L.h}px">
- <div class="titlebar"><div class="title">${title}</div><span class="fit-pct"></span><div class="win-buttons"><button data-act="fit" class="fit-btn ${fitOff.has(id)?'':'on'}" title="Fit to window">⤢</button><button data-act="min">_</button><button data-act="max">□</button><button data-act="close">×</button></div></div>
- ${strip}${body}<div class="resize"></div></section>`;
+ return `<section class="window ${L.max?'max':''} ${shown?'':'hidden'} ${detail?'':'glance'}" data-app="${id}" style="left:${L.x}px;top:${L.y}px;width:${L.w}px;height:${L.h}px">
+ <div class="titlebar"><div class="title">${title}</div><span class="fit-pct"></span><div class="win-buttons"><button data-act="detail" class="detail-btn" title="${detail?'Simple view for this window':'Advanced view for this window'}">${detail?'Simple':'Advanced'}</button><button data-act="fit" class="fit-btn ${fitOff.has(id)?'':'on'}" title="Fit to window">⤢</button><button data-act="min">_</button><button data-act="max">□</button><button data-act="close">×</button></div></div>
+ ${strip}${body}<div class="glancepane" id="glance-${id}"></div><div class="resize"></div></section>`;
 }
 function buildWindows(){
  $('#windows').innerHTML=HOSTS.map(id=>appShell(id,appMeta(id)[1])).join('');
@@ -382,6 +401,24 @@ function buildWindows(){
  $$('.window').forEach(w=>{fitResize?.observe(w);fitMutations.observe(w,{childList:true,subtree:true,characterData:true})});
  $$('.win-tabs .tab98').forEach(b=>b.onclick=e=>{e.stopPropagation();setTab(b.dataset.host,b.dataset.tab)});
  clampAll(); renderTasks();
+ const first=$(`.window[data-app="${bootFocus}"]`);if(first&&!first.classList.contains('hidden'))focus(first);
+}
+function applyMode(w){
+ const d=isDetail(w.dataset.app),b=w.querySelector('[data-act=detail]');w.classList.toggle('glance',!d);
+ if(b){b.textContent=d?'Simple':'Advanced';b.title=d?'Simple view for this window':'Advanced view for this window'}
+}
+// Taskbar Simple | Advanced switch: flips every window at once (and clears one-window overrides).
+function paintModeSwitch(){$('#modeSimple')?.classList.toggle('on',!displayPrefs.fullDetail);$('#modeAdvanced')?.classList.toggle('on',!!displayPrefs.fullDetail)}
+function setGlobalMode(advanced){
+ displayPrefs.fullDetail=!!advanced;writePref('mpo-display',displayPrefs);detailSet.clear();writePref('mpo-detail',[]);
+ $$('.window').forEach(applyMode);paintModeSwitch();renderSig.clear();renderAll();fitAll();
+}
+function setDetail(host,on){
+ // Leaving full-detail mode from one window keeps every other window as it was.
+ if(!on&&displayPrefs.fullDetail){displayPrefs.fullDetail=false;writePref('mpo-display',displayPrefs);for(const h of HOSTS)detailSet.add(h);paintModeSwitch()}
+ if(on)detailSet.add(host);else detailSet.delete(host);writePref('mpo-detail',[...detailSet]);
+ const w=$(`.window[data-app="${host}"]`);if(w){applyMode(w);scheduleFit(w)}
+ renderSig.clear();renderAll();
 }
 function setTab(host,id){
  if(!host||!id||!tabsOf(host).includes(id))return;
@@ -414,17 +451,18 @@ function clampAll(){$$('.window').forEach(clampWin)}
 // an explicit size of box/zoom, so it still fills exactly its box and #body-x>… selectors keep
 // working. Panes are container-query roots, so a smaller zoom (a wider layout) lets modules reflow
 // into columns before they shrink further. Only content that cannot fit at FIT_MIN scrolls.
-const FIT_MIN=.5,FIT_MAX=1;
+const FIT_MIN=.5;let FIT_MAX=textScale();
 let fitOff=(()=>{try{const v=JSON.parse(localStorage.getItem('mpo-fit-off')||'[]');return new Set(Array.isArray(v)?v:[])}catch{return new Set()}})();
 const fitZoom=new Map(),fitQueue=new Set();let fitRaf=0;
-function fitPaneOf(w){return w.querySelector('.body:not(.tabbed)')||w.querySelector('.tabpane.on')}
+function fitPaneOf(w){return w.classList.contains('glance')?w.querySelector('.glancepane'):(w.querySelector('.body:not(.tabbed)')||w.querySelector('.tabpane.on'))}
 function fitTry(pane,z,W,H){pane.style.zoom=z;pane.style.width=(W/z)+'px';pane.style.height=(H/z)+'px';return pane.scrollHeight<=pane.clientHeight+1&&pane.scrollWidth<=pane.clientWidth+1}
 function fitWindow(w){
  if(!w||w.classList.contains('hidden'))return;
  const pane=fitPaneOf(w);if(!pane)return;
- w.querySelectorAll('.tabpane:not(.on)').forEach(p=>{p.style.zoom=p.style.width=p.style.height=p.style.overflow=''});
+ w.querySelectorAll('.tabpane,.body,.glancepane').forEach(p=>{if(p!==pane)p.style.zoom=p.style.width=p.style.height=p.style.overflow=''});
  pane.style.zoom=pane.style.width=pane.style.height=pane.style.overflow='';
- if(fitOff.has(w.dataset.app)){fitZoom.delete(pane.id);fitBadge(w,null);return}
+ // Fit off: actual size at the chosen text size, scrolling if it does not fit.
+ if(fitOff.has(w.dataset.app)){const z=textScale(),W=pane.offsetWidth,H=pane.offsetHeight;if(z!==1&&W>=40&&H>=40){pane.style.zoom=z;pane.style.width=(W/z)+'px';pane.style.height=(H/z)+'px';pane.style.overflow='auto'}fitZoom.delete(pane.id);fitBadge(w,null);if(w.classList.contains('glance')&&w.dataset.app==='trade')drawGlanceChart();return}
  const W=pane.offsetWidth,H=pane.offsetHeight;if(W<40||H<40)return;
  pane.style.overflow='hidden';
  const prev=fitZoom.get(pane.id);let z;
@@ -435,6 +473,7 @@ function fitWindow(w){
  else{let lo=FIT_MIN,hi=FIT_MAX;for(let i=0;i<7;i++){const mid=(lo+hi)/2;if(fitTry(pane,mid,W,H))lo=mid;else hi=mid}z=Math.floor(lo*100)/100}
  const fits=fitTry(pane,z,W,H);pane.style.overflow=fits?'hidden':'auto';
  fitZoom.set(pane.id,z);fitBadge(w,z);
+ if(w.classList.contains('glance')){if(w.dataset.app==='trade')drawGlanceChart();if(w.dataset.app==='system')drawSysGraph()}
 }
 function fitBadge(w,z){
  const b=w.querySelector('[data-act=fit]'),pct=w.querySelector('.fit-pct');if(!b)return;
@@ -480,14 +519,17 @@ function initWindow(w){
  w.addEventListener('pointermove',e=>{if(mode||e.target.closest('.titlebar,.resize,.win-buttons,.win-tabs'))return;const r=w.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;let m='';if(y<EDGE)m+='n';else if(r.height-y<EDGE)m+='s';if(x<EDGE)m+='w';else if(r.width-x<EDGE)m+='e';w.style.cursor=m?(m==='n'||m==='s'?'ns-resize':m==='e'||m==='w'?'ew-resize':m==='ne'||m==='sw'?'nesw-resize':'nwse-resize'):''});
  w.addEventListener('pointerdown',e=>{if(e.target.closest('.titlebar,.resize,.win-buttons,.win-tabs,button,input,select,textarea'))return;const r=w.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;let m='';if(y<EDGE)m+='n';else if(r.height-y<EDGE)m+='s';if(x<EDGE)m+='w';else if(r.width-x<EDGE)m+='e';if(m)begin(e,m)});
  w.onpointerdown=()=>focus(w);
+ w.querySelector('[data-act=detail]').onclick=e=>{e.stopPropagation();setDetail(w.dataset.app,!isDetail(w.dataset.app))};
  w.querySelector('[data-act=fit]').onclick=e=>{e.stopPropagation();const id=w.dataset.app;if(fitOff.has(id))fitOff.delete(id);else fitOff.add(id);try{localStorage.setItem('mpo-fit-off',JSON.stringify([...fitOff]))}catch{}scheduleFit(w)};
  w.querySelector('[data-act=min]').onclick=e=>{e.stopPropagation();w.classList.add('hidden');persist();renderTasks()};
  w.querySelector('[data-act=close]').onclick=e=>{e.stopPropagation();w.classList.add('hidden');openSet.delete(w.dataset.app);persist();renderTasks()};
  w.querySelector('[data-act=max]').onclick=e=>{e.stopPropagation();w.classList.toggle('max');if(!w.classList.contains('max'))clampWin(w);persist()};
 }
-function focus(w){$$('.window').forEach(x=>x.classList.add('inactive'));w.classList.remove('inactive');w.style.zIndex=++z;renderTasks()}
+function focus(w){$$('.window').forEach(x=>x.classList.add('inactive'));w.classList.remove('inactive');w.style.zIndex=++z;writePref('mpo-last-focus',w.dataset.app);renderTasks()}
 function openApp(id){
  const host=hostOf(id),w=$(`.window[data-app="${host}"]`);if(!w)return;
+ // Asking for a specific tab (Start menu, a Settings shortcut) means the full workstation.
+ if(hasTabs(host)&&id!==host&&!isDetail(host))setDetail(host,true);
  w.classList.remove('hidden');openSet.add(host);clampWin(w);focus(w);
  if(hasTabs(host)&&id!==host){setTab(host,id);return}
  if(hasTabs(host))setTab(host,activeTab[host]||host);
@@ -995,12 +1037,16 @@ function renderNetwork(){
  $('#networkSend')?.addEventListener('click',send);$('#networkMsg')?.addEventListener('keydown',e=>{if(e.key==='Enter')send()});
 }
 
+// windowVisible: the detail pane for id is on screen (so its full renderer should run).
+// windowShown: the window is open at all, glance or detail (so its data should keep flowing).
 function windowVisible(id){
  const host=hostOf(id),w=$(`.window[data-app="${host}"]`);
- if(!w||w.classList.contains('hidden'))return false;
+ if(!w||w.classList.contains('hidden')||w.classList.contains('glance'))return false;
  if(!hasTabs(host))return true;
  return (activeTab[host]||host)===id;
 }
+function windowShown(id){const w=$(`.window[data-app="${hostOf(id)}"]`);return !!w&&!w.classList.contains('hidden')}
+function glanceVisible(host){const w=$(`.window[data-app="${host}"]`);return !!w&&!w.classList.contains('hidden')&&w.classList.contains('glance')}
 function renderRisk(){
  const s=state||{},p=s.portfolio||{},el=$('#body-risk');if(!el)return;
  const health=s.system?.health||'Starting';
@@ -1035,10 +1081,14 @@ function renderSimple(id){
  }
  if(id==='settings'){
   const mode=String(s.mode||'paper').toUpperCase(),health=s.system?.health||'Starting';
-  setBody('settings',`<div class="mpo-surface-light" style="padding:12px;color:#111;min-height:100%"><div class="mpo-status"><b>SETTINGS</b><b class="mpo-badge ${mode==='LIVE'?'mpo-badge--armed':'mpo-badge--paper'}">${polyEscape(mode)}</b><b class="mpo-badge ${health==='DEGRADED'?'mpo-badge--degraded':'mpo-badge--live'}">${polyEscape(health)}</b></div><fieldset class="mpo-fieldset"><legend>Machine</legend><p>CPU / RAM / disk limits live in System → Monitor.</p><button class="btn" id="setGoMonitor">Open Monitor</button></fieldset><fieldset class="mpo-fieldset"><legend>Trading runtime</legend><p>Profile, aggression and paper testing live in Pump.fun → Controls.</p><button class="btn" id="setGoControls">Open Controls</button></fieldset><fieldset class="mpo-fieldset"><legend>Desktop</legend><button class="btn" id="setResetLayout">Reset window layout</button><p class="muted" title="Reset restores the default desktop layout and tabs, then reloads the interface.">Restores default layout, then reloads.</p></fieldset></div>`);
+  setBody('settings',`<div class="mpo-surface-light" style="padding:12px;color:#111;min-height:100%"><div class="mpo-status"><b>SETTINGS</b><b class="mpo-badge ${mode==='LIVE'?'mpo-badge--armed':'mpo-badge--paper'}">${polyEscape(mode)}</b><b class="mpo-badge ${health==='DEGRADED'?'mpo-badge--degraded':'mpo-badge--live'}">${polyEscape(health)}</b></div><fieldset class="mpo-fieldset"><legend>Machine</legend><p>CPU / RAM / disk limits live in System → Monitor.</p><button class="btn" id="setGoMonitor">Open Monitor</button></fieldset><fieldset class="mpo-fieldset"><legend>Trading runtime</legend><p>Profile, aggression and paper testing live in Pump.fun → Controls.</p><button class="btn" id="setGoControls">Open Controls</button></fieldset><fieldset class="mpo-fieldset"><legend>Display</legend><div class="toolbar"><span>Text size:</span>${Object.entries({S:'Small',M:'Medium',L:'Large'}).map(([k,v])=>`<button class="btn ${displayPrefs.textSize===k?'on':''}" data-textsize="${k}">${v}</button>`).join('')}</div><label><input type="checkbox" id="setFullDetail" ${displayPrefs.fullDetail?'checked':''}> Advanced mode in every window (same as the taskbar Simple | Advanced switch; each window's own button still flips just that window)</label><br><label><input type="checkbox" id="setRestoreAll" ${displayPrefs.restoreAll?'checked':''}> Reopen every window at launch (otherwise only the last one you used)</label></fieldset><fieldset class="mpo-fieldset"><legend>Desktop</legend><button class="btn" id="setResetLayout">Reset window layout</button><p class="muted" title="Reset restores the default desktop layout and tabs, then reloads the interface.">Restores default layout, then reloads.</p></fieldset></div>`);
   $('#setGoMonitor')?.addEventListener('click',()=>{openApp('system');setTab('system','system')});
   $('#setGoControls')?.addEventListener('click',()=>openApp('control'));
-  $('#setResetLayout')?.addEventListener('click',()=>{localStorage.removeItem('mpo-layout');localStorage.removeItem('mpo-tabs');localStorage.setItem('mpo-open',JSON.stringify(DEFAULT_OPEN));location.reload()});
+  const saveDisplay=()=>{writePref('mpo-display',displayPrefs);FIT_MAX=textScale();$$('.window').forEach(applyMode);renderSig.clear();renderAll();fitAll()};
+  $$('[data-textsize]').forEach(b=>b.onclick=()=>{displayPrefs.textSize=b.dataset.textsize;saveDisplay()});
+  $('#setFullDetail')?.addEventListener('change',e=>setGlobalMode(e.target.checked));
+  $('#setRestoreAll')?.addEventListener('change',e=>{displayPrefs.restoreAll=e.target.checked;saveDisplay()});
+  $('#setResetLayout')?.addEventListener('click',()=>{layoutResetting=true;localStorage.removeItem('mpo-layout');localStorage.removeItem('mpo-last-focus');localStorage.removeItem('mpo-tabs');localStorage.setItem('mpo-open',JSON.stringify(DEFAULT_OPEN));location.reload()});
   renderBackgroundSettings();
   return;
  }
@@ -1071,6 +1121,125 @@ function renderBackgroundSettings(){
  paintBackgroundSettings();loadBackgroundSettings();
 }
 function renderChanged(id,sig,fn){if(!windowVisible(id))return;const key=JSON.stringify(sig);if(renderSig.get(id)===key)return;renderSig.set(id,key);fn()}
+// Glance views: one card per window — hero number, three supporting numbers, one status pill, one
+// visual, a quiet footer. Numbers are formatted here; any feed text goes through polyEscape.
+function setGlance(host,html){const el=document.getElementById('glance-'+host);if(el)el.innerHTML=html}
+const gTone=v=>Number(v)>0?'g-pos':Number(v)<0?'g-neg':'';
+const gSigned=(v,d,unit='')=>{const n=Number(v);return Number.isFinite(n)?`${n>0?'+':n<0?'−':''}${Math.abs(n).toFixed(d)}${unit}`:'—'};
+const gPct=v=>v==null||!Number.isFinite(Number(v))?'—':Math.round(Number(v)*100)+'%';
+const gFoot=parts=>parts.filter(Boolean).map(x=>`<span>${polyEscape(x)}</span>`).join('<span class="g-sep">·</span>');
+const gRow=(name,meta,fig='',dot=null)=>`<div class="g-row">${dot===null?'':`<i class="g-dot ${dot}"></i>`}<span class="g-name">${polyEscape(name)}</span><span class="g-meta">${polyEscape(meta)}</span>${fig?`<span class="g-fig">${fig}</span>`:''}</div>`;
+function glance({title,pill,hero,heroUnit,heroSub,heroText=false,stats=[],visual='',foot='',action=''}){
+ return `<div class="glance"><header class="g-head"><span class="g-title">${polyEscape(title)}</span>${pill?`<span class="g-pill ${pill.tone||''}"><i></i>${polyEscape(pill.label)}</span>`:''}</header>`+
+  (hero!=null?`<div class="g-hero"><div class="g-hero-val ${heroText?'g-hero-text':''}">${hero}${heroUnit?`<small>${polyEscape(heroUnit)}</small>`:''}</div>${heroSub?`<div class="g-hero-sub">${heroSub}</div>`:''}</div>`:'')+
+  (stats.length?`<div class="g-stats">${stats.map(x=>`<div class="g-stat"><label>${polyEscape(x.label)}</label><b class="${x.tone||''}">${x.value}</b></div>`).join('')}</div>`:'')+
+  `<div class="g-visual">${visual}</div>`+(foot||action?`<footer class="g-foot">${foot}${action}</footer>`:'')+`</div>`;
+}
+function glanceTrade(){
+ const s=state||{},p=s.portfolio||{},b=s.solanaBook||{},sys=s.system||{},sol=Number(s.market?.solUsd)||0,eq=Number(p.equitySol);
+ const killed=!!sys.killSwitch,paused=!!sys.paused,wl=s.watchlist||[],ready=wl.filter(x=>String(x.stage||'').toUpperCase()==='READY').length;
+ const h=s.walletIntel?.holderRpc,gen=Number(s.evolutionLoop?.generation);
+ const pill=killed?{label:'Kill switch',tone:'bad'}:paused?{label:'Paused',tone:'warn'}:sys.health==='DEGRADED'?{label:'Degraded',tone:'bad'}:sys.health==='CAUTION'?{label:'Trading · caution',tone:'warn'}:{label:'Trading',tone:'ok'};
+ // tradeViz registers the live visuals (ticker, meme gauge, opportunity map, funnel); the glance shows them without the tables.
+ const viz=window.MPOViz?(tradeViz(s),`${MPOViz.canvas('pf-ticker',20)}<div class="g-fill"><canvas class="g-graph" id="glanceChart" aria-label="Equity this session"></canvas></div><div class="g-row3">${MPOViz.canvas('pf-meme',104,'meme market')}${MPOViz.canvas('pf-map',104,'opportunity map')}${MPOViz.canvas('pf-funnel',104,'entry funnel')}</div>`):'<div class="g-fill"><canvas class="g-graph" id="glanceChart"></canvas></div>';
+ setGlance('trade',glance({title:`Pump.fun · ${s.mode||'paper'}`,pill,
+  hero:Number.isFinite(eq)?eq.toFixed(4):'—',heroUnit:'SOL',heroSub:sol&&Number.isFinite(eq)?`≈ ${money(eq*sol)} equity`:'Equity',
+  stats:[{label:'Today',value:gSigned(s.dailyPnlSol,4),tone:gTone(s.dailyPnlSol)},{label:'Open trades',value:String((s.positions||[]).length)},{label:'Hit rate',value:gPct(b.hitRate)}],
+  visual:viz,
+  foot:gFoot([`${wl.length} watching`,`${ready} ready`,h&&`holder data ${h.status==='OK'?'ok':String(h.status||'').toLowerCase().replace('_',' ')}`,Number.isFinite(gen)&&gen>0&&`lab gen ${gen.toLocaleString()}`]),
+  action:paused||killed?'<button class="g-action" id="gResume">Resume trading</button>':''}));
+ $('#gResume')?.addEventListener('click',async()=>{const sys=state?.system||{};if(sys.killSwitch)await post('/api/kill',{});if(sys.paused)await post('/api/pause',{});showDialog('Money Printer OS','Resuming','Pump.fun trading will resume on the next engine cycle.')});
+ drawGlanceChart();
+}
+// Task Manager style graph: phosphor lines on a green grid in a sunken black panel.
+// lines: [{v:[numbers], col:'r,g,b'}]; opts: {lo,hi} fixes the scale, label/right are corner captions.
+function taskGraph(c,lines,{lo=null,hi=null,label='',right='',empty=''}={}){
+ if(!c)return;const r=c.getBoundingClientRect();if(r.width<20||r.height<20)return;
+ const dpr=Math.min(2,window.devicePixelRatio||1),W=Math.round(r.width*dpr),H=Math.round(r.height*dpr);if(c.width!==W)c.width=W;if(c.height!==H)c.height=H;
+ const x=c.getContext('2d');x.clearRect(0,0,W,H);
+ const cell=14*dpr;x.strokeStyle='#0b3d17';x.lineWidth=1;x.beginPath();for(let gx=W%cell;gx<W;gx+=cell){x.moveTo(Math.round(gx)+.5,0);x.lineTo(Math.round(gx)+.5,H)}for(let gy=H%cell;gy<H;gy+=cell){x.moveTo(0,Math.round(gy)+.5);x.lineTo(W,Math.round(gy)+.5)}x.stroke();
+ x.font=`bold ${11*dpr}px Consolas, "Lucida Console", monospace`;x.textBaseline='top';x.fillStyle='#5f8f6c';
+ const ls=lines.filter(l=>l.v.length>1);
+ if(!ls.length){x.fillText(empty,6*dpr,6*dpr);return}
+ if(lo==null||hi==null){let a=Infinity,b=-Infinity;for(const l of ls)for(const y of l.v){if(y<a)a=y;if(y>b)b=y}const pad=Math.max(.0005,(b-a)*.15);lo=a-pad;hi=b+pad}
+ const top=22*dpr;
+ for(const l of ls){
+  const n=l.v.length,px=i=>3*dpr+i*(W-8*dpr)/(n-1),py=y=>top+(H-top-4*dpr)*(1-(Math.min(hi,Math.max(lo,y))-lo)/(hi-lo||1));
+  const path=()=>{x.beginPath();l.v.forEach((y,i)=>i?x.lineTo(px(i),py(y)):x.moveTo(px(i),py(y)))};
+  if(ls.length===1){const g=x.createLinearGradient(0,top,0,H);g.addColorStop(0,`rgba(${l.col},.18)`);g.addColorStop(1,`rgba(${l.col},0)`);path();x.lineTo(px(n-1),H);x.lineTo(px(0),H);x.closePath();x.fillStyle=g;x.fill()}
+  x.shadowColor=`rgba(${l.col},.7)`;x.shadowBlur=6*dpr;path();x.strokeStyle=`rgb(${l.col})`;x.lineWidth=2*dpr;x.lineJoin='round';x.stroke();x.shadowBlur=0;
+ }
+ x.fillStyle='#5f8f6c';x.fillText(label,6*dpr,6*dpr);if(right){x.textAlign='right';x.fillText(right,W-6*dpr,6*dpr);x.textAlign='left'}
+}
+function drawGlanceChart(){
+ const pts=(state?.portfolioSeries||[]).filter(q=>Number.isFinite(Number(q.ts))&&Number.isFinite(Number(q.equitySol))).sort((a,b)=>a.ts-b.ts),v=pts.map(q=>Number(q.equitySol));
+ const up=v.length<2||v.at(-1)>=v[0],hiV=v.length?Math.max(...v):0,loV=v.length?Math.min(...v):0;
+ taskGraph($('#glanceChart'),[{v,col:up?'56,255,104':'255,91,112'}],{label:pts.length?`EQUITY · SESSION ${new Date(pts[0].ts).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})} - NOW`:'',right:v.length>1?`HI ${hiV.toFixed(3)}  LO ${loV.toFixed(3)}`:'',empty:'EQUITY GRAPH STARTS AFTER A FEW MINUTES OF TRADING'});
+}
+function glanceSportsbook(){
+ const c=polyUSComboState||{},f=c.feed||{},j=c.journal||{},ap=c.autopilot||{},st=j.stats||{},bal=Number(polyUSAccount?.balance?.currentBalance);
+ const pill=c.error&&!f.ok?{label:'Feed error',tone:'bad'}:ap.enabled?{label:'Autopilot on',tone:'ok'}:{label:'Manual',tone:''};
+ const picks=(c.candidates||[]).slice(0,5),block=(ap.blockers||[])[0];
+ const list=picks.length?`<div class="g-rows">${picks.map(x=>gRow(x.event||x.question||x.symbol||'',x.league||x.sport||'',polyNum(x.price)==null?'—':Math.round(Number(x.price)*100)+'¢')).join('')}</div>`:`<div class="g-empty">${c.error?'Waiting for the live feed.':'No live picks right now.'}</div>`;
+ // usBoardViz registers the live-games lanes and the price histogram used by the full board.
+ const viz=window.MPOViz?(usBoardViz(c,c.board||[],c.settings||{},[]),`<div class="g-fill">${MPOViz.canvas('pm-lanes',120,'live games · how far along')}</div><div class="g-row2">${MPOViz.canvas('pm-hist',112,'side price vs floor')}${list}</div>`):list;
+ setGlance('sportsbook',glance({title:'Polymarket US · live combos',pill,
+  hero:Number.isFinite(bal)?money(bal):'—',heroSub:polyUSAccount?.keyStatus==='VERIFIED'?'Balance · key verified':'Balance',
+  stats:[{label:'Live games',value:String(f.eventsLive??'—')},{label:'Picks',value:String(f.candidates??picks.length)},{label:'Open bets',value:String((j.open||[]).length)}],
+  visual:viz,foot:gFoot([st.placed?`settled ${gSigned(st.pnlUsd,2)} USD`:'no settled bets yet',block&&`autopilot: ${block}`])}));
+}
+function glanceRobinhood(){
+ const r=rhState||{},pp=r.paper||{},st=pp.stats||{},eq=Number(pp.equityUsd),start=Number(pp.startUsd)||0,ev=r.evolve||{};
+ const rec=r.readiness?.recoveryRequired||pp.recoveryRequired;
+ const pill=rec?{label:'Needs recovery',tone:'bad'}:r.loop?.running?{label:'Paper · live quotes',tone:'ok'}:{label:'Stopped',tone:'warn'};
+ const q=(r.quotes||[]).slice(0,3);
+ const tiles=q.length?`<div class="g-tiles">${q.map(x=>{const mid=(Number(x.bid)+Number(x.ask))/2,sp=Number(x.spreadPct);return `<div class="g-tile"><label>${polyEscape(String(x.symbol||'').replace('-USD',''))}</label><b>${Number.isFinite(mid)?money(mid):'—'}</b><span>spread ${Number.isFinite(sp)?(sp*1e4).toFixed(1)+' bps':'—'}</span></div>`}).join('')}</div>`:'<div class="g-empty">Waiting for quotes.</div>';
+ // rhLiveViz registers the tape ticker and the edge meter (expected move vs the move a trade needs).
+ const viz=window.MPOViz&&r.tape?(rhLiveViz(r),`${MPOViz.canvas('rh-ticker',22)}${tiles}<div class="g-fill">${MPOViz.canvas('rh-edge',90,'edge meter · expected move vs required')}</div>`):tiles;
+ setGlance('robinhood',glance({title:'Robinhood crypto · paper',pill,
+  hero:Number.isFinite(eq)?money(eq):'—',heroSub:start&&Number.isFinite(eq)?`<span class="${gTone(eq-start)}">${gSigned((eq-start)/start*100,2,'%')}</span> since start`:'Paper equity',
+  stats:[{label:'Open',value:String((pp.positions||[]).length)},{label:'Closed trades',value:String(st.closes??0)},{label:'Hit rate',value:st.closes?gPct(st.hitRate):'—'}],
+  visual:viz,foot:gFoot([pp.autopilot?.enabled?'autopilot on':'autopilot off',ev.generation&&`lab gen ${ev.generation} · ${String(ev.phase||'').toLowerCase()}`])}));
+}
+// CPU / memory history for the System glance (one sample per state refresh, about six minutes kept).
+const sysHist=[];
+function sampleSystem(){const m=state?.system?.metrics;if(!m)return;const at=Number(state?.system?.lastCycle)||Date.now();if(sysHist.length&&sysHist.at(-1).at===at)return;sysHist.push({at,cpu:Number(m.cpuPct)||0,mem:Number(m.memoryPct)||0});if(sysHist.length>240)sysHist.shift()}
+function glanceSystem(){
+ const s=state||{},m=s.system?.metrics||{},e=s.evolutionLoop||{},h=s.walletIntel?.holderRpc,bad=s.system?.health==='DEGRADED',warn=s.system?.health==='CAUTION',why=(s.system?.diagnostics||[]).find(d=>d.level==='WARN'||d.level==='ERROR')?.message,peers=(networkState?.peers||[]).filter(x=>x.online).length;
+ const rows=[gRow('Trading engine',`${String(s.system?.health||'starting').toLowerCase()} · ${s.mode||'paper'}`,'',bad?'bad':warn?'warn':'ok'),
+  gRow('Evolution Lab',[String(e.status||'—').toLowerCase(),e.generation&&`gen ${Number(e.generation).toLocaleString()}`,e.workerCount&&`${e.workerCount} workers`].filter(Boolean).join(' · '),'',e.status==='RUNNING'?'ok':'warn'),
+  gRow('Holder data',h?`${String(h.status).toLowerCase().replace('_',' ')} · ${h.calls||0} calls today`:'—','',h?.status==='OK'?'ok':h?'bad':''),
+  gRow('Hive',`${peers} peer${peers===1?'':'s'} online`,'',peers?'ok':'')].join('');
+ setGlance('system',glance({title:'System',pill:bad?{label:'Degraded',tone:'bad'}:warn?{label:'Caution',tone:'warn'}:{label:'Healthy',tone:'ok'},hero:bad?'Needs attention':warn?'Running with cautions':'All systems normal',heroText:true,heroSub:(bad||warn)&&why?polyEscape(why):'',
+  stats:[{label:'CPU',value:fmt(m.cpuPct,0)+'%'},{label:'Memory',value:fmt(m.memoryPct,0)+'%'},{label:'Scan cycle',value:m.cycleMs?(m.cycleMs/1000).toFixed(1)+' s':'—'}],
+  visual:`<div class="g-fill"><canvas class="g-graph" id="glanceSysGraph" aria-label="CPU and memory history"></canvas></div><div class="g-rows">${rows}</div>`,action:'<button class="g-action" id="gSettings">Settings</button>'}));
+ $('#gSettings')?.addEventListener('click',()=>openApp('settings'));
+ drawSysGraph();
+}
+function drawSysGraph(){taskGraph($('#glanceSysGraph'),[{v:sysHist.map(x=>x.cpu),col:'56,255,104'},{v:sysHist.map(x=>x.mem),col:'255,215,90'}],{lo:0,hi:100,label:'CPU (GREEN) · MEMORY (AMBER)',right:sysHist.length>1?`LAST ${Math.max(1,Math.round((sysHist.at(-1).at-sysHist[0].at)/60000))} MIN`:'',empty:'CPU AND MEMORY HISTORY STARTS NOW'})}
+function glanceJournal(){
+ const es=journalEntriesFromState().sort((a,b)=>(Number(b.ts)||0)-(Number(a.ts)||0)).slice(0,14);
+ setGlance('journal',glance({title:'Journal',hero:null,visual:es.length?`<div class="g-rows g-grow">${es.map(e=>gRow(e.title||'',journalWhen(e.ts),'',e.milestone?'ok':null)).join('')}</div>`:'<div class="g-empty">No entries yet.</div>',foot:gFoot([`latest ${es.length}`,'Details for search and filters'])}));
+}
+function glanceMoney(){
+ const s=state||{},bad=s.system?.health==='DEGRADED',warn=s.system?.health==='CAUTION',e=s.evolutionLoop||{},ap=polyUSComboState?.autopilot||{},rh=rhState||{},sys=s.system||{};
+ const rows=[gRow('Pump.fun',sys.killSwitch?'kill switch':sys.paused?'paused':`trading · ${(s.positions||[]).length} open`,'',sys.killSwitch?'bad':sys.paused?'warn':'ok'),
+  gRow('Polymarket US',ap.enabled?'autopilot on':'manual',polyUSAccount?.balance?money(polyUSAccount.balance.currentBalance):'',ap.enabled?'ok':''),
+  gRow('Robinhood crypto',rh.loop?.running?'paper · live quotes':'stopped',rh.paper?money(rh.paper.equityUsd):'',rh.loop?.running?'ok':'warn'),
+  gRow('Evolution Lab',[String(e.status||'—').toLowerCase(),e.generation&&`gen ${Number(e.generation).toLocaleString()}`].filter(Boolean).join(' · '),'',e.status==='RUNNING'?'ok':'warn')].join('');
+ setGlance('money',glance({title:'Money Printer OS',pill:bad?{label:'Degraded',tone:'bad'}:warn?{label:'Caution',tone:'warn'}:{label:'Healthy',tone:'ok'},hero:null,
+  stats:[{label:'Crypto equity',value:fmtSol(s.portfolio?.equitySol)},{label:'Today',value:gSigned(s.dailyPnlSol,4)+' SOL',tone:gTone(s.dailyPnlSol)},{label:'Mode',value:polyEscape(String(s.mode||'paper').toUpperCase())}],
+  visual:`<div class="g-brand"><img src="/assets/money-printer-logo.png" alt=""><div><div class="g-brand-name">MONEY PRINTER OS</div><div class="g-hero-sub">v${polyEscape(s.build?.version||'—')} · paper research desk</div></div></div><div class="g-rows">${rows}</div>`}));
+}
+const GLANCE={
+ trade:{render:glanceTrade,sig:()=>{const s=state||{},p=s.portfolio||{},ps=s.portfolioSeries||[];return[p.equitySol,s.dailyPnlSol,s.system?.paused,s.system?.killSwitch,s.system?.health,(s.positions||[]).length,s.solanaBook?.hitRate,s.watchlist,s.memeIndex,s.system?.opportunityFunnel,s.walletIntel?.holderRpc?.status,s.evolutionLoop?.generation,ps.length,ps.at(-1)?.ts,s.market?.solUsd,s.mode]}},
+ sportsbook:{render:glanceSportsbook,sig:()=>[polyUSComboState,polyUSAccount?.balance,polyUSAccount?.keyStatus]},
+ robinhood:{render:glanceRobinhood,sig:()=>{const r=rhState||{};return[r.at,r.paper?.equityUsd,r.paper?.positions?.length,r.paper?.stats,r.quotes,r.loop?.running,r.evolve?.generation,r.evolve?.phase,r.paper?.autopilot?.enabled,r.readiness?.recoveryRequired]}},
+ system:{render:glanceSystem,sig:()=>{const s=state||{},m=s.system?.metrics||{},e=s.evolutionLoop||{};return[sysHist.length,sysHist.at(-1)?.at,s.system?.health,s.mode,e.status,e.generation,e.workerCount,s.walletIntel?.holderRpc?.status,s.walletIntel?.holderRpc?.calls,(networkState?.peers||[]).filter(x=>x.online).length,Math.round((m.cycleMs||0)/100)]}},
+ journal:{render:glanceJournal,sig:()=>[projectJournal?.rows?.length,projectJournal?.rows?.[0]?.at,journal.length,journal.at(-1)?.ts]},
+ money:{render:glanceMoney,sig:()=>[state?.build?.version,state?.system?.health,state?.mode,state?.portfolio?.equitySol,state?.dailyPnlSol,state?.system?.paused,state?.system?.killSwitch,(state?.positions||[]).length,state?.evolutionLoop?.status,state?.evolutionLoop?.generation,polyUSComboState?.autopilot?.enabled,polyUSAccount?.balance,rhState?.loop?.running,rhState?.paper?.equityUsd]}
+};
+function renderGlances(){for(const h of HOSTS){const g=GLANCE[h];if(!g||!glanceVisible(h))continue;const key=JSON.stringify(g.sig());if(renderSig.get('g:'+h)===key)continue;renderSig.set('g:'+h,key);g.render()}}
 function renderProductEconomics(){
  const p=productEconomicsState,t=p?.totals;
  if(!t)return setBody('economics',`<div class="mpo-module-body">${polyEscape(p?.error||'Loading product economics…')}</div>`);
@@ -1080,6 +1249,7 @@ function renderProductEconomics(){
 }
 function renderAll(force=false){
  if(force)renderSig.clear(); const s=state||{},m=s.system?.metrics||{},e=s.evolutionLoop||{},p=s.portfolio||{}; const t0=performance.now();
+ sampleSystem();renderGlances();
  renderChanged('trade',[p.equitySol,p.cashSol,s.dailyPnlSol,s.system?.health,s.system?.paused,s.system?.killSwitch,s.watchlist,s.positions,s.solanaBook],renderTrade);
  renderChanged('sportsbook',polyUSComboState,renderSportsbook);
  renderChanged('robinhood',rhState,renderRobinhood);
@@ -1096,7 +1266,7 @@ function renderAll(force=false){
  renderChanged('risk',[p.positionsValueSol,p.unrealizedPnlSol,s.dailyPnlSol,s.consecutiveLosses,s.system?.health,s.config?.dailyLossLimitSol,s.positions?.length],renderRisk);
  renderChanged('archive',journal.slice(-35),renderArchive);
  renderChanged('money',[s.build?.version,s.system?.health,s.mode,p.equitySol,s.dailyPnlSol,(networkState?.peers||[]).map(x=>[x.id,x.online,x.version])],()=>renderSimple('money'));
- renderChanged('settings',[s.system?.health,s.mode],()=>renderSimple('settings'));
+ renderChanged('settings',[s.system?.health,s.mode,displayPrefs],()=>renderSimple('settings'));
  const mode=String(s.mode||'paper').toUpperCase();
  $('#trayMode').textContent=mode;
  $('#trayMode').className='mpo-badge '+(mode==='LIVE'?'mpo-badge--armed':mode==='PAPER'?'mpo-badge--paper':'mpo-badge--degraded');
@@ -1242,19 +1412,20 @@ buildIcons();buildWindows();buildStart();boot();refreshRobinhood();refreshJourna
 refreshProductEconomics();
 setInterval(()=>{if(!document.hidden)refreshState()},1500);
 setInterval(()=>{if(!document.hidden)refreshNetwork()},5000);
-setInterval(()=>{if(!document.hidden&&windowVisible('sportsbook'))refreshUSComboSnapshot()},5000);
+setInterval(()=>{if(!document.hidden&&windowShown('sportsbook'))refreshUSComboSnapshot()},5000);
 setInterval(()=>{if(!document.hidden)refreshUpdater()},15000);
 setInterval(()=>{if(!document.hidden&&windowVisible('economics'))refreshProductEconomics()},15000);
 setInterval(()=>{if(!document.hidden&&windowVisible('researchmon'))refreshResearchMonitor()},3000);
 setInterval(()=>{if(!document.hidden)refreshJournal()},15000);
-setInterval(()=>{if(!document.hidden&&windowVisible('journal'))refreshProjectJournal()},15000);
+setInterval(()=>{if(!document.hidden&&windowShown('journal'))refreshProjectJournal()},15000);
 window.addEventListener('resize',()=>{clampAll()});
 $('#tileBtn').onclick=()=>tileWindows();
+$('#modeSimple').onclick=()=>setGlobalMode(false);$('#modeAdvanced').onclick=()=>setGlobalMode(true);paintModeSwitch();
 document.addEventListener('keydown',e=>{if(e.key==='Escape')$('#startMenu').classList.remove('open')});
 $('#startBtn').onclick=e=>{e.stopPropagation();$('#startMenu').classList.toggle('open')};document.addEventListener('pointerdown',e=>{if(!e.target.closest('.startmenu')&&!e.target.closest('#startBtn'))$('#startMenu').classList.remove('open')});
 setInterval(()=>$('#clock').textContent=new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}),1000);
 document.addEventListener('keydown',e=>{if(e.target.matches?.('input,select,textarea'))return;if(!$('#priceChart'))return;if(e.key==='+'||e.key==='='){chartView.zoom=Math.min(32,chartView.zoom*1.5);drawChart()}else if(e.key==='-'){chartView.zoom=Math.max(1,chartView.zoom/1.5);drawChart()}else if(e.key==='0'){chartView.zoom=1;chartView.pan=0;drawChart()}else if(e.key.toLowerCase()==='s'){chartView.range='session';chartView.zoom=1;chartView.pan=0;renderSig.delete('trade');renderTrade()}});
 window.addEventListener('beforeunload',persist);
-setInterval(()=>{if(!document.hidden&&windowVisible('robinhood'))refreshRobinhood()},15000);
+setInterval(()=>{if(!document.hidden&&windowShown('robinhood'))refreshRobinhood()},15000);
 </script>
 </body></html>
