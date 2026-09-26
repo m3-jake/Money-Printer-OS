@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { lastCompletedSession, nextSession, nextOpenAfter, sessionFor, marketState, isSession, CALENDAR_SOURCE, CALENDAR_END } from './robinhoodEquitiesCalendar.js';
-import { refreshBars, readBarStore, dataStatus } from './robinhoodEquitiesData.js';
+import { refreshBars, readBarStore, dataStatus, writeLabBars } from './robinhoodEquitiesData.js';
 import { STRATEGIES, DEFAULT_STRATEGY, normalizeParams, paramsHash, symbolsFor, targetWeights, replay } from './robinhoodEquitiesStrategy.js';
 import { loadBook, saveBook, fillPending, equityAt, cashUsd, settle, FEES, DEFAULTS } from './robinhoodEquitiesBook.js';
 import { championState, championPaperAllowed } from './championState.js';
@@ -25,15 +25,42 @@ export function equitiesReadiness(env=process.env){
 // Evolution Lab champion for this lane (lab-link/robinhood-equities-champion.json, published by the Lab's
 // robinhood-equities worker). Applied only when championState clears it for paper, it claims no live authority,
 // it is for this strategy, every bounded param is inside the strategy's bounds (never clamped into range), every
-// other param equals the strategy default, and its params hash is the trader's own hash. Otherwise the defaults run.
+// other param equals the strategy default, and its params hash is the trader's own hash. Existing accepted policies
+// stay applied when a proposal is withdrawn; a fresh book without a qualifying proposal runs the defaults.
 export function equitiesChampionFile(dataDir){return path.join(dataDir,'lab-link','robinhood-equities-champion.json')}
 const sameValue=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+const EQUITIES_EVALUATOR='equities-close-next-open-v2';
+const APPLIED_POLICY_SCHEMA='mpo.equities-applied-policy.v1';
+const sha256=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v);
+const finite=v=>typeof v==='number'&&Number.isFinite(v);
+const millis=v=>typeof v==='number'?v:typeof v==='string'?Date.parse(v):NaN;
+function boundedParams(strategyId,params){
+ const s=STRATEGIES[strategyId];
+ if(!s||!params||typeof params!=='object'||Array.isArray(params))return false;
+ return Object.entries(params).every(([k,v])=>Object.hasOwn(s.bounds,k)
+  ?finite(v)&&v>=s.bounds[k][0]&&v<=s.bounds[k][1]&&(k!=='topN'||Number.isInteger(v))
+  :Object.hasOwn(s.defaults,k)&&sameValue(v,s.defaults[k]));
+}
+function prospectiveEvidenceError(doc,hash,incumbentHash,strategyId,clock){
+ const e=doc.evidence||{},f=e.freeze||{},p=e.prospective||{},ci=p.interval||{};
+ if(e.evaluatorVersion!==EQUITIES_EVALUATOR||!sha256(e.datasetHash)||!sha256(e.experimentId))return 'current evaluator, dataset and experiment fingerprints required';
+ if(e.costs?.known!==true||!['slippageBps','sellFeeBps'].every(k=>finite(e.costs[k])&&e.costs[k]>=0&&e.costs[k]<10000&&e.costs[k]===f.costs?.[k]))return 'executable costs are not verified or changed after freeze';
+ if(f.schema!=='mpo.equities-freeze.v1'||f.evaluatorVersion!==EQUITIES_EVALUATOR||!sha256(f.datasetHash)||f.candidateHash!==hash||(incumbentHash!==hash&&f.incumbentHash!==incumbentHash))return 'frozen candidate does not match the applied incumbent';
+ if(!boundedParams(strategyId,f.candidate?.params)||paramsHash(strategyId,normalizeParams(strategyId,f.candidate.params))!==hash||!boundedParams(strategyId,f.incumbent?.params)||paramsHash(strategyId,normalizeParams(strategyId,f.incumbent.params))!==f.incumbentHash)return 'frozen policies do not match their hashes';
+ const published=millis(doc.publishedAt),start=millis(p.start),end=millis(p.end),frozen=millis(f.frozenAt),history=millis(f.historyThrough);
+ if(!(published>0&&published<=clock&&clock-published<=7*864e5&&published>=end)||!(history>0&&history<=frozen&&frozen<start&&start<=end&&end<=clock&&clock-end<=7*864e5)||!Number.isInteger(p.sessions)||p.sessions<126||(end-start)/864e5+1<p.sessions||typeof p.accessId!=='string'||!p.accessId.trim())return 'fresh untouched 126-session prospective evidence required';
+ if(p.pass!==true||!['costsKnown','candidateTraded','beatsCash','beatsIncumbent','boundedDrawdown','independentMonths','improvementInterval'].every(k=>p.gates?.[k]===true))return 'every prospective gate must pass';
+ for(const m of [p.candidate,p.incumbent,p.buyHoldSpy])if(!m||m.sessions!==p.sessions||!finite(m.totalReturnPct)||m.totalReturnPct< -100||!finite(m.maxDrawdownPct)||m.maxDrawdownPct<0||m.maxDrawdownPct>100)return 'prospective metrics are invalid';
+ if(!(p.candidate.totalReturnPct>0&&p.candidate.totalReturnPct>p.incumbent.totalReturnPct&&p.candidate.maxDrawdownPct<=p.buyHoldSpy.maxDrawdownPct))return 'candidate must beat cash and incumbent with bounded drawdown';
+ if(!Number.isInteger(f.trials)||f.trials<1||e.trials!==f.trials||!Number.isInteger(p.effectiveIndependentGroups)||p.effectiveIndependentGroups<6||p.effectiveIndependentGroups>p.sessions||ci.independentGroups!==p.effectiveIndependentGroups||ci.adjustedForTrials!==f.trials||ci.method!=='paired-independent-group-normal-bonferroni'||ci.grouped!==true||!finite(ci.level)||ci.level<.95||ci.level>=1||!finite(ci.standardErrorPct)||ci.standardErrorPct<0||!finite(ci.lowerPct)||!finite(ci.upperPct)||!finite(ci.meanImprovementPct)||!(ci.lowerPct>0&&ci.lowerPct<=ci.meanImprovementPct&&ci.meanImprovementPct<=ci.upperPct))return 'positive trial-adjusted improvement interval over six independent groups required';
+ return null;
+}
 export function equitiesLabChampion(dataDir,strategyId=DEFAULT_STRATEGY){
  const no=(reason,extra={})=>({applied:false,reason,...extra});
  let doc;try{doc=JSON.parse(fs.readFileSync(equitiesChampionFile(dataDir),'utf8'))}catch(e){return no(e?.code==='ENOENT'?'no Lab champion published':'Lab champion file unreadable')}
  if(!doc||doc.schema!=='mpo.lab-module-champion.v1'||doc.module!=='robinhood-equities')return no('not a robinhood-equities Lab champion record');
  const c=doc.candidate||{},base={id:c.id||null,paramsHash:c.paramsHash||null,state:championState(doc).state,publishedAt:doc.publishedAt||null};
- if(doc.liveActivationAllowed===true||doc.automaticLivePromotionAllowed===true)return no('the record claims live authority; refused',base);
+ if(doc.liveActivationAllowed!==false||doc.automaticLivePromotionAllowed!==false||doc.paperOnly!==true)return no('explicit paper-only safety flags required',base);
  if(!championPaperAllowed(doc))return no(`Lab champion is ${base.state}${doc.paperPromotionAllowed===true?'':' without the paper-promotion flag'}, not cleared for paper`,base);
  const s=STRATEGIES[strategyId];
  if(!s||c.strategyId!==strategyId)return no(`champion is for ${String(c.strategyId)}, this book runs ${strategyId}`,base);
@@ -45,24 +72,31 @@ export function equitiesLabChampion(dataDir,strategyId=DEFAULT_STRATEGY){
  }
  const params=normalizeParams(strategyId,c.params),hash=paramsHash(strategyId,params);
  if(c.paramsHash!==hash)return no(`params hash ${String(c.paramsHash)} does not match the trader's ${hash}`,base);
- return {applied:true,reason:null,...base,params,paramsHash:hash};
+ const clock=Date.now();
+ const book=loadBook(dataDir),incumbentHash=book.paramsHash||paramsHash(strategyId,normalizeParams(strategyId,{}));
+ const error=prospectiveEvidenceError(doc,hash,incumbentHash,strategyId,clock);
+ if(error)return no(error,base);
+ return {applied:true,reason:null,...base,params,paramsHash:hash,acceptance:{schema:APPLIED_POLICY_SCHEMA,evaluatorVersion:EQUITIES_EVALUATOR,paramsHash:hash,experimentId:doc.evidence.experimentId,candidateId:c.id,acceptedAt:clock}};
 }
-// Params the book runs now: the cleared Lab champion, else the strategy defaults.
+// A proposal grants adoption once. Withdrawal or expiry cannot silently replace the applied policy.
 export function equitiesStrategyParams(dataDir,strategyId=DEFAULT_STRATEGY){
  const lab=equitiesLabChampion(dataDir,strategyId);
- const params=lab.applied?lab.params:normalizeParams(strategyId,{});
- const {params:_p,...labView}=lab;
- return {params,hash:paramsHash(strategyId,params),lab:{...labView,source:lab.applied?'evolution-lab':'defaults'}};
+ const book=loadBook(dataDir),receipt=book.appliedPolicy;
+ const retained=!book.recoveryRequired&&book.strategyId===strategyId&&boundedParams(strategyId,book.params)&&receipt?.schema===APPLIED_POLICY_SCHEMA&&receipt.evaluatorVersion===EQUITIES_EVALUATOR&&sha256(receipt.experimentId)&&receipt.paramsHash===book.paramsHash&&paramsHash(strategyId,normalizeParams(strategyId,book.params))===book.paramsHash;
+ const params=lab.applied?lab.params:retained?normalizeParams(strategyId,book.params):normalizeParams(strategyId,{});
+ const {params:_p,acceptance,...labView}=lab;
+ return {params,hash:paramsHash(strategyId,params),acceptance:lab.applied?acceptance:retained?receipt:null,lab:{...labView,retained:!lab.applied&&retained,source:lab.applied?'evolution-lab':retained?'applied-incumbent':'defaults'}};
 }
 
 let state={running:false,lastRunAt:null,lastError:null,busy:false};
 let timer=null;
+const handoffVersions=new Map();
 
 function priceMaps(bars){const m={};for(const [s,rows] of Object.entries(bars||{}))m[s]=new Map(rows.map(r=>[r.d,r]));return m}
 
 export async function runEquitiesOnce({now=Date.now(),env=process.env,fetchImpl=globalThis.fetch,dataDir=equitiesDataDir(env),strategyId=env.ROBINHOOD_EQUITIES_STRATEGY||DEFAULT_STRATEGY}={}){
  if(!STRATEGIES[strategyId]||strategyId==='cash'||strategyId==='buy-hold')strategyId=DEFAULT_STRATEGY;
- const {params,hash}=equitiesStrategyParams(dataDir,strategyId);const symbols=symbolsFor(strategyId,params);
+ const {params,hash,acceptance,lab}=equitiesStrategyParams(dataDir,strategyId);const symbols=symbolsFor(strategyId,params);
  const startUsd=Number(env.ROBINHOOD_EQUITIES_START_USD)>0?Number(env.ROBINHOOD_EQUITIES_START_USD):DEFAULTS.startUsd;
  const slippageBps=Number.isFinite(Number(env.ROBINHOOD_EQUITIES_SLIPPAGE_BPS))&&env.ROBINHOOD_EQUITIES_SLIPPAGE_BPS!==''?Math.max(0,Number(env.ROBINHOOD_EQUITIES_SLIPPAGE_BPS)):DEFAULTS.slippageBps;
  const {store}=await refreshBars(dataDir,symbols,{now,env,fetchImpl});
@@ -108,8 +142,16 @@ export async function runEquitiesOnce({now=Date.now(),env=process.env,fetchImpl=
    else events.push('HOLD (drift '+(drift*100).toFixed(2)+'%)');
   }else events.push('NOT_READY');
  }
- book.strategyId=strategyId;book.paramsHash=hash;
+ if(book.paramsHash!==hash||!book.appliedAt)book.appliedAt=now;
+ book.strategyId=strategyId;book.paramsHash=hash;book.params=params;
+ book.appliedPolicy=acceptance;
  saveBook(dataDir,book);
+ const handoffKey=store.fetchedAt+'|'+hash+'|'+book.slippageBps;
+ if(handoffVersions.get(dataDir)!==handoffKey){
+   writeLabBars(dataDir,store,{incumbent:{strategyId,params,paramsHash:hash,since:book.appliedAt,source:lab.source},
+     executionAssumptions:{known:false,slippageBps:book.slippageBps,feeSchedule:FEES,model:'robinhood-equities-pass-through-v1',adjustment:'splits and dividends',blockers:['Adjusted IEX historical bars are not raw executable venue quotes','Spread, available size and corporate-action cash flows are not observed']}});
+   handoffVersions.set(dataDir,handoffKey);if(handoffVersions.size>16)handoffVersions.delete(handoffVersions.keys().next().value);
+ }
  return {book,store,events};
 }
 

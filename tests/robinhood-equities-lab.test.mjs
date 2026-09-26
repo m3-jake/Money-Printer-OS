@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 const nativeFetch = globalThis.fetch;
 globalThis.fetch = url => { throw new Error('network disabled in tests: ' + new URL(url).hostname); };
 const Cal = await import('../src/robinhoodEquitiesCalendar.js');
@@ -80,8 +81,16 @@ test('strategy: month-ends before the calendar come from the data, so the older 
 
 const champ = (patch = {}, candPatch = {}) => {
   const params = Strat.normalizeParams('tactical-a', { smaDays: 150, bandPct: 3, topN: 2 });
-  return { schema: 'mpo.lab-module-champion.v1', module: 'robinhood-equities', publishedAt: 1, qualificationStage: 'PAPER_REVIEW', paperPromotionAllowed: true, paperOnly: true,
+  const clock=Date.now(),day=864e5;
+  const incumbent=Strat.normalizeParams('tactical-a',{}),costs={slippageBps:2,sellFeeBps:.3};
+  const metric=(totalReturnPct,maxDrawdownPct)=>({sessions:126,totalReturnPct,maxDrawdownPct});
+  return { schema: 'mpo.lab-module-champion.v1', module: 'robinhood-equities', publishedAt: clock, qualificationStage: 'PAPER_REVIEW', paperPromotionAllowed: true, paperOnly: true,
     stateSchema: 'mpo.champion-state.v1', state: 'PAPER', liveActivationAllowed: false, automaticLivePromotionAllowed: false,
+    evidence:{evaluatorVersion:'equities-close-next-open-v2',datasetHash:'a'.repeat(64),experimentId:'b'.repeat(64),trials:129,costs:{...costs,known:true},
+      freeze:{schema:'mpo.equities-freeze.v1',evaluatorVersion:'equities-close-next-open-v2',datasetHash:'c'.repeat(64),candidateHash:Strat.paramsHash('tactical-a',params),candidate:{params},incumbentHash:Strat.paramsHash('tactical-a',incumbent),incumbent:{params:incumbent},costs,trials:129,frozenAt:clock-201*day,historyThrough:clock-202*day},
+      prospective:{pass:true,sessions:126,accessId:'isolated-fixture-receipt',start:clock-200*day,end:clock-day,candidate:metric(10,4),incumbent:metric(5,5),buyHoldSpy:metric(12,8),effectiveIndependentGroups:7,
+        gates:{costsKnown:true,candidateTraded:true,beatsCash:true,beatsIncumbent:true,boundedDrawdown:true,independentMonths:true,improvementInterval:true},
+        interval:{lowerPct:.1,upperPct:1,meanImprovementPct:.55,standardErrorPct:.1,level:1-.05/129,independentGroups:7,adjustedForTrials:129,grouped:true,method:'paired-independent-group-normal-bonferroni'}}},
     candidate: { id: 'RHEQ-LAB-x', strategyId: 'tactical-a', family: 'blend', params, paramsHash: Strat.paramsHash('tactical-a', params), ...candPatch }, ...patch };
 };
 const writeChamp = (dir, doc) => { fs.mkdirSync(path.join(dir, 'lab-link'), { recursive: true }); fs.writeFileSync(Eq.equitiesChampionFile(dir), JSON.stringify(doc)); };
@@ -96,6 +105,10 @@ test('Lab champion: applied only when cleared for paper, for this strategy, in b
     'SHADOW state': champ({ state: 'SHADOW' }),
     'no lifecycle state': champ({ state: undefined, stateSchema: undefined }),
     'no paper flag': champ({ paperPromotionAllowed: false }),
+    'no evidence': champ({evidence:null}),
+    'old evaluator': champ({evidence:{...champ().evidence,evaluatorVersion:'equities-v1'}}),
+    'unknown costs': champ({evidence:{...champ().evidence,costs:{known:false}}}),
+    'no prospective period': champ({evidence:{...champ().evidence,prospective:{pass:false}}}),
     'live claim': champ({ liveActivationAllowed: true }),
     'other module': champ({ module: 'robinhood' }),
     'other strategy': champ({}, { strategyId: 'buy-hold' }),
@@ -109,7 +122,7 @@ test('Lab champion: applied only when cleared for paper, for this strategy, in b
   fs.writeFileSync(Eq.equitiesChampionFile(dir), '{broken'); assert.equal(Eq.equitiesLabChampion(dir).applied, false);
 });
 
-test('controller: the book runs the cleared champion, else the defaults, and the snapshot says which', async () => {
+test('controller: a cleared policy persists after Lab withdraws the proposal; fresh books use defaults', async () => {
   const bars = synthBars('2018-06-01', '2026-10-02'), now = ET('2026-09-25', 17, 0);
   const defaults = Strat.paramsHash('tactical-a', Strat.normalizeParams('tactical-a', {}));
   const d1 = tmp();
@@ -126,6 +139,58 @@ test('controller: the book runs the cleared champion, else the defaults, and the
   assert.equal(snap.readiness.execution, 'paper-only'); assert.ok(snap.benchmark.replay?.from < '2024-01-01', 'the replay baseline now covers the older history');
   writeChamp(d2, champ({ state: 'SHADOW' }));
   r = await Eq.runEquitiesOnce({ now: ET('2026-09-28', 17, 0), env: KEYS, fetchImpl: alpacaFetch(bars, []), dataDir: d2 });
-  assert.equal(r.book.paramsHash, defaults, 'a withdrawn or demoted champion falls back to the defaults');
+  assert.equal(r.book.paramsHash, doc.candidate.paramsHash, 'proposal withdrawal preserves the applied incumbent');
+  fs.unlinkSync(Eq.equitiesChampionFile(d2));
+  const resolved=Eq.equitiesStrategyParams(d2);
+  assert.equal(resolved.hash,doc.candidate.paramsHash);assert.equal(resolved.lab.source,'applied-incumbent');
+  const hand=JSON.parse(fs.readFileSync(Data.labBarsFile(d2),'utf8'));
+  assert.equal(hand.incumbent.paramsHash,doc.candidate.paramsHash);
+  r.book.appliedPolicy.paramsHash='wrong';Book.saveBook(d2,r.book);
+  assert.equal(Eq.equitiesStrategyParams(d2).hash,defaults,'tampered acceptance receipt cannot preserve parameters');
   assert.ok(fs.existsSync(Book.bookFile(d2)));
+});
+
+test('consumer independently verifies prospective metrics, cost binding, trials, timing and safety flags',()=>{
+ const dir=tmp(),changes={
+  'losing candidate despite pass':d=>d.evidence.prospective.candidate.totalReturnPct=-90,
+  'worse than incumbent':d=>d.evidence.prospective.incumbent.totalReturnPct=11,
+  'deeper drawdown than benchmark':d=>d.evidence.prospective.candidate.maxDrawdownPct=9,
+  'unbounded drawdown':d=>d.evidence.prospective.incumbent.maxDrawdownPct=101,
+  'missing metric':d=>delete d.evidence.prospective.candidate.sessions,
+  'numeric string':d=>d.evidence.prospective.candidate.totalReturnPct='10',
+  'failed gate':d=>d.evidence.prospective.gates.beatsCash=false,
+  'missing gate':d=>delete d.evidence.prospective.gates.candidateTraded,
+  '20 sessions':d=>d.evidence.prospective.sessions=20,
+  'compressed dates':d=>d.evidence.prospective.start=Date.now()-3*864e5,
+  'too few groups':d=>d.evidence.prospective.effectiveIndependentGroups=5,
+  'nonpositive lower interval':d=>d.evidence.prospective.interval.lowerPct=0,
+  'unadjusted trials':d=>d.evidence.prospective.interval.adjustedForTrials=1,
+  'wrong interval method':d=>d.evidence.prospective.interval.method='unadjusted',
+  'changed fee':d=>d.evidence.costs.sellFeeBps=0,
+  'bad freeze params':d=>d.evidence.freeze.candidate.params.smaDays=200,
+  'wrong freeze evaluator':d=>d.evidence.freeze.evaluatorVersion='old',
+  'no experiment fingerprint':d=>delete d.evidence.experimentId,
+  'stale publication':d=>d.publishedAt=Date.now()-8*864e5,
+  'future publication':d=>d.publishedAt=Date.now()+864e5,
+  'stale window':d=>d.evidence.prospective.end=Date.now()-8*864e5,
+  'future window':d=>d.evidence.prospective.end=Date.now()+864e5,
+  'missing live safety flag':d=>delete d.liveActivationAllowed,
+  'missing automatic safety flag':d=>delete d.automaticLivePromotionAllowed,
+  'missing paper-only flag':d=>delete d.paperOnly,
+ };
+ for(const [name,change] of Object.entries(changes)){const d=champ();change(d);writeChamp(dir,d);const r=Eq.equitiesLabChampion(dir);assert.equal(r.applied,false,name);assert.ok(r.reason,name)}
+});
+
+const labRoot=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..','..','money-printer-evolution-lab');
+test('actual sibling Lab freeze, prospective evaluator and publisher satisfy the consumer contract',{skip:!fs.existsSync(path.join(labRoot,'src','equitiesProspective.js'))},async()=>{
+ const load=file=>import(pathToFileURL(path.join(labRoot,'src',file)).href);
+ const [{freezeEquitiesCandidate,evaluateEquitiesProspective},research,{publishModuleChampion}]=await Promise.all([load('equitiesProspective.js'),load('robinhoodEquitiesResearch.js'),load('moduleRegistry.js')]);
+ const dates=[];for(let t=Date.now()-900*864e5;t<Date.now()-864e5;t+=864e5){const date=new Date(t);if(![0,6].includes(date.getUTCDay()))dates.push(date.toISOString().slice(0,10))}
+ const bars=Object.fromEntries(UNIVERSE.map(s=>{let px=100;return [s,dates.map(d=>{const o=px;px*=1+(s==='SPY'?.001:.0001);return {d,o,h:px,l:o,c:px,v:1000}})]}));
+ const params=research.normalizeParams({trendWeight:1}),incumbent=research.normalizeParams({}),costs={slippageBps:2,sellFeeBps:.3};
+ const freezeDate=dates.at(-127),freeze=freezeEquitiesCandidate({leader:{params,paramsHash:research.paramsHash(params)},incumbent:{params:incumbent,paramsHash:research.paramsHash(incumbent)},split:{holdoutTo:freezeDate},trials:129},{now:Date.parse(freezeDate+'T23:59:59Z'),datasetHash:'a'.repeat(64),costs});
+ const result=evaluateEquitiesProspective(bars,freeze,{incumbentParams:incumbent,costsKnown:true,...costs,consumeHoldout:()=>({id:'actual-producer-fixture-receipt',allowed:true})});
+ assert.equal(result.prospective.pass,true,JSON.stringify(result.blockers));
+ const dir=tmp();publishModuleChampion('robinhood-equities',{qualificationStage:'PAPER_REVIEW',paperPromotionAllowed:true,paperOnly:true,candidate:result.proposal,evidence:{experimentId:'b'.repeat(64),datasetHash:'c'.repeat(64),evaluatorVersion:research.EQUITIES_EVALUATOR_VERSION,costs:{...costs,known:true},trials:129,freeze,prospective:result.prospective}},{traderDataDir:dir,labDataDir:path.join(dir,'lab')});
+ const accepted=Eq.equitiesLabChampion(dir);assert.equal(accepted.applied,true,accepted.reason);assert.equal(accepted.paramsHash,result.proposal.paramsHash);
 });
