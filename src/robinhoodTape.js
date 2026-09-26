@@ -92,6 +92,23 @@ export function loadTape(symbol,sinceMs=0){
  const since=num(sinceMs);
  return rows.filter(r=>r.t>=since).map(r=>({t:r.t,bid:r.bid,ask:r.ask,mid:(r.bid+r.ask)/2,src:r.src||null}));
 }
+// Rows since `sinceMs` read from the END of the file only (the chart asks every 15 s; the file can hold 45 days).
+// Reads backwards in doubling chunks until a row older than sinceMs is seen or the file start is reached.
+const NL=String.fromCharCode(10);
+export function loadTapeSince(symbol,sinceMs,{chunk=256*1024}={}){
+ const sym=String(symbol||'').toUpperCase(),since=num(sinceMs),file=tapeFile(sym);let text='';
+ try{
+  const fd=fs.openSync(file,'r');
+  try{const size=fs.fstatSync(fd).size;let len=Math.min(size,chunk);
+   for(;;){const buf=Buffer.alloc(len);fs.readSync(fd,buf,0,len,size-len);text=buf.toString('utf8');
+    if(len>=size)break;const nl=text.indexOf(NL);const first=parseLines(text.slice(nl+1).split(NL,1)[0]);
+    if(first.length&&first[0].t<since){text=text.slice(nl+1);break}len=Math.min(size,len*2)}
+  }finally{fs.closeSync(fd)}
+ }catch{text=''}
+ let rows=parseLines(text);const pending=buffers.get(sym)||[];
+ if(pending.length)rows=parseLines(rows.concat(pending).map(r=>JSON.stringify(r)).join(NL));
+ return rows.filter(r=>r.t>=since).map(r=>({t:r.t,bid:r.bid,ask:r.ask,mid:(r.bid+r.ask)/2,src:r.src||null}));
+}
 const coverageCache=new Map(); // symbol -> {key, value}; the HUD asks every snapshot, the file changes every 30 s at most
 export function tapeCoverage(symbol,now=Date.now()){
  const sym=String(symbol||'').toUpperCase();let size=-1;try{size=fs.statSync(tapeFile(sym)).size}catch{}

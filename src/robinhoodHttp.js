@@ -16,6 +16,7 @@ export async function handleRobinhoodRequest(req,res,u,{json,body}){
   if(u.pathname==='/api/robinhood')return json(res,await RH.robinhoodSnapshot());
   if(u.pathname==='/api/robinhood/readiness')return json(res,RH.robinhoodReadiness());
   if(u.pathname==='/api/robinhood/evolve')return json(res,RH.robinhoodEvolveView());
+  if(u.pathname==='/api/robinhood/chart'){try{return json(res,RH.robinhoodChart({symbol:u.searchParams.get('symbol')||undefined,range:u.searchParams.get('range')||'6h'}))}catch(e){return json(res,{ok:false,error:redact(e?.message||'chart failed'),code:e?.code||'unknown'},400)}}
   return json(res,{ok:false,error:'Not found'},404);
  }
  if(req.method!=='POST')return json(res,{ok:false,error:'Method not allowed'},405);

@@ -1,6 +1,7 @@
 // Robinhood Auto Trader panel. This release is paper-only: API credentials feed authenticated market data,
 // while the backend hard-rejects Robinhood real-order, cancel, reconcile and real-autopilot mutations.
 let rhState=null,rhSubmitting=false,rhRefreshBusy=false,rhMessage='',rhDraft={},rhPreview=null;
+let rhChart={symbol:null,range:'6h',data:null,at:0,busy:false,error:null};
 const RH_FOCUS_IDS=['rhSymbol','rhUsd','rhSymbols','rhOrderUsd','rhMaxOpen','rhBank','rhParams','rhResetConfirm','rhRealSymbol','rhRealUsd','rhRealType','rhApOrderUsd','rhApMaxOpen','rhApLossCap','rhApSymbols','rhApType'];
 const RH_SECRET_IDS=['rhApiKey','rhSecret','rhConfirm','rhAutoConfirm'];
 const RH_PHRASES={place:'PLACE REAL CRYPTO ORDER',cancel:'CANCEL REAL CRYPTO ORDER',cancelAll:'CANCEL REAL CRYPTO ORDERS',autopilot:'ENABLE REAL CRYPTO AUTOPILOT',forget:'FORGET'};
@@ -12,7 +13,7 @@ function rhCapture(){for(const id of RH_FOCUS_IDS){const el=document.getElementB
 function rhTyping(){const ae=document.activeElement;if(ae&&(RH_FOCUS_IDS.includes(ae.id)||RH_SECRET_IDS.includes(ae.id)))return true;return RH_SECRET_IDS.some(id=>{const el=document.getElementById(id);return el&&el.value})}
 async function refreshRobinhood(){
  if(rhRefreshBusy)return;rhRefreshBusy=true;
- try{const r=await fetch('/api/robinhood');if(!r.ok)throw Error('Robinhood status request failed');rhState=await r.json();if(windowVisible('robinhood'))renderRobinhood()}
+ try{const r=await fetch('/api/robinhood');if(!r.ok)throw Error('Robinhood status request failed');rhState=await r.json();if(windowVisible('robinhood')){renderRobinhood();rhLoadChart()}}
  catch(e){rhMessage=e.message;if(windowVisible('robinhood'))renderRobinhood()}finally{rhRefreshBusy=false}
 }
 async function rhAction(action,body,label){
@@ -47,6 +48,72 @@ function rhExploreSection(st){
  <div class="metric-grid"><div class="mpo-metric"><label>Equity</label><strong>${rhMoney(e.equityUsd)}</strong></div><div class="mpo-metric"><label>Net P/L after fees</label><strong class="${(s.pnlUsd||0)>=0?'green':'red'}">${rhMoney(s.pnlUsd)}</strong></div><div class="mpo-metric"><label>Fees paid</label><strong>${rhMoney(s.feesUsd)}</strong></div><div class="mpo-metric"><label>Closes</label><strong>${s.closes||0}</strong></div><div class="mpo-metric"><label>Hit rate</label><strong>${rhPct(s.hitRate)}</strong></div><div class="mpo-metric"><label>Profit factor</label><strong>${pf}</strong></div></div>
  <table class="mpo-table"><thead><tr><th>Open</th><th>Qty</th><th>Cost</th><th>Open P/L</th><th>Stop / take</th></tr></thead><tbody>${pos.length?pos.map(x=>`<tr><td>${polyEscape(x.symbol)}</td><td>${fmt(x.qty,8)}</td><td>${rhMoney(x.costUsd)}</td><td>${rhMoney(x.unrealizedUsd)}</td><td>${rhPct(x.stopPct)} / ${rhPct(x.takePct)}</td></tr>`).join(''):'<tr><td colspan="5">No open exploration positions.</td></tr>'}</tbody></table>
  <small>Recent: ${hist.length?hist.map(x=>polyEscape(x.symbol+' '+(x.exit?.reason||'')+' ')+rhMoney(x.pnlUsd)).join(' · '):'no exploration closes yet'}. This book exists to generate data; it is not a strategy.</small></fieldset>`;
+}
+// §24 charts: inline SVG fed by the read-only GET /api/robinhood/chart (at most 800 points per series).
+async function rhLoadChart(force=false){
+ if(rhChart.busy||(!force&&Date.now()-rhChart.at<15000))return;
+ const sym=rhChart.symbol||Object.keys(rhState?.tape||{})[0]||'BTC-USD';rhChart.busy=true;
+ try{const r=await fetch('/api/robinhood/chart?symbol='+encodeURIComponent(sym)+'&range='+encodeURIComponent(rhChart.range));const d=await r.json();if(!r.ok||d.ok===false)throw Error(d.error||'chart request failed');rhChart={...rhChart,symbol:sym,data:d,at:Date.now(),error:null}}
+ catch(e){rhChart={...rhChart,symbol:sym,at:Date.now(),error:e.message}}
+ finally{rhChart.busy=false;if(windowVisible('robinhood'))renderRobinhood()}
+}
+const RH_C={band:'rgba(0,200,255,.16)',mid:'#e6f3ff',don:'#ffb000',ef:'#39ff68',es:'#ff5bd0',entry:'#39ff68',exit:'#ff5b70',explore:'#ffb000',stop:'#ff5b70',take:'#39ff68',trail:'#ffffff',grid:'#2b3640',text:'#b8c7d3'};
+function rhChartDims(h){const narrow=typeof window!=='undefined'&&window.innerWidth<600;return {W:narrow?420:800,H:narrow?Math.round(h*0.9):h,pl:6,pr:narrow?58:72,pt:12,pb:20}}
+function rhTimeLabel(t,range){const d=new Date(t);return range==='24h'?d.toLocaleTimeString([],{hour:'numeric'}):d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}
+function rhPath(pts,x,y,key){let s='',pen=false;for(const p of pts){const v=p[key];if(v==null||!Number.isFinite(v)){pen=false;continue}s+=(pen?'L':'M')+x(p.t).toFixed(1)+' '+y(v).toFixed(1);pen=true}return s}
+function rhMarker(m,x,y){const cx=x(m.t),cy=y(m.price),c=m.book==='explore'?RH_C.explore:(m.kind==='entry'?RH_C.entry:RH_C.exit),tip=`<title>${polyEscape(m.book+' '+m.kind+(m.reason?' '+m.reason:'')+' @ '+fmt(m.price,2))}</title>`;
+ if(m.book==='explore')return m.kind==='entry'?`<circle class="rh-mk rh-mk-explore-entry" cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="5" fill="none" stroke="${c}" stroke-width="2">${tip}</circle>`:`<rect class="rh-mk rh-mk-explore-exit" x="${(cx-4.5).toFixed(1)}" y="${(cy-4.5).toFixed(1)}" width="9" height="9" fill="none" stroke="${c}" stroke-width="2">${tip}</rect>`;
+ return m.kind==='entry'?`<path class="rh-mk rh-mk-strict-entry" d="M${cx.toFixed(1)} ${(cy-7).toFixed(1)}L${(cx+6).toFixed(1)} ${(cy+4).toFixed(1)}L${(cx-6).toFixed(1)} ${(cy+4).toFixed(1)}Z" fill="${c}">${tip}</path>`:`<path class="rh-mk rh-mk-strict-exit" d="M${cx.toFixed(1)} ${(cy+7).toFixed(1)}L${(cx+6).toFixed(1)} ${(cy-4).toFixed(1)}L${(cx-6).toFixed(1)} ${(cy-4).toFixed(1)}Z" fill="${c}">${tip}</path>`;
+}
+function rhPriceSvg(d){
+ const pts=d?.points||[];if(!pts.length)return `<div class="mpo-empty" id="rhPriceChart">No tape for ${polyEscape(d?.symbol||'--')} in the last ${polyEscape(d?.range||'--')} yet.</div>`;
+ const {W,H,pl,pr,pt,pb}=rhChartDims(280),from=d.from,to=d.to,lines=d.lines||[],marks=d.markers||[];
+ const vals=[];for(const p of pts){vals.push(p.bid,p.ask);if(p.dh!=null)vals.push(p.dh);if(p.dl!=null)vals.push(p.dl)}for(const m of marks)vals.push(m.price);for(const l of lines)for(const k of ['stop','take','trail'])if(l[k]!=null)vals.push(l[k]);
+ let lo=Math.min(...vals),hi=Math.max(...vals);const pad=(hi-lo||hi*0.001)*0.06;lo-=pad;hi+=pad;
+ const x=t=>pl+(t-from)/Math.max(1,to-from)*(W-pl-pr),y=v=>pt+(hi-v)/(hi-lo)*(H-pt-pb);
+ const band='M'+pts.map(p=>x(p.t).toFixed(1)+' '+y(p.ask).toFixed(1)).join('L')+'L'+pts.slice().reverse().map(p=>x(p.t).toFixed(1)+' '+y(p.bid).toFixed(1)).join('L')+'Z';
+ const grid=[0,0.5,1].map(f=>{const v=lo+(hi-lo)*(1-f),yy=y(v);return `<line x1="${pl}" x2="${W-pr}" y1="${yy.toFixed(1)}" y2="${yy.toFixed(1)}" stroke="${RH_C.grid}"/><text x="${W-pr+4}" y="${(yy+4).toFixed(1)}" fill="${RH_C.text}" font-size="11">${fmt(v,2)}</text>`}).join('');
+ const times=[from,(from+to)/2,to].map((tt,i)=>`<text x="${x(tt).toFixed(1)}" y="${H-5}" fill="${RH_C.text}" font-size="11" text-anchor="${['start','middle','end'][i]}">${polyEscape(rhTimeLabel(tt,d.range))}</text>`).join('');
+ const hline=(v,c,dash,label,cls)=>v==null?'':`<g class="${cls}"><line x1="${pl}" x2="${W-pr}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" stroke="${c}" stroke-width="1.2" stroke-dasharray="${dash}"/><text x="${W-pr+4}" y="${(y(v)-3).toFixed(1)}" fill="${c}" font-size="10">${label}</text></g>`;
+ const posLines=lines.map(l=>{const b=l.book==='explore'?'X':'S';return hline(l.stop,RH_C.stop,'6 4','STOP '+b,'rh-line-stop')+hline(l.take,RH_C.take,'6 4','TAKE '+b,'rh-line-take')+hline(l.trail,RH_C.trail,'2 3','TRAIL '+b,'rh-line-trail')}).join('');
+ return `<svg id="rhPriceChart" viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${polyEscape(d.symbol)} price, last ${polyEscape(d.range)}" style="display:block;background:#0d1419;border:1px solid ${RH_C.grid}">${grid}
+ <path class="rh-band" d="${band}" fill="${RH_C.band}" stroke="none"/>
+ <path class="rh-don-high" d="${rhPath(pts,x,y,'dh')}" fill="none" stroke="${RH_C.don}" stroke-width="1" stroke-dasharray="4 3"/><path class="rh-don-low" d="${rhPath(pts,x,y,'dl')}" fill="none" stroke="${RH_C.don}" stroke-width="1" stroke-dasharray="4 3"/>
+ <path class="rh-ema-fast" d="${rhPath(pts,x,y,'ef')}" fill="none" stroke="${RH_C.ef}" stroke-width="1.2"/><path class="rh-ema-slow" d="${rhPath(pts,x,y,'es')}" fill="none" stroke="${RH_C.es}" stroke-width="1.2"/>
+ <path class="rh-mid" d="${rhPath(pts,x,y,'mid')}" fill="none" stroke="${RH_C.mid}" stroke-width="1.6"/>
+ ${posLines}${marks.map(m=>rhMarker(m,x,y)).join('')}${times}</svg>`;
+}
+function rhEquitySvg(e,label,id){
+ const pts=e?.points||[];const head=`<div style="font-size:12px;margin:6px 0 2px"><b class="${id==='rhEquityExplore'?'amber':''}">${polyEscape(label)}</b> net ${rhMoney(e?.netUsd)} · fees ${rhMoney(e?.feesUsd)} · gross ${rhMoney(e?.grossUsd)} · ${e?.closes||0} closes</div>`;
+ if(pts.length<2)return head+`<div class="mpo-empty" id="${id}">No closes yet.</div>`;
+ const {W,H,pl,pr,pt,pb}=rhChartDims(130),from=pts[0].t,to=pts[pts.length-1].t,vals=pts.flatMap(p=>[p.net,p.gross]).concat(e.startUsd);
+ let lo=Math.min(...vals),hi=Math.max(...vals);const pad=Math.max(0.5,(hi-lo)*0.1);lo-=pad;hi+=pad;
+ const x=t=>pl+(t-from)/Math.max(1,to-from)*(W-pl-pr),y=v=>pt+(hi-v)/(hi-lo)*(H-pt-pb);
+ const verts=key=>pts.flatMap((p,i)=>i?[[x(p.t),y(pts[i-1][key])],[x(p.t),y(p[key])]]:[[x(p.t),y(p[key])]]),line=v=>v.map((q,i)=>(i?'L':'M')+q[0].toFixed(1)+' '+q[1].toFixed(1)).join(''),step=key=>line(verts(key));
+ const drag=line([...verts('gross'),...verts('net').reverse()])+'Z';
+ return head+`<svg id="${id}" viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${polyEscape(label)} equity" style="display:block;background:#0d1419;border:1px solid ${RH_C.grid}">
+ <line x1="${pl}" x2="${W-pr}" y1="${y(e.startUsd).toFixed(1)}" y2="${y(e.startUsd).toFixed(1)}" stroke="${RH_C.grid}" stroke-dasharray="3 3"/><text x="${W-pr+4}" y="${(y(e.startUsd)+4).toFixed(1)}" fill="${RH_C.text}" font-size="11">${rhMoney(e.startUsd)}</text>
+ <path class="rh-fee-drag" d="${drag}" fill="rgba(255,91,112,.28)" stroke="none"><title>fee drag</title></path>
+ <path class="rh-eq-gross" d="${step('gross')}" fill="none" stroke="${RH_C.text}" stroke-width="1" stroke-dasharray="4 3"/>
+ <path class="rh-eq-net" d="${step('net')}" fill="none" stroke="${id==='rhEquityExplore'?RH_C.explore:RH_C.ef}" stroke-width="1.8"/>
+ <text x="${W-pr+4}" y="${(y(pts[pts.length-1].net)+4).toFixed(1)}" fill="${RH_C.text}" font-size="11">${rhMoney(pts[pts.length-1].net)}</text></svg>`;
+}
+function rhHold(ms){return typeof ms==='number'&&Number.isFinite(ms)?(ms<3600e3?Math.round(ms/60000)+'m':(ms/3600e3).toFixed(1)+'h'):'--'}
+function rhTradeTable(rows){
+ const list=(rows||[]).slice(0,30);
+ return `<div class="mpo-table-wrap" style="max-height:260px;overflow:auto"><table class="mpo-table" id="rhTradeTable"><thead><tr><th>Book</th><th>Pair</th><th>Entry</th><th>Exit</th><th>Reason</th><th>Hold</th><th>Gross</th><th>Fees</th><th>Net</th></tr></thead><tbody>
+ ${list.length?list.map(r=>`<tr><td class="${r.book==='explore'?'amber':''}">${r.book==='explore'?'EXPLORE':'STRICT'}</td><td>${polyEscape(r.symbol)}</td><td>${rhMoney(r.entry)}</td><td>${rhMoney(r.exit)}</td><td>${polyEscape(r.reason||'--')}</td><td>${rhHold(r.holdMs)}</td><td>${rhMoney(r.grossUsd)}</td><td>${rhMoney(r.feesUsd)}</td><td class="${(r.netUsd||0)>=0?'green':'red'}">${rhMoney(r.netUsd)}</td></tr>`).join(''):'<tr><td colspan="9">No closed paper trades yet.</td></tr>'}</tbody></table></div>`;
+}
+function rhChartSection(st){
+ const d=rhChart.data,syms=Object.keys(st.tape||{}),cur=rhChart.symbol||syms[0]||'BTC-USD',src=d?.sources?Object.entries(d.sources).map(([k,n])=>polyEscape(k)+' '+n).join(' · '):'';
+ return `<fieldset class="mpo-fieldset" id="rhCharts"><legend>Charts</legend>
+ <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px">${syms.map(s=>`<button class="btn ${s===cur?'on':''}" data-rh-chart-symbol="${polyEscape(s)}">${polyEscape(s)}</button>`).join('')}<span style="flex:1"></span>${['1h','6h','24h'].map(r=>`<button class="btn ${r===rhChart.range?'on':''}" data-rh-chart-range="${r}">${r}</button>`).join('')}</div>
+ ${rhChart.error?`<div class="mpo-error">${polyEscape(rhChart.error)}</div>`:''}
+ ${d?rhPriceSvg(d):'<div class="mpo-empty" id="rhPriceChart">Loading chart...</div>'}
+ <div style="font-size:11px;margin:4px 0 8px;color:${RH_C.text}"><span style="color:${RH_C.mid}">— mid</span> · <span style="color:#00c8ff">▮ bid/ask band</span> · <span style="color:${RH_C.don}">- - Donchian ${polyEscape(String(d?.indicators?.lookbackSamples??''))}</span> · <span style="color:${RH_C.ef}">— EMA ${polyEscape(String(d?.indicators?.emaFast??''))}</span> · <span style="color:${RH_C.es}">— EMA ${polyEscape(String(d?.indicators?.emaSlow??''))}</span> · <span style="color:${RH_C.entry}">▲</span>/<span style="color:${RH_C.exit}">▼</span> strict entry/exit · <span style="color:${RH_C.explore}">○/□</span> exploration entry/exit · stop/take lines for open positions (S strict, X exploration)${d?` · ${d.points.length} of ${d.rawCount} samples${src?' ('+src+')':''}`:''}</div>
+ ${d?rhEquitySvg(d.equity?.strict,'STRICT BOOK','rhEquityStrict')+rhEquitySvg(d.equity?.explore,'EXPLORATION (NOT A STRATEGY)','rhEquityExplore'):''}
+ <div style="font-size:11px;margin:4px 0;color:${RH_C.text}">Solid: realized equity after fees. Dashed: before fees. Red shading: fee drag.</div>
+ ${d?rhTradeTable(d.trades):''}</fieldset>`;
 }
 function renderRobinhood(force=false){
  const root=document.getElementById('body-robinhood');if(!root)return;
@@ -90,6 +157,7 @@ function renderRobinhood(force=false){
  <fieldset class="mpo-fieldset"><legend>Signals and costs</legend><table class="mpo-table"><thead><tr><th>Pair</th><th>Bid / ask</th><th>Samples</th><th>Move estimate</th><th>Round-trip cost</th><th>Signal</th><th>Why</th></tr></thead><tbody>
  ${Object.entries(rhState.tape||{}).map(([s,t])=>`<tr><td>${polyEscape(s)}${t.primary?' <span class="mpo-badge">PRIMARY x'+polyEscape(String(prim.weight||1))+'</span>':''}</td><td>${rhMoney(quoteMap[s]?.bid)} / ${rhMoney(quoteMap[s]?.ask)}</td><td>${t.n}</td><td>${rhPct(t.expectedMovePct)}</td><td>${rhPct(t.costPct)}</td><td><span class="mpo-badge">${polyEscape(t.signal||'--')}</span></td><td>${polyEscape(t.reason||'--')}</td></tr>`).join('')}
  </tbody></table><p>The move estimate measures volatility, not predicted profit. Fees and fill costs are modeled, not verified.</p></fieldset>
+ ${rhChartSection(rhState)}
  ${rhGaugeSection(rhState)}
  ${rhExploreSection(rhState)}
  <fieldset class="mpo-fieldset"><legend>Paper research qualification</legend>
@@ -146,6 +214,8 @@ function renderRobinhood(force=false){
  </div>`);
  const el=id=>root.querySelector('#'+id);
  el('rhRefresh').onclick=()=>refreshRobinhood();
+ root.querySelectorAll('[data-rh-chart-symbol]').forEach(b=>b.onclick=()=>{rhChart.symbol=b.dataset.rhChartSymbol;rhChart.data=null;rhLoadChart(true);renderRobinhood(true)});
+ root.querySelectorAll('[data-rh-chart-range]').forEach(b=>b.onclick=()=>{rhChart.range=b.dataset.rhChartRange;rhLoadChart(true);renderRobinhood(true)});
  el('rhBuy').onclick=()=>rhAction('paper-order',{symbol:el('rhSymbol').value,usd:Number(el('rhUsd').value)});
  el('rhTick').onclick=()=>rhAction('paper-autopilot/run',{});
  el('rhToggle').onclick=()=>rhAction('paper-autopilot',{enabled:!a.enabled});

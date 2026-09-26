@@ -30,6 +30,7 @@ import * as E from './robinhoodEvolve.js';
 import { fetchPublicPaperMarket, fetchPublicCandles } from './robinhoodPaperFeed.js';
 import * as W from './robinhoodWarmStart.js';
 import { gauge } from './robinhoodGauge.js';
+import * as C from './robinhoodChart.js';
 export const CONFIRM_PLACE='PLACE REAL CRYPTO ORDER', CONFIRM_CANCEL='CANCEL REAL CRYPTO ORDER', CONFIRM_CANCEL_ALL='CANCEL REAL CRYPTO ORDERS', CONFIRM_AUTOPILOT='ENABLE REAL CRYPTO AUTOPILOT', CONFIRM_FORGET='FORGET';
 const clone=x=>structuredClone(x), envNum=(k,d)=>{const n=Number(process.env[k]);return Number.isFinite(n)&&n>0?n:d};
 const TICK_MS=Math.max(5000,envNum('ROBINHOOD_TICK_MS',15000)), PREVIEW_TTL_MS=30000, PREVIEW_CACHE_MS=10000, SNAPSHOT_TTL_MS=5000, ENTRY_TTL_MS=90000, RECONCILE_THROTTLE_MS=5000, NEVER_RECEIVED_MS=600000, NEVER_RECEIVED_LISTINGS=3;
@@ -703,6 +704,17 @@ function snapshotView(){
  return {at:now(),readiness:robinhoodReadiness(),account:account?{...account,accountNumber:'****'+String(account.accountNumber).slice(-4)}:null,pairs:[...pairs.values()].map(x=>({symbol:x.symbol,assetIncrement:x.assetIncrement,quoteIncrement:x.quoteIncrement,minOrderAmountUsd:x.minOrderAmountUsd,isApiTradable:x.isApiTradable})),quotes:[...quotes.values()].map(q=>({...q,spreadPct:(q.ask-q.bid)/((q.ask+q.bid)/2)})),tape,
   paper:{cashUsd:p.cashUsd,startUsd:p.startUsd,equityUsd:known?p.cashUsd+positions.reduce((s,x)=>s+x.costUsd+x.unrealizedUsd,0):null,unrealizedUsd,positions,history:p.history.slice(0,8),stats:p.stats,autopilot:p.autopilot,params:p.params,paramsHash:p.paramsHash,qualification:p.qualification,recoveryRequired:!!p.recoveryRequired,recoveryError:p.recoveryError||null,fillModel:'Conservative simulated fills with spread, slippage and estimated fees; not actual executions'},
   journal:{open:j.open.map(entry),history:j.history.slice(0,12).map(entry),stats,autopilot:clone(j.autopilot),cooldowns:clone(j.cooldowns),realizedTodayUsd:J.realizedTodayUsd(j,now()),lastReconcileAt:j.lastReconcileAt,recoveryRequired:!!j.recoveryRequired,recoveryError:j.recoveryError||null},limits:robinhoodLimits(),qualificationThresholds:J.qualificationThresholds(),strategy:{params:p.params,paramsHash:p.paramsHash,requiredHitRate:p.qualification.requiredHitRate,primary:{symbol:primary.symbol,weight:primary.weight,orderMult:primary.orderMult}},loop:{running:!!timer,tickMs:TICK_MS,lastTickAt,needsQuotes:needsQuotes(p,j),alwaysOn:collectAlways(),warmStart:warmStatus?clone(warmStatus):null},equities:{automated:false,route:'Agentic Trading MCP',url:'https://agent.robinhood.com/mcp/trading',note:'Separate integration; no stock or option orders from this app'},evolve:robinhoodEvolveView(p),explore:exploreView,gauges,lastError};
+}
+// §24 read-only chart payload: tape (durable tail + in-memory), indicators, both books' markers, equity and trades.
+// No network, no writes. The warm-up context before the range lets the EMAs and Donchian start settled.
+export function robinhoodChart({symbol,range='6h'}={}){
+ const sym=validSymbol(symbol||robinhoodPrimary().symbol),r=String(range||'6h');
+ if(!C.CHART_RANGES[r])fail('validation','range must be one of '+Object.keys(C.CHART_RANGES).join(', '));
+ const p=paper(),t=now(),since=t-C.CHART_RANGES[r]-(p.params.emaSlow*4+p.params.lookbackSamples)*TICK_MS,byT=new Map();
+ for(const row of J.tapeFor(p,sym))if(row.t>=since)byT.set(row.t,row);
+ for(const row of T.loadTapeSince(sym,since))byT.set(row.t,row);
+ const rows=[...byT.values()].sort((a,b)=>a.t-b.t),ex=exploreStats(clone(explore(p)));
+ return C.buildChart({symbol:sym,range:r,rows,params:p.params,books:{strict:p,explore:ex},now:t});
 }
 export async function robinhoodSnapshot({force=false}={}){
  if(snapshotFlight)return snapshotFlight;
