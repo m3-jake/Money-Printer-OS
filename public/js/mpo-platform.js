@@ -17,8 +17,8 @@ window.MPOSPlatform = (() => {
   function command(){
     if(!snapshot)return '<p>Connecting to the common ledger…</p>';
     const r=snapshot.risk,accounts=snapshot.portfolio.accounts;
-    return `<div class="core-heading"><span class="core-light ${r.halted?'halted':''}"></span><h2>COMMAND CENTER</h2><span class="mpo-badge">CORE · PAPER</span></div>
-      <div class="core-risk"><strong>${r.state}</strong><span>${r.halted?'All further live submissions and core paper fills are stopped.': 'Core paper proposals are checked before every fill.'}</span>${button('halt','STOP ALL LIVE TRADING','class="core-stop"')}</div>
+    return `<div class="core-heading"><span class="core-light ${String(r.state).toLowerCase()}"></span><h2>COMMAND CENTER</h2><span class="mpo-badge">CORE · PAPER</span></div>
+      <div class="core-risk"><strong>${r.state}</strong>${(r.stateReasons||[]).length&&!r.halted?`<span class="core-muted">${r.stateReasons.join(' · ')}</span>`:''}<span>${r.halted?'All further live submissions and core paper fills are stopped.': 'Core paper proposals are checked before every fill.'}</span>${button('halt','STOP ALL LIVE TRADING','class="core-stop"')}</div>
       <p class="core-muted">The stop persists across restarts. Orders already at a venue require reconciliation or cancellation in that program.</p>
       ${r.halted?button('resume','Resume core paper trading'):''}
       <div class="core-toolbar">${button('open-kalshi','KALSHI.EXE')}${button('open-poly','POLYMARKET.EXE')}${button('open-arbitrage','ARBITRAGE.EXE')}${button('refresh','Refresh')}</div>

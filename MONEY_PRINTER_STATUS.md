@@ -771,3 +771,16 @@ bing: "Codex got halfway through some work… finish it, push everything to main
 - **Pushed:** `origin/main` fast-forwarded `8ae2795 → 6b24708`; `feature/hud-declutter` pushed; local `main` fast-forwarded (it was a strict ancestor). GitHub renamed the repo, so `origin` now points at `https://github.com/m3-jake/Money-Printer-OS.git`. CI result not checked (no `gh` on this machine).
 - **Windows:** `npm run release:windows-asar` → `Desktop\Money Printer OS\Windows-6b24708-20260926\app.asar`, release `0.5.0-alpha.60+windows.6b24708`, sha256 `1af4d2e9e13d1ba34687ab1b1605a2656187b631065f6c4da021f4a5b01e017c`. `smoke:windows` on 18792 passed. The app wasn't running; backup `resources\app.asar.pre-6b24708-backup-20260926-144040` (that was the sunny build installed 13:19); new hash verified; launched. Live on 8792: paper, HEALTHY, holder RPC OK, `/api/platform/status` GREEN, practice loop IDLE with 2 fresh quotes, sunny assets served. Rollback: quit, copy the backup over `resources\app.asar`.
 - **Mac: not done from here.** No reachable session or SSH, `build-unified.mjs` must run on macOS arm64, and the updater only takes releases signed with bing's key. bing runs on the MacBook: clone/pull `main`, `npm ci`, `npm run release:unified`, then swap the `.app` per the build's `START-HERE.txt`. The MacBook is still alpha.53 (the ungated-champion hazard from the Lab audit) until then.
+
+## Batch M (2026-09-26): unification plan, Risk Governor hardening (Phase 1)
+
+bing pasted the full MPOS unification brief (35 sections, phases 0–7). Phase 0 and most of Phase 1 already exist from Codex's `src/core/` work (batch L), so this batch hardens it rather than rebuilding it.
+- **Bug fixed:** `evaluateRisk` applied the daily loss, drawdown and unknown-loss-state limits to SELLs too. Once the book hit its daily loss limit, it could not close losing positions. Loss limits now block new BUYs only. GLOBAL_HALT still blocks everything.
+- **Risk states:** the governor only ever reported GREEN or HALTED. `portfolioRiskState()` now derives GREEN / YELLOW (50% of a loss limit used) / RED (limit reached or loss state unknown) from the PAPER ledger. `state()` returns `stateReasons` and `metrics`. Command Center shows the state light in yellow/red plus the reasons.
+- **Tests:** 2 regression tests in `tests/market-core.test.mjs` (18 pass). `npm run test:all`: **700 pass, 0 fail**. No browser check this batch (small CSS/label change).
+
+### Next recommended (unification brief, in dependency order)
+1. Phase 1: strategy metadata + lifecycle states (DRAFT…RETIRED) as a core table, with a promotion check that needs several criteria, not one metric. Map the existing Lab champion lifecycle onto it rather than duplicating it.
+2. Phase 1: read-only import of legacy books (Solana, Robinhood practice, US combos) into the core ledger as `LEGACY` coverage, so Command Center totals stop excluding them.
+3. Phase 2: POLYMARKET.EXE consolidation (Markets / Live / Sports / Positions / History / Combo Engine), and decide on `polymarketPaperCombos.js`.
+4. Phase 2: contract-term extraction for Kalshi/Polymarket so ARBITRAGE.EXE can reach STRONG/EXACT for real pairs (today every pair lacks verified terms).

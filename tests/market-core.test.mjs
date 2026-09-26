@@ -9,7 +9,7 @@ import { CoreDatabase } from '../src/core/database.js';
 import { UnifiedLedger } from '../src/core/ledger.js';
 import { entity,stableId,units,decimal,availableHistory } from '../src/core/model.js';
 import { MarketEventBus } from '../src/core/eventBus.js';
-import { evaluateRisk,DEFAULT_LIMITS,validateLimits } from '../src/core/risk.js';
+import { evaluateRisk,DEFAULT_LIMITS,validateLimits,portfolioRiskState } from '../src/core/risk.js';
 import { compareContracts,arbitrageQuote } from '../src/core/contracts.js';
 import { normalizeKalshi,normalizeKalshiBook,normalizePolymarket,KalshiProvider } from '../src/core/predictionProviders.js';
 import { ProviderRegistry,JsonProvider } from '../src/core/provider.js';
@@ -67,6 +67,23 @@ test('governor checks every money limit, modes and stale/nonfinite inputs',()=>{
   const cases=[[{mode:'LIVE'}, {},'LIVE_NOT_AUTHORIZED'],[{mode:'live'}, {},'INVALID_MODE'],[{quoteAt:0},{},'STALE_QUOTE'],[{quoteAt:2000},{},'STALE_QUOTE'],[{quantity:NaN},{},'INVALID_QUANTITY'],[{feeUsd:null},{},'INVALID_FEEUSD'],[{slippageBps:101},{},'SLIPPAGE_LIMIT'],[{liquidityUsd:1},{},'INSUFFICIENT_LIQUIDITY'],[{quantity:100},{},'ORDER_LIMIT'],[{}, {cashUsd:0},'INSUFFICIENT_CASH'],[{}, {positionUsd:99},'MAXPOSITIONUSD'],[{}, {venueUsd:249},'MAXVENUEUSD'],[{}, {strategyUsd:149},'MAXSTRATEGYUSD'],[{}, {eventUsd:99},'MAXEVENTUSD'],[{}, {totalUsd:499},'MAXTOTALUSD'],[{}, {pendingCount:5},'CONCURRENT_ORDER_LIMIT'],[{}, {dailyPnlUsd:-25},'DAILY_LOSS_LIMIT'],[{}, {drawdownPct:20},'DRAWDOWN_LIMIT'],[{}, {halted:true},'GLOBAL_HALT'],[{side:'SELL',quantity:11},{},'OVERSELL']];
   for(const [o,c,reason] of cases)assert.ok(evaluateRisk({...order,...o},{...context,...c},{now:1000}).reasons.includes(reason),reason);
   assert.throws(()=>validateLimits({maxOrderUsd:NaN}));assert.throws(()=>validateLimits({maxConcurrentOrders:1.5}));
+});
+test('loss limits block new BUYs but never trap a risk-reducing SELL (regression)',()=>{
+  const sell={...order,side:'SELL',quantity:5};
+  for(const c of [{dailyPnlUsd:-30},{drawdownPct:50},{dailyPnlUsd:null}]){
+    assert.equal(evaluateRisk(sell,{...context,...c},{now:1000}).allowed,true,JSON.stringify(c));
+    assert.equal(evaluateRisk(order,{...context,...c},{now:1000}).allowed,false,JSON.stringify(c));
+  }
+  assert.ok(evaluateRisk(sell,{...context,halted:true},{now:1000}).reasons.includes('GLOBAL_HALT'));
+});
+test('book risk state is GREEN/YELLOW/RED from loss metrics; HALTED wins',()=>{
+  assert.equal(portfolioRiskState({dailyPnlUsd:0,drawdownPct:0}).state,'GREEN');
+  assert.equal(portfolioRiskState({dailyPnlUsd:-12.5,drawdownPct:0}).state,'YELLOW');
+  assert.equal(portfolioRiskState({dailyPnlUsd:0,drawdownPct:10}).state,'YELLOW');
+  assert.deepEqual(portfolioRiskState({dailyPnlUsd:-25,drawdownPct:0}).reasons,['DAILY_LOSS_LIMIT']);
+  assert.equal(portfolioRiskState({dailyPnlUsd:0,drawdownPct:20}).state,'RED');
+  assert.equal(portfolioRiskState({dailyPnlUsd:null,drawdownPct:0}).state,'RED');
+  assert.equal(portfolioRiskState({dailyPnlUsd:-100,drawdownPct:90},DEFAULT_LIMITS,true).state,'HALTED');
 });
 const terms={eventKey:'federal-decision',outcomeDefinition:'target upper bound <= 4%',expiresAt:10000,resolutionSource:'Federal Reserve official release',settlementRules:'Pays 1 if true',edgeCases:'No announcement: void',cancellationRules:'Return cost on cancellation',currency:'USD',payout:1,termsVerified:true};
 test('matching needs complete verified settlement terms, never just equal titles',()=>{

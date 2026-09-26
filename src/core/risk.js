@@ -28,10 +28,12 @@ export function evaluateRisk(order, context, {limits=DEFAULT_LIMITS,now=Date.now
   if(order.slippageBps>limits.maxSlippageBps)reject('SLIPPAGE_LIMIT');
   if(order.liquidityUsd<Math.max(notional,limits.minLiquidityUsd))reject('INSUFFICIENT_LIQUIDITY');
   if(context.pendingCount>=limits.maxConcurrentOrders)reject('CONCURRENT_ORDER_LIMIT');
-  if(finite(context.dailyPnlUsd)===null||finite(context.drawdownPct)===null)reject('UNKNOWN_LOSS_STATE');
-  if(context.dailyPnlUsd<=-limits.dailyLossUsd)reject('DAILY_LOSS_LIMIT');
-  if(context.drawdownPct>=limits.maxDrawdownPct)reject('DRAWDOWN_LIMIT');
   if(order.side==='BUY'){
+    // Loss limits stop new risk only. A SELL that reduces a held position must stay possible,
+    // otherwise hitting the daily loss limit would trap the book in its losing positions.
+    if(finite(context.dailyPnlUsd)===null||finite(context.drawdownPct)===null)reject('UNKNOWN_LOSS_STATE');
+    if(context.dailyPnlUsd<=-limits.dailyLossUsd)reject('DAILY_LOSS_LIMIT');
+    if(context.drawdownPct>=limits.maxDrawdownPct)reject('DRAWDOWN_LIMIT');
     if(finite(context.cashUsd)===null||context.cashUsd<cost)reject('INSUFFICIENT_CASH');
     for(const [key,limit] of [['positionUsd','maxPositionUsd'],['venueUsd','maxVenueUsd'],['strategyUsd','maxStrategyUsd'],['eventUsd','maxEventUsd'],['totalUsd','maxTotalUsd']]){
       const exposure=finite(context[key]);
@@ -43,9 +45,30 @@ export function evaluateRisk(order, context, {limits=DEFAULT_LIMITS,now=Date.now
   return {allowed:reasons.length===0,state:context.halted?'HALTED':reasons.length?'RED':warnings.length?'YELLOW':'GREEN',reasons,warnings,notionalUsd:Number.isFinite(notional)?notional:null,costUsd:Number.isFinite(cost)?cost:null,evaluatedAt:now};
 }
 
+// Book-level state from loss metrics: RED once a loss limit is reached (new BUYs are refused),
+// YELLOW from 50% of a limit, GREEN otherwise. HALTED is set by the emergency stop only.
+export function portfolioRiskState({dailyPnlUsd,drawdownPct},limits=DEFAULT_LIMITS,halted=false){
+  if(halted)return {state:'HALTED',reasons:['GLOBAL_HALT']};
+  const daily=finite(dailyPnlUsd),dd=finite(drawdownPct);
+  if(daily===null||dd===null)return {state:'RED',reasons:['UNKNOWN_LOSS_STATE']};
+  const red=[],yellow=[];
+  if(daily<=-limits.dailyLossUsd)red.push('DAILY_LOSS_LIMIT');else if(daily<=-limits.dailyLossUsd*.5)yellow.push('DAILY_LOSS_HALF_USED');
+  if(dd>=limits.maxDrawdownPct)red.push('DRAWDOWN_LIMIT');else if(dd>=limits.maxDrawdownPct*.5)yellow.push('DRAWDOWN_HALF_USED');
+  return red.length?{state:'RED',reasons:red}:yellow.length?{state:'YELLOW',reasons:yellow}:{state:'GREEN',reasons:[]};
+}
+
 export class RiskGovernor {
   constructor(store,ledger,bus){this.store=store;this.ledger=ledger;this.bus=bus;}
-  state(){const r=this.store.db.prepare('SELECT * FROM risk_control WHERE id=1').get();return {state:r.halted?'HALTED':'GREEN',halted:!!r.halted,reason:r.reason,changedAt:r.changed_at,mode:'PAPER',liveAvailable:false,limits:validateLimits(JSON.parse(r.limits_json))};}
+  control(){const r=this.store.db.prepare('SELECT * FROM risk_control WHERE id=1').get();return {halted:!!r.halted,reason:r.reason,changedAt:r.changed_at,limits:validateLimits(JSON.parse(r.limits_json))};}
+  lossMetrics(mode='PAPER',now=Date.now()){
+    const rows=this.ledger.portfolio(mode).accounts.filter(a=>a.currency==='USD'),day=new Date(now).toISOString().slice(0,10);
+    const deposits=rows.reduce((s,a)=>s+Number(a.netDeposits),0),realized=rows.reduce((s,a)=>s+Number(a.realized),0);
+    // Until mark-to-market / account reconciliation is available, drawdown is a conservative
+    // realized-loss proxy for PAPER only. LIVE always fails reconciliation.
+    return {dailyPnlUsd:rows.reduce((s,a)=>s+Number(a.daily[day]||0),0),drawdownPct:deposits>0?Math.max(0,-realized/deposits*100):0};
+  }
+  state(now=Date.now()){const c=this.control(),metrics=this.lossMetrics('PAPER',now),book=portfolioRiskState(metrics,c.limits,c.halted);
+    return {state:book.state,stateReasons:book.reasons,metrics,halted:c.halted,reason:c.reason,changedAt:c.changedAt,mode:'PAPER',liveAvailable:false,limits:c.limits};}
   halt(reason='Emergency stop requested'){
     requiredText(reason,'Halt reason',300);
     this.store.transaction(()=>{this.store.db.prepare('UPDATE risk_control SET halted=1,reason=?,changed_at=? WHERE id=1').run(reason,Date.now());this.store.record('RISK_STATE_CHANGED',{state:'HALTED',reason});});
@@ -56,22 +79,19 @@ export class RiskGovernor {
     this.store.transaction(()=>{this.store.db.prepare('UPDATE risk_control SET halted=0,reason=NULL,changed_at=? WHERE id=1').run(Date.now());this.store.record('RISK_STATE_CHANGED',{state:'GREEN',mode:'PAPER'});});
     this.bus.publish('RISK_STATE_CHANGED',{state:'GREEN',mode:'PAPER'});return this.state();
   }
-  setLimits(patch){const limits=validateLimits({...this.state().limits,...patch});this.store.db.prepare('UPDATE risk_control SET limits_json=?,changed_at=? WHERE id=1').run(JSON.stringify(limits),Date.now());this.store.record('RISK_LIMITS_CHANGED',limits);return this.state();}
+  setLimits(patch){const limits=validateLimits({...this.control().limits,...patch});this.store.db.prepare('UPDATE risk_control SET limits_json=?,changed_at=? WHERE id=1').run(JSON.stringify(limits),Date.now());this.store.record('RISK_LIMITS_CHANGED',limits);return this.state();}
   context(order,now=Date.now()){
     const portfolio=this.ledger.portfolio(order.mode==='LIVE'?'LIVE':'PAPER');
     const rows=portfolio.accounts.filter(a=>a.currency==='USD'),account=rows.find(a=>a.venue===order.venue&&a.account===order.account);
     const positions=rows.flatMap(a=>a.positions.map(p=>({...p,venue:a.venue,account:a.account})));
     const pending=this.store.db.prepare("SELECT payload FROM proposals WHERE status IN ('APPROVED','SUBMITTING','UNCERTAIN')").all().map(r=>JSON.parse(r.payload)).filter(p=>(p.mode==='LIVE')===(order.mode==='LIVE'));
     const sum=(filter)=>positions.filter(filter).reduce((s,p)=>s+Number(p.costBasis),0)+pending.filter(p=>p.side==='BUY'&&filter(p)).reduce((s,p)=>s+p.quantity*p.price+p.feeUsd,0);
-    const day=new Date(now).toISOString().slice(0,10),dailyPnlUsd=rows.reduce((s,a)=>s+Number(a.daily[day]||0),0);
-    const deposits=rows.reduce((s,a)=>s+Number(a.netDeposits),0),realized=rows.reduce((s,a)=>s+Number(a.realized),0);
-    // Until mark-to-market / account reconciliation is available, this is a conservative
-    // realized-loss drawdown proxy for PAPER only. LIVE always fails reconciliation.
-    return {halted:this.state().halted,liveAuthorized:false,reconciled:false,cashUsd:account?Number(account.cash)-pending.filter(p=>p.venue===order.venue&&p.account===order.account&&p.side==='BUY').reduce((s,p)=>s+p.quantity*p.price+p.feeUsd,0):null,
+    const {dailyPnlUsd,drawdownPct}=this.lossMetrics(order.mode==='LIVE'?'LIVE':'PAPER',now);
+    return {halted:this.control().halted,liveAuthorized:false,reconciled:false,cashUsd:account?Number(account.cash)-pending.filter(p=>p.venue===order.venue&&p.account===order.account&&p.side==='BUY').reduce((s,p)=>s+p.quantity*p.price+p.feeUsd,0):null,
       heldQuantity:account?account.positions.filter(p=>p.instrumentId===order.instrumentId&&p.strategyId===order.strategyId&&p.eventId===order.eventId).reduce((s,p)=>s+Number(p.quantity),0)-pending.filter(p=>p.side==='SELL'&&p.venue===order.venue&&p.account===order.account&&p.instrumentId===order.instrumentId&&p.strategyId===order.strategyId&&p.eventId===order.eventId).reduce((s,p)=>s+p.quantity,0):0,
-      positionUsd:sum(p=>p.instrumentId===order.instrumentId),venueUsd:sum(p=>p.venue===order.venue),strategyUsd:sum(p=>p.strategyId===order.strategyId),eventUsd:sum(p=>p.eventId===order.eventId),totalUsd:sum(()=>true),pendingCount:pending.length,dailyPnlUsd,drawdownPct:deposits>0?Math.max(0,-realized/deposits*100):0};
+      positionUsd:sum(p=>p.instrumentId===order.instrumentId),venueUsd:sum(p=>p.venue===order.venue),strategyUsd:sum(p=>p.strategyId===order.strategyId),eventUsd:sum(p=>p.eventId===order.eventId),totalUsd:sum(()=>true),pendingCount:pending.length,dailyPnlUsd,drawdownPct};
   }
-  evaluate(order,now=Date.now()){return evaluateRisk(order,this.context(order,now),{limits:this.state().limits,now});}
+  evaluate(order,now=Date.now()){return evaluateRisk(order,this.context(order,now),{limits:this.control().limits,now});}
   propose(order){
     const id=requiredText(order.id,'Order ID',100),payload={...order};const hash=fingerprint(payload);
     return this.store.transaction(()=>{
