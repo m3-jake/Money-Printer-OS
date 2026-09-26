@@ -1,0 +1,100 @@
+/* Shared programs inside the existing MPOS desktop. Provider calls stay on the server. */
+window.MPOSPlatform = (() => {
+  const escape = v => String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const dollars = v => v===null||v===undefined?'Unavailable':'$'+Number(v).toLocaleString(undefined,{maximumFractionDigits:4});
+  const pct = v => v===null||v===undefined?'—':(Number(v)*100).toFixed(1)+'%';
+  const when = v => v?new Date(v).toLocaleString():'Unavailable';
+  const states={kalshi:{rows:[],cursor:null,search:'',category:'',detail:null},predictionmarkets:{rows:[],cursor:null,search:'',category:'',detail:null}};
+  let snapshot=null,contracts=[],comparison=null,error='',busy=false,hostApi=null;
+  const venues={kalshi:'kalshi',predictionmarkets:'polymarket'};
+  const ids=['command','kalshi','arbitrage','predictionmarkets'];
+  const button=(action,label,extra='')=>`<button class="btn" data-core-action="${action}" ${extra} ${busy&&action!=='halt'?'disabled':''}>${label}</button>`;
+  async function request(route,data){
+    const r=await fetch('/api/platform'+route,data===undefined?{cache:'no-store'}:{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(data)});
+    const value=await r.json();if(!r.ok||value.ok===false)throw new Error(value.error||'Request failed');return data===undefined?value:value.result;
+  }
+  const table=(headers,rows,empty='No records yet.')=>`<div class="core-table-wrap"><table class="table"><thead><tr>${headers.map(h=>`<th>${escape(h)}</th>`).join('')}</tr></thead><tbody>${rows||`<tr><td colspan="${headers.length}">${escape(empty)}</td></tr>`}</tbody></table></div>`;
+  function command(){
+    if(!snapshot)return '<p>Connecting to the common ledger…</p>';
+    const r=snapshot.risk,accounts=snapshot.portfolio.accounts;
+    return `<div class="core-heading"><span class="core-light ${r.halted?'halted':''}"></span><h2>COMMAND CENTER</h2><span class="mpo-badge">CORE · PAPER</span></div>
+      <div class="core-risk"><strong>${r.state}</strong><span>${r.halted?'All further live submissions and core paper fills are stopped.': 'Core paper proposals are checked before every fill.'}</span>${button('halt','STOP ALL LIVE TRADING','class="core-stop"')}</div>
+      <p class="core-muted">The stop persists across restarts. Orders already at a venue require reconciliation or cancellation in that program.</p>
+      ${r.halted?button('resume','Resume core paper trading'):''}
+      <div class="core-toolbar">${button('open-kalshi','KALSHI.EXE')}${button('open-poly','POLYMARKET.EXE')}${button('open-arbitrage','ARBITRAGE.EXE')}${button('refresh','Refresh')}</div>
+      <h3>Ledger accounts <small>Simulated funds</small></h3>
+      ${table(['Venue / account','Cash','Realized P/L','Fees','Positions'],accounts.map(a=>`<tr><td>${escape(a.venue)} / ${escape(a.account)}</td><td>${dollars(a.cash)}</td><td>${dollars(a.realized)}</td><td>${dollars(a.fees)}</td><td>${a.positions.length}</td></tr>`).join(''),'No core accounts have been funded. Add an explicit simulated deposit in Markets to begin.')}
+      <p class="core-notice">${escape(snapshot.coverage.note)} Risk currently values these paper positions at cost basis; live account reconciliation and marked drawdown are unavailable.</p>
+      <h3>Provider connectivity</h3>${table(['Provider','State','Last success','Latency','WebSocket'],snapshot.providers.map(p=>`<tr><td>${escape(p.id)}</td><td>${escape(p.status)}</td><td>${when(p.lastSuccess)}</td><td>${p.latencyMs===null?'—':p.latencyMs+' ms'}</td><td>${escape(p.websocket)}</td></tr>`).join(''))}
+      <h3>Order proposals</h3>${table(['Time','Venue / outcome','Mode','Status','Risk decision'],snapshot.proposals.map(p=>`<tr><td>${when(p.created_at)}</td><td>${escape(p.payload.venue)} / ${escape(p.payload.outcome)}</td><td>${escape(p.payload.mode)}</td><td>${escape(p.status)}</td><td>${escape(p.decision.reasons.join(', ')||p.decision.state)}</td></tr>`).join(''))}
+      <details><summary>Risk limits / diagnostics</summary><form data-core-form="limits" class="core-limit-grid">${Object.entries(r.limits).map(([k,v])=>`<label>${escape(k)}<input name="${escape(k)}" type="number" min="0.001" step="any" value="${v}" required></label>`).join('')}<button class="btn" type="submit">Save limits</button></form><p>Database ${snapshot.database.status}; ${snapshot.database.ledgerEntries} ledger entries; event queue ${snapshot.eventBus.queueDepth}; dropped ${snapshot.eventBus.dropped}; listener errors ${snapshot.eventBus.listenerErrors}.</p></details>
+      <h3>Recent ledger</h3>${table(['Time','Venue','Kind','Quantity','Gross','Fee'],snapshot.ledger.slice(0,30).map(e=>`<tr><td>${when(e.at)}</td><td>${escape(e.venue)}</td><td>${escape(e.kind)}</td><td>${escape(e.quantity)}</td><td>${dollars(e.gross)}</td><td>${dollars(e.fee)}</td></tr>`).join(''))}`;
+  }
+  function marketProgram(id){
+    const st=states[id],venue=venues[id],categories=[...new Set(st.rows.map(m=>m.data.category).filter(Boolean))];
+    const watched=new Set((snapshot?.watchlist||[]).map(w=>w.entity_id));
+    const rows=st.rows.filter(m=>(!st.search||`${m.data.title} ${m.sourceId}`.toLowerCase().includes(st.search.toLowerCase()))&&(!st.category||m.data.category===st.category));
+    return `<div class="core-heading"><h2>${venue==='kalshi'?'KALSHI.EXE':'POLYMARKET · MARKETS'}</h2><span class="mpo-badge">PUBLIC DATA / PAPER</span></div>
+      <div class="core-toolbar">${button('load','Load active markets')}${button('next','Next page',!st.cursor?'disabled':'')}<label>Search loaded markets <input name="search" value="${escape(st.search)}" placeholder="Event or ticker"></label><label>Category <select name="category"><option value="">All available</option>${categories.map(c=>`<option ${st.category===c?'selected':''}>${escape(c)}</option>`).join('')}</select></label></div>
+      <p class="core-muted">${venue==='polymarket'?'Global Polymarket order books. The US Combo Engine remains a separate venue in this suite.':'Kalshi public market metadata and reciprocal YES/NO order-book depth.'} Prices are observations, not model forecasts. ${st.rows.length} loaded.</p>
+      ${table(['Watch','Event / contract','YES bid / ask','NO bid / ask','Volume','Expiry',''],rows.map(m=>`<tr><td>${button('watch',watched.has(m.id)?'★':'☆',`data-id="${escape(m.id)}" data-on="${!watched.has(m.id)}" aria-label="Watch ${escape(m.data.title)}"`)}</td><td>${escape(m.data.title)}<small>${escape(m.sourceId)}</small></td><td>${pct(m.data.yesBid)} / ${pct(m.data.yesAsk)}</td><td>${pct(m.data.noBid)} / ${pct(m.data.noAsk)}</td><td>${m.data.volume===null?'—':Number(m.data.volume).toLocaleString()}</td><td>${when(m.data.expiresAt)}</td><td>${button('inspect','Inspect',`data-id="${escape(m.sourceId)}"`)}</td></tr>`).join(''),'Load active markets to fetch provider data.')}
+      ${st.detail?marketDetail(id,st.detail):''}
+      <details><summary>Fund this paper account</summary><p>No real deposit is made. This creates an explicit simulated funding entry.</p><form data-core-form="fund" class="core-toolbar"><label>Simulated USD <input name="amount" type="number" min="0.01" max="1000000" step="0.01" required placeholder="Amount"></label><button class="btn" type="submit">Record paper deposit</button></form></details>`;
+  }
+  function marketDetail(id,{contract:c,book:b,proposal}){
+    const d=c.data,levels=side=>b[side].asks.slice(0,6).map(l=>`${pct(l.price)} × ${l.quantity}`).join(' · ')||'No asks';
+    return `<section class="core-detail"><h3>${escape(d.title)}</h3><p><a href="${escape(c.sourceUrl||'#')}" target="_blank" rel="noreferrer">Open original market</a> · Received ${when(b.observedAt)} · ${escape(b.timeQuality)}</p>
+      <div class="core-depth"><div><b>YES asks</b><p>${escape(levels('yes'))}</p></div><div><b>NO asks</b><p>${escape(levels('no'))}</p></div></div>
+      <details><summary>Settlement conditions and known gaps</summary><p>${escape(d.settlementRules||'Settlement rules unavailable')}</p><p>${escape(d.secondaryRules||'')}</p><p>Resolution source: ${escape(d.resolutionSource||'Unavailable')} · Cancellation rules: ${escape(d.cancellationRules||'Unavailable')} · Fee schedule: unavailable.</p></details>
+      <form data-core-form="propose" class="core-toolbar"><label>Outcome<select name="outcome"><option>YES</option><option>NO</option></select></label><label>Action<select name="side"><option>BUY</option><option>SELL</option></select></label><label>Contracts<input name="quantity" type="number" min="1" step="1" value="1" required></label><label>Mode<select name="mode"><option>PAPER</option><option>MANUAL_APPROVAL</option></select></label><label>Modeled fee bps<input name="feeBps" type="number" min="0" max="10000" step="1" value="100" required></label><button class="btn" type="submit">Preview through Risk Governor</button></form>
+      <p class="core-muted">Simulated fills use observed depth and the fee assumption shown above. No live order can be sent here.</p>
+      ${proposal?`<div class="core-proposal"><b>${escape(proposal.status)} · ${escape(proposal.decision?.state||'')}</b><p>${escape(proposal.decision?.reasons?.join(', ')||'Risk checks passed at preview time. Checks repeat at execution.')} · Estimated cost ${dollars(proposal.decision?.costUsd)}</p>${['PROPOSED','AWAITING_APPROVAL'].includes(proposal.status)?button('execute','Confirm simulated order',`data-id="${escape(proposal.id)}"`):''}</div>`:''}</section>`;
+  }
+  function arbitrage(){
+    const options=v=>contracts.filter(c=>c.provider===v).map(c=>`<option value="${escape(c.sourceId)}">${escape(c.data.title)}</option>`).join('');
+    return `<div class="core-heading"><h2>ARBITRAGE.EXE</h2><span class="mpo-badge">RESEARCH / NO AUTO EXECUTION</span></div><p>Compare complementary contracts using current depth. Settlement equivalence is assessed separately from the price difference.</p>
+      <form data-core-form="compare" class="core-compare"><label>Kalshi<select name="a" required><option value="">Select a loaded contract</option>${options('kalshi')}</select></label><label>Polymarket<select name="b" required><option value="">Select a loaded contract</option>${options('polymarket')}</select></label><label>Contracts<input name="quantity" type="number" min="1" step="1" value="1" required></label><button class="btn" type="submit">Compare rules and depth</button></form><p class="core-muted">Load markets in each venue first. Missing rules or fees block a locked-return calculation.</p>
+      ${comparison?`<h3>${escape(comparison.classification)}</h3><p>${escape(comparison.note)}</p>${table(['Settlement field','Kalshi','Polymarket'],comparison.fields.map(f=>`<tr><td>${escape(f.field)}</td><td>${escape(f.a??'Unavailable')}</td><td>${escape(f.b??'Unavailable')}</td></tr>`).join(''))}
+      ${table(['Legs','A / B prices','Gross spread','Available size','After fees','Locked return'],comparison.directions.map(d=>`<tr><td>${d.sideA} + ${d.sideB}</td><td>${pct(d.venueA.averagePrice)} / ${pct(d.venueB.averagePrice)}</td><td><span class="core-spread" style="--spread:${Math.min(100,Math.abs(d.grossSpread||0)*100)}%">${pct(d.grossSpread)}</span></td><td>${d.availableExecutableSize}</td><td>${pct(d.effectiveSpread)}</td><td>${d.theoreticalLockedReturn===null?'Unavailable':dollars(d.theoreticalLockedReturn)}</td></tr>`).join(''))}<p class="core-notice">${escape([...new Set(comparison.directions.flatMap(d=>d.blocked))].join(' · '))}</p>`:''}`;
+  }
+  function draw(id){
+    const host=id==='predictionmarkets'?'sportsbook':id,w=document.querySelector(`.window[data-app="${host}"]`);if(!w||w.classList.contains('hidden'))return;
+    const root=document.getElementById((w.classList.contains('glance')?'glance-':'body-')+id);if(!root)return;
+    if(root.contains(document.activeElement)&&document.activeElement.matches('input,select,textarea'))return;
+    const top=root.scrollTop;
+    root.innerHTML=`<div class="core-app" data-core-id="${id}">${error?`<p class="core-error" role="alert">${escape(error)}</p>`:''}${busy?'<p role="status">Working…</p>':''}${id==='command'?command():id==='arbitrage'?arbitrage():marketProgram(id)}</div>`;root.scrollTop=top;
+  }
+  function render(){ids.forEach(draw);}
+  async function refresh(){const [s,e]=await Promise.all([request('/status'),request('/entities?kind=Contract')]);snapshot=s;contracts=e.entities;render();}
+  async function action(fn){if(busy)return;busy=true;error='';render();try{await fn();await refresh();}catch(e){error=e.message;}finally{busy=false;render();}}
+  function install(api){
+    hostApi=api;
+    document.addEventListener('click',e=>{
+      const btn=e.target.closest('[data-core-action]');if(!btn)return;const id=btn.closest('[data-core-id]')?.dataset.coreId,a=btn.dataset.coreAction,st=states[id];
+      if(a==='halt'){request('/risk/halt',{}).then(refresh).catch(e=>{error=e.message;render();});return;}
+      if(a.startsWith('open-')){const dest={kalshi:'kalshi',poly:'predictionmarkets',arbitrage:'arbitrage'}[a.slice(5)];api.open(dest);render();return;}
+      action(async()=>{
+        if(a==='refresh')return;
+        if(a==='halt')await request('/risk/halt',{});
+        else if(a==='resume')await request('/risk/resume-paper',{confirmation:'RESUME PAPER TRADING'});
+        else if(a==='load'||a==='next'){const data=await request(`/markets?venue=${venues[id]}${a==='next'?'&cursor='+encodeURIComponent(st.cursor):''}`);st.rows=data.markets;st.cursor=data.cursor;st.detail=null;}
+        else if(a==='inspect')st.detail=await request(`/book?venue=${venues[id]}&id=${encodeURIComponent(btn.dataset.id)}`);
+        else if(a==='watch')await request('/watchlist',{id:btn.dataset.id,on:btn.dataset.on==='true'});
+        else if(a==='execute'){const r=await request('/orders/execute',{id:btn.dataset.id,confirmation:'EXECUTE PAPER ORDER'});st.detail.proposal={...st.detail.proposal,...r};}
+      });
+    });
+    document.addEventListener('change',e=>{const id=e.target.closest('[data-core-id]')?.dataset.coreId;if(states[id]&&['search','category'].includes(e.target.name)){states[id][e.target.name]=e.target.value;e.target.blur();draw(id);}});
+    document.addEventListener('submit',e=>{
+      const form=e.target.closest('[data-core-form]');if(!form)return;e.preventDefault();const id=form.closest('[data-core-id]').dataset.coreId,input=Object.fromEntries(new FormData(form));
+      action(async()=>{
+        if(form.dataset.coreForm==='fund')await request('/paper/fund',{venue:venues[id],amount:input.amount,id:crypto.randomUUID()});
+        else if(form.dataset.coreForm==='limits')await request('/risk/limits',Object.fromEntries(Object.entries(input).map(([k,v])=>[k,Number(v)])));
+        else if(form.dataset.coreForm==='propose')states[id].detail.proposal=await request('/orders/propose',{...input,venue:venues[id],sourceId:states[id].detail.contract.sourceId,id:crypto.randomUUID()});
+        else if(form.dataset.coreForm==='compare')comparison=await request('/compare',{a:{venue:'kalshi',sourceId:input.a},b:{venue:'polymarket',sourceId:input.b},quantity:Number(input.quantity)});
+      });
+    });
+    action(refresh);
+    setInterval(()=>{if(!document.hidden&&!busy&&ids.some(id=>{const w=document.querySelector(`.window[data-app="${id}"]`);return w&&!w.classList.contains('hidden');}))refresh().catch(e=>{error=e.message;render();});},10000);
+  }
+  return {install,render};
+})();

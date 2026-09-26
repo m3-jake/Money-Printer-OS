@@ -9,6 +9,8 @@
 <link rel="stylesheet" href="/css/mpo-workstation.css">
 <link rel="stylesheet" href="/css/mpo-glance.css">
 <script src="/js/mpo-viz.js"></script>
+<link rel="stylesheet" href="/css/mpo-platform.css">
+<script src="/js/mpo-platform.js"></script>
 </head>
 <body>
 <div class="desktop" id="desktop">
@@ -214,7 +216,7 @@ function renderRobinhood(force=false){
  ${positions.length?positions.map(x=>`<tr><td>${polyEscape(x.symbol)}</td><td>${fmt(x.qty,8)}</td><td>${rhMoney(x.costUsd)}</td><td>${rhMoney(x.unrealizedUsd)}</td><td>${polyEscape(x.placedBy)}</td><td><button data-rh-close="${polyEscape(x.id)}" ${disabled}>Close paper</button></td></tr>`).join(''):'<tr><td colspan="6">No open simulated positions.</td></tr>'}</tbody></table></fieldset></div>
 <div data-rh-part="closes"> <fieldset class="mpo-fieldset"><legend>Recent paper closes</legend><table class="mpo-table"><thead><tr><th>Pair</th><th>Net P/L</th><th>Reason</th><th>Closed by</th></tr></thead><tbody>
  ${history.length?history.map(x=>`<tr><td>${polyEscape(x.symbol)}</td><td>${rhMoney(x.pnlUsd)}</td><td>${polyEscape(x.exit?.reason||'--')}</td><td>${polyEscape(x.closedBy||'--')}</td></tr>`).join(''):'<tr><td colspan="4">No paper closes yet.</td></tr>'}</tbody></table><small>Recent performance statistics use up to 500 retained closes; this table shows the latest eight.</small></fieldset></div>
-<div data-rh-part="evolution"><details class="rh-more"><summary>Evolution Lab (paper-only research)</summary> <fieldset class="mpo-fieldset"><legend>Evolution Lab · Robinhood research lane</legend>
+<div data-rh-part="evolution"><details class="rh-more evolution-lab-panel"><summary>Evolution Lab (paper-only research)</summary> <fieldset class="mpo-fieldset"><legend>Evolution Lab · Robinhood research lane</legend>
  <p><span class="mpo-badge">GEN ${polyEscape(String(ev.generation||0))}</span> <span class="mpo-badge">${evLab?'EVOLUTION LAB':(ev.enabled?'LOCAL FALLBACK':'DISABLED')}</span> <span class="mpo-badge">${polyEscape(String(ev.phase||'RESEARCH'))}</span> ${ev.running?'<span class="mpo-badge">RUNNING</span>':''} ${evLab?`<span class="mpo-badge">${evReady?'PAPER REVIEW READY':'RESEARCH ONLY'}</span>`:''} <small>${evLab?'parallel Lab worker':`every ${polyEscape(String(ev.intervalMin||'--'))} min`} · last run ${ev.lastRunAt?rhAge(Date.now()-ev.lastRunAt)+' ago':'never'}</small></p>
  <p>Tape coverage: ${Object.entries(ev.tapeDays||{}).map(([s,d])=>polyEscape(s)+' '+polyEscape(String(d))+'d').join(' · ')||'--'} (needs ${polyEscape(String(ev.minTapeDays||3))}d on the primary pair)${(()=>{const src=Object.values(ev.tapeSources||{}).reduce((a,x)=>{for(const [k,n] of Object.entries(x||{}))a[k]=(a[k]||0)+n;return a},{});const keys=Object.keys(src);return keys.length?' · quotes: '+keys.map(k=>polyEscape(k)+' '+polyEscape(String(src[k]))).join(' · '):''})()}${ev.lastError?' | <span class="mpo-error">'+polyEscape(ev.lastError.stage+': '+ev.lastError.message)+'</span>':''}</p>
  <table class="mpo-table"><thead><tr><th>Split test</th><th>Hash</th><th>Score</th><th>Closes</th><th>Hit</th><th>PF</th><th>Net P/L</th><th>Drawdown</th><th>Trades/day</th></tr></thead><tbody>
@@ -311,7 +313,11 @@ const APPS=[
 ['risk','Risk Radar','!','dark','trade'],
 ['archive','Archive','DB','light','trade'],
 ['control','Control Bay','CTL','light','trade'],
-['sportsbook','Polymarket US','PM','dark'],
+['sportsbook','POLYMARKET.EXE','PM','dark'],
+['predictionmarkets','Markets','PM','dark','sportsbook'],
+['command','Command Center','CMD','dark'],
+['kalshi','KALSHI.EXE','K','dark'],
+['arbitrage','ARBITRAGE.EXE','ARB','dark'],
 ['robinhood','Robinhood','RH','dark'],
 ['researchmon','Lab Monitor','LAB','dark','trade'],
 ['journal','Journal','JRN','dark'],
@@ -324,7 +330,7 @@ const APPS=[
 ];
 const ICON_PNG={money:'money.png',trade:'trade.png',sportsbook:'sportsbook.png',robinhood:'robinhood.png',system:'settings.png',network:'network.png',settings:'settings.png'};
 const TAB_LABEL={trade:'Pump.fun',evolution:'Evolution Lab',wallet:'Wallets',risk:'Risk',archive:'Archive',control:'Controls',researchmon:'Lab Monitor',system:'Monitor',economics:'Product',network:'Network',log:'Log',updater:'Updater',settings:'Settings'};
-const DESKTOP_ICONS=['money','trade','sportsbook','robinhood','journal','system'];
+const DESKTOP_ICONS=['money','command','trade','sportsbook','kalshi','arbitrage','robinhood','journal','system'];
 const appMeta=id=>APPS.find(a=>a[0]===id);
 const hostOf=id=>appMeta(id)?.[4]||id;
 const HOSTS=APPS.filter(a=>!a[4]).map(a=>a[0]);
@@ -562,7 +568,7 @@ function sessionFxMetrics(){
 }
 const FX_BILLS=[['b100-wave',2.4],['b100-curl',2.7],['b100-bow',1.14],['b100-scurve',1.02],['b100-ucurl',1.26],['b1-wave',.95]];
 function fxFloor(){const r=$('#moneyRain');return r?r.clientHeight:innerHeight-36}
-function fxBill(o){const tiny=o.tiny,pick=tiny&&Math.random()<.7?FX_BILLS[5]:FX_BILLS[Math.floor(Math.random()*(tiny?6:5))],stack=o.stack,w=Math.round((stack?120:64+Math.random()*40)*(pick[1]<1.3&&!stack?.8:1)),ar=stack?1:pick[1],h=Math.round(w/ar),left=4+Math.random()*88,rot=(Math.random()*50-25).toFixed(0),drift=(Math.random()*160-80).toFixed(0),src=stack?'/assets/money-printer-logo.png':'/assets/money-fx/'+pick[0]+'.webp';
+function fxBill(o){const tiny=o.tiny,pick=tiny&&Math.random()<.7?FX_BILLS[5]:FX_BILLS[Math.floor(Math.random()*(tiny?6:5))],stack=o.stack,w=Math.round((stack?120:64+Math.random()*40)*(pick[1]<1.3&&!stack?.8:1)),ar=stack?1:pick[1],h=Math.round(w/ar),left=4+Math.random()*88,rot=(Math.random()*50-25).toFixed(0),drift=(40+Math.random()*100).toFixed(0),src=stack?'/assets/money-printer-logo.png':'/assets/money-fx/'+pick[0]+'.webp';
  return `<img class="bill ${o.cls}${stack?' stack':''}" data-market="${o.src||'profit'}" src="${src}" alt="" style="left:${left}%;width:${w}px;--floor:${fxFloor()-h}px;--drift:${drift}px;--rot:${rot}deg;--spin:${(Math.random()*720-360).toFixed(0)}deg;animation-duration:${o.d}s,${o.d}s;animation-delay:${o.delay}s,${o.delay}s">`}
 function makeBurstBills(n,intensity,source='profit'){const tiny=intensity<.25;let h=Array.from({length:n},()=>fxBill({cls:'burst',src:source,tiny,d:(8.5+Math.random()*3).toFixed(2),delay:(Math.random()*2.2).toFixed(2)})).join('');if(intensity>=.7)h+=Array.from({length:Math.round(2+intensity*3)},()=>fxBill({cls:'burst',src:source,stack:1,d:(7+Math.random()*1.5).toFixed(2),delay:(Math.random()*.8).toFixed(2)})).join('');return h}
 function fxRainHost(rain){if(rain.dataset.fx)return;rain.dataset.fx='1';rain.addEventListener('animationend',e=>{if(e.animationName==='billDrop'&&e.target.classList.contains('burst'))e.target.remove()})}
@@ -1253,6 +1259,7 @@ function renderProductEconomics(){
  setBody('economics',`<div class="mpo-module"><header><span>Product revenue and pilot progress</span></header><div class="mpo-module-body"><p>${t.visitors} visitors → ${t.activatedUsers} activated → ${t.payingUsers} paid · ${t.signups} verified signups</p><p>Activation: first successful manual paper order. Trading results do not count as product revenue.</p><p>Revenue ${dollars(t.netRevenueUsd)} · Recorded costs ${dollars(t.knownCostsUsd)} · Contribution ${dollars(t.contributionUsd)} · Margin ${pct(t.contributionMargin)}</p><p>${t.unpricedCosts} unpriced cost records · ${t.missingCostCategories.length} cost categories awaiting records. Known-cost contribution: ${dollars(t.knownCostContributionUsd)}; incomplete costs cannot establish profitability.</p><p>Signup: ${polyEscape(p.connections.signup)} · Payments: ${polyEscape(p.connections.payment)} · Serving costs: ${polyEscape(p.connections.servingCosts)}</p><p>Return retention D1 ${pct(p.retention.d1.rate)} · D7 ${pct(p.retention.d7.rate)} · D30 ${pct(p.retention.d30.rate)} · Support ${fmt(t.supportMinutes,1)} minutes</p></div></div><table class="table"><thead><tr><th>Source</th><th>Visits</th><th>Active</th><th>Paid</th><th>Net revenue</th><th>Contribution</th></tr></thead><tbody>${rows||'<tr><td colspan="6">No visits recorded yet.</td></tr>'}</tbody></table><div class="mpo-module-body"><p>Each browser is an anonymous visitor until a verified account links it. These local records are not a completed customer pilot.</p></div>`);
 }
 function renderAll(force=false){
+ window.MPOSPlatform?.render();
  if(force)renderSig.clear(); const s=state||{},m=s.system?.metrics||{},e=s.evolutionLoop||{},p=s.portfolio||{}; const t0=performance.now();
  sampleSystem();renderGlances();
  renderChanged('trade',[p.equitySol,p.cashSol,s.dailyPnlSol,s.system?.health,s.system?.paused,s.system?.killSwitch,s.watchlist,s.positions,s.solanaBook],renderTrade);
@@ -1414,6 +1421,7 @@ function boot(){
  const tick=()=>{if(i>=steps.length){setTimeout(()=>$('#boot').classList.add('hide'),250);return}$('#bootText').textContent=steps[i][0];$('#bootBar').style.width=steps[i][1]+'%';i++;setTimeout(tick,180)};tick();
 }
 buildIcons();buildWindows();buildStart();boot();refreshRobinhood();refreshJournal();refreshProjectJournal();refreshNetwork();refreshUSComboSnapshot();refreshUpdater();refreshResearchMonitor();refreshState();
+window.MPOSPlatform?.install({open(id){openApp(id);setDetail(hostOf(id),true);if(id==='predictionmarkets')setTab('sportsbook',id);}});
 refreshProductEconomics();
 setInterval(()=>{if(!document.hidden)refreshState()},1500);
 setInterval(()=>{if(!document.hidden)refreshNetwork()},5000);

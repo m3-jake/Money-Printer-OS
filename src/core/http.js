@@ -1,0 +1,37 @@
+import { marketPlatform } from './platform.js';
+
+export function localMutationAllowed(req) {
+  if(!['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket?.remoteAddress))return false;
+  if(req.headers['sec-fetch-site']==='cross-site')return false;
+  if(!String(req.headers['content-type']||'').toLowerCase().startsWith('application/json'))return false;
+  if(req.headers.origin){try{const origin=new URL(req.headers.origin);if(!['127.0.0.1','localhost','[::1]'].includes(origin.hostname)||origin.host!==req.headers.host)return false;}catch{return false;}}
+  return true;
+}
+export async function handlePlatformRequest(req,res,url,{json,body,platform=marketPlatform()}={}) {
+  const route=url.pathname.slice('/api/platform'.length);
+  try{
+    if(req.method==='GET'){
+      if(route==='/status')return json(res,{ok:true,...platform.snapshot()});
+      if(route==='/markets')return json(res,{ok:true,...await platform.markets(url.searchParams.get('venue')||'kalshi',{cursor:url.searchParams.get('cursor')||'',offset:Number(url.searchParams.get('cursor')||0)||0,series:url.searchParams.get('series')||'',eventTicker:url.searchParams.get('event')||''})});
+      if(route==='/book')return json(res,{ok:true,...await platform.book(url.searchParams.get('venue'),url.searchParams.get('id'))});
+      if(route==='/entities')return json(res,{ok:true,entities:platform.store.list({kind:url.searchParams.get('kind')||null,provider:url.searchParams.get('provider')||null})});
+      if(route==='/relationships')return json(res,{ok:true,relationships:platform.store.relationships(url.searchParams.get('id'))});
+    }
+    if(req.method==='POST'){
+      if(!localMutationAllowed(req))return json(res,{ok:false,error:'Local same-origin JSON request required'},403);
+      const input=await body(req);if(input.__error)return json(res,{ok:false,error:input.__error},400);
+      let result;
+      if(route==='/risk/halt')result=platform.risk.halt();
+      else if(route==='/risk/resume-paper')result=platform.risk.resumePaper(input.confirmation);
+      else if(route==='/risk/limits')result=platform.risk.setLimits(input);
+      else if(route==='/paper/fund')result=platform.deposit(input);
+      else if(route==='/orders/propose')result=await platform.propose(input);
+      else if(route==='/orders/execute')result=platform.executePaper(input.id,input.confirmation);
+      else if(route==='/watchlist')result=platform.watch(input.id,input.on===true);
+      else if(route==='/compare')result=await platform.compare(input);
+      else return json(res,{ok:false,error:'Unknown platform action'},404);
+      return json(res,{ok:true,result});
+    }
+    return json(res,{ok:false,error:'Unknown platform endpoint'},404);
+  }catch(e){return json(res,{ok:false,error:String(e.message||e).slice(0,400),code:e.code||'PLATFORM_ERROR'},e.code==='RATE_LIMITED'?429:400);}
+}

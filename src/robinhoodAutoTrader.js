@@ -33,6 +33,7 @@ import * as W from './robinhoodWarmStart.js';
 import { gauge } from './robinhoodGauge.js';
 import * as C from './robinhoodChart.js';
 import { championState, championPaperAllowed } from './championState.js';
+import * as RP from './robinhoodPractice.js';
 export const CONFIRM_PLACE='PLACE REAL CRYPTO ORDER', CONFIRM_CANCEL='CANCEL REAL CRYPTO ORDER', CONFIRM_CANCEL_ALL='CANCEL REAL CRYPTO ORDERS', CONFIRM_AUTOPILOT='ENABLE REAL CRYPTO AUTOPILOT', CONFIRM_FORGET='FORGET';
 const clone=x=>structuredClone(x), envNum=(k,d)=>{const n=Number(process.env[k]);return Number.isFinite(n)&&n>0?n:d};
 const TICK_MS=Math.max(5000,envNum('ROBINHOOD_TICK_MS',15000)), PREVIEW_TTL_MS=30000, PREVIEW_CACHE_MS=10000, SNAPSHOT_TTL_MS=5000, ENTRY_TTL_MS=90000, RECONCILE_THROTTLE_MS=5000, NEVER_RECEIVED_MS=600000, NEVER_RECEIVED_LISTINGS=3;
@@ -742,6 +743,7 @@ function snapshotView(){
  const stats={...j.stats};if(stats.profitFactor===Infinity)stats.profitFactor='infinity';
  return {at:now(),readiness:robinhoodReadiness(),outbound:rhCallStats(),account:account?{...account,accountNumber:'****'+String(account.accountNumber).slice(-4)}:null,pairs:[...pairs.values()].map(x=>({symbol:x.symbol,assetIncrement:x.assetIncrement,quoteIncrement:x.quoteIncrement,minOrderAmountUsd:x.minOrderAmountUsd,isApiTradable:x.isApiTradable})),quotes:[...quotes.values()].map(q=>({...q,spreadPct:(q.ask-q.bid)/((q.ask+q.bid)/2)})),tape,
   paper:{cashUsd:p.cashUsd,startUsd:p.startUsd,equityUsd:known?p.cashUsd+positions.reduce((s,x)=>s+x.costUsd+x.unrealizedUsd,0):null,unrealizedUsd,positions,history:p.history.slice(0,8),stats:p.stats,autopilot:p.autopilot,params:p.params,paramsHash:p.paramsHash,qualification:p.qualification,recoveryRequired:!!p.recoveryRequired,recoveryError:p.recoveryError||null,fillModel:'Conservative simulated fills with spread, slippage and estimated fees; not actual executions'},
+  practice:RP.practiceSnapshot({dataDir:DATA_DIR,now:now()}),
   journal:{open:j.open.map(entry),history:j.history.slice(0,12).map(entry),stats,autopilot:clone(j.autopilot),cooldowns:clone(j.cooldowns),realizedTodayUsd:J.realizedTodayUsd(j,now()),lastReconcileAt:j.lastReconcileAt,recoveryRequired:!!j.recoveryRequired,recoveryError:j.recoveryError||null},limits:robinhoodLimits(),qualificationThresholds:J.qualificationThresholds(),strategy:{params:p.params,paramsHash:p.paramsHash,requiredHitRate:p.qualification.requiredHitRate,primary:{symbol:primary.symbol,weight:primary.weight,orderMult:primary.orderMult}},loop:{running:!!timer,tickMs:TICK_MS,lastTickAt,needsQuotes:needsQuotes(p,j),alwaysOn:collectAlways(),warmStart:warmStatus?clone(warmStatus):null},equities:{automated:false,route:'Agentic Trading MCP',url:'https://agent.robinhood.com/mcp/trading',note:'Separate integration; no stock or option orders from this app'},evolve:robinhoodEvolveView(p),explore:exploreView,gauges,lastError};
 }
 // §24 read-only chart payload: tape (durable tail + in-memory), indicators, both books' markers, equity and trades.

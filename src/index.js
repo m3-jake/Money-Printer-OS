@@ -9,6 +9,7 @@ import { mintRisk, benchmarkRpcs } from './rpc.js';
 import { loadState, saveState, appendJournal, appendJournalBatch, drainActions, resetPaper } from './store.js';
 import { buyWithSol, sellTokenForSol, walletSolBalance } from './jupiter.js';
 import { startDashboard } from './dashboard.js';
+import { marketPlatform } from './core/platform.js';
 import { alert } from './alerts.js';
 import { pushTick, microFeatures, explosionScore, moonScore, buildCandles, narrative, walletSignals } from './intelligence.js';
 import { socialSignals } from './providers.js';
@@ -680,6 +681,7 @@ async function cycle() {
 }
 
 async function main() {
+  marketPlatform();
   // A one-shot scan must actually terminate; do not leave servers/workers alive.
   const dashboard = once ? null : startDashboard();
   if (!once && cfg.alphaWorkerEnabled) startAlphaWorker();

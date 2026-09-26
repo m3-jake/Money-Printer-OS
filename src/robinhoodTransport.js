@@ -4,6 +4,7 @@
 // `date` header feeds rhClock(); a first 401 with >=5 s skew is retried exactly once with the
 // identical body bytes; any error raised after dispatch carries `sent:true` (timeouts -> 'uncertain').
 import crypto from 'node:crypto';
+import { assertLiveDispatchAllowed } from './core/executionBoundary.js';
 import { RobinhoodError, RH_CODES, fail } from './robinhoodErrors.js';
 import { RH_BASE_URL, loadRobinhoodPrivateKey, signRequest, buildPath } from './robinhoodSigner.js';
 export { RobinhoodError, RH_CODES, fail } from './robinhoodErrors.js';
@@ -91,6 +92,7 @@ function takeToken(){
 }
 export async function rhRequest({method,path,json,timeoutMs=15000,retryOn401=true}){
  const verb=String(method||'GET').toUpperCase();
+ if(verb==='POST'&&!/\/cancel\/(?:\?|$)/.test(String(path||'')))assertLiveDispatchAllowed();
  if(verb==='POST'&&!RH_POST_ALLOWED.test(String(path||''))){callStats.postRefused++;fail('validation','Robinhood POST refused: only the order endpoints may be posted to')}
  if(verb==='GET')callStats.get++;else if(verb==='POST'){callStats.post++;callStats.lastPostAt=now();callStats.lastPostPath=String(path).split('?')[0]}else callStats.other++;
  const m=String(method||'GET').toUpperCase();

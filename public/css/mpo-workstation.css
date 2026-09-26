@@ -647,6 +647,21 @@ textarea:disabled {
 .mpo-journal-compact b { color: var(--mpo-amber); }
 
 /* Robinhood panel: one view at a time, laid out to fit the window without scrolling. */
+.evolution-lab-panel {
+  margin-top: 6px;
+  border: 1px solid var(--mpo-metric-border);
+  background: var(--mpo-metric-bg);
+  color: var(--mpo-term-fg);
+}
+.evolution-lab-panel > summary {
+  padding: 5px 7px;
+  background: linear-gradient(90deg, #07150b, #12351d);
+  color: var(--mpo-green);
+  font-weight: 700;
+  text-shadow: 1px 1px #000;
+}
+.evolution-lab-panel[open] > summary { border-bottom: 1px solid var(--mpo-metric-border); }
+.evolution-lab-panel .mpo-fieldset { margin: 6px; color: var(--mpo-term-fg); }
 #body-robinhood .rh-tabs{display:flex;gap:4px;flex-wrap:wrap;margin:4px 0}
 #body-robinhood h2{margin:0 0 4px;font-size:15px}
 #body-robinhood .mpo-fieldset,#body-robinhood .mpo-danger-fieldset{margin:0 0 6px;padding:4px 8px}

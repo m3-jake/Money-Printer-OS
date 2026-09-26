@@ -6,6 +6,7 @@
 // and adds its own guards: in-memory enable (always OFF after a restart), typed phrase,
 // armed session, verified key, shadow gate, bankroll sizing and self-disable triggers.
 import fs from 'node:fs';
+import { assertLiveDispatchAllowed } from './core/executionBoundary.js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as ed25519 from '@noble/ed25519';
@@ -112,6 +113,7 @@ async function authHeaders(method,pathname){
 
 // Single signed-fetch helper for every authenticated Retail API call.
 export async function signedFetch(method,pathname,{query=null,body=null,timeoutMs=FETCH_TIMEOUT_MS}={}){
+ if((method==='POST'&&pathname==='/v1/orders')||(method==='PUT'&&/\/(accept|confirm)$/.test(pathname)))assertLiveDispatchAllowed();
  const url=new URL(pathname,API);
  if(query)for(const [k,v] of Object.entries(query)){if(v===undefined||v===null)continue;if(Array.isArray(v))for(const item of v)url.searchParams.append(k,String(item));else url.searchParams.set(k,String(v))}
  const headers={'content-type':'application/json','accept':'application/json','user-agent':UA(),...await authHeaders(method,url.pathname)};

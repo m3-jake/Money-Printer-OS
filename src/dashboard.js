@@ -1,4 +1,4 @@
-import { handleRobinhoodRequest, startRobinhoodLoops, stopRobinhoodLoops } from './robinhoodHttp.js';
+import { handleRobinhoodRequest, startRobinhoodLoops, stopRobinhoodLoops, startPracticeLoop, stopPracticeLoop } from './robinhoodHttp.js';
 import { handleRobinhoodEquitiesRequest, startRobinhoodEquitiesLoop, stopRobinhoodEquitiesLoop } from './robinhoodEquitiesHttp.js';
 import { exitPresets, customExitPolicy, openLimitFor, aggressionParams, customExitBounds, MAX_OPEN_OVERRIDE } from './runtime.js';
 import { evolutionChampionPolicy } from './learner.js';
@@ -22,6 +22,8 @@ import { usComboSnapshot, buildUSCombo, quoteUSCombo, placeUSCombo, cancelUSRfq,
 import { readApiUnitEconomics } from './apiUnitEconomics.js';
 import { productEconomics, productIngestionAuthorized, productReadAuthorized } from './productEconomics.js';
 import updateChannel from '../desktop/update-channel.cjs';
+import { handlePlatformRequest } from './core/http.js';
+import { marketPlatform, closeMarketPlatform } from './core/platform.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const html = fs.readFileSync(path.join(ROOT, 'public', 'dashboard.html'), 'utf8');
@@ -371,9 +373,11 @@ function snapshot() {
 }
 
 export function startDashboard() {
+  marketPlatform();
   const server = http.createServer(async (req, res) => {
     try {
       const u = new URL(req.url, 'http://127.0.0.1');
+      if(u.pathname.startsWith('/api/platform/'))return await handlePlatformRequest(req,res,u,{json,body});
       if(u.pathname==='/api/robinhood'||u.pathname.startsWith('/api/robinhood/'))return await handleRobinhoodRequest(req,res,u,{json,body});
       if(u.pathname==='/api/robinhood-equities'||u.pathname.startsWith('/api/robinhood-equities/'))return await handleRobinhoodEquitiesRequest(req,res,u,{json});
       if (req.method === 'GET' && u.pathname === '/') {
@@ -544,7 +548,8 @@ export function startDashboard() {
   // The combo loop only settles journalled combos; it never places anything.
   try { startUSComboLoops(); } catch { /* combo loops are optional */ }
   startRobinhoodLoops();
-  server.on('close',()=>stopRobinhoodLoops());
+  startPracticeLoop({ dataDir: DATA_DIR });
+  server.on('close',()=>{ stopRobinhoodLoops(); stopPracticeLoop(); closeMarketPlatform(); });
   startRobinhoodEquitiesLoop();
   server.on('close',()=>stopRobinhoodEquitiesLoop());
   server.listen(cfg.dashboardPort, cfg.dashboardHost, () => console.log(`Dashboard: http://${cfg.dashboardHost}:${cfg.dashboardPort}`));

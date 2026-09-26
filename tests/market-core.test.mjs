@@ -1,0 +1,132 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import { setImmediate as nextTurn } from 'node:timers/promises';
+import { spawnSync } from 'node:child_process';
+import { CoreDatabase } from '../src/core/database.js';
+import { UnifiedLedger } from '../src/core/ledger.js';
+import { entity,stableId,units,decimal,availableHistory } from '../src/core/model.js';
+import { MarketEventBus } from '../src/core/eventBus.js';
+import { evaluateRisk,DEFAULT_LIMITS,validateLimits } from '../src/core/risk.js';
+import { compareContracts,arbitrageQuote } from '../src/core/contracts.js';
+import { normalizeKalshi,normalizeKalshiBook,normalizePolymarket,KalshiProvider } from '../src/core/predictionProviders.js';
+import { ProviderRegistry,JsonProvider } from '../src/core/provider.js';
+import { MarketPlatform } from '../src/core/platform.js';
+import { assertGlobalTradingNotHalted } from '../src/core/executionBoundary.js';
+import { localMutationAllowed } from '../src/core/http.js';
+
+test('canonical identity is source-qualified and delimiter-safe',()=>{
+  assert.notEqual(stableId('Contract','kalshi','123'),stableId('Contract','polymarket','123'));
+  assert.notEqual(stableId('Event','a:b','c'),stableId('Event','a','b:c'));
+  assert.throws(()=>stableId('Anything','a','b'));
+});
+test('fixed-point cash remains exact and refuses hidden rounding/nonfinite input',()=>{
+  assert.equal(units('0.1')+units('0.2'),units('0.3'));assert.equal(decimal(1000001n),'1.000001');
+  for(const v of ['NaN','Infinity','1e8','0.0000001','',null])assert.throws(()=>units(v));
+});
+test('observation history enforces availability and keeps revised values out of past replay',()=>{
+  const s=new CoreDatabase(':memory:');
+  const first=entity('EconomicRelease','fred','CPI:2025-01',{value:1},{observedAt:1000,availableAt:900});
+  s.put(first);s.put({...first,observedAt:3000,availableAt:2900,data:{value:2}});
+  assert.equal(s.history(first.id,2000).at(-1).data.value,1);assert.equal(s.history(first.id,4000).at(-1).data.value,2);
+  assert.deepEqual(availableHistory([{id:'x',availableAt:null},{id:'a',availableAt:3,revisionAvailableAt:10}],5),[]);
+  assert.throws(()=>entity('Event','x','y',{}, {observedAt:2,availableAt:3}));s.close();
+});
+test('event notifications are bounded, isolate consumers, and expose failures',async()=>{
+  const bus=new MarketEventBus({capacity:2});let deliveries=0;
+  bus.on('ORDER_FILLED',async()=>{throw Error('observer failed');});bus.on('ORDER_FILLED',()=>deliveries++);
+  bus.publish('ORDER_FILLED',{id:'1'});bus.publish('ORDER_FILLED',{id:'2'});assert.equal(bus.publish('ORDER_FILLED',{id:'3'}),false);
+  await nextTurn();await nextTurn();assert.equal(deliveries,2);assert.equal(bus.snapshot().dropped,1);assert.equal(bus.snapshot().listenerErrors,2);
+});
+const event=(id,kind,patch={})=>({sourceKey:id,at:1000,mode:'PAPER',venue:'kalshi',account:'manual',currency:'USD',kind,reference:'TEST FIXTURE',...patch});
+test('ledger reconstructs fee-aware partial closes, idempotency and currency/mode isolation',()=>{
+  const s=new CoreDatabase(':memory:'),l=new UnifiedLedger(s);
+  l.append(event('deposit','DEPOSIT',{gross:'100'}));
+  const buy=event('buy','BUY',{instrumentId:'yes',quantity:'10',gross:'4',fee:'0.1'});l.append(buy);assert.equal(l.append(buy).appended,false);
+  l.append(event('sell','SELL',{instrumentId:'yes',quantity:'5',gross:'3',fee:'0.1'}));
+  let a=l.portfolio().accounts[0];assert.equal(a.cash,'98.800000');assert.equal(a.realized,'0.850000');assert.equal(a.positions[0].costBasis,'2.050000');
+  l.append(event('resolve','SETTLEMENT',{instrumentId:'yes',quantity:'5',gross:'5'}));
+  a=l.portfolio().accounts[0];assert.equal(a.cash,'103.800000');assert.equal(a.realized,'3.800000');assert.equal(a.positions.length,0);
+  l.append(event('live','DEPOSIT',{mode:'LIVE',gross:'2'}));l.append(event('sol','DEPOSIT',{currency:'SOL',gross:'1'}));
+  assert.equal(l.portfolio('LIVE').accounts[0].cash,'2.000000');assert.equal(l.portfolio().accounts.length,2);
+  assert.throws(()=>l.append({...buy,gross:'5'}),/Conflicting/);
+  assert.throws(()=>s.db.exec("DELETE FROM ledger"),/append-only/);assert.throws(()=>s.db.exec("UPDATE ledger SET gross_units='1'"),/append-only/);s.close();
+});
+test('overselling and overdrafts roll back atomically, including a failed batch',()=>{
+  const s=new CoreDatabase(':memory:'),l=new UnifiedLedger(s);l.append(event('d','DEPOSIT',{gross:'1'}));
+  assert.throws(()=>l.append(event('bad','SELL',{instrumentId:'x',quantity:'1',gross:'1'})),/oversell/);
+  assert.throws(()=>s.transaction(()=>{l.append(event('good','DEPOSIT',{gross:'1'}));l.append(event('too-much','WITHDRAWAL',{gross:'3'}));}),/overdraw/);
+  assert.equal(l.entries().length,1);assert.equal(l.portfolio().accounts[0].cash,'1.000000');s.close();
+});
+const order={mode:'PAPER',venue:'kalshi',account:'manual',currency:'USD',instrumentId:'x',strategyId:'s',eventId:'e',side:'BUY',quantity:10,price:.5,feeUsd:.1,slippageBps:10,liquidityUsd:100,quoteAt:1000};
+const context={halted:false,liveAuthorized:false,reconciled:false,cashUsd:100,heldQuantity:10,positionUsd:0,venueUsd:0,strategyUsd:0,eventUsd:0,totalUsd:0,pendingCount:0,dailyPnlUsd:0,drawdownPct:0};
+test('governor checks every money limit, modes and stale/nonfinite inputs',()=>{
+  assert.equal(evaluateRisk(order,context,{now:1000}).allowed,true);
+  const cases=[[{mode:'LIVE'}, {},'LIVE_NOT_AUTHORIZED'],[{mode:'live'}, {},'INVALID_MODE'],[{quoteAt:0},{},'STALE_QUOTE'],[{quoteAt:2000},{},'STALE_QUOTE'],[{quantity:NaN},{},'INVALID_QUANTITY'],[{feeUsd:null},{},'INVALID_FEEUSD'],[{slippageBps:101},{},'SLIPPAGE_LIMIT'],[{liquidityUsd:1},{},'INSUFFICIENT_LIQUIDITY'],[{quantity:100},{},'ORDER_LIMIT'],[{}, {cashUsd:0},'INSUFFICIENT_CASH'],[{}, {positionUsd:99},'MAXPOSITIONUSD'],[{}, {venueUsd:249},'MAXVENUEUSD'],[{}, {strategyUsd:149},'MAXSTRATEGYUSD'],[{}, {eventUsd:99},'MAXEVENTUSD'],[{}, {totalUsd:499},'MAXTOTALUSD'],[{}, {pendingCount:5},'CONCURRENT_ORDER_LIMIT'],[{}, {dailyPnlUsd:-25},'DAILY_LOSS_LIMIT'],[{}, {drawdownPct:20},'DRAWDOWN_LIMIT'],[{}, {halted:true},'GLOBAL_HALT'],[{side:'SELL',quantity:11},{},'OVERSELL']];
+  for(const [o,c,reason] of cases)assert.ok(evaluateRisk({...order,...o},{...context,...c},{now:1000}).reasons.includes(reason),reason);
+  assert.throws(()=>validateLimits({maxOrderUsd:NaN}));assert.throws(()=>validateLimits({maxConcurrentOrders:1.5}));
+});
+const terms={eventKey:'federal-decision',outcomeDefinition:'target upper bound <= 4%',expiresAt:10000,resolutionSource:'Federal Reserve official release',settlementRules:'Pays 1 if true',edgeCases:'No announcement: void',cancellationRules:'Return cost on cancellation',currency:'USD',payout:1,termsVerified:true};
+test('matching needs complete verified settlement terms, never just equal titles',()=>{
+  assert.equal(compareContracts({...terms},{...terms}).classification,'EXACT MATCH');
+  assert.equal(compareContracts({...terms,termsVerified:false},{...terms}).classification,'STRONG MATCH');
+  assert.equal(compareContracts({title:'Fed'},{title:'Fed'}).classification,'RELATED');
+  for(const k of ['eventKey','outcomeDefinition','expiresAt','currency','cancellationRules'])assert.equal(compareContracts(terms,{...terms,[k]:'different'}).classification,'NOT EQUIVALENT');
+});
+test('arbitrage prices both complementary books with depth, fees and stale-data refusal',()=>{
+  const a={...terms,venue:'kalshi'},b={...terms,venue:'polymarket'},book={observedAt:1000,yes:{asks:[{price:.4,quantity:2},{price:.6,quantity:2}]},no:{asks:[{price:.5,quantity:5}]}};
+  const q=arbitrageQuote(a,b,book,book,{quantity:3,feeA:.01,feeB:.02,now:1000});
+  assert.ok(Math.abs(q.directions[0].capitalRequired-2.93)<1e-10);assert.ok(Math.abs(q.directions[0].theoreticalLockedReturn-.07)<1e-10);assert.equal(q.directions[0].riskFree,false);
+  for(const opts of [{quantity:5,feeA:0,feeB:0,now:1000},{quantity:1,now:1000},{quantity:1,feeA:0,feeB:0,now:50000}])assert.equal(arbitrageQuote(a,b,book,book,opts).directions[0].theoreticalLockedReturn,null);
+});
+test('Kalshi fixed-point dollars and reciprocal books preserve subcent prices',()=>{
+  const c=normalizeKalshi({ticker:'ABC',title:'A?',yes_bid_dollars:'0.1234',yes_ask_dollars:'0.15',volume_fp:'12.50'},1000);assert.equal(c.data.yesBid,.1234);assert.equal(c.data.noAsk,null);assert.equal(c.data.volume,12.5);
+  const b=normalizeKalshiBook({orderbook_fp:{yes_dollars:[['0.10','3.50']],no_dollars:[['0.7000','5.00']]}},1000);assert.equal(b.yes.asks[0].price,.3);assert.equal(b.no.asks[0].price,.9);assert.equal(b.yes.bids[0].quantity,3.5);
+  assert.throws(()=>normalizeKalshiBook({orderbook_fp:{yes_dollars:[['2','3']]}}));
+});
+test('Polymarket token IDs are mapped by outcome name and never assumed to be US slugs',()=>{
+  const c=normalizePolymarket({id:'5',question:'Test',outcomes:'["No","Yes"]',clobTokenIds:'["no-token","yes-token"]',outcomePrices:'["0.7","0.3"]'},1000);
+  assert.equal(c.data.yesToken,'yes-token');assert.equal(c.data.impliedProbability,.3);assert.equal(c.data.venue,'polymarket');assert.equal(c.data.termsVerified,false);
+});
+test('provider caches retain the original timestamp, coalesce requests and report failures',async()=>{
+  let calls=0;const p=new JsonProvider('test',{fetchImpl:async()=>{calls++;return {ok:true,json:async()=>({x:1})};}});
+  const [a,b]=await Promise.all([p.get('https://test.invalid'),p.get('https://test.invalid')]);assert.equal(calls,1);assert.equal(p.observedAt(a),p.observedAt(b));
+  const c=await p.get('https://test.invalid');assert.equal(p.observedAt(c),p.observedAt(a));assert.equal(p.status(p.observedAt(c)+61000).status,'STALE');
+  const bad=new JsonProvider('bad',{fetchImpl:async()=>({ok:false,status:429,headers:{get:()=> '5'}})});await assert.rejects(bad.get('https://test.invalid'));assert.equal(bad.status().status,'DEGRADED');await assert.rejects(bad.get('https://test.invalid'),/retry after/);
+});
+function fixturePlatform(file=':memory:'){
+  const registry=new ProviderRegistry();
+  const p={id:'kalshi',status:()=>({id:'kalshi',status:'CONNECTED'}),market:async()=>normalizeKalshi({ticker:'TEST',title:'TEST FIXTURE',status:'active',event_ticker:'EVENT'},Date.now()),book:async()=>normalizeKalshiBook({orderbook_fp:{yes_dollars:[['0.4','100']],no_dollars:[['0.5','100']]}},Date.now()),markets:async()=>({markets:[],cursor:null})};
+  registry.register(p);return new MarketPlatform({file,providers:registry});
+}
+const proposal={id:'one',venue:'kalshi',sourceId:'TEST',mode:'MANUAL_APPROVAL',outcome:'YES',side:'BUY',quantity:10,feeBps:100};
+test('paper order flows through proposal, repeat risk check, atomic ledger and idempotent fill',async()=>{
+  const p=fixturePlatform();assert.equal(p.snapshot().portfolio.accounts.length,0);
+  p.deposit({venue:'kalshi',amount:'100',id:'d'});p.deposit({venue:'kalshi',amount:'100',id:'d'});
+  const preview=await p.propose(proposal);assert.equal(preview.status,'AWAITING_APPROVAL');assert.equal(p.ledger.entries().length,1);
+  assert.throws(()=>p.executePaper('one','yes'),/confirmation/);
+  assert.equal(p.executePaper('one','EXECUTE PAPER ORDER').status,'FILLED');assert.equal(p.executePaper('one','EXECUTE PAPER ORDER').duplicate,true);
+  assert.equal(p.ledger.entries().length,2);assert.equal(p.ledger.portfolio().accounts[0].cash,'94.950000');
+  await assert.rejects(p.propose({...proposal,id:'live',mode:'LIVE'}),/Live execution is unavailable/);p.close();
+});
+test('concurrent previews cannot overspend; sequential commit revalidates balance',async()=>{
+  const p=fixturePlatform();p.deposit({venue:'kalshi',amount:'6'});
+  await Promise.all([p.propose({...proposal,id:'a'}),p.propose({...proposal,id:'b'})]);
+  const results=await Promise.all(['a','b'].map(id=>Promise.resolve().then(()=>p.executePaper(id,'EXECUTE PAPER ORDER'))));
+  assert.equal(results.filter(r=>r.status==='FILLED').length,1);assert.equal(results.filter(r=>r.status==='REJECTED').length,1);p.close();
+});
+test('emergency stop persists across connections/processes and blocks a previously valid preview',async()=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'mpos-core-')),file=path.join(dir,'mpos-core.sqlite'),p=fixturePlatform(file);
+  try{
+    p.deposit({venue:'kalshi',amount:'100'});await p.propose(proposal);p.risk.halt();
+    assert.equal(p.executePaper('one','EXECUTE PAPER ORDER').status,'REJECTED');assert.throws(()=>assertGlobalTradingNotHalted({dataDir:dir}),/HALTED/);
+    const child=spawnSync(process.execPath,['--input-type=module','-e',`import {assertGlobalTradingNotHalted} from './src/core/executionBoundary.js'; assertGlobalTradingNotHalted({dataDir:process.argv[1]});`,dir],{cwd:path.resolve('.'),encoding:'utf8'});assert.notEqual(child.status,0);assert.match(child.stderr,/HALTED/);
+    p.close();const reopened=fixturePlatform(file);assert.equal(reopened.risk.state().halted,true);assert.throws(()=>reopened.risk.resumePaper('yes'));reopened.risk.resumePaper('RESUME PAPER TRADING');assert.doesNotThrow(()=>assertGlobalTradingNotHalted({dataDir:dir}));reopened.close();
+  }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+test('core mutations reject cross-origin browser requests and remote clients',()=>{
+  const req={socket:{remoteAddress:'127.0.0.1'},headers:{host:'127.0.0.1:8897','content-type':'application/json',origin:'http://127.0.0.1:8897'}};
+  assert.equal(localMutationAllowed(req),true);assert.equal(localMutationAllowed({...req,headers:{...req.headers,origin:'https://evil.example'}}),false);assert.equal(localMutationAllowed({...req,socket:{remoteAddress:'192.168.1.5'}}),false);assert.equal(localMutationAllowed({...req,headers:{host:'127.0.0.1:8897','content-type':'text/plain'}}),false);
+});
