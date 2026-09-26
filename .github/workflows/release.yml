@@ -45,6 +45,8 @@ jobs:
       FORCE_COLOR: '0'
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the build ships the full commit history (PROJECT-MILESTONES.json) for the app's journal
 
       # Keep the app's data dir outside the checkout (the build refuses a dirty tracked tree). The
       # `runner` context is not available in job-level env, so it is exported from a step.

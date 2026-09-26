@@ -25,6 +25,7 @@ import crypto from 'node:crypto';
 import http from 'node:http';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { writeBuildMilestones } from '../src/projectJournal.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ELECTRON_VERSION = '38.8.6';
@@ -171,6 +172,7 @@ async function main() {
   writeJson(path.join(APP, 'BUILD.json'), build);
   fs.writeFileSync(path.join(APP, '.build-commit'), commit + '\n');
   fs.writeFileSync(path.join(APP, '.build-version'), pkg.version + '\n');
+  writeBuildMilestones(APP, { repoDir: ROOT, ref: commit }); // the app seeds its project journal from these
   const nativeMods = walk(APP).filter((f) => f.endsWith('.node'));
   const forbidden = walk(APP).filter((f) => /(^|\/)\.env$/.test(f) || /\.(pem|key|p12|pfx)$/.test(f) && !f.endsWith('update-public-key.pem'));
   if (forbidden.length) die(`forbidden files staged: ${forbidden.join(', ')}`);

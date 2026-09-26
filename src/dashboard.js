@@ -14,7 +14,8 @@ import { fileURLToPath } from 'node:url';
 import { loadState, loadStateCached, stateStamp, readJournal, enqueueAction } from './store.js';
 import { cfg } from './config.js';
 import { readEvidenceMonitor } from './researchEvidenceStore.js';
-import { readResearchControlPlane, attachControlPlaneToMonitor, leaderboardRows, championPublicationView } from './researchControlPlane.js';
+import { readResearchControlPlane, attachControlPlaneToMonitor, leaderboardRows, championPublicationView, controlPlaneFiles } from './researchControlPlane.js';
+import { seedProjectJournal } from './projectJournal.js';
 import { saveResourcePolicy, resourceSnapshot, systemTelemetry } from './resourcePolicy.js';
 // polymarketUS.js is parked except for credentials and the session arm: its scanner and single-order routes are not served.
 import { usReadiness, configurePolymarketUS, armPolymarketUS, polymarketUSAccount } from './polymarketUS.js';
@@ -374,6 +375,9 @@ function snapshot() {
 
 export function startDashboard() {
   marketPlatform();
+  // Catch the project journal up with this build's history (packaged builds ship it; no git there).
+  const seeded = seedProjectJournal({ journalFile: controlPlaneFiles(DATA_DIR).journal, appRoot: ROOT });
+  if (seeded.appended || seeded.error) console.log(`[journal] +${seeded.appended} from ${seeded.source || 'none'}${seeded.error ? ' error: ' + seeded.error : ''}`);
   const server = http.createServer(async (req, res) => {
     try {
       const u = new URL(req.url, 'http://127.0.0.1');
