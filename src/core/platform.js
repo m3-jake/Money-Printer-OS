@@ -30,6 +30,7 @@ import { tokenGraph,whaleFlow,walletView,authorityOf } from './whales.js';
 import { WIRE_FEEDS,WIRE_FILTERS,parseRss,extractEntities,relatedMarkets,importance,categoriesOf } from './wire.js';
 export const SPORTS_SERIES=['KXMLBGAME','KXNFLGAME','KXNCAAFGAME','KXNHLGAME','KXNBAGAME','KXWNBAGAME','KXATPMATCH','KXWTAMATCH','KXTTSTARMATCH','KXTTELITEMATCH','KXUEFANLGAME','KXMLSGAME','KXEPLGAME'];
 import { walkForward,monteCarlo } from './replay.js';
+import { LabPool,computeTask } from './labWorker.js';
 import { promotionCheck } from './strategies.js';
 import { ReplaySession,runReplay,readTape,tapeSymbols,bookRecords,fetchAlpacaMinutes,REPLAY_STRATEGIES,strategyParams } from './replay.js';
 const CODE_VERSION=(()=>{try{const pkg=JSON.parse(fs.readFileSync(new URL('../../package.json',import.meta.url),'utf8'));const h=createHash('sha256').update(fs.readFileSync(new URL('./replay.js',import.meta.url))).digest('hex').slice(0,12);return `${pkg.version}+replay.${h}`;}catch{return 'unknown';}})();
@@ -38,7 +39,8 @@ export const VERIFY_PHRASE='I READ BOTH RULE TEXTS AND THEY SETTLE IDENTICALLY';
 const swapSides=book=>({...book,yes:book.no,no:book.yes});
 
 export class MarketPlatform {
-  constructor({file=':memory:',dataDir=null,providers=null,stockQuotes=undefined,stockClock=undefined,stockSession=undefined}={}){
+  constructor({file=':memory:',dataDir=null,providers=null,stockQuotes=undefined,stockClock=undefined,stockSession=undefined,labWorkers=false}={}){
+    this.labPool=labWorkers?new LabPool():null;
     this.store=new CoreDatabase(file);this.ledger=new UnifiedLedger(this.store);this.bus=new MarketEventBus();this.risk=new RiskGovernor(this.store,this.ledger,this.bus);this.strategies=new StrategyRegistry(this.store);this.legacyReaders={};this.replays=new Map();this.fred=new FredSource();this.macroCache=null;this.edgar=new EdgarSource();this.weather=new WeatherSource();this.weatherCache=null;this.sportsCache=null;this.sportsLive=new Map();this.sportsFetch=(url,opt)=>globalThis.fetch(url,opt);this.wireFetch=(url,opt)=>globalThis.fetch(url,opt);this.wireFeeds=new Map();this.whaleSeenTs=Date.now();this.eventsCache=null;
     this.store.db.exec(`CREATE TABLE IF NOT EXISTS wallet_labels(address TEXT PRIMARY KEY, label TEXT NOT NULL, note TEXT NOT NULL, at INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS legacy_sync(source TEXT PRIMARY KEY, epoch INTEGER NOT NULL, synced_at INTEGER NOT NULL, status TEXT NOT NULL, detail TEXT NOT NULL);
@@ -238,7 +240,7 @@ export class MarketPlatform {
   async labRun({source,key,start,end,strategy='buy-hold',params={},stepMs=15000,feeBps=0,cash=1000}){
     const records=await this.labRecords({source,key,start,end});if(!records.length)throw new Error('No records in that window');
     const k=records[0].key,step=Math.max(1000,Math.min(3600000,Number(stepMs)||15000)),fee=Math.max(0,Math.min(1000,Number(feeBps)||0)),startCash=Math.max(1,Math.min(1e7,Number(cash)||1000));
-    const result=runReplay(new ReplaySession(records,{start:Number(start),end:Number(end)}),{key:k,strategy,params:strategyParams(strategy,params),stepMs:step,feeBps:fee,cash:startCash});
+    const result=await this.labCompute({kind:'run',records,opts:{start:Number(start),end:Number(end),key:k,strategy,params,stepMs:step,feeBps:fee,cash:startCash}});
     const datasetFp=createHash('sha256').update(JSON.stringify(records.map(r=>[r.availableAt,r.observedAt,r.bid,r.ask,r.synthetic?1:0]))).digest('hex'),id=randomUUID();
     const summary={...result,curve:undefined,trades:result.trades.slice(-200)};
     this.store.db.prepare('INSERT INTO lab_runs VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(id,Date.now(),source,k,Number(start),Number(end),strategy,JSON.stringify(result.params),datasetFp,records.length,CODE_VERSION,os.hostname(),null,JSON.stringify(summary));
@@ -249,7 +251,7 @@ export class MarketPlatform {
   async labWalkForward({source,key,start,end,strategy='momentum',grid={},folds=4,stepMs=15000,feeBps=10,cash=1000,seed=1,strategyId=null}){
     const records=await this.labRecords({source,key,start,end});if(!records.length)throw new Error('No records in that window');
     const k=records[0].key,step=Math.max(1000,Math.min(3600000,Number(stepMs)||15000)),fee=Math.max(0,Math.min(1000,Number(feeBps)||0)),sd=Math.max(1,Math.floor(Number(seed)||1));
-    const wf=walkForward(records,{key:k,strategy,grid,folds:Math.floor(Number(folds)||4),start:Number(start),end:Number(end),stepMs:step,feeBps:fee,cash:Math.max(1,Number(cash)||1000)});
+    const wf=await this.labCompute({kind:'walkforward',records,opts:{key:k,strategy,grid,folds:Math.floor(Number(folds)||4),start:Number(start),end:Number(end),stepMs:step,feeBps:fee,cash:Math.max(1,Number(cash)||1000)}});
     const mc=monteCarlo(wf.folds.flatMap(f=>f.test.tradeReturns),{runs:2000,seed:sd});
     const datasetFp=createHash('sha256').update(JSON.stringify(records.map(r=>[r.availableAt,r.observedAt,r.bid,r.ask,r.synthetic?1:0]))).digest('hex'),id=randomUUID();
     const summary={evidence:wf.evidence,monteCarlo:mc,folds:wf.folds.map(f=>({...f,test:{...f.test,tradeReturns:undefined}}))};
@@ -469,16 +471,18 @@ export class MarketPlatform {
       try{appendProjectJournal(path.join(this.dataDir,'project-journal.ndjson'),{kind:'integration',title:`Integration connected: ${s.id}`,detail:`${s.kind} source first connected in this data folder.`,at:now});this.store.db.prepare('INSERT INTO integration_milestones VALUES(?,?)').run(s.id,now);}catch{this.journalError='Could not append integration milestone';}
     }
     return {at:now,sources,eventBus:this.bus.snapshot(),database:{...this.store.health(),bytes:dbBytes,tables:counts},
-      caches:{macroAgeMs:age(this.macroCache),weatherAgeMs:age(this.weatherCache),sportsAgeMs:age(this.sportsCache),eventsAgeMs:age(this.eventsCache),openReplays:this.replays.size},
+      labWorkers:this.labPool?this.labPool.status():'inline',caches:{macroAgeMs:age(this.macroCache),weatherAgeMs:age(this.weatherCache),sportsAgeMs:age(this.sportsCache),eventsAgeMs:age(this.eventsCache),openReplays:this.replays.size},
       process:{rssMb:Math.round(mem.rss/1048576),heapUsedMb:Math.round(mem.heapUsed/1048576),uptimeSec:Math.round(process.uptime()),cpuCount:os.cpus().length,loadAvg1:process.platform==='win32'?'unavailable (not provided on Windows)':Math.round(load[0]*100)/100,gpu:'unavailable (not measured by MPOS core)'},
       journalError:this.journalError};
   }
   async edgarLatest(form='8-K'){return {status:this.edgar.status(),form,filings:this.recordFilings(await this.edgar.latest(form))};}
   async edgarCompany(ticker){const {filingsFromSubmissions}=await import('./edgar.js');const sub=await this.edgar.company(ticker);return {status:this.edgar.status(),company:sub.name,cik:sub.cik,tickers:sub.tickers,sic:sub.sicDescription||null,filings:this.recordFilings(filingsFromSubmissions(sub,{limit:60}))};}
   async edgarForm4(url){return {status:this.edgar.status(),facts:await this.edgar.form4(url),kind:'FORM_4_FACTS'};}
-  close(){this.store.close();}
+  // Market Lab compute: worker threads when enabled (the app), inline otherwise (tests, scripts).
+  labCompute(task){return this.labPool?this.labPool.run(task):Promise.resolve().then(()=>computeTask(task));}
+  close(){this.labPool?.close().catch(()=>{});this.store.close();}
 }
 let platform;
-export function marketPlatform(){activateExecutionBoundary();if(!platform){const dataDir=path.resolve(process.env.MONEY_PRINTER_DATA_DIR||'data');platform=new MarketPlatform({file:path.join(dataDir,'mpos-core.sqlite'),dataDir});}return platform;}
+export function marketPlatform(){activateExecutionBoundary();if(!platform){const dataDir=path.resolve(process.env.MONEY_PRINTER_DATA_DIR||'data');platform=new MarketPlatform({file:path.join(dataDir,'mpos-core.sqlite'),dataDir,labWorkers:true});}return platform;}
 // Release the SQLite handle (Windows keeps open files locked). The execution boundary stays active.
 export function closeMarketPlatform(){if(!platform)return;try{platform.close();}finally{platform=undefined;}}

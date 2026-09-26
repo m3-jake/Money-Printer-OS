@@ -1145,3 +1145,10 @@ Kalshi and Robinhood event contracts are already covered by the MPOS core platfo
   - Markets and single-market lookups attach it to the fee model. `describeFeeModel` says which case applies, e.g. "changes to × 1 at 2026-09-27T19:05Z".
 - **Live:** KXMLBGAME: 44 markets PENDING (× 0.5 until first pitch), 4 in-progress games UNVERIFIED at × 1.
 - Tests: 1 new (the four states, including a change dropping off the list). `market-core` 61.
+
+## Batch AJ (2026-09-26): Market Lab compute in worker threads
+
+- **New `src/core/labWorker.js`:** `LabPool` (worker_threads; at most half the CPUs, capped at 4; jobs queue when all are busy) and `computeTask` (the same pure replay/walk-forward functions). The app's platform instance runs Market Lab backtests and walk-forward sweeps in the pool, so the HTTP server and desktop stay responsive. Tests and scripts run inline. Diagnostics show pool size, busy/queued/done/failed.
+- **Test:** pool results equal inline results, and the main event loop keeps ticking during a 6000-record × 16-parameter walk-forward. **Live:** walk-forward via the app pool returned in 58 ms while 92 diagnostics requests were served concurrently.
+- **Cross-machine distribution: not built, on purpose.** The existing mesh (`src/networkMesh.js`) is presence/chat over unauthenticated LAN UDP, and accepting compute jobs over it would let any LAN host run work on this machine. Heavy cross-machine search already goes through the Evolution Lab and its HMAC-signed bridge. If bing wants Market Lab jobs on the Windows box specifically, the safe route is a signed job endpoint on that bridge.
+- `market-core` 62.

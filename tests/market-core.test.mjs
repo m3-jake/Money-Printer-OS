@@ -31,6 +31,7 @@ import { parseRss,extractEntities,relatedMarkets,importance,categoriesOf } from 
 import { tokenGraph,whaleFlow,walletView } from '../src/core/whales.js';
 import { buildEventPages,sportsPages,weatherPages,corporatePages } from '../src/core/correlation.js';
 import { solanaPlan,practicePlan } from '../src/core/legacyImport.js';
+import { LabPool,computeTask } from '../src/core/labWorker.js';
 import { StrategyRegistry,promotionCheck,labChampionLifecycle } from '../src/core/strategies.js';
 import { assertGlobalTradingNotHalted } from '../src/core/executionBoundary.js';
 import { localMutationAllowed } from '../src/core/http.js';
@@ -754,4 +755,19 @@ test('Kalshi event fee overrides: pending, applied after vanishing, unverified u
   list=[];k.feeFetchedAt=0;await k.refreshFeeChanges();// the change dropped off the public list once it took effect
   assert.equal(k.feeOverride('E1','KXMLBGAME',3000).state,'APPLIED');assert.equal(k.feeOverride('E1','KXMLBGAME',3000).multiplier,1);
   assert.equal(k.feeOverride('E2','KXMLBGAME',3000).state,'UNVERIFIED');assert.equal(k.feeOverride('E3','KXOTHER',3000).state,'NONE');
+});
+
+test('Market Lab worker pool: same results as inline, and the main thread keeps running during a heavy job',async()=>{
+  const rows=[];for(let i=0;i<6000;i++)rows.push({t:i*15000,bid:100+Math.sin(i/9)*2+i*1e-4,ask:100.03+Math.sin(i/9)*2+i*1e-4,src:'robinhood'});
+  const records=tapeRecords(rows,'X'),opts={key:'X',strategy:'momentum',grid:{lookback:[3,6,12,24],thresholdBps:[2,5,10,20]},folds:6,start:0,end:5999*15000,stepMs:15000,feeBps:10,cash:1000};
+  const pool=new LabPool({size:2});
+  let ticks=0;const timer=setInterval(()=>ticks++,5);
+  const t0=Date.now();const viaPool=await pool.run({kind:'walkforward',records,opts});const ms=Date.now()-t0;
+  clearInterval(timer);
+  const inline=computeTask({kind:'walkforward',records,opts});
+  assert.deepEqual(viaPool.evidence,inline.evidence);assert.deepEqual(viaPool.folds.map(f=>f.train.params),inline.folds.map(f=>f.train.params));
+  // The main loop was free while the worker computed (a blocked loop would record ~0 ticks).
+  assert.ok(ticks>=Math.floor(ms/5/4),`ticks ${ticks} over ${ms} ms`);
+  await assert.rejects(pool.run({kind:'nope'}),/Unknown lab task/);
+  assert.equal(pool.status().failed,1);await pool.close();
 });
