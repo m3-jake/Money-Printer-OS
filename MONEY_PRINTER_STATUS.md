@@ -1167,3 +1167,11 @@ Kalshi and Robinhood event contracts are already covered by the MPOS core platfo
 - **EDGAR window:** an "AI summary" button per filing opens a panel labelled **AI-GENERATED ANALYSIS** with the model name, stored flag and cited share. Hovering a sentence shows its filing quote; uncited sentences are dimmed; a footer says it is not the filing and not advice.
 - **Not exercised against the live API** (no Anthropic key and no SEC contact on this machine). Tests use a fake client and check the exact request shape (model, fallback beta, document citations, full text), the refusal path, the no-truncation rule, caching and facts isolation.
 - `market-core` 63.
+
+## Batch AL (2026-09-26): Evolution Lab candle look-ahead fixed (Lab commit 386bb13)
+
+- **Lab repo** (`W:\money-printer-evolution-lab`), branch `codex/lab-evidence-20260925`, fast-forwarded to `386bb13`. Made in a separate worktree so the other session's `W:/lab-claude` (`claude/lab-loop-20260926`) was untouched; that branch will need this commit when it merges.
+- `moduleResearch.loadQuoteTape` → `withoutCandleLookAhead()`: for `coinbase-candles` rows only each minute's **close** survives, stamped at the **minute end**. The synthetic open/extremes are dropped: releasing them late would still let a simulated stop fill at a price that had already passed. Live quote rows are unchanged and win timestamp ties.
+- `robinhoodHistory.js` minute samples use the same expansion, but that path is documented as **not wired**. If it is ever wired, it needs the same rule. Daily bars are complete UTC days and unaffected.
+- **Effect:** Robinhood lane search/holdout results computed on candle-heavy tape before this fix may have been optimistic. The evidence gate's 10% synthetic cap limited it for promotion.
+- Tests: new `tests/candle-lookahead.test.mjs` (2); **all 231 Lab tests pass** (per-file run).
