@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as ed25519 from '@noble/ed25519';
+import { appendNdjson } from './researchCollector.js';
 import { lateGameEstimate, windowEstimate, STRATEGY_WINDOWS, WINDOW_RULES, TURNOVER_TARGET_MINUTES } from './sportsTiming.js';
 import { usReadiness, noteUSAuthResult } from './polymarketUS.js';
 import { mapLimit } from './utils.js';
@@ -572,13 +573,30 @@ async function createCombo(legs){
 }
 
 // Item 6: create combo -> RFQ -> poll quotes -> best ACTIVE buyPrice.
-export async function quoteUSCombo({legKeys,stakeUsd,waitMs=8000,candidates=null}={}){
+// Every RFQ attempt is evidence: the quote vs the ask-product estimate (markup), or no quote / error.
+function logRfq(row){
+ try{appendNdjson('polymarket-us-rfq',[{schema:'mpo.polymarket-us-rfq.v1',...row,markup:row.quoted!=null&&row.askProduct!=null?r4(row.quoted-row.askProduct):null}])}catch{}
+}
+export async function quoteUSCombo(opts={}){
+ let combo=null;
+ try{
+  const q=await quoteUSComboInner(opts,c=>{combo=c});
+  logRfq({at:Date.now(),legs:combo.legs.map(l=>l.symbol),legCount:combo.legs.length,askProduct:combo.rawPrice,estPrice:combo.price,quoted:q.buyPrice,outcome:'quote'});
+  return q;
+ }catch(e){
+  if(combo)logRfq({at:Date.now(),legs:combo.legs.map(l=>l.symbol),legCount:combo.legs.length,askProduct:combo.rawPrice,estPrice:combo.price,quoted:null,
+   outcome:e?.code==='noQuote'?'noQuote':/timeout|aborted/i.test(String(e?.message))?'timeout':'error',code:e?.code||null});
+  throw e;
+ }
+}
+async function quoteUSComboInner({legKeys,stakeUsd,waitMs=8000,candidates=null}={},onCombo=()=>{}){
  requireArmed();
  const limits=usComboLimits(),stakeReq=num(stakeUsd);
  if(!(stakeReq>0))fail('stakeInvalid','stakeUsd must be greater than 0');
  if(stakeReq>limits.maxStakeUsd+1e-9)fail('stakeCap',`Stake $${r2(stakeReq)} exceeds the $${limits.maxStakeUsd} per-combo cap`);
  const pool=candidates||await refreshCandidates();
  const combo=buildUSCombo({legKeys,stakeUsd,candidates:pool});
+ onCombo(combo);
  const {symbol}=await createCombo(combo.legs);
  const rfq=await signedFetch('POST','/v1/rfqs',{body:{symbol,cashOrderQty:combo.notionalUsd.toFixed(2),restRemainder:false}});
  const rfqId=String(rfq?.rfqId||'');

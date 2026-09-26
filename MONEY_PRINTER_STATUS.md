@@ -4,7 +4,7 @@
 (`CURRENT_TASKS.md`, `KNOWN_BUGS.md`, `PROJECT_STATE.md`, `RELEASE_STATUS.md`) and in `reports/NEXT-STEPS-2026-09-25.md`.
 Don't re-inventory the repo. Update this file at the end of every batch.
 
-Last updated: 2026-09-26, batch 22 (Polymarket combo plan, batch 3 of 6: strategy windows as settings). Branch `feature/polymarket-combo-only`, version `0.5.0-alpha.57`.
+Last updated: 2026-09-26, batch 23 (Polymarket combo plan, batch 4 of 6: evidence capture, shadow auto, Lab module). Branch `feature/polymarket-combo-only`, version `0.5.0-alpha.57`.
 
 ## Architecture (inventoried once)
 
@@ -437,3 +437,19 @@ Plan (from bing): 1 connection truth, 2 page every live game, 3 strategy windows
 - Live 2026-09-26: 54 combo-enabled live games. Eligible: NEAR_END 0, LATE 6, ANY_LIVE 19 (the rest fail price band/spread).
 - Tests: polymarket-us-combos 50/0 (+4; 3 settings asserts updated for the new window/weights/4-leg contract), visual-contract 20/0 (+1), safety 5/0, sports-turnover 5/0.
 - Next per plan: batch 4 (evidence capture, shadow auto, Lab module). Queued: visuals batch (Polymarket, Robinhood, pump.fun).
+
+## Batch 23 (2026-09-26): Polymarket combo plan, batch 4 of 6 (evidence capture, shadow auto, Lab module)
+
+- Observed public shapes (2026-09-26): `GET /v1/markets?slug=a&slug=b` returns `markets[]` with `status` and `marketSides[].price`. A resolved market is `MARKET_STATUS_RESOLVED` with side prices 1/0. `GET /v1/markets/{slug}/settlement` returns `{slug,settlement}` and gives **0.5 for unresolved markets**, so it is never trusted alone. The gateway returns 429 after a few rapid calls.
+- **Open bug (not fixed here; blocks real-combo P/L once beta is on):** the existing signed settlement path (`fetchSettlement` in `polymarketUSCombos.js`) expects the SDK shape (`settledAt`, `settlementPrice`), which the endpoint does not return. Real combos would stay open (fail-closed, no bad P/L). Fix in batch 5 using the markets-list rule.
+- `src/polymarketUSEvidence.js` (public GETs only), driven by the research collector every `MPO_POLY_US_CAPTURE_MS` (15 s) under its lock. Disable with `MPO_POLY_US_EVIDENCE=false`.
+  - Legs tape `raw/polymarket-us-legs-YYYY-MM-DD.ndjson`: every board leg with bid/ask/price/spread/clock/score/sport/league/fee, and per-window verdict/eta/rank/rankParts. Deduped by change with a 60 s heartbeat. Per-window combo-estimate rows carry the ask product and fee.
+  - Settlement tracker: each (leg, window) is tracked at its first qualifying price. Once off the live board it is resolved via one batched markets lookup (20 slugs per call, at most 3 calls per minute, stops on 429). A leg counts only when RESOLVED with price exactly 0 or 1; void or 72 h unresolved is UNKNOWN (never a win). Outcomes go to `raw/polymarket-us-outcomes-*.ndjson`, plus a calibration table (price bucket × sport × window: win rate vs implied price, edge after the modelled fee).
+  - RFQ log `raw/polymarket-us-rfq-*.ndjson`: every quote attempt, with the quote vs ask product (markup), noQuote, timeout, or error code.
+  - SHADOW auto: runs `chooseUSCombo` per window. It "places" $2 at ceil(ask product) + markup (0.03 until 5 real quotes, then the median), max 2 open per window, no reused events, 3 min cooldown. It settles on tracked outcomes (any LOST → lost; any UNKNOWN → void, not counted). Per-window record: settled, win rate, P/L, ROI after fees and markup, last decision (repeated skips collapsed).
+- `appendNdjson` now fsyncs.
+- Routes: `GET /api/polymarket-us/evidence` (summary plus the Lab proposal and status), `POST /api/polymarket-us/combos/apply-lab` (server reads the champion file and applies it via `setUSComboSettings`, so the trader's bounds apply; a live-claiming proposal is refused).
+- Panel: research fieldset with the shadow table, markup line, top calibration rows, and the Lab proposal with "Apply to shadow + auto settings".
+- Lab repo (`codex/lab-evidence-20260925`): new `polymarket-combo` worker module (`src/polymarketComboResearch.js`). It reads the outcomes and RFQ tapes, builds the calibration, and replays the shadow over resolved legs (10-min slots, distinct events, weighted rank). It grid-searches 3 windows × 4 price floors × 2/3 legs × 5 weight sets (120 trials) on the first 75% and re-scores the top 5 on the 25% holdout. It publishes a paper-only `lab-link/polymarket-combo-champion.json` once a config has 20 or more replayed combos (stage PROVISIONAL only if train and holdout ROI > 0). Default `MPO_LAB_MODULES` now includes it.
+- Live smoke (temp dir, 2026-09-26): one tick wrote 56 leg rows and 2 estimates, tracked 34 legs, and the shadow placed in LATE and ANY_LIVE (NEAR_END: 1 eligible leg). No evidence of positive EV yet; outcomes will accumulate once the collector runs in the installed app.
+- Tests: trader polymarket-us-evidence 9/0 (new), polymarket-us-combos 50/0 (RFQ log asserts added), visual-contract 21/0 (+1), research-collector 7/0, safety 5/0, lab* 35/0. Lab: polymarket-combo-research 6/0 (new), module-research 6/0, lab-supervision 3/0.

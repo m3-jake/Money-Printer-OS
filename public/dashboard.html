@@ -564,7 +564,7 @@ function renderControl(){
 }
 
 // Polymarket US combos (real execution): selection, stake and the in-flight build.
-let polyUSAccount=null,usComboSelected=new Set(),usComboStakeValue='',usComboSubmitting=false,usComboBuildState=null,usComboBuildTimer=null,usComboRefreshBusy=false,usComboSettingsDraft={};
+let polyUSEvidence=null,polyUSEvidenceAt=0,polyUSAccount=null,usComboSelected=new Set(),usComboStakeValue='',usComboSubmitting=false,usComboBuildState=null,usComboBuildTimer=null,usComboRefreshBusy=false,usComboSettingsDraft={};
 const polyEscape=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function researchParamLine(p={}){const keys=[['aggression','agg'],['tp','tp'],['stop','stop'],['trail','trail'],['maxHold','hold'],['cooldown','cool'],['filter','filter'],['entry','in'],['exit','out']];return keys.filter(([k])=>p[k]!=null).map(([k,l])=>`${l} ${p[k]}`).join(' · ')||'default profile'}
 function monNum(v){const n=Number(v);return Number.isFinite(n)?n:null}
@@ -744,10 +744,16 @@ function renderPolyCombos(box){
   <div class="inset" style="padding:6px;margin-top:6px"><div class="toolbar" style="flex-wrap:wrap;gap:8px"><label>Stake $ <input class="field" id="usComboStake" type="number" min="1" max="${Number(ucs.limits?.maxStakeUsd||25)}" step="0.5" value="${polyEscape(usComboStakeValue||5)}" style="width:70px"></label><span style="font-size:11px">${buildLine}</span></div>
   <div class="toolbar" style="margin-top:4px"><button class="btn" id="usComboPlace" ${canPlace?'':'disabled'}>${betaDenied?'Place (combos beta pending)':'Place combo…'}</button><span class="muted" style="font-size:10px">${polyEscape(placeHint)}</span></div></div>
   <div class="grid2" style="margin-top:6px"><fieldset><legend>Open combos · ${open.length}</legend><div class="toolbar" style="margin-bottom:4px"><button class="btn" id="usComboSettle">Check settlement</button></div><div data-scroll="combo-open" style="overflow:auto;max-height:160px"><table class="table terminal"><thead><tr><th>Legs</th><th>Price × Qty</th><th>Stake</th><th>Status</th><th>P/L</th><th></th></tr></thead><tbody>${openRows}</tbody></table></div></fieldset><fieldset><legend>History</legend><div data-scroll="combo-hist" style="overflow:auto;max-height:160px"><table class="table terminal"><thead><tr><th>Legs</th><th>Price × Qty</th><th>Stake</th><th>Status</th><th>P/L</th></tr></thead><tbody>${histRows}</tbody></table></div><div class="muted" style="font-size:10px;margin-top:3px">${Number(stats.placed||0)} placed · ${Number(stats.won||0)} won · ${Number(stats.lost||0)} lost · P/L ${polyUsd(stats.pnlUsd)} · hit rate ${stats.hitRate==null?'—':polyPct(stats.hitRate)}</div></fieldset></div>
+ ${usResearchHtml(polyUSEvidence)}
  </fieldset></div>`;
  const rerender=()=>{polyModuleSig='';renderSportsbook()};
  $$('.usComboLeg').forEach(el=>el.onchange=()=>{const k=el.dataset.key;if(!k)return;if(el.checked&&usComboSelected.size>=maxLegs){el.checked=false;return}if(el.checked)usComboSelected.add(k);else usComboSelected.delete(k);scheduleUSComboBuild();rerender()});
  $('#usUseSuggested')?.addEventListener('click',()=>{const sgl=(ucs.suggested&&ucs.suggested.legs)||[];usComboSelected=new Set(sgl.slice(0,maxLegs));scheduleUSComboBuild();rerender()});
+ $('#usApplyLab')?.addEventListener('click',async()=>{
+  const r=await post('/api/polymarket-us/combos/apply-lab',{}).catch(e=>({ok:false,error:e.message}));
+  if(!r?.ok)return showDialog('Polymarket US','Lab proposal not applied',r?.error||'The server refused the proposal.');
+  usComboSettingsDraft={};scheduleUSComboBuild();await refreshUSComboSnapshot();
+ });
  $('#usComboStake')?.addEventListener('input',e=>{usComboStakeValue=e.target.value;scheduleUSComboBuild()});
  const draft=(id,k,conv)=>$('#'+id)?.addEventListener(id==='usSetLegs'?'change':'input',e=>{usComboSettingsDraft[k]=conv(e.target.value);const b=$('#usSetSave');if(b)b.disabled=false});
  draft('usSetFloor','priceMin',v=>Number(v)/100);draft('usSetMinutes','maxMinutesLeft',Number);draft('usSetLegs','maxLegs',Number);
@@ -957,12 +963,28 @@ function scheduleUSComboBuild(){
   renderSig.delete('sportsbook');renderSportsbook();
  },300);
 }
+// Research: shadow auto record per window, RFQ markup, calibration and the Lab proposal (all read-only evidence).
+function usResearchHtml(ev){
+ if(!ev)return '<div class="muted" style="font-size:10px;margin-top:6px">Research evidence: waiting for the collector…</div>';
+ const sh=ev.shadow||{},mk=ev.markup||{},cal=Array.isArray(ev.calibration)?ev.calibration:[],lab=ev.lab||{},p=lab.proposal;
+ const pct=v=>v==null?'—':(Number(v)*100).toFixed(1)+'%';
+ const shRows=Object.entries(sh).map(([w,r])=>{const ld=r.lastDecision;return `<tr><td>${polyEscape(w.replace('_',' '))}</td><td>${Number(r.settled)} (${Number(r.won)}W/${Number(r.lost)}L)</td><td>${Number(r.open)}</td><td>${pct(r.winRate)}</td><td class="${r.roi==null?'':Number(r.roi)>=0?'green':'red'}">${pct(r.roi)}</td><td class="${Number(r.pnlUsd)>=0?'green':'red'}">${polyUsd(r.pnlUsd)}</td><td style="font-size:10px;white-space:normal">${ld?polyEscape(ld.action+(ld.reason?' · '+ld.reason:'')+(ld.repeats?' ×'+(Number(ld.repeats)+1):'')):'—'}</td></tr>`}).join('');
+ const calRows=cal.filter(c=>Number(c.n)>0).sort((a,b)=>Number(b.n)-Number(a.n)).slice(0,8).map(c=>`<tr><td>${polyEscape(c.window)}</td><td>${polyEscape(c.sport)}</td><td>${polyEscape(c.bucket)}</td><td>${Number(c.n)}</td><td>${pct(c.winRate)} vs ${pct(c.implied)}</td><td class="${Number(c.edgeAfterFee)>=0?'green':'red'}">${c.edgeAfterFee==null?'—':(Number(c.edgeAfterFee)*100).toFixed(1)+' pts'}</td></tr>`).join('');
+ const labLine=p&&p.valid?`<div class="inset" style="padding:6px;margin-top:6px"><b>Lab proposal</b> <span class="${p.positiveEdge?'green':'amber'}">${polyEscape(p.stage||'')}</span> <span class="muted" style="font-size:11px">${polyEscape(p.params.window||'')} · from ${pct(p.params.priceMin)} · ${Number(p.params.maxLegs)} legs · train ${p.train?Number(p.train.combos)+' combos ROI '+pct(p.train.roi):'—'} · holdout ${p.holdout?Number(p.holdout.combos)+' combos ROI '+pct(p.holdout.roi):'—'} · ${Number(p.trials||0)} trials</span> <button class="btn" id="usApplyLab" style="font-size:10px">Apply to shadow + auto settings</button></div>`
+  :`<div class="muted" style="font-size:10px;margin-top:6px">Lab: ${polyEscape(lab.status?.note||(p&&!p.valid?p.reason:'no combo proposal yet'))}</div>`;
+ return `<fieldset style="margin-top:6px"><legend>Research · shadow auto (virtual $${2} stakes, no orders)</legend>
+  <div class="muted" style="font-size:10px">Tape: ${Number(ev.stats?.legRows||0)} leg rows · ${Number(ev.stats?.scans||0)} scans · ${Number(ev.tracked||0)} legs awaiting settlement · ${Number(ev.stats?.resolved||0)} resolved · ${Number(ev.stats?.unknown||0)} unknown · RFQ markup ${mk.conservative?'assumed '+polyCents(mk.used)+' (no real quotes yet)':polyCents(mk.median)+' median of '+Number(mk.samples)}</div>
+  <table class="table terminal"><thead><tr><th>Window</th><th>Settled</th><th>Open</th><th>Win</th><th>ROI</th><th>P/L</th><th>Last decision</th></tr></thead><tbody>${shRows||'<tr><td colspan=7>No shadow activity yet.</td></tr>'}</tbody></table>
+  ${calRows?`<table class="table terminal" style="margin-top:4px"><thead><tr><th>Window</th><th>Sport</th><th>Price</th><th>Legs</th><th>Won vs implied</th><th>Edge after fee</th></tr></thead><tbody>${calRows}</tbody></table>`:'<div class="muted" style="font-size:10px">Calibration: no resolved legs yet.</div>'}
+  ${labLine}</fieldset>`;
+}
 async function refreshUSComboSnapshot(){
  if(usComboRefreshBusy)return;usComboRefreshBusy=true;
  try{
   const r=await fetch('/api/polymarket-us/combos',{cache:'no-store',signal:AbortSignal.timeout(20000)});
   const j=await r.json().catch(()=>null);
   if(r.ok&&j)trackComboProfitBurst(j);
+  if(Date.now()-polyUSEvidenceAt>15000){polyUSEvidenceAt=Date.now();try{const e=await fetch('/api/polymarket-us/evidence',{cache:'no-store',signal:AbortSignal.timeout(10000)});polyUSEvidence=e.ok?await e.json():polyUSEvidence}catch{}}
   try{const a=await fetch('/api/polymarket-us/account',{cache:'no-store',signal:AbortSignal.timeout(20000)});polyUSAccount=a.ok?await a.json():null}catch{polyUSAccount=null}
   polyUSComboState=(r.ok&&j)?j:{...(polyUSComboState||{}),error:(j&&j.error)||('Fast combos HTTP '+r.status)};
  }catch(e){polyUSComboState={...(polyUSComboState||{}),error:e.message||'Fast combos unavailable'}}

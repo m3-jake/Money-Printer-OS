@@ -296,3 +296,11 @@ test('Polymarket panel exposes the strategy window, 2-4 legs, and per-window rec
   assert.match(html, /\[2,3,4\]\.map\(/);
   assert.match(html, /Record by window/);
 });
+
+test('Polymarket panel shows shadow record, calibration and a one-click Lab apply that the server validates', () => {
+  assert.match(html, /function usResearchHtml\(/);
+  assert.match(html, /id="usApplyLab"/);
+  assert.match(html, /\/api\/polymarket-us\/evidence/);
+  assert.match(dashJs, /\/api\/polymarket-us\/combos\/apply-lab/);
+  assert.match(dashJs, /setUSComboSettings\(p\.params\)/);
+});

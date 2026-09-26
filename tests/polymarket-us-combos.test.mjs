@@ -39,6 +39,10 @@ function eventsResponse(events){return {events}}
 function jsonRes(obj,status=200){
  return {ok:status>=200&&status<300,status,text:async()=>JSON.stringify(obj)};
 }
+function rfqRows(){
+ const d=path.join(DIR,'research-evidence','raw');
+ try{return fs.readdirSync(d).filter(f=>f.startsWith('polymarket-us-rfq-')).flatMap(f=>fs.readFileSync(path.join(d,f),'utf8').split('\n').filter(Boolean).map(l=>JSON.parse(l)))}catch{return []}
+}
 function textRes(body,status){return {ok:status>=200&&status<300,status,text:async()=>body}}
 
 function installFetch(handler,log){
@@ -259,6 +263,7 @@ test('RFQ flow creates the combo, polls quotes, accepts and confirms',async()=>{
  assert.equal(quote.rfqId,'rfq-77');
  assert.equal(quote.quoteId,'q-best','lowest active buyPrice wins');
  assert.equal(quote.buyPrice,0.815);
+ {const q=rfqRows().filter(r=>r.outcome==='quote').at(-1);assert.ok(q,'RFQ quote logged');assert.equal(q.quoted,0.815);assert.equal(q.markup,+(0.815-q.askProduct).toFixed(4))}
  assert.ok(polls>=2,'quotes are polled until one is active');
 
  const comboReq=log.find(x=>x.method==='POST'&&x.path==='/v1/combos');
@@ -350,6 +355,7 @@ test('auth failures are classified and surfaced in readiness',async()=>{
   return null;
  });
  await assert.rejects(combos.quoteUSCombo({legKeys:keys,stakeUsd:5}),e=>e.code==='betaNotEnabled'&&e.status===403);
+ {const last=rfqRows().at(-1);assert.equal(last.outcome,'error');assert.equal(last.code,'betaNotEnabled');assert.equal(last.quoted,null)}
  assert.equal((await combos.usComboSnapshot({force:true})).betaAccess,'denied');
  assert.equal(us.classifyUSAuthError('rate limit exceeded',429),'rateLimited');
  us.armPolymarketUS(false);
