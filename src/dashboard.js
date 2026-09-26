@@ -1,4 +1,5 @@
 import { handleRobinhoodRequest, startRobinhoodLoops, stopRobinhoodLoops } from './robinhoodHttp.js';
+import { solanaBookView } from './solanaEconomics.js';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -312,6 +313,7 @@ function snapshot() {
     runtime: s.runtime || {},
     system: systemView(s.system, plane.activeEvolutionPolicy),
     stats: s.stats || {},
+    solanaBook: solanaBookView(s, cfg),
     portfolio: s.portfolio || null,
     portfolioSeries: compactSeries(s.portfolioSeries,1600,600),
     dailyPnlSol: s.dailyPnlSol || 0,
