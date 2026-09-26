@@ -35,8 +35,14 @@ export function evolveConfig(){
   candidates:Math.max(1,Math.min(200,Math.floor(envNum('ROBINHOOD_EVOLVE_CANDIDATES',24)))),
   minGain:(()=>{const v=Number(process.env.ROBINHOOD_EVOLVE_MIN_GAIN);return Number.isFinite(v)&&v>=0?v:0.15})(),
   autopromote:String(process.env.ROBINHOOD_EVOLVE_AUTOPROMOTE||'false').toLowerCase()==='true',
-  minTapeDays:envNum('ROBINHOOD_EVOLVE_MIN_TAPE_DAYS',3),
-  maxTapeDays:Math.min(45,envNum('ROBINHOOD_EVOLVE_MAX_TAPE_DAYS',14)),
+  minTapeDays:envNum('ROBINHOOD_EVOLVE_MIN_TAPE_DAYS',7),
+  maxTapeDays:Math.min(45,envNum('ROBINHOOD_EVOLVE_MAX_TAPE_DAYS',30)),
+  // Sealed holdout: the newest holdoutFrac of the tape is never searched; only the generation's best is replayed on it,
+  // and only once per holdoutFreshMs of new tape. A champion is proposed only if it clears these absolute gates there.
+  holdoutFrac:0.2,holdoutFreshMs:864e5,
+  holdoutMinCloses:Math.floor(envNum('ROBINHOOD_EVOLVE_HOLDOUT_MIN_CLOSES',20)),
+  holdoutMinPF:envNum('ROBINHOOD_EVOLVE_HOLDOUT_MIN_PF',1.2),
+  requireRobinhoodQuotes:String(process.env.ROBINHOOD_EVOLVE_REQUIRE_RH_QUOTES??'true').toLowerCase()!=='false',minRobinhoodShare:0.9,
   budgetMs:Math.min(20000,envNum('ROBINHOOD_EVOLVE_BUDGET_MS',20000)),
   minCloses:20,maxDrawdownFrac:0.03,trainFrac:0.7,
  };
@@ -105,6 +111,33 @@ export function evaluateCandidate(params,tapes,{feeRatio=0.0085,orderUsd=25,star
  for(const row of Object.values(bySymbol))delete row.testCloses;
  return {params:p,paramsHash:S.paramsHash(p),score:compositeScore(bySymbol,weights),bySymbol,metrics};
 }
+// Split each symbol's tape at the same wall-clock cut: rows before it may be searched, rows from it on are the holdout.
+// context[s] is the last `window` pre-cut rows, used only to warm the indicators on the holdout (no trade may open there).
+export function holdoutSplit(tapes,frac=0.2,window=720){
+ let first=Infinity,last=-Infinity;for(const rows of Object.values(tapes||{}))if(rows.length){first=Math.min(first,rows[0].t);last=Math.max(last,rows[rows.length-1].t)}
+ if(!Number.isFinite(first))return {search:{},holdout:{},context:{},cutAt:null,through:null};
+ const cutAt=last-(last-first)*frac,search={},holdout={},context={};
+ for(const [s,rows] of Object.entries(tapes)){search[s]=rows.filter(r=>r.t<cutAt);holdout[s]=rows.filter(r=>r.t>=cutAt);context[s]=search[s].slice(-window)}
+ return {search,holdout,context,cutAt,through:last};
+}
+// Replay one parameter set on the holdout and apply the absolute gates. lookedThrough is the newest holdout row a
+// previous generation already looked at; the holdout must extend holdoutFreshMs beyond it or the look is refused.
+export function holdoutGate(params,holdout,{feeRatio=0.0085,orderUsd=25,startUsd=1000,cfg=evolveConfig(),lookedThrough=0,context={}}={}){
+ const p=S.normalizeParams(params),reasons=[];let closes=0,wins=0,gw=0,gl=0,pnl=0,rows=0,rh=0,through=0;
+ for(const [symbol,samples] of Object.entries(holdout||{})){
+  if(!samples.length)continue;
+  rows+=samples.length;for(const r of samples){if(r.src==='robinhood')rh++;if(r.t>through)through=r.t}
+  const cut=samples[0].t,bt=backtestTape([...(context[symbol]||[]),...samples],{params:p,feeRatio,orderUsd,startUsd});
+  for(const c of bt.closes){if(c.openedAt<cut)continue;closes++;pnl+=c.pnlUsd;if(c.pnlUsd>0){wins++;gw+=c.pnlUsd}else gl+=-c.pnlUsd}
+ }
+ const profitFactor=gl>0?gw/gl:gw>0?Infinity:0,robinhoodShare=rows?rh/rows:0;
+ if(through<num(lookedThrough)+cfg.holdoutFreshMs)reasons.push('holdoutReused');
+ if(cfg.requireRobinhoodQuotes&&robinhoodShare<cfg.minRobinhoodShare)reasons.push(`robinhood quotes ${Math.round(robinhoodShare*100)}% < ${cfg.minRobinhoodShare*100}%`);
+ if(closes<cfg.holdoutMinCloses)reasons.push(`holdout closes ${closes} < ${cfg.holdoutMinCloses}`);
+ if(profitFactor<cfg.holdoutMinPF)reasons.push(`holdout PF ${Number.isFinite(profitFactor)?profitFactor.toFixed(2):'inf'} < ${cfg.holdoutMinPF}`);
+ if(!(pnl>0))reasons.push('holdout pnl <= 0');
+ return {pass:!reasons.length,reasons,closes,wins,hitRate:closes?wins/closes:null,profitFactor:Number.isFinite(profitFactor)?Math.round(profitFactor*1000)/1000:'infinity',pnlUsd:Math.round(pnl*100)/100,robinhoodShare:Math.round(robinhoodShare*1000)/1000,rows,through};
+}
 const yieldNow=()=>new Promise(r=>setImmediate(r));
 // The search. Evaluates the incumbent first, then up to `candidates` bounded mutations while inside `budgetMs`
 // (checked between candidates, with a macrotask yield so the loop tick stays responsive). Pure of fs/env except `cfg`.
@@ -127,13 +160,13 @@ export async function searchGeneration({tapes,incumbentParams,feeRatio,orderUsd,
 }
 
 // ---------------------------------------------------------------- ledger
-export function defaultLedger(){return {version:1,generation:0,champion:null,incumbent:null,applied:null,history:[],events:[],lastRunAt:0,lastError:null}}
+export function defaultLedger(){return {version:1,generation:0,champion:null,incumbent:null,applied:null,history:[],events:[],lastRunAt:0,lastError:null,holdoutLookedThrough:0}}
 const isObj=v=>!!v&&typeof v==='object'&&!Array.isArray(v);
 export function normalizeLedger(s){
  const d=defaultLedger(),src=isObj(s)?s:{};
  const cand=c=>isObj(c)&&isObj(c.params)&&typeof c.paramsHash==='string'?{params:S.normalizeParams(c.params),paramsHash:c.paramsHash,score:num(c.score),metrics:isObj(c.metrics)?c.metrics:{},bySymbol:isObj(c.bySymbol)?c.bySymbol:{},at:num(c.at),generation:num(c.generation)}:null;
  return {version:1,generation:Math.max(0,Math.floor(num(src.generation))),champion:cand(src.champion),incumbent:cand(src.incumbent),applied:isObj(src.applied)&&typeof src.applied.paramsHash==='string'?{paramsHash:src.applied.paramsHash,at:num(src.applied.at),by:String(src.applied.by||'operator')}:null,
-  history:(Array.isArray(src.history)?src.history.filter(isObj):[]).slice(0,HISTORY_CAP),events:(Array.isArray(src.events)?src.events.filter(isObj):[]).slice(0,EVENT_CAP),lastRunAt:num(src.lastRunAt),lastError:isObj(src.lastError)?src.lastError:null,...(d.version?{}:{})};
+  history:(Array.isArray(src.history)?src.history.filter(isObj):[]).slice(0,HISTORY_CAP),events:(Array.isArray(src.events)?src.events.filter(isObj):[]).slice(0,EVENT_CAP),lastRunAt:num(src.lastRunAt),lastError:isObj(src.lastError)?src.lastError:null,holdoutLookedThrough:num(src.holdoutLookedThrough),...(d.version?{}:{})};
 }
 let cache=null;
 export function loadEvolveLedger(){

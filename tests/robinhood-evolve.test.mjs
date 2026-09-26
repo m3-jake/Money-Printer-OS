@@ -10,7 +10,7 @@ import { generateRobinhoodKeyPair } from '../src/robinhoodSigner.js';
 import { createRobinhoodMock } from './helpers/robinhoodMock.mjs';
 const root=fs.mkdtempSync(path.join(os.tmpdir(),'mpo-rh-evolve-'));
 process.env.MONEY_PRINTER_DATA_DIR=path.join(root,'data');
-Object.assign(process.env,{ROBINHOOD_AUTOSTART:'false',POLYMARKET_AUTOSTART:'false',ROBINHOOD_API:'https://rh.test',ROBINHOOD_TICK_MS:'60000',ROBINHOOD_SYMBOLS:'BTC-USD',ROBINHOOD_EVOLVE_CANDIDATES:'6',ROBINHOOD_EVOLVE_MAX_TAPE_DAYS:'5'});
+Object.assign(process.env,{ROBINHOOD_AUTOSTART:'false',POLYMARKET_AUTOSTART:'false',ROBINHOOD_API:'https://rh.test',ROBINHOOD_TICK_MS:'60000',ROBINHOOD_SYMBOLS:'BTC-USD',ROBINHOOD_EVOLVE_CANDIDATES:'6',ROBINHOOD_EVOLVE_MAX_TAPE_DAYS:'5',ROBINHOOD_EVOLVE_MIN_TAPE_DAYS:'3',ROBINHOOD_EVOLVE_HOLDOUT_MIN_CLOSES:'1',ROBINHOOD_EVOLVE_HOLDOUT_MIN_PF:'0.01',ROBINHOOD_EVOLVE_REQUIRE_RH_QUOTES:'false'});
 const KEYS={apiKey:'rh-api-11111111-2222-3333-4444-555555555555',seed:generateRobinhoodKeyPair().privateKeyBase64};
 process.env.ROBINHOOD_API_KEY=KEYS.apiKey;process.env.ROBINHOOD_PRIVATE_KEY=KEYS.seed;process.env.ROBINHOOD_REAL_ENABLED='true';
 const nativeFetch=globalThis.fetch;
@@ -84,7 +84,7 @@ test('trader: no run without 3 days of primary tape; a run proposes a champion b
  writeTape('BTC-USD',1);const short=await RH.runRobinhoodEvolveOnce({manual:true});assert.equal(short.reason,'insufficientTape');assert.ok(short.tapeDays['BTC-USD']<3);
  process.env.ROBINHOOD_EVOLVE_ENABLED='false';assert.equal((await RH.runRobinhoodEvolveOnce()).reason,'disabled');delete process.env.ROBINHOOD_EVOLVE_ENABLED;
  // Incumbent cannot trade (spread cap below the tape's 10 bps), so any trading mutation is a champion candidate.
- writeTape('BTC-USD',4);RH.setRobinhoodPaperAutopilot({params:{maxSpreadBps:1}});const hashBefore=J.loadPaper().paramsHash;
+ writeTape('BTC-USD',4,{drift:0.0006});RH.setRobinhoodPaperAutopilot({params:{maxSpreadBps:1}});const hashBefore=J.loadPaper().paramsHash;
  let r=null;for(let i=0;i<12&&!(r&&r.beats);i++){mock.state.time+=1000;r=await RH.runRobinhoodEvolveOnce({manual:true})}
  assert.equal(r.ran,true,JSON.stringify(r));assert.equal(r.beats,true,'expected a champion within 12 generations: '+JSON.stringify(r));assert.equal(r.promoted,false);assert.equal(r.proposed,true);
  assert.equal(r.incumbentScore,0);assert.ok(r.bestScore>0);assert.ok(r.evaluated<=6);
@@ -94,7 +94,7 @@ test('trader: no run without 3 days of primary tape; a run proposes a champion b
  const snap=await RH.robinhoodSnapshot({force:true});assert.deepEqual(Object.keys(snap),['at','readiness','account','pairs','quotes','tape','paper','journal','limits','qualificationThresholds','strategy','loop','equities','evolve','lastError']);assert.equal(snap.evolve.proposed.paramsHash,r.bestHash);
 });
 test('trader: APPLY changes the paper params only, resets qualification and disables real autopilot with paramsChanged',async()=>{
- reset();writeTape('BTC-USD',4);
+ reset();writeTape('BTC-USD',4,{drift:0.0006});
  const champion=S.normalizeParams({...J.loadPaper().params,sampleMs:STEP,takeMult:5,emaFast:10,emaSlow:40});const hash=S.paramsHash(champion);
  const l=E.loadEvolveLedger();l.champion={params:champion,paramsHash:hash,score:2,metrics:{closes:25},at:mock.state.time,generation:1};E.saveEvolveLedger(l);
  qualify();RH.armRobinhood(true);RH.setRobinhoodAutopilot({enabled:true,confirmation:'ENABLE REAL CRYPTO AUTOPILOT'});assert.equal(RH.robinhoodAutopilot().enabled,true);
@@ -113,7 +113,7 @@ test('trader: APPLY changes the paper params only, resets qualification and disa
  assert.equal(mock.writes().length,0);
 });
 test('trader: autopromote applies a proposed champion to paper only and records the promotion',async()=>{
- reset();writeTape('BTC-USD',4);RH.setRobinhoodPaperAutopilot({params:{maxSpreadBps:1}});process.env.ROBINHOOD_EVOLVE_AUTOPROMOTE='true';
+ reset();writeTape('BTC-USD',4,{drift:0.0006});RH.setRobinhoodPaperAutopilot({params:{maxSpreadBps:1}});process.env.ROBINHOOD_EVOLVE_AUTOPROMOTE='true';
  let r=null;for(let i=0;i<12&&!(r&&r.beats);i++){mock.state.time+=1000;r=await RH.runRobinhoodEvolveOnce({manual:true})}
  assert.equal(r.beats,true,JSON.stringify(r));assert.equal(r.promoted,true);assert.equal(r.proposed,false);
  assert.equal(J.loadPaper().paramsHash,r.bestHash);const ledger=JSON.parse(fs.readFileSync(RH.__testing.evolveFile,'utf8'));assert.equal(ledger.applied.by,'autopromote');assert.equal(ledger.history[0].promoted,true);
@@ -129,19 +129,22 @@ test('trader: the loop tick buffers the durable tape and the paper params change
  mock.state.time+=RH.__testing.TICK_MS;mock.state.bid=101;mock.state.ask=101.1;await RH.__testing.tick();assert.equal(T.loadTape('BTC-USD').length,2);
  RH.stopRobinhoodLoops();assert.equal(T.pendingTapeRows(),0);assert.equal(T.loadTape('BTC-USD').length,2,'stop flushes the tape');assert.ok(fs.existsSync(T.tapeFile('BTC-USD')));
 });
-test('lab champions: need Robinhood-sourced evidence and 100 test closes, match their hash, stay proposed, and arrive at most hourly',()=>{
- reset();E.__testing.reset();const base=J.loadPaper().params;
- const doc=(emaFast,extra={})=>{const params={...base,emaFast};return {schema:'mpo.lab-champion.v1',family:'robinhood-breakout',labNodeId:'lab-1',publishedAt:1,paramsHash:S.paramsHash(S.normalizeParams(params)),params,evidence:{quoteSource:'robinhood',testCloses:120,testPF:1.4},...extra}};
- assert.equal(RH.offerLabChampion(doc(10,{evidence:{quoteSource:'coinbase-public-paper',testCloses:500}})).reason,'quoteSource');
- assert.equal(RH.offerLabChampion(doc(10,{evidence:{quoteSource:'robinhood',testCloses:40}})).reason,'testCloses');
- assert.equal(RH.offerLabChampion(doc(10,{paramsHash:'000000000000'})).reason,'paramsHash');
- assert.equal(RH.offerLabChampion(doc(2)).reason,'bounds');
- const hashBefore=J.loadPaper().paramsHash,ok=RH.offerLabChampion(doc(10));
- assert.equal(ok.accepted,true);assert.equal(ok.promoted,false);
- const l=E.loadEvolveLedger();assert.equal(l.champion.paramsHash,ok.paramsHash);assert.equal(l.champion.metrics.source,'evolution-lab');assert.equal(l.events[0].source,'evolution-lab');
- assert.equal(J.loadPaper().paramsHash,hashBefore,'a lab champion is only proposed while autopromote is off');
- assert.equal(RH.offerLabChampion(doc(10)).reason,'duplicate');
- assert.equal(RH.offerLabChampion(doc(11)).reason,'rateLimited');
- mock.state.time+=3601e3;assert.equal(RH.offerLabChampion(doc(11)).accepted,true);
- assert.equal(RH.applyRobinhoodEvolution({paramsHash:E.loadEvolveLedger().champion.paramsHash}).applied,true,'APPLY still works on a lab champion');
+test('sealed holdout: the search never sees the newest 20%, context only warms indicators, and every gate refuses on its own',()=>{
+ const rows=series({n:4*1440,start:0,drift:0.0006}).map(r=>({...r,src:'robinhood'})),sp=E.holdoutSplit({'BTC-USD':rows},0.2);
+ assert.ok(sp.search['BTC-USD'].every(r=>r.t<sp.cutAt)&&sp.holdout['BTC-USD'].every(r=>r.t>=sp.cutAt));
+ assert.equal(sp.search['BTC-USD'].length+sp.holdout['BTC-USD'].length,rows.length);
+ assert.equal(sp.context['BTC-USD'].length,720);assert.ok(sp.context['BTC-USD'].every(r=>r.t<sp.cutAt));
+ const params=S.normalizeParams({sampleMs:STEP}),cfg={...E.evolveConfig(),holdoutMinCloses:1,holdoutMinPF:0.01,requireRobinhoodQuotes:true};
+ const g=E.holdoutGate(params,sp.holdout,{cfg,context:sp.context});
+ assert.ok(g.closes>0,'the warmed holdout trades');assert.equal(g.robinhoodShare,1);assert.equal(g.through,rows.at(-1).t);
+ assert.ok(E.holdoutGate(params,sp.holdout,{cfg,context:sp.context,lookedThrough:g.through}).reasons.includes('holdoutReused'),'the same holdout cannot be looked at twice');
+ assert.ok(!E.holdoutGate(params,sp.holdout,{cfg,context:sp.context,lookedThrough:g.through-2*DAY}).reasons.includes('holdoutReused'),'a day of fresh tape re-opens it');
+ const cb={'BTC-USD':sp.holdout['BTC-USD'].map(r=>({...r,src:'coinbase-public-paper'}))};
+ assert.ok(E.holdoutGate(params,cb,{cfg,context:sp.context}).reasons.some(x=>x.startsWith('robinhood quotes')),'Coinbase-sourced tape cannot produce a champion');
+ assert.ok(E.holdoutGate(params,sp.holdout,{cfg:{...cfg,holdoutMinCloses:10_000},context:sp.context}).reasons.some(x=>x.startsWith('holdout closes')));
+ assert.ok(E.holdoutGate(params,sp.holdout,{cfg:{...cfg,holdoutMinPF:1e9},context:sp.context}).reasons.some(x=>x.startsWith('holdout PF')));
+ const d=E.evolveConfig();assert.equal(d.holdoutFrac,0.2);assert.equal(d.requireRobinhoodQuotes,false,'this suite relaxes it');
+ delete process.env.ROBINHOOD_EVOLVE_REQUIRE_RH_QUOTES;delete process.env.ROBINHOOD_EVOLVE_HOLDOUT_MIN_CLOSES;delete process.env.ROBINHOOD_EVOLVE_HOLDOUT_MIN_PF;delete process.env.ROBINHOOD_EVOLVE_MIN_TAPE_DAYS;delete process.env.ROBINHOOD_EVOLVE_MAX_TAPE_DAYS;
+ const s=E.evolveConfig();assert.equal(s.requireRobinhoodQuotes,true);assert.equal(s.holdoutMinCloses,20);assert.equal(s.holdoutMinPF,1.2);assert.equal(s.minTapeDays,7);assert.equal(s.maxTapeDays,30);
+ Object.assign(process.env,{ROBINHOOD_EVOLVE_MAX_TAPE_DAYS:'5',ROBINHOOD_EVOLVE_MIN_TAPE_DAYS:'3',ROBINHOOD_EVOLVE_HOLDOUT_MIN_CLOSES:'1',ROBINHOOD_EVOLVE_HOLDOUT_MIN_PF:'0.01',ROBINHOOD_EVOLVE_REQUIRE_RH_QUOTES:'false'});
 });

@@ -28,8 +28,6 @@ import * as S from './robinhoodStrategy.js';
 import * as T from './robinhoodTape.js';
 import * as E from './robinhoodEvolve.js';
 import { fetchPublicPaperMarket } from './robinhoodPaperFeed.js';
-import { publishTape } from './labTape.js';
-import { readFamilyChampion } from './labLink.js';
 export const CONFIRM_PLACE='PLACE REAL CRYPTO ORDER', CONFIRM_CANCEL='CANCEL REAL CRYPTO ORDER', CONFIRM_CANCEL_ALL='CANCEL REAL CRYPTO ORDERS', CONFIRM_AUTOPILOT='ENABLE REAL CRYPTO AUTOPILOT', CONFIRM_FORGET='FORGET';
 const clone=x=>structuredClone(x), envNum=(k,d)=>{const n=Number(process.env[k]);return Number.isFinite(n)&&n>0?n:d};
 const TICK_MS=Math.max(5000,envNum('ROBINHOOD_TICK_MS',15000)), PREVIEW_TTL_MS=30000, PREVIEW_CACHE_MS=10000, SNAPSHOT_TTL_MS=5000, ENTRY_TTL_MS=90000, RECONCILE_THROTTLE_MS=5000, NEVER_RECEIVED_MS=600000, NEVER_RECEIVED_LISTINGS=3;
@@ -43,9 +41,6 @@ let paperQuoteSource=null, paperFallbackReason=null, paperFallbackUntil=0;
 let sessionArmed=false, placeBusy=false, apBusy=false, reconcileBusy=false, lastPreview=null, lastReconcileRun=0;
 let evolveBusy=false, evolveCheckedAt=0;
 const EVOLVE_CHECK_MS=300000;
-// Lab link (batch 13): seal tape for the Lab and take its champions back. Paper only, propose unless autopromote.
-const LAB_CHECK_MS=300000, LAB_CHAMPION_GAP_MS=3600e3, LAB_MIN_TEST_CLOSES=100, LAB_FAMILY='robinhood-breakout';
-let labCheckedAt=0, labChampionAt=0, labChampionSeen='';
 const previewCache=new Map();
 const now=()=>clockFn?clockFn():Date.now();
 const symbols=v=>[...new Set((Array.isArray(v)?v:String(v||'').split(',')).map(x=>String(x).trim().toUpperCase()).filter(x=>SYMBOL_RE.test(x)))].slice(0,6);
@@ -550,38 +545,11 @@ async function tick(){
   if(jn.autopilot.enabled){try{out.real=await runRobinhoodAutopilotOnce()}catch(e){note('autopilot',e)}}
   const flushed=T.flushTape({now:now()});if(flushed.error&&!flushed.skipped)note('tape',{code:'unknown',message:flushed.error.message});
   return out;
- }finally{tickBusy=false;if(evolveDue()){evolveCheckedAt=now();runRobinhoodEvolveOnce().catch(e=>note('evolve',e))}labSync()}
+ }finally{tickBusy=false;if(evolveDue()){evolveCheckedAt=now();runRobinhoodEvolveOnce().catch(e=>note('evolve',e))}}
 }
 export async function runRobinhoodPaperOnce(){if(tickBusy||paperBusy)return {ran:false,reason:'busy'};const p=paper();if(p.recoveryRequired)return {ran:false,reason:'paperRecovery'};if(!p.autopilot.enabled&&!p.positions.length)return {ran:false,reason:'idle'};tickBusy=true;try{return await paperPass(p)}catch(e){note('paper-loop',e);return {ran:false,reason:e.code||'unknown',error:safeMessage(e)}}finally{tickBusy=false}}
 export function startRobinhoodLoops(){if(timer)return timer;const setting=process.env.ROBINHOOD_AUTOSTART??process.env.POLYMARKET_AUTOSTART??'true';if(String(setting).toLowerCase()==='false')return null;timer=setInterval(()=>{tick().catch(()=>{})},TICK_MS);timer.unref?.();return timer}
 export function stopRobinhoodLoops(){if(timer)clearInterval(timer);timer=null;if(paperDirty){try{J.savePaper(paper(),{force:true});paperDirty=false}catch(e){note('paper-save',e)}}T.flushTape({force:true,now:now()})}
-// ------------------------------------------------------------------ lab link (batch 13)
-function labSync(){
- if(now()-labCheckedAt<LAB_CHECK_MS)return;labCheckedAt=now();
- if(String(process.env.MPO_LAB_TAPE??'true').toLowerCase()!=='false'){const r=publishTape({venue:'robinhood',symbols:T.listTapeSymbols(),loadRows:(s,since)=>T.loadTape(s,since),now:now()});if(r.error)note('lab-tape',{code:'unknown',message:r.error})}
- try{const doc=readFamilyChampion(LAB_FAMILY);if(doc){const seen=doc.labNodeId+':'+doc.publishedAt+':'+doc.paramsHash;if(seen!==labChampionSeen){const res=offerLabChampion(doc);if(res.accepted||res.reason!=='rateLimited')labChampionSeen=seen}}}catch(e){note('lab-champion',e)}
-}
-// A Lab champion becomes the proposed evolution champion only with Robinhood-sourced evidence and enough out-of-sample
-// closes; it is applied to paper only, and only by APPLY or ROBINHOOD_EVOLVE_AUTOPROMOTE. At most one per hour.
-export function offerLabChampion(doc){
- const ev=doc?.evidence||{};
- if(ev.quoteSource!=='robinhood')return {accepted:false,reason:'quoteSource'};
- if(!(Number(ev.testCloses)>=LAB_MIN_TEST_CLOSES))return {accepted:false,reason:'testCloses'};
- // doc.paramsHash covers the Lab's own full set (integrity). Only the search keys are taken, and every other key is
- // inherited from the local paper params exactly as a local mutation would, so APPLY reproduces the local hash.
- if(S.paramsHash(S.normalizeParams(doc.params))!==doc.paramsHash)return {accepted:false,reason:'paramsHash'};
- const params=S.normalizeParams({...paper().params,...Object.fromEntries(E.EVOLVE_KEYS.filter(k=>k in doc.params).map(k=>[k,doc.params[k]]))}),hash=S.paramsHash(params);
- if(!E.withinEvolveBounds(params))return {accepted:false,reason:'bounds'};
- const l=E.loadEvolveLedger();if(l.champion?.paramsHash===hash)return {accepted:false,reason:'duplicate'};
- if(labChampionAt&&now()-labChampionAt<LAB_CHAMPION_GAP_MS)return {accepted:false,reason:'rateLimited'};
- labChampionAt=now();
- const metrics={closes:Number(ev.testCloses),profitFactor:Number(ev.testPF)||0,source:'evolution-lab',labNodeId:String(doc.labNodeId).slice(0,64),labParamsHash:doc.paramsHash,tapeFrom:ev.tapeFrom||null,tapeTo:ev.tapeTo||null,holdoutSealedAt:ev.holdoutSealedAt||null};
- l.champion={params,paramsHash:hash,score:Number(ev.deflatedScore??ev.testPF)||0,metrics,bySymbol:{},at:now(),generation:l.generation};
- E.ledgerEvent(l,'champion',`Lab ${metrics.labNodeId}: ${hash} (${metrics.closes} test closes, PF ${metrics.profitFactor})`,{paramsHash:hash,source:'evolution-lab'});E.saveEvolveLedger(l);
- let promoted=false;
- if(E.evolveConfig().autopromote&&hash!==paper().paramsHash){try{applyRobinhoodEvolution({paramsHash:hash,by:'autopromote'});promoted=true}catch(e){note('lab-champion',e)}}
- return {accepted:true,paramsHash:hash,promoted};
-}
 // ------------------------------------------------------------------ evolution (§22, paper-only)
 const num=v=>{const n=Number(v);return Number.isFinite(n)?n:0};
 function evolveSymbols(p=paper()){return primaryFirst([...new Set([robinhoodPrimary().symbol,...robinhoodSymbols(),...p.autopilot.symbols])])}
@@ -609,23 +577,26 @@ export async function runRobinhoodEvolveOnce({manual=false}={}){
   for(const s of evolveSymbols(p)){const rows=T.loadTape(s,since);tapeDays[s]=rows.length?Math.round((rows[rows.length-1].t-rows[0].t)/864e5*100)/100:0;if(rows.length>=need)tapes[s]=rows}
   const primary=robinhoodPrimary().symbol;
   if(!tapes[primary]||tapeDays[primary]<cfg.minTapeDays){const l=E.loadEvolveLedger();l.lastError={at:now(),stage:'tape',message:`primary tape ${tapeDays[primary]||0} days < ${cfg.minTapeDays}`};E.saveEvolveLedger(l);return {ran:false,reason:'insufficientTape',tapeDays}}
-  const l0=E.loadEvolveLedger(),generation=l0.generation+1;
-  const r=await E.searchGeneration({tapes,incumbentParams:p.params,feeRatio:fee(),orderUsd:Math.min(p.autopilot.orderUsd,robinhoodLimits().maxOrderUsd),startUsd:p.startUsd,weights:primaryWeights(),cfg,generation,now:now()});
-  const l=E.loadEvolveLedger();l.generation=generation;l.lastRunAt=now();l.lastError=null;
+  const l0=E.loadEvolveLedger(),generation=l0.generation+1,split=E.holdoutSplit(tapes,cfg.holdoutFrac),orderUsd=Math.min(p.autopilot.orderUsd,robinhoodLimits().maxOrderUsd);
+  const r=await E.searchGeneration({tapes:split.search,incumbentParams:p.params,feeRatio:fee(),orderUsd:Math.min(p.autopilot.orderUsd,robinhoodLimits().maxOrderUsd),startUsd:p.startUsd,weights:primaryWeights(),cfg,generation,now:now()});
+  // Only the generation's best is replayed on the sealed holdout; a failed or reused look proposes nothing.
+  const gate=r.beats?E.holdoutGate(r.best.params,split.holdout,{feeRatio:fee(),orderUsd,startUsd:p.startUsd,cfg,lookedThrough:l0.holdoutLookedThrough,context:split.context}):null,beats=!!gate?.pass;
+  const l=E.loadEvolveLedger();l.generation=generation;l.lastRunAt=now();l.lastError=null;if(gate&&!gate.reasons.includes('holdoutReused'))l.holdoutLookedThrough=gate.through;
+  const holdout=gate&&{pass:gate.pass,reasons:gate.reasons,closes:gate.closes,profitFactor:gate.profitFactor,pnlUsd:gate.pnlUsd,robinhoodShare:gate.robinhoodShare};
   l.incumbent={params:r.incumbent.params,paramsHash:r.incumbent.paramsHash,score:r.incumbent.score,metrics:r.incumbent.metrics,bySymbol:r.incumbent.bySymbol,at:now(),generation};
   let promoted=false,proposed=false;
-  if(r.beats){
+  if(beats){
    const already=l.champion&&l.champion.paramsHash===r.best.paramsHash;
-   if(!already||r.best.score>l.champion.score){l.champion={params:r.best.params,paramsHash:r.best.paramsHash,score:r.best.score,metrics:r.best.metrics,bySymbol:r.best.bySymbol,at:now(),generation};E.ledgerEvent(l,'champion',`G${generation}: ${r.best.paramsHash} scored ${r.best.score.toFixed(3)} vs incumbent ${r.incumbent.score.toFixed(3)} (+${r.gainPct}%)`,{paramsHash:r.best.paramsHash,gainPct:r.gainPct})}
+   if(!already||r.best.score>l.champion.score){l.champion={params:r.best.params,paramsHash:r.best.paramsHash,score:r.best.score,metrics:{...r.best.metrics,holdout},bySymbol:r.best.bySymbol,at:now(),generation};E.ledgerEvent(l,'champion',`G${generation}: ${r.best.paramsHash} scored ${r.best.score.toFixed(3)} vs incumbent ${r.incumbent.score.toFixed(3)} (+${r.gainPct}%)`,{paramsHash:r.best.paramsHash,gainPct:r.gainPct})}
    proposed=true;
   }
-  l.history=[{generation,at:now(),elapsedMs:r.elapsedMs,timedOut:r.timedOut,evaluated:r.evaluated.length,symbols:Object.keys(tapes),tapeDays,incumbentHash:r.incumbent.paramsHash,incumbentScore:Math.round(r.incumbent.score*1000)/1000,bestHash:r.best?.paramsHash||null,bestScore:r.best?Math.round(r.best.score*1000)/1000:null,gainPct:r.gainPct,beats:r.beats,promoted:false},...l.history].slice(0,E.__testing.HISTORY_CAP);
+  l.history=[{generation,at:now(),elapsedMs:r.elapsedMs,timedOut:r.timedOut,evaluated:r.evaluated.length,symbols:Object.keys(tapes),tapeDays,incumbentHash:r.incumbent.paramsHash,incumbentScore:Math.round(r.incumbent.score*1000)/1000,bestHash:r.best?.paramsHash||null,bestScore:r.best?Math.round(r.best.score*1000)/1000:null,gainPct:r.gainPct,beats,searchBeats:r.beats,holdout,promoted:false},...l.history].slice(0,E.__testing.HISTORY_CAP);
   E.saveEvolveLedger(l);
-  if(r.beats&&cfg.autopromote&&l.champion.paramsHash!==p.paramsHash){
+  if(beats&&cfg.autopromote&&l.champion.paramsHash!==p.paramsHash){
    try{applyRobinhoodEvolution({paramsHash:l.champion.paramsHash,by:'autopromote'});promoted=true;const l2=E.loadEvolveLedger();if(l2.history[0])l2.history[0].promoted=true;E.saveEvolveLedger(l2)}
    catch(e){const l2=E.loadEvolveLedger();l2.lastError={at:now(),stage:'autopromote',code:e.code||'unknown',message:safeMessage(e)};E.saveEvolveLedger(l2)}
   }
-  return {ran:true,generation,evaluated:r.evaluated.length,timedOut:r.timedOut,elapsedMs:r.elapsedMs,incumbentScore:r.incumbent.score,bestScore:r.best?.score??null,bestHash:r.best?.paramsHash||null,gainPct:r.gainPct,beats:r.beats,proposed:proposed&&!promoted,promoted,tapeDays};
+  return {ran:true,generation,evaluated:r.evaluated.length,timedOut:r.timedOut,elapsedMs:r.elapsedMs,incumbentScore:r.incumbent.score,bestScore:r.best?.score??null,bestHash:r.best?.paramsHash||null,gainPct:r.gainPct,beats,searchBeats:r.beats,holdout,proposed:proposed&&!promoted,promoted,tapeDays};
  }catch(e){note('evolve',e);try{const l=E.loadEvolveLedger();l.lastError={at:now(),stage:'search',code:e.code||'unknown',message:safeMessage(e)};E.saveEvolveLedger(l)}catch{}return {ran:false,reason:e.code||'unknown',error:safeMessage(e)}}
  finally{evolveBusy=false}
 }
@@ -673,4 +644,4 @@ export async function robinhoodSnapshot({force=false}={}){
  snapshotFlight=(async()=>{try{if(paperOnlyBuild()||robinhoodReadiness().credentialsReady)await refreshFeed([...new Set([...robinhoodSymbols(),...paper().autopilot.symbols,...J.loadJournal().autopilot.symbols])],force)}catch(e){note('snapshot',e)}return snapshotView()})();
  try{return await snapshotFlight}finally{snapshotFlight=null}
 }
-export const __testing={tick,setClock(fn){clockFn=fn},unlockRealExecutionForTests(v=true){testRealExecutionUnlocked=v===true;sessionArmed=false},reset(){stopRobinhoodLoops();testRealExecutionUnlocked=false;labCheckedAt=0;labChampionAt=0;labChampionSeen='';account=null;pairs=new Map();quotes=new Map();feedAt=0;identity='';paperQuoteSource=null;paperFallbackReason=null;paperFallbackUntil=0;lastTickAt=0;lastError=null;paperDirty=false;feedFlight=null;snapshotFlight=null;sessionArmed=false;placeBusy=false;apBusy=false;reconcileBusy=false;lastPreview=null;lastReconcileRun=0;previewCache.clear();evolveBusy=false;evolveCheckedAt=0;J.__testing.resetPaper();J.__testing.resetJournal();T.__testing.reset();E.__testing.reset()},journalFile:J.JOURNAL_FILE,paperFile:J.PAPER_FILE,envFile:ENV_FILE,TICK_MS,SNAPSHOT_TTL_MS,PREVIEW_TTL_MS,ENTRY_TTL_MS,CONFIRM_PLACE,CONFIRM_CANCEL,CONFIRM_CANCEL_ALL,CONFIRM_AUTOPILOT,get lastPreview(){return lastPreview},get sessionArmed(){return sessionArmed},primaryOrderUsd,evolveFile:E.EVOLVE_FILE,tapeDir:T.TAPE_DIR};
+export const __testing={tick,setClock(fn){clockFn=fn},unlockRealExecutionForTests(v=true){testRealExecutionUnlocked=v===true;sessionArmed=false},reset(){stopRobinhoodLoops();testRealExecutionUnlocked=false;account=null;pairs=new Map();quotes=new Map();feedAt=0;identity='';paperQuoteSource=null;paperFallbackReason=null;paperFallbackUntil=0;lastTickAt=0;lastError=null;paperDirty=false;feedFlight=null;snapshotFlight=null;sessionArmed=false;placeBusy=false;apBusy=false;reconcileBusy=false;lastPreview=null;lastReconcileRun=0;previewCache.clear();evolveBusy=false;evolveCheckedAt=0;J.__testing.resetPaper();J.__testing.resetJournal();T.__testing.reset();E.__testing.reset()},journalFile:J.JOURNAL_FILE,paperFile:J.PAPER_FILE,envFile:ENV_FILE,TICK_MS,SNAPSHOT_TTL_MS,PREVIEW_TTL_MS,ENTRY_TTL_MS,CONFIRM_PLACE,CONFIRM_CANCEL,CONFIRM_CANCEL_ALL,CONFIRM_AUTOPILOT,get lastPreview(){return lastPreview},get sessionArmed(){return sessionArmed},primaryOrderUsd,evolveFile:E.EVOLVE_FILE,tapeDir:T.TAPE_DIR};

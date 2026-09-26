@@ -88,31 +88,6 @@ export function readLabLink({ dir = dataDir(), bridge = bridgeDir(), key = bridg
   return { connected, source: best.source, status: best.status, champion, ageMs };
 }
 
-// Family champions (batch 13): <data>/lab-link/champion-<family>.json, or the signed bridge copy. Same
-// mpo.lab-champion.v1 schema with `family`, flat `params`/`paramsHash` and the Lab's `evidence`. Capped at 64 KB;
-// the family's own module decides whether the evidence is good enough. Freshest valid source wins.
-export const FAMILY_CHAMPION_MAX_BYTES = 64 * 1024;
-const FAMILY_RE = /^[a-z0-9-]{1,40}$/;
-function validFamilyChampion(doc, family) {
-  if (!doc || doc.schema !== LAB_LINK_SCHEMA.champion || doc.family !== family) return null;
-  if (typeof doc.labNodeId !== 'string' || !doc.labNodeId.trim() || typeof doc.paramsHash !== 'string') return null;
-  if (!doc.params || typeof doc.params !== 'object' || Array.isArray(doc.params) || !doc.evidence || typeof doc.evidence !== 'object') return null;
-  if (doc.liveActivationAllowed === true || doc.automaticLivePromotionAllowed === true) return null;
-  return Number.isFinite(Number(doc.publishedAt)) ? doc : null;
-}
-export function readFamilyChampion(family, { dir = dataDir(), bridge = bridgeDir(), key = bridgeKey() } = {}) {
-  if (!FAMILY_RE.test(String(family || ''))) return null;
-  const small = file => { try { return fs.statSync(file).size <= FAMILY_CHAMPION_MAX_BYTES ? readJson(file) : null; } catch { return null; } };
-  const found = [];
-  const local = validFamilyChampion(small(path.join(dir, 'lab-link', `champion-${family}.json`)), family);
-  if (local) found.push({ ...local, source: 'local' });
-  if (bridge && key) {
-    const remote = validFamilyChampion(verifyRecord(small(path.join(bridge, 'lab-link', `champion-${family}.json`)), key), family);
-    if (remote) found.push({ ...remote, source: 'bridge' });
-  }
-  return found.sort((a, b) => Number(b.publishedAt) - Number(a.publishedAt))[0] || null;
-}
-
 // The evolutionLoop view the dashboard/control plane already understand, built from lab records.
 export function loopViewFromLab(status, championDoc) {
   const st = status || {};

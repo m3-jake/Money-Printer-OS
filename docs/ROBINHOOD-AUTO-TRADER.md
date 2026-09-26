@@ -325,8 +325,11 @@ All read at call time; `.env.example` ships every key commented out with its def
 | `ROBINHOOD_EVOLVE_CANDIDATES` | 24 | mutations evaluated per generation (max 200) |
 | `ROBINHOOD_EVOLVE_MIN_GAIN` | 0.15 | fraction by which a champion must beat the incumbent's test score |
 | `ROBINHOOD_EVOLVE_AUTOPROMOTE` | `false` | exactly `true` applies champions to the paper autopilot without the APPLY click |
-| `ROBINHOOD_EVOLVE_MIN_TAPE_DAYS` | 3 | primary-symbol tape coverage required before a generation runs |
-| `ROBINHOOD_EVOLVE_MAX_TAPE_DAYS` | 14 (max 45) | newest days of tape replayed per generation |
+| `ROBINHOOD_EVOLVE_MIN_TAPE_DAYS` | 7 | primary-symbol tape coverage required before a generation runs |
+| `ROBINHOOD_EVOLVE_MAX_TAPE_DAYS` | 30 (max 45) | newest days of tape replayed per generation |
+| `ROBINHOOD_EVOLVE_HOLDOUT_MIN_CLOSES` | 20 | sealed-holdout closes a champion needs (section 22.3) |
+| `ROBINHOOD_EVOLVE_HOLDOUT_MIN_PF` | 1.2 | sealed-holdout profit factor a champion needs |
+| `ROBINHOOD_EVOLVE_REQUIRE_RH_QUOTES` | `true` | a champion needs >= 90% Robinhood-sourced holdout quotes; `false` only for tests |
 
 `robinhoodLimits()` returns exactly `{maxOrderUsd, maxOpen, dailyLossCapUsd, priceTolerance}` in that key order via `envNum = (k, d) => { const v = Number(process.env[k]); return Number.isFinite(v) && v > 0 ? v : d; }` (a test pins the key list). Autopilot settings are clamped into these ceilings on every pass.
 
@@ -541,7 +544,6 @@ The trader carries a miniature of the Evolution Lab's evolve -> score -> promote
 - The in-memory 720-sample tape in `robinhood-paper.json` remains the live-signal source; the files feed only the replay below.
 - Since batch 12 each row also carries `src`, the quote source: `robinhood` for authenticated best bid/ask, or `coinbase-public-paper` for the credential-less fallback. Older rows read back as `src:null`. `tapeCoverage()` returns a `sources` count, which the snapshot exposes as `evolve.tapeSources` and the HUD shows beside tape coverage. A Coinbase spread understates Robinhood's, so a backtest on `coinbase-public-paper` rows is cost-optimistic.
 - `npm run rh-tape-stats -- --data <dir>` (`scripts/rh-tape-stats.mjs`, read-only) prints one line per symbol: coverage, sources, spread p50/p90, round-trip cost, expected move, the share of samples where the volatility gate is open, and a default-params replay's trades per day.
-- Complete days of this tape are also sealed for the Evolution Lab (`src/labTape.js`, see `docs/EVOLUTION_LAB_SPLIT.md` "Lab tape"). A Lab champion for family `robinhood-breakout` enters the ledger as a proposed champion through `offerLabChampion`, with the same APPLY and autopromote rules as a local one.
 
 ### 22.2 Replay — `src/robinhoodBacktest.js` (pure)
 
@@ -552,6 +554,13 @@ The trader carries a miniature of the Evolution Lab's evolve -> score -> promote
 - Candidates are bounded mutations of the current paper params (`mutateParams`, 2-4 keys per candidate, local nudge or global jump, deterministic `mulberry32` seed per generation): `emaFast 5-30`, `emaSlow 20-120` (fast < slow enforced), `lookbackSamples 30-240`, `costMultiple 1-3`, `takeMult 2-8`, `stopMult 0.5-2`, `trailArmMult 1-4`, `trailMult 0.5-2`, `maxHoldMin 30-720`, `maxSpreadBps 10-80`, `breakoutBufferPct 0-0.002`, `fadeExit` bool. Every other key (sampleMs, warmup, slippage, cooldowns...) is inherited unchanged; `withinEvolveBounds` is re-checked before APPLY.
 - Each candidate is replayed per configured symbol (`ROBINHOOD_PRIMARY_SYMBOL` ∪ `robinhoodSymbols()` ∪ paper autopilot symbols) on the walk-forward split of the newest `ROBINHOOD_EVOLVE_MAX_TAPE_DAYS` of tape. `scoreSymbol` = test profit factor capped at 5, scaled by `closes/20` below 20 closes, halved when test drawdown exceeds 3% of the paper start, quartered when test P/L is not positive, divided by `1 + max(0, trainPF - testPF)` (overfit gap). `compositeScore` is the weighted mean across symbols with `{[primary]: ROBINHOOD_PRIMARY_WEIGHT}`.
 - `searchGeneration` evaluates the incumbent (current paper params) first, then up to `ROBINHOOD_EVOLVE_CANDIDATES` (default 24) distinct mutations, yielding with `setImmediate` between candidates and stopping when the 20 s budget is exceeded (`timedOut:true`). `beats = best.score > 0 && best.score >= incumbent.score * (1 + ROBINHOOD_EVOLVE_MIN_GAIN)` (an incumbent scoring 0 is beaten by any positive score).
+- **Sealed holdout (2026-09-26).** Before the search, the replayed tape is cut at one wall-clock point (`holdoutSplit`). The search, including its 70/30 walk-forward, sees only the older 80%. When a generation's best `beats` the incumbent, that one parameter set is replayed on the newest 20% (`holdoutGate`). The last 720 pre-cut samples warm the indicators, and only trades opened after the cut count. It becomes the champion only if the holdout shows:
+  - >= `ROBINHOOD_EVOLVE_HOLDOUT_MIN_CLOSES` closes;
+  - profit factor >= `ROBINHOOD_EVOLVE_HOLDOUT_MIN_PF`;
+  - positive P/L;
+  - >= 90% `robinhood`-sourced rows.
+
+  The ledger records `holdoutLookedThrough`, and a later look is refused (`holdoutReused`) until the tape extends a full day beyond it, so the holdout can't be mined by repeated generations. `history[]` carries `searchBeats` (the search result) and `holdout` (the gate result); `beats` is the gated verdict.
 - Ledger `<DATA_DIR>/robinhood-evolve.json`: `{version:1, generation, champion:{params, paramsHash, score, metrics, bySymbol, at, generation}|null, incumbent, applied:{paramsHash, at, by}|null, history[<=100]:{generation, at, elapsedMs, timedOut, evaluated, symbols, tapeDays, incumbentHash, incumbentScore, bestHash, bestScore, gainPct, beats, promoted}, events[<=50]:{at, type:'champion'|'applied', text, ...}, lastRunAt, lastError}`; atomic writes; a corrupt file loads as the default with `lastError.stage:'load'`.
 
 ### 22.4 Scheduling, promotion and the HUD

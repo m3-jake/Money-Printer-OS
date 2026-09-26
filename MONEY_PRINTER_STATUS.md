@@ -280,6 +280,21 @@ Last updated: 2026-09-26, batch 13. Branch `feature/polymarket-combo-only`, vers
 - **Not done:** moving `replayLab`, `polymarketResearchEval`, `executableReplay*` and the Robinhood evolve to the Lab. It waits for Lab parity, and the Lab repo is off-limits from here.
 - **Tests:** new `lab-link-tape` 5/0, evolve 10/0 (+1 Lab champion test). **`npm run test:all`: 555 pass, 0 fail** (the baseline was 520). SELFTEST PASS.
 
+## Batch 14 (2026-09-26): the Evolution Lab is retired, and the trader owns its search
+
+- **Decision (bing, 2026-09-26):** "Don't wait for the lab. We're not using the agent lab anymore."
+- **Lab code removed or gated:**
+  - The batch 13 code that fed the Lab is reverted: `src/labTape.js`, `readFamilyChampion`, the Robinhood `labSync`/`offerLabChampion`, and their tests. The `alphaLab` deletion from batch 13 stays.
+  - The engine's lab link (`syncLabLink` and the per-minute dataset export) now runs only with `MPO_LAB_LINK=true` (`src/index.js`). By default, `s.labLink.source` is `'disabled'`.
+- **Robinhood evolve: sealed holdout** (`holdoutSplit`/`holdoutGate` in `src/robinhoodEvolve.js`, wired in `runRobinhoodEvolveOnce`).
+  - The search sees only the older 80% of the tape.
+  - The generation's best must also pass the newest 20% (warmed by 720 context samples): ≥ 20 closes, profit factor ≥ 1.2, P/L > 0, and ≥ 90% Robinhood-sourced quotes.
+  - A second look at the same holdout is refused until a new day of tape arrives.
+  - Tape defaults: min 7 days (was 3), max 30 (was 14).
+  - This fixes the review's overfitting points: the test slice was reused, and anything beat a 0-scoring incumbent.
+- **Installed `.env`:** it had `ALPHA_WORKER_ENABLED=true`, copied from the old example. That one line is now `false`. Nothing else in the file was read or changed.
+- **Tests:** evolve 10/0 (+1 holdout test; the trader fixtures now use a sane drift, because the old one compounded to 1e12 and couldn't trade). `test:all` **550 pass, 0 fail**. SELFTEST PASS.
+
 ## Next recommended batch (priority order)
 
 0. **bing:**
@@ -300,16 +315,10 @@ Verdicts:
 - **Solana SPRINT: park it.** 124 paper closes, profit factor 0.85, −1.15% per trade. A 4% take-profit against about 2.5% round-trip cost needs a hit rate of about 83%.
 - **Robinhood: no evidence yet.** There are 5 minutes of tape and 0 trades, and the paper quotes come from Coinbase, not Robinhood.
 
-Batches 11–13 are built (see the batch sections above). What remains:
+Batches 11–14 are built. The Evolution Lab is retired, so nothing waits on it. What remains:
 
-1. **bing:** take the Solana profile off SPRINT and stop it in the HUD. Done when there are no new `history` rows for 24 h.
-2. **bing:** check the installed `.env` for `ALPHA_WORKER_ENABLED=true` or `ROBINHOOD_EVOLVE_ENABLED=true`. Either one overrides the new defaults.
+1. **bing:** install the newest build over the installed app. The permission check blocks this for Claude as a production deploy.
+2. **bing:** take the Solana profile off SPRINT and stop it in the HUD. Done when there are no new `history` rows for 24 h.
 3. **bing:** run the Robinhood paper loop continuously with read-only credentials, so the tape is Robinhood's own quotes. Done when `npm run rh-tape-stats` shows at least 7 days of `robinhood` rows.
-4. After 7 days, record the verdict here: can the strategy trade at all at Robinhood's costs (vol gate open %, trades per day)?
-5. **bing:** schedule a Lab-repo session after Codex's branch lands. It needs to:
-   - read `lab-link/tape/manifest.json`;
-   - verify each sha256 and write the ack;
-   - port the backtest and evolve with a sealed holdout and a deflated score;
-   - publish `champion-robinhood-breakout.json`.
-6. After the Lab has parity, move `replayLab`, `polymarketResearchEval`, `executableReplay*` and `robinhoodEvolve`/`robinhoodBacktest` out of the trader. Done when the trader's `src/` has no search, replay or scoring modules.
-7. Deferred from batch 11: split `state.research` into its own file. It touches the accounting, backup and recovery path, so it needs its own batch with store-recovery tests.
+4. After 7 days, record the verdict here: can the strategy trade at all at Robinhood's costs (vol gate open %, trades per day)? Only then consider `ROBINHOOD_EVOLVE_ENABLED=true`.
+5. Split `state.research` into its own file (batch 15).

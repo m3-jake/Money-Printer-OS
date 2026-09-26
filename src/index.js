@@ -28,6 +28,9 @@ import { dailyPnl, recentPnl, bookClosedPnl, unrealizedPnl, equity, updatePortfo
 import { startAlphaWorker, stopAlphaWorker } from './alphaWorkerManager.js';
 // With the alpha worker off (the default since batch 11) nothing drains alpha-queue.ndjson, so don't write it.
 const enqueueAlphaEvent = row => { if (cfg.alphaWorkerEnabled) enqueueAlphaRaw(row); };
+// The Evolution Lab is no longer used (2026-09-26). MPO_LAB_LINK=true restores the link; off, the engine neither
+// reads lab files nor exports the ~0.7 MB dataset every minute.
+const LAB_LINK = String(process.env.MPO_LAB_LINK ?? 'false').toLowerCase() === 'true';
 import { exitSimulation, paperExitQuote, reviewPositionPrice, entrySizing, paperEntryRejection } from './positionExecution.js';
 import { apiUnitEconomicsSnapshot, persistApiUnitEconomics, attributeScanCycle, strategyNetPnlAfterDataCost } from './apiUnitEconomics.js';
 
@@ -428,7 +431,8 @@ async function cycle() {
   await actions(s);
   // The Evolution Lab is a separate app now: pull its latest status/champion over the lab link
   // (local files, or the signed bridge for a lab on another machine). Gates are re-checked below.
-  try { syncLabLink(s); } catch (e) { s.labLink = { connected: false, source: 'error', error: compactError(e) }; }
+  if (LAB_LINK) { try { syncLabLink(s); } catch (e) { s.labLink = { connected: false, source: 'error', error: compactError(e) }; } }
+  else s.labLink = { connected: false, source: 'disabled', checkedAt: Date.now() };
   const hotPolicy=cfg.mode==='paper'?evolutionChampionPolicy(s):null;
   if(hotPolicy){
     if(s.runtime.activeEvolutionChampionId!==hotPolicy.id){
@@ -543,7 +547,7 @@ async function cycle() {
   s.system.learner = learnerSnapshot(s);
   s.system.learner.settledThisCycle = settledOutcomes;
   // Feed the lab: labeled outcomes + a status line, throttled, only when something changed.
-  try { publishLabFeed(s, { mode: cfg.mode, version: process.env.MONEY_PRINTER_VERSION || null }); } catch {}
+  if (LAB_LINK) { try { publishLabFeed(s, { mode: cfg.mode, version: process.env.MONEY_PRINTER_VERSION || null }); } catch {} }
 
   s.memeIndex = memeIndex(ranked);
   s.watchlist = ranked.slice(0, Math.min(150, max));
