@@ -21,6 +21,7 @@ import { extractTerms,matchTerms,sameName,participants,candidatePairs,termsFinge
 import { VERIFY_PHRASE } from '../src/core/platform.js';
 import { kalshiFeeModel,polymarketFeeModel,takerFee } from '../src/core/fees.js';
 import { AlpacaQuotes,STOCK_VENUE } from '../src/core/brokers.js';
+import { ReplaySession,runReplay,tapeRecords,alpacaMinuteRecords,fetchAlpacaMinutes,strategyParams } from '../src/core/replay.js';
 import { StrategyRegistry,promotionCheck,labChampionLifecycle } from '../src/core/strategies.js';
 import { assertGlobalTradingNotHalted } from '../src/core/executionBoundary.js';
 import { localMutationAllowed } from '../src/core/http.js';
@@ -393,4 +394,41 @@ test('Alpaca snapshot parsing keeps IEX sizes and timestamps; auth errors are la
   const q=new AlpacaQuotes({env:{ALPACA_KEY_ID:'k',ALPACA_SECRET_KEY:'s'},fetchImpl:async()=>({ok:true,json:async()=>({SPY:{latestQuote:{bp:99,ap:101,bs:2,as:3,t:'2026-09-25T15:00:00Z'},latestTrade:{p:100,t:'2026-09-25T15:00:00Z'},prevDailyBar:{c:98}}})})});
   const r=await q.quotes(['SPY','nope!']);assert.deepEqual(Object.keys(r),['SPY']);assert.equal(r.SPY.ask,101);assert.equal(r.SPY.askSize,3);assert.equal(r.SPY.quoteAt,Date.parse('2026-09-25T15:00:00Z'));
   const bad=new AlpacaQuotes({env:{ALPACA_KEY_ID:'k',ALPACA_SECRET_KEY:'s'},fetchImpl:async()=>({ok:false,status:403})});await assert.rejects(bad.quotes(['SPY']));assert.equal(bad.status().status,'AUTH ERROR');
+});
+
+test('replay reveals data by availability: candle-derived samples only after their minute closes',()=>{
+  const rec=tapeRecords([{t:60000,bid:10,ask:10,src:'coinbase-candles'},{t:75000,bid:12,ask:12,src:'coinbase-candles'},{t:80000,bid:11,ask:11.1,src:'robinhood'}],'X');
+  assert.deepEqual(rec.map(r=>r.availableAt),[120000,120000,80000]);assert.equal(rec[0].synthetic,true);assert.equal(rec[2].synthetic,false);
+  const sess=new ReplaySession(rec,{start:60000,end:200000});
+  assert.equal(sess.quote('X'),null);// nothing is knowable at 60 s, although two rows are stamped 60 s / 75 s
+  sess.advanceTo(90000);assert.equal(sess.quote('X').bid,11);// the live quote at 80 s
+  sess.advanceTo(130000);assert.equal(sess.history('X').length,3);assert.equal(sess.quote('X').bid,12);
+  sess.advanceTo(100000);assert.equal(sess.clock,130000);// the clock never goes back
+  assert.deepEqual(alpacaMinuteRecords([{t:'2025-06-10T13:30:00Z',c:200}],'AAPL')[0].availableAt,Date.parse('2025-06-10T13:31:00Z'));
+});
+test('replay backtest: decisions see only the past, fills happen on the next available quote',()=>{
+  const rows=[];for(let i=0;i<200;i++)rows.push({t:i*15000,bid:100+i*.1,ask:100.05+i*.1,src:'robinhood'});
+  const rec=tapeRecords(rows,'X'),mk=()=>new ReplaySession(rec,{start:0,end:199*15000});
+  const bh=runReplay(mk(),{key:'X',strategy:'buy-hold',cash:1000});
+  assert.equal(bh.lookAheadViolations,0);assert.equal(bh.trades.length,1);
+  assert.equal(bh.trades[0].decidedAt,0);assert.equal(bh.trades[0].at,15000);assert.ok(Math.abs(bh.trades[0].price-100.15)<1e-9);// ask of the NEXT quote
+  assert.ok(bh.returnPct>0&&bh.returnPct<bh.buyHoldPct+1);
+  const m=runReplay(mk(),{key:'X',strategy:'momentum',params:{lookback:5,thresholdBps:5},feeBps:10});
+  assert.equal(m.lookAheadViolations,0);for(const tr of m.trades)assert.ok(tr.at>tr.decidedAt);
+  assert.throws(()=>strategyParams('momentum',{lookback:-1}),/Invalid/);assert.throws(()=>runReplay(mk(),{key:'X',strategy:'nope'}),/Unknown/);
+});
+test('Market Lab runs are reproducible experiment records (fingerprint, code version, append-only)',async()=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'mpo-lab-'));fs.mkdirSync(path.join(dir,'robinhood-tape'));
+  fs.writeFileSync(path.join(dir,'robinhood-tape','BTC-USD.ndjson'),Array.from({length:120},(_,i)=>JSON.stringify({t:1e12+i*15000,bid:100+Math.sin(i/5),ask:100.1+Math.sin(i/5),src:'robinhood'})).join(String.fromCharCode(10))+String.fromCharCode(10));
+  const p=new MarketPlatform({providers:new ProviderRegistry(),dataDir:dir});
+  assert.equal(p.labSources().tape[0].key,'BTC-USD');
+  const q={source:'tape',key:'BTC-USD',start:1e12,end:1e12+119*15000,strategy:'mean-reversion',params:{lookback:8,thresholdBps:20}};
+  const a=await p.labRun(q),b=await p.labRun(q);
+  assert.equal(a.datasetFp,b.datasetFp);assert.equal(a.finalEquity,b.finalEquity);assert.notEqual(a.id,b.id);assert.match(a.codeVersion,/replay./);
+  assert.equal(p.labRuns().length,2);assert.throws(()=>p.store.db.exec('DELETE FROM lab_runs'),/append-only/);
+  await assert.rejects(p.labRun({...q,start:q.end,end:q.start}),/start before/);
+  const r=await p.labReplayStart({source:'tape',key:'BTC-USD',start:q.start,end:q.end});assert.equal(r.visible.length,1);
+  const st=p.labReplayStep({id:r.id,ms:30000});assert.equal(st.revealed,3);
+  await assert.rejects(fetchAlpacaMinutes({symbol:'AAPL',start:1,end:2,env:{}}),/Alpaca/);
+  p.close();fs.rmSync(dir,{recursive:true,force:true});
 });

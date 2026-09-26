@@ -64,7 +64,7 @@
     if (r.contains(document.activeElement) && document.activeElement.matches('input,select,textarea')) return;
     drawn = r.id + ':' + stamp; const top = r.scrollTop;
     r.innerHTML = `<div class="core-app stocks-app">${[error, loadError].filter(Boolean).map(m => `<p class="core-error" role="alert">${escape(m)}</p>`).join('')}${busy ? '<p role="status">Working…</p>' : ''}${view()}</div>`;
-    if (chart && window.MPOViz) MPOViz.set('stk-chart', 'lines', { series: [{ label: chart.symbol, color: '#7fd3ff', points: chart.bars.map(b => b.c) }], unit: '$', empty: 'No stored daily bars for this symbol' });
+    if (chart && window.MPOViz) MPOViz.set('stk-chart', 'lines', { series: [{ label: chart.symbol, color: '#7fd3ff', points: chart.bars.map(b => b.c) }], unit: '$', empty: 'No stored daily bars for this symbol', zero: false });
     r.scrollTop = top;
   }
   async function refresh(force = false) {

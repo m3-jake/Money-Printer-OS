@@ -17,13 +17,22 @@ import { extractTerms,matchTerms,termsFingerprint,candidatePairs } from './contr
 import { describeFeeModel,takerFee } from './fees.js';
 import { PaperBroker,STOCK_VENUE,cleanSymbols,EQUITY_FEE_MODEL } from './brokers.js';
 import { readBarStore } from '../robinhoodEquitiesData.js';
+import os from 'node:os';
+import fs from 'node:fs';
+import { createHash } from 'node:crypto';
+import { ReplaySession,runReplay,readTape,tapeSymbols,bookRecords,fetchAlpacaMinutes,REPLAY_STRATEGIES,strategyParams } from './replay.js';
+const CODE_VERSION=(()=>{try{const pkg=JSON.parse(fs.readFileSync(new URL('../../package.json',import.meta.url),'utf8'));const h=createHash('sha256').update(fs.readFileSync(new URL('./replay.js',import.meta.url))).digest('hex').slice(0,12);return `${pkg.version}+replay.${h}`;}catch{return 'unknown';}})();
 
 export const VERIFY_PHRASE='I READ BOTH RULE TEXTS AND THEY SETTLE IDENTICALLY';
 const swapSides=book=>({...book,yes:book.no,no:book.yes});
 
 export class MarketPlatform {
   constructor({file=':memory:',dataDir=null,providers=null,stockQuotes=undefined,stockClock=undefined,stockSession=undefined}={}){
-    this.store=new CoreDatabase(file);this.ledger=new UnifiedLedger(this.store);this.bus=new MarketEventBus();this.risk=new RiskGovernor(this.store,this.ledger,this.bus);this.strategies=new StrategyRegistry(this.store);this.legacyReaders={};this.stocks=new PaperBroker({platform:this,...(stockQuotes?{quotes:stockQuotes}:{}),...(stockClock?{clock:stockClock}:{}),...(stockSession?{session:stockSession}:{})});this.dataDir=dataDir;
+    this.store=new CoreDatabase(file);this.ledger=new UnifiedLedger(this.store);this.bus=new MarketEventBus();this.risk=new RiskGovernor(this.store,this.ledger,this.bus);this.strategies=new StrategyRegistry(this.store);this.legacyReaders={};this.replays=new Map();
+    this.store.db.exec(`CREATE TABLE IF NOT EXISTS lab_runs(id TEXT PRIMARY KEY, at INTEGER NOT NULL, source TEXT NOT NULL, key TEXT NOT NULL, start_ms INTEGER NOT NULL, end_ms INTEGER NOT NULL,
+      strategy TEXT NOT NULL, params TEXT NOT NULL, dataset_fp TEXT NOT NULL, records INTEGER NOT NULL, code_version TEXT NOT NULL, machine TEXT NOT NULL, seed TEXT, result TEXT NOT NULL);
+      CREATE TRIGGER IF NOT EXISTS lab_runs_no_update BEFORE UPDATE ON lab_runs BEGIN SELECT RAISE(ABORT,'Experiment records are append-only'); END;
+      CREATE TRIGGER IF NOT EXISTS lab_runs_no_delete BEFORE DELETE ON lab_runs BEGIN SELECT RAISE(ABORT,'Experiment records are append-only'); END;`);this.stocks=new PaperBroker({platform:this,...(stockQuotes?{quotes:stockQuotes}:{}),...(stockClock?{clock:stockClock}:{}),...(stockSession?{session:stockSession}:{})});this.dataDir=dataDir;
     this.providers=providers||new ProviderRegistry();if(!providers){this.providers.register(new KalshiProvider());this.providers.register(new PolymarketProvider());}
     this.journalError=null;
     if(dataDir)this.bus.on('RISK_STATE_CHANGED',event=>{
@@ -157,6 +166,45 @@ export class MarketPlatform {
     return {symbol:sym,source:store.provider||null,fetchedAt:store.fetchedAt||null,bars:bars.slice(-260),note:bars.length?'Daily bars from the Robinhood equities lane store (split/dividend adjusted).':'No stored daily bars for this symbol (the equities lane fetches bars only with an Alpaca key, for its own symbols).'};
   }
   async stocksPreview(input){return this.stocks.preview({...input,id:input.id||randomUUID()});}
+  // Market Lab. Records are revealed by availableAt only (replay.js); every run is stored with the
+  // dataset fingerprint, code version, parameters and machine so it can be reproduced.
+  labSources(){
+    const dir=this.dataDir||path.resolve(process.env.MONEY_PRINTER_DATA_DIR||'data');
+    const tape=tapeSymbols(dir).map(sym=>{const r=readTape(dir,sym);return {key:sym,records:r.length,first:r[0]?.availableAt??null,last:r.at(-1)?.availableAt??null,syntheticShare:r.length?r.filter(x=>x.synthetic).length/r.length:null};});
+    const books=this.store.db.prepare("SELECT id,COUNT(*) n,MIN(available_at) first,MAX(available_at) last FROM entity_versions WHERE id LIKE 'orderbook:%' GROUP BY id HAVING n>1 ORDER BY n DESC LIMIT 100").all().map(r=>({key:r.id,records:r.n,first:r.first,last:r.last}));
+    const alpaca=!!((process.env.ALPACA_KEY_ID||process.env.APCA_API_KEY_ID)&&(process.env.ALPACA_SECRET_KEY||process.env.APCA_API_SECRET_KEY));
+    return {tape,books,alpaca:{configured:alpaca,note:alpaca?'Minute bars (IEX feed) for any symbol.':'Set ALPACA_KEY_ID / ALPACA_SECRET_KEY to replay stock sessions from minute bars.'},strategies:Object.fromEntries(Object.entries(REPLAY_STRATEGIES).map(([k,v])=>[k,{label:v.label,params:v.params}]))};
+  }
+  async labRecords({source,key,start,end}){
+    const s=Number(start),e=Number(end);if(!Number.isFinite(s)||!Number.isFinite(e)||e<=s)throw new Error('Choose a start before the end');if(e-s>7*86400000)throw new Error('Replay window is limited to 7 days');
+    const dir=this.dataDir||path.resolve(process.env.MONEY_PRINTER_DATA_DIR||'data');
+    if(source==='tape')return readTape(dir,String(key||'').toUpperCase(),{start:s,end:e});
+    if(source==='book'){const rows=this.store.db.prepare('SELECT payload FROM entity_versions WHERE id=? AND available_at BETWEEN ? AND ? ORDER BY available_at').all(String(key),s,e).map(r=>JSON.parse(r.payload));return bookRecords(rows,String(key));}
+    if(source==='alpaca')return fetchAlpacaMinutes({symbol:String(key||'').toUpperCase(),start:s,end:e});
+    throw new Error('Unknown replay source');
+  }
+  async labRun({source,key,start,end,strategy='buy-hold',params={},stepMs=15000,feeBps=0,cash=1000}){
+    const records=await this.labRecords({source,key,start,end});if(!records.length)throw new Error('No records in that window');
+    const k=records[0].key,step=Math.max(1000,Math.min(3600000,Number(stepMs)||15000)),fee=Math.max(0,Math.min(1000,Number(feeBps)||0)),startCash=Math.max(1,Math.min(1e7,Number(cash)||1000));
+    const result=runReplay(new ReplaySession(records,{start:Number(start),end:Number(end)}),{key:k,strategy,params:strategyParams(strategy,params),stepMs:step,feeBps:fee,cash:startCash});
+    const datasetFp=createHash('sha256').update(JSON.stringify(records.map(r=>[r.availableAt,r.observedAt,r.bid,r.ask,r.synthetic?1:0]))).digest('hex'),id=randomUUID();
+    const summary={...result,curve:undefined,trades:result.trades.slice(-200)};
+    this.store.db.prepare('INSERT INTO lab_runs VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(id,Date.now(),source,k,Number(start),Number(end),strategy,JSON.stringify(result.params),datasetFp,records.length,CODE_VERSION,os.hostname(),null,JSON.stringify(summary));
+    return {id,datasetFp,codeVersion:CODE_VERSION,machine:os.hostname(),...result};
+  }
+  labRuns(limit=50){return this.store.db.prepare('SELECT * FROM lab_runs ORDER BY at DESC LIMIT ?').all(Math.max(1,Math.min(500,limit))).map(r=>({...r,params:JSON.parse(r.params),result:JSON.parse(r.result)}));}
+  async labReplayStart(input){
+    for(const [id,s] of this.replays)if(Date.now()-s.touched>1800000)this.replays.delete(id);
+    if(this.replays.size>=5)throw new Error('Too many open replays; close one first');
+    const records=await this.labRecords(input);if(!records.length)throw new Error('No records in that window');
+    const id=randomUUID(),session=new ReplaySession(records,{start:Number(input.start),end:Number(input.end)});this.replays.set(id,{session,touched:Date.now(),key:records[0].key});
+    return {id,key:records[0].key,start:session.start,end:session.end,clock:session.clock,total:session.records.length,visible:session.seen.slice(-500),done:session.done};
+  }
+  labReplayStep({id,ms}){
+    const r=this.replays.get(id);if(!r)throw new Error('Replay session expired; start it again');r.touched=Date.now();
+    const fresh=r.session.advanceTo(r.session.clock+Math.max(1000,Math.min(86400000,Number(ms)||15000)));
+    return {id,clock:r.session.clock,fresh:fresh.slice(-500),revealed:r.session.seen.length,total:r.session.records.length,done:r.session.done};
+  }
   close(){this.store.close();}
 }
 let platform;

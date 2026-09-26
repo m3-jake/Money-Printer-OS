@@ -20,6 +20,8 @@ export async function handlePlatformRequest(req,res,url,{json,body,platform=mark
       if(route==='/arbitrage/candidates')return json(res,{ok:true,...platform.arbitrageCandidates({limit:Number(url.searchParams.get('limit'))||50})});
       if(route==='/stocks/status')return json(res,{ok:true,...await platform.stocksStatus(url.searchParams.get('symbols')||'')});
       if(route==='/stocks/bars')return json(res,{ok:true,...platform.stocksBars(url.searchParams.get('symbol'))});
+      if(route==='/lab/sources')return json(res,{ok:true,...platform.labSources()});
+      if(route==='/lab/runs')return json(res,{ok:true,runs:platform.labRuns(50)});
       if(route==='/relationships')return json(res,{ok:true,relationships:platform.store.relationships(url.searchParams.get('id'))});
     }
     if(req.method==='POST'){
@@ -39,6 +41,9 @@ export async function handlePlatformRequest(req,res,url,{json,body,platform=mark
       else if(route==='/stocks/preview')result=await platform.stocksPreview(input);
       else if(route==='/stocks/submit')result=platform.stocks.submit(input.id);
       else if(route==='/stocks/cancel')result=platform.stocks.cancel(input.id);
+      else if(route==='/lab/run')result=await platform.labRun(input);
+      else if(route==='/lab/replay/start')result=await platform.labReplayStart(input);
+      else if(route==='/lab/replay/step')result=platform.labReplayStep(input);
       else if(route==='/watchlist')result=platform.watch(input.id,input.on===true);
       else if(route==='/compare/verify')result=platform.verifyPair(input);
       else if(route==='/compare')result=await platform.compare(input);
