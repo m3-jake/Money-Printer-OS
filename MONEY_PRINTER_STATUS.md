@@ -4,7 +4,7 @@
 (`CURRENT_TASKS.md`, `KNOWN_BUGS.md`, `PROJECT_STATE.md`, `RELEASE_STATUS.md`) and in `reports/NEXT-STEPS-2026-09-25.md`.
 Don't re-inventory the repo. Update this file at the end of every batch.
 
-Last updated: 2026-09-25, batch 4. Branch `feature/polymarket-combo-only`, version `0.5.0-alpha.56`.
+Last updated: 2026-09-25, batch 5. Branch `feature/polymarket-combo-only`, version `0.5.0-alpha.56`.
 
 ## Architecture (inventoried once)
 
@@ -99,9 +99,25 @@ Last updated: 2026-09-25, batch 4. Branch `feature/polymarket-combo-only`, versi
   - The spec's "$1 order to prove the singles body shape" is a real trade, so bing places it, not an agent.
 - Next: step 2 (detach the paper lab).
 
+## Batch 5 (2026-09-25): combo renovation step 2, paper lab detached
+
+- `src/dashboard.js` no longer imports `./polymarket.js`. All 8 `/api/polymarket` and `/api/polymarket/*` routes are gone, and so is `paperOrderResult`. The file itself stays: the collector and tests still import it.
+- Activation moved from the first paper order to the first successful `POST /api/polymarket-us/combos/build` with 2+ legs (`recordComboBuildActivation`, milestone `first-successful-combo-build`). Documented in `docs/PRODUCT-ECONOMICS.md`.
+- The UI's Paper Lab module is removed: `renderPolyPaper`, the `/api/polymarket` poll, the paper state and handlers. The status strip now reads the US combo feed.
+  - `POLY_MODS` is `['combos','us']`, and the pin in `tests/robinhood-hud.test.mjs` moved with it.
+  - This lands in step 2 rather than step 7, because a leftover module would have posted to deleted routes.
+- `tests/product-economics-http.test.mjs` now checks four things:
+  - The paper route returns 404.
+  - Rejected builds (one leg, or a negative stake) don't activate.
+  - The first priced build activates.
+  - A second build doesn't double-count.
+  - The test mocks the gateway feed and refuses any other outbound call.
+- Tests: `npm run test:all` **533 pass / 0 fail**. Not smoke-tested in the running app yet; step 7 replaces this window anyway.
+- Next: step 3 (settings plumbing: `priceMin` / `maxMinutesLeft` / `maxLegs`).
+
 ## Next recommended batch (priority order)
 
-0. Combo renovation step 2: detach the paper lab (see batch 4).
+0. Combo renovation step 3: settings plumbing (see batch 5).
 
 1. **bing:** run the two merge commands (batch 2), then say whether to push. Schedule `npm run collector -- --data "%APPDATA%\Money Printer OS\data"` at logon, and disable `MoneyPrinterReplayWorkhorse`.
 2. Re-run the Lab's three Polymarket sandbox searches with the committed fee model (report section 2.3: `node scripts/polymarket-research.mjs --mode search ...` in the Lab repo, read-only against `W:/mpo-polymarket-research`). Record the verdict here.

@@ -176,7 +176,7 @@ const fmt=(n,d=2)=>Number.isFinite(Number(n))?Number(n).toFixed(d):'—';
 const money=n=>Number.isFinite(Number(n))?'$'+Number(n).toLocaleString(undefined,{maximumFractionDigits:2}):'—';
 const age=ts=>!ts?'—':Math.max(0,Math.round((Date.now()-ts)/1000))+'s';
 const fmtSol=v=>Number.isFinite(Number(v))?Number(v).toFixed(3)+' SOL':'—';
-let state=null,journal=[],projectJournal={rows:[]},networkState={peers:[],messages:[]},polyState={candidates:[],paper:{}},polyUSState={opportunities:[],readiness:{}},polyUSComboState={},updateState={status:'IDLE'},researchMonitor={status:'idle',running:[],leaderboard:[],rejections:{}},journalFilter='all',journalQuery='',z=20,selectedIcon=null;
+let state=null,journal=[],projectJournal={rows:[]},networkState={peers:[],messages:[]},polyUSState={opportunities:[],readiness:{}},polyUSComboState={},updateState={status:'IDLE'},researchMonitor={status:'idle',running:[],leaderboard:[],rejections:{}},journalFilter='all',journalQuery='',z=20,selectedIcon=null;
 let chartView={range:'session',zoom:1,pan:0,dragging:false,lastX:0,hoverX:null};let fxSig='',fxBurstTimer=null,fxBurstUntil=0,fxLastRealizedSol=null,fxComboPrimed=false;const fxSeenComboSettlements=new Set();
 const renderSig=new Map();
 const perf={stateKB:0,renderMs:0,refreshMs:0,lastStateAt:0};
@@ -448,8 +448,7 @@ function renderControl(){
  $$('.test-reset').forEach(b=>b.onclick=async()=>{await post('/api/reset',{amountSol:Number(b.dataset.sol)});showDialog('Money Printer OS','Paper wallet reset',`Testing bankroll queued at ${b.dataset.sol} SOL.`)}); $('#testPause')?.addEventListener('click',()=>post('/api/pause',{})); $('#testKill')?.addEventListener('click',()=>post('/api/kill',{})); $('#applyCtl')?.addEventListener('click',async()=>{await post('/api/profile',{profile:$('#profile').value});await post('/api/runtime',{aggression:Number($('#aggr').value)});showDialog('Money Printer OS','Settings queued','Profile and runtime settings were sent to the trading engine.')});
 }
 
-let polyStakeValue='2.5',polySelected=new Set(),polyRefreshBusy=false,polySubmitting=false,polyAutoSeedKey='',polyApDraft={};
-// Fast Combos (Polymarket US real execution) — mirrors the polySelected/polyAutoSeedKey pattern with separate state.
+// Fast Combos (Polymarket US real execution).
 let usComboSelected=new Set(),usComboAutoSeedKey='',usComboStakeValue='',usComboModeValue='rfq',usComboSubmitting=false,usComboBuildState=null,usComboBuildTimer=null,usComboApDraft={},usComboCountdownTimer=null,usComboRefreshBusy=false;
 const polyEscape=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function researchParamLine(p={}){const keys=[['aggression','agg'],['tp','tp'],['stop','stop'],['trail','trail'],['maxHold','hold'],['cooldown','cool'],['filter','filter'],['entry','in'],['exit','out']];return keys.filter(([k])=>p[k]!=null).map(([k,l])=>`${l} ${p[k]}`).join(' · ')||'default profile'}
@@ -549,16 +548,14 @@ const polyCents=(v,d=1)=>polyNum(v)==null?'—':fmt(Number(v)*100,d)+'¢';
 const polyUsd=(v,d=2)=>polyNum(v)==null?'—':'$'+fmt(v,d);
 const polyAgeS=ms=>polyNum(ms)==null?'—':Math.max(0,Math.round(Number(ms)/1000))+'s';
 const polyTime=t=>{const n=Number(t),d=new Date(n);return Number.isFinite(n)&&n>0&&!Number.isNaN(d.getTime())?d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}):'—'};
-const POLY_SRC={clob:['green','CLOB','Live CLOB order book: fillable bid/ask with measured depth.'],gamma:['amber','GAMMA','Gamma best bid/ask: fillable price, depth unknown.'],mid:['red','MID','Midpoint only — no order book. Autopilot will not place this row.']};
-const polySrcBadge=s=>{const d=POLY_SRC[String(s||'').toLowerCase()]||['muted','—','Price source unknown.'];return `<b class="${d[0]}" title="${polyEscape(d[2])}">${d[1]}</b>`};
 // Any input/select the operator can be typing into must suppress the 5s re-render.
-const POLY_FOCUS_IDS=['polyStake','polyApMode','polyApStakeSingle','polyApStakeCombo','polyApMaxOpen','usKeyId','usSecret','usSlug','usIntent','usPrice','usQty','usConfirm','usComboStake','usComboMode','usComboConfirm','usComboAutoConfirm','usComboApStake','usComboApMaxLegs','usComboApMaxOpen','usComboApLossCap'];
-// ---- Polymarket Suite: three independent modules (combos / us / paper) ------------------
-let polyModules=(()=>{const d={combos:{visible:true,open:true},us:{visible:true,open:true},paper:{visible:true,open:true}};try{const s=JSON.parse(localStorage.getItem('mpo-poly-modules')||'null');if(s&&typeof s==='object')for(const k of Object.keys(d))if(s[k]&&typeof s[k]==='object')d[k]={visible:s[k].visible!==false,open:s[k].open!==false}}catch{}return d})();
+const POLY_FOCUS_IDS=['usKeyId','usSecret','usSlug','usIntent','usPrice','usQty','usConfirm','usComboStake','usComboMode','usComboConfirm','usComboAutoConfirm','usComboApStake','usComboApMaxLegs','usComboApMaxOpen','usComboApLossCap'];
+// ---- Polymarket Suite: independent modules (combos / us) ------------------
+let polyModules=(()=>{const d={combos:{visible:true,open:true},us:{visible:true,open:true}};try{const s=JSON.parse(localStorage.getItem('mpo-poly-modules')||'null');if(s&&typeof s==='object')for(const k of Object.keys(d))if(s[k]&&typeof s[k]==='object')d[k]={visible:s[k].visible!==false,open:s[k].open!==false}}catch{}return d})();
 const polyModuleSig=new Map();
-const POLY_MODS=['combos','us','paper'];
-const POLY_MOD_TITLE={combos:'FAST COMBOS · POLYMARKET US · REAL',us:'POLYMARKET US · FULL SUITE',paper:'FAST SPORTS STRATEGY LAB · PAPER'};
-const POLY_MOD_SHORT={combos:'Fast Combos',us:'US Suite',paper:'Paper Lab'};
+const POLY_MODS=['combos','us'];
+const POLY_MOD_TITLE={combos:'FAST COMBOS · POLYMARKET US · REAL',us:'POLYMARKET US · FULL SUITE'};
+const POLY_MOD_SHORT={combos:'Fast Combos',us:'US Suite'};
 function persistPolyModules(){try{localStorage.setItem('mpo-poly-modules',JSON.stringify(polyModules))}catch{}}
 function polyShellHtml(){
  return `<div class="poly-strip" id="polyStatus"></div><div class="poly-bar">MODULES:${POLY_MODS.map(m=>`<label><input type="checkbox" class="polyModShow" data-mod="${m}" ${polyModules[m].visible?'checked':''}> ${POLY_MOD_SHORT[m]}</label>`).join('')}</div>`
@@ -585,7 +582,6 @@ function renderPolyModule(mod,sig,fn){
  const ae=document.activeElement;
  if(ae&&box.contains(ae)&&POLY_FOCUS_IDS.includes(ae.id))return;
  if(mod==='combos'&&usComboSubmitting)return;
- if(mod==='paper'&&polySubmitting)return;
  const key=JSON.stringify(sig);if(polyModuleSig.get(mod)===key)return;
  polyModuleSig.set(mod,key);
  // Anchor the whole suite body too: a module changing height must not shift the outer scroll.
@@ -598,12 +594,11 @@ function renderSportsbook(){
  const body=$('#body-sportsbook');if(!body)return;
  if(body.dataset.shell!=='1'){const keep=captureScroll(body);body.innerHTML=polyShellHtml();body.dataset.shell='1';bindPolyBar();restoreScroll(body,keep)}
  applyPolyModuleState();
- const x=polyState||{},st=x.strategy||{},sf=st.liveSportsFeed||{},feed=x.feed||{},srcs=feed.sources||{},gl=srcs.gammaLive||{},cb=srcs.clob||{},ws=srcs.sportsWs||{};
+ const ucf=(polyUSComboState||{}).feed||{};
  const strip=$('#polyStatus');
- if(strip)strip.innerHTML=`<div style="display:flex;justify-content:space-between;gap:8px"><div><div class="green" style="font-size:22px">POLYMARKET SUITE · US + RESEARCH LAB</div><div class="muted">US market scanner + incentive/maker lab + fast sports strategy research</div></div><div style="text-align:right"><b>${feed.degraded?'DEGRADED · CACHED':feed.ok?'LIVE FEED':'FEED DOWN'}</b><br><span class="${feed.degraded?'amber':feed.ok?'green':'red'}">${feed.ok?`${feed.count||0} markets${feed.degraded?` · last good ${polyAgeS(feed.ageMs)} ago`:''}`:polyEscape(feed.error||feed.lastError||'offline')}</span><br><span class="muted" style="font-size:10px">GAMMA LIVE ${Number(gl.games||0)} games / ${Number(gl.events||0)} ev · ${polyAgeS(gl.ageMs)}${gl.pages?` · ${gl.pages}p`:''}</span><br><span class="muted" style="font-size:10px">CLOB books ${Number(cb.tokens||0)} tok · ${polyAgeS(cb.ageMs)}${cb.batch?' · batch':''}${cb.error?' · '+polyEscape(cb.error):''}</span><br><span class="${(ws.connected??sf.connected)?'green':'amber'}">${(ws.connected??sf.connected)?'● LIVE SCORE STREAM':'○ SCORE STREAM RECONNECTING'}</span></div></div>`;
+ if(strip)strip.innerHTML=`<div style="display:flex;justify-content:space-between;gap:8px"><div><div class="green" style="font-size:22px">POLYMARKET US</div><div class="muted">Live games near the end · manual combos</div></div><div style="text-align:right"><b>${ucf.ok===false?'FEED DOWN':'LIVE FEED'}</b><br><span class="${ucf.ok===false?'red':'green'}">${ucf.ok===false?polyEscape(ucf.error||'offline'):`${Number(ucf.eventsLive||0)} live games · ${Number(ucf.candidates||0)} candidates`}</span></div></div>`;
  renderPolyModule('combos',[polyUSComboState,[...usComboSelected],usComboBuildState],renderPolyCombos);
  renderPolyModule('us',[polyUSState],renderPolyUS);
- renderPolyModule('paper',[polyState,[...polySelected]],renderPolyPaper);
 }
 function renderPolyCombos(box){
  // Fast Combos · Polymarket US · REAL — snapshot contract per .workflow/scratch/SPEC-fast-combos.md. Every field is optional so an
@@ -772,94 +767,6 @@ function renderPolyUS(box){
  $$('.usCancelOrder').forEach(b=>b.onclick=async()=>{const o=uorders[Number(b.dataset.i)]||{},orderId=o.id||o.orderId,marketSlug=o.marketSlug||o.market?.slug||o.slug;const confirmation=window.prompt('Type CANCEL REAL ORDER to cancel this order:','');if(confirmation!=='CANCEL REAL ORDER')return;const r=await post('/api/polymarket-us/cancel',{orderId,marketSlug,confirmation}).catch(e=>({ok:false,error:e.message}));if(!r?.ok)return showDialog('Polymarket US','Cancel failed',r?.error||'Exchange rejected the cancellation.');await refreshPolymarketUS();});
  $('#usCancelAll')?.addEventListener('click',async()=>{const confirmation=window.prompt('Type CANCEL REAL ORDERS to cancel all open orders:','');if(confirmation!=='CANCEL REAL ORDERS')return;const r=await post('/api/polymarket-us/cancel-all',{confirmation}).catch(e=>({ok:false,error:e.message}));if(!r?.ok)return showDialog('Polymarket US','Cancel all failed',r?.error||'Exchange rejected the cancellation.');await refreshPolymarketUS();});
 }
-function renderPolyPaper(box){
- const x=polyState||{},p=x.paper||{},r=x.research||{},rp=x.replay||{},st=x.strategy||{},sf=st.liveSportsFeed||{},q=x.quote||{};
- const c=Array.isArray(x.candidates)?x.candidates:[],sel=Array.isArray(x.suggested)?x.suggested:[],seedKey=sel.map(m=>String(m.marketId)).join('|');
- const feed=x.feed||{},srcs=feed.sources||{},gl=srcs.gammaLive||{},cb=srcs.clob||{},ws=srcs.sportsWs||{};
- const ap={...(p.autopilot||{}),...(x.autopilot||{})},posList=Array.isArray(p.positions)?p.positions:[];
- const rs=r.singles||{},rc=r.combos||{};
- if(seedKey&&!polySelected.size&&polyAutoSeedKey!==seedKey){sel.forEach(m=>polySelected.add(String(m.marketId)));polyAutoSeedKey=seedKey}
- const chosen=c.filter(m=>polySelected.has(String(m.marketId)));
- const rows=c.slice(0,18).map((m,i)=>{
-  const ls=m.liveState||{},fee=m.fee||{},bk=m.bucket||null;
-  const clock=[ls.period,ls.elapsed].filter(Boolean).join(' · ')||'LIVE';
-  const eta=polyNum(m.etaMinutes)==null?'—':'~'+Math.round(Number(m.etaMinutes))+'m';
-  const fill=polyNum(m.fillPrice)??polyNum(m.price)??polyNum(m.ask);
-  const net=polyNum(m.netPrice)??(fill!=null&&polyNum(fee.perShare)!=null?fill+Number(fee.perShare):null);
-  const sub=[polyNum(m.freshnessSec)==null?'':'fresh '+fmt(m.freshnessSec,0)+'s',bk&&polyNum(bk.n)?`bucket ${fmt(Number(bk.lo)*100,0)}–${fmt(Number(bk.hi)*100,0)} n=${bk.n} ${polyPct(bk.hitRate)}`:'',polyNum(m.suggestedStakeUsd)==null?'':'sug '+polyUsd(m.suggestedStakeUsd)].filter(Boolean).join(' · ');
-  return `<tr><td><input type="checkbox" class="polyLeg" data-i="${i}" ${polySelected.has(String(m.marketId))?'checked':''}></td>`
-   +`<td style="white-space:normal;min-width:150px">${polyEscape(m.question||m.event||'—')}<br><span style="font-size:10px;white-space:normal" class="muted">${polyEscape(sub)}</span></td>`
-   +`<td><b>${polyEscape(ls.score||'—')}</b><br><span style="font-size:10px">${polyEscape(clock)}</span></td>`
-   +`<td><b>${polyEscape(m.outcome||'—')}</b></td>`
-   +`<td><b>${fill==null?'—':fmt(fill*100,1)+'%'}</b><br><span style="font-size:10px">net ${net==null?'—':fmt(net*100,1)+'%'}${polyNum(fee.perShare)==null?'':' · fee '+fmt(Number(fee.perShare)*100,2)+'¢'}</span></td>`
-   +`<td>${polyNum(m.bid)==null?'—':fmt(Number(m.bid)*100,1)} / ${polyNum(m.ask)==null?'—':fmt(Number(m.ask)*100,1)}<br><span style="font-size:10px">mk ${polyCents(m.makerQuote)} · sprd ${polyCents(m.spread)}</span></td>`
-   +`<td>${fmt(m.liquidity,0)}<br><span style="font-size:10px">dep ${polyNum(m.askDepthUsd)==null?'—':'$'+fmt(m.askDepthUsd,0)}</span></td>`
-   +`<td>${eta}<br><span style="font-size:10px;white-space:normal">${polyEscape(m.lateReason||'')}</span></td>`
-   +`<td>${polySrcBadge(m.priceSource)}<br><span style="font-size:10px">${polyEscape(m.comboStatus||'')}</span></td></tr>`;
- }).join('');
- const sims=(x.simulations||[]).map(z=>`<tr><td>${polyEscape(z.legs)}</td><td>${fmt(z.jointProbability*100,1)}%</td><td>${fmt(z.hitRate*100,1)}%</td><td>$${fmt(z.pnl,0)}</td><td>$${fmt(z.maxDrawdown,0)}</td></tr>`).join('');
- const buckets=(r.buckets||[]).map(b=>{const n=Number(b.n||0),ref=polyNum(b.avgQuoted)??polyNum(b.mid);return `<tr><td>${fmt(Number(b.lo)*100,0)}–${fmt(Number(b.hi)*100,0)}%</td><td>${n}</td><td>${n?polyPct(b.hitRate):'—'}</td><td>${n&&ref!=null&&polyNum(b.hitRate)!=null?`<span class="${Number(b.hitRate)-ref>=0?'green':'red'}">${fmt((Number(b.hitRate)-ref)*100,1)} pts</span>`:'—'}</td><td>${n?polyPct(b.roi):'—'}</td></tr>`}).join('');
- const events=(x.recentEvents||[]).slice(0,8).map(ev=>{
-  const t=String(ev.type||'event').toLowerCase(),pnl=polyNum(ev.pnlUsd);
-  const cls=t==='settled'?((pnl??0)>=0?'green':'red'):t==='early-exit'?'cyan':t==='void'?'muted':'amber';
-  return `<span class="${cls}">[${polyTime(ev.at)}] ${polyEscape(t.toUpperCase())}${ev.kind?' '+polyEscape(String(ev.kind).toUpperCase()):''} ${polyEscape(ev.detail||'')}${pnl==null?'':` ${pnl>=0?'+':''}$${fmt(pnl,2)}`}</span>`;
- }).join(' &nbsp;|&nbsp; ');
- const skipped=(ap.skipped||[]).slice(0,6).map(s=>`${polyEscape(s.marketId||'?')}: ${polyEscape(s.reason||'—')}`).join(' · ');
- const diag=st.candidateDiagnostics||{},rejects=Object.entries(diag.rejections||{}).sort((a,b)=>Number(b[1])-Number(a[1])).slice(0,5).map(([k,v])=>`${polyEscape(k)} ${Number(v)}`).join(' · ');
- const apOn=ap.enabled===true,apMode=String(polyApDraft.mode??ap.mode??'both');
- const activityText=!feed.ok?'FEED ISSUE':posList.length?`ACTIVE · ${posList.length} OPEN`:c.length?`SCANNING · ${c.length} READY`:'WAITING · NO ≤15M SETUP';
- const activityClass=!feed.ok?'red':posList.length?'green':c.length?'cyan':'amber';
- const positions=posList.slice(0,8).map(pos=>{
-  const kind=String(pos.kind||'combo').toLowerCase(),legs=Array.isArray(pos.legs)?pos.legs:[];
-  const bid=polyNum(pos.exitBid)??polyNum(pos.cashableBid)??polyNum(pos.bid)??polyNum((legs[0]||{}).bid);
-  const cash=kind==='single'&&bid!=null&&bid>=.99?` · <span class="green" title="Held token bid is at or above 99¢ — early exit is available.">cashable @${polyPct(bid)}</span>`:'';
-  const names=legs.slice(0,3).map(l=>polyEscape((l||{}).outcome||(l||{}).question||(l||{}).event||'leg')).join(' + ')||'—';
-  const fill=polyNum(pos.fillPrice)??polyNum((legs[0]||{}).fillPrice)??polyNum((legs[0]||{}).price);
-  const ageMin=polyNum(pos.ageMinutes);const ageNote=pos.overdue?` · <span class="red">OVERDUE ${fmt(ageMin??0,0)}m</span>`:ageMin==null?'':` · age ${fmt(ageMin,0)}m`;
-  return `<p><b class="${kind==='single'?'cyan':'amber'}">${polyEscape(kind.toUpperCase())}</b> ${legs.length} leg${legs.length===1?'':'s'} · ${polyUsd(pos.stakeUsd)} stake · fill ${fill==null?'—':fmt(fill*100,1)+'%'}${ageNote}<br><span class="muted">${names}${legs.length>3?' +'+(legs.length-3):''}</span><br><span class="muted">Potential payout ${polyUsd(pos.potentialPayoutUsd)}${polyNum(pos.feeUsd)==null?'':' · fees '+polyUsd(pos.feeUsd)}${cash}</span></p>`;
- }).join('')||'<p>No open paper positions.</p>';
- const quoteLine=polyNum(q.decimalOdds)==null?'':`<div class="muted" style="font-size:10px;margin-top:4px">Suggested combo ${Number(q.legs?.length||q.legs||0)||chosen.length} legs · net ${fmt(q.decimalOdds,2)}× → ${polyUsd(q.payout)}${polyNum(q.gross?.decimalOdds)==null?'':` · gross ${fmt(q.gross.decimalOdds,2)}×`}${polyNum(q.feeUsd)==null?'':` · fees ${polyUsd(q.feeUsd)}`}</div>`;
- box.innerHTML=`<div class="dark terminal" style="padding:8px">
- <div class="metric-grid"><div class="metric"><label>PAPER EQUITY</label><b>${fmt(r.exposureAdjustedEquityUsd??r.equityUsd??p.cashUsd,2)}</b><label>at cost ${fmt(r.equityUsd??p.cashUsd,2)}</label></div><div class="metric"><label>CLOSED TESTS</label><b>${r.closed||0}</b></div><div class="metric"><label>HIT RATE</label><b>${polyPct(r.conservativeHitRate??r.hitRate)}</b><label>realized ${polyPct(r.hitRate)}</label></div><div class="metric"><label>RESEARCH ROI</label><b class="${Number(r.conservativeRoi??r.roi??0)>=0?'green':'red'}">${polyPct(r.conservativeRoi??r.roi)}</b><label>realized ${polyPct(r.roi)} · ${polyEscape(r.verdict||'')}</label></div><div class="metric"><label>SINGLES HIT / ROI</label><b>${polyPct(rs.hitRate)} <span class="${Number(rs.roi||0)>=0?'green':'red'}">${polyPct(rs.roi)}</span></b><label>${Number(rs.closed||0)} closed · ${Number(rs.open||0)} open</label></div><div class="metric"><label>COMBOS HIT / ROI</label><b>${polyPct(rc.hitRate)} <span class="${Number(rc.roi||0)>=0?'green':'red'}">${polyPct(rc.roi)}</span></b><label>${Number(rc.closed||0)} closed · ${Number(rc.open||0)} open</label></div><div class="metric"><label>FEES PAID</label><b>${polyUsd(r.feesPaidUsd)}</b></div><div class="metric"><label>AUTOPILOT ACTIVITY</label><b class="${activityClass}">${activityText}</b><label>${Number(ap.placedCount||0)} placed · last run ${polyTime(ap.lastRunAt)}</label></div></div>
- <div class="inset" style="padding:6px;margin:6px 0;background:#07150b"><b class="${st.keep?'green':'amber'}">SETTLEMENT AUDIT</b> · verdict ${polyEscape(r.verdict||st.verdict||'COLLECTING')} · keep ${st.keep?'YES':'NO'} · overdue ${Number(r.settlement?.overdueCount||0)} · conservative ROI ${polyPct(r.conservativeRoi)} · gamma-resolved ${Number(r.settlement?.gammaResolved||0)} · early-exits ${Number(r.settlement?.earlyExits||0)}<div style="font-size:10px;margin-top:3px" class="muted">Open marks overdue past ETA+2h as zero. Conservative ROI treats open and stale-timeout voids as lost. Closed Gamma markets are fetched so resolved losers book; a lost combo leg settles immediately. High-turnover autopilot pauses while the book is overdue or the verdict is DROP.</div></div>
- <div class="inset" style="padding:6px;margin:6px 0;background:#07150b"><b class="amber">LONGITUDINAL REPLAY</b> · ${rp.samples||0} settled samples · ending replay equity $${fmt(rp.endingEquityUsd??p.startUsd,2)} · max drawdown ${fmt((rp.maxDrawdown||0)*100,1)}%<div style="font-size:10px;margin-top:3px">${(rp.points||[]).slice(-8).map(pt=>`#${pt.i} ${polyEscape(pt.status||'—')} ${pt.pnlUsd>=0?'+':''}$${fmt(pt.pnlUsd,2)} → $${fmt(pt.equityUsd,2)}`).join(' &nbsp; | &nbsp; ')||'Waiting for settled paper samples…'}</div></div>
- <div class="inset" style="padding:6px;margin:6px 0;background:#07150b"><b class="cyan">RECENT EVENTS</b><div style="font-size:10px;margin-top:3px">${events||'<span class="muted">No paper placements or settlements recorded yet.</span>'}</div></div>
- <div class="grid2" style="grid-template-columns:1.6fr .4fr"><div data-scroll="paper-cands" style="overflow:auto;max-height:260px"><table class="table terminal"><thead><tr><th>Pick</th><th>Event</th><th>Live</th><th>Side</th><th>Fill (net)</th><th>Book</th><th>Liq/Depth</th><th>ETA</th><th>Src</th></tr></thead><tbody>${rows||'<tr><td colspan=9>No live near-settlement candidates right now. Scanner is waiting instead of filling the combo with long-duration games.</td></tr>'}</tbody></table><fieldset><legend>90% leg Monte Carlo · 5,000 trials each</legend><table class="table terminal"><thead><tr><th>Legs</th><th>Expected hit</th><th>Sim hit</th><th>P/L</th><th>Max DD</th></tr></thead><tbody>${sims}</tbody></table><p class="muted">Fair-odds simulation is a sanity check, not a prediction. Six independent 90% legs only have about 53% joint probability before execution friction or correlation.</p></fieldset><fieldset><legend>Calibration ledger</legend><table class="table terminal"><thead><tr><th>Quoted bucket</th><th>Legs</th><th>Actual hit</th><th>Calibration</th><th>ROI</th></tr></thead><tbody>${buckets||'<tr><td colspan=5>No resolved samples yet.</td></tr>'}</tbody></table></fieldset></div><div><fieldset><legend>Autopilot · paper only</legend><div class="toolbar"><button class="btn" id="polyApToggle">${apOn?'Turn OFF':'Turn ON'}</button><b class="${apOn?'green':'amber'}">${apOn?'RUNNING':'PAUSED'}</b></div><label>Mode</label><select class="field" id="polyApMode" style="width:100%">${['both','singles','combos'].map(v=>`<option value="${v}" ${apMode===v?'selected':''}>${v.toUpperCase()}</option>`).join('')}</select><div class="formrow" style="grid-template-columns:1fr 90px"><label>Single stake $</label><input class="field" id="polyApStakeSingle" type="number" min="0.25" step="0.25" value="${polyEscape(polyApDraft.stakeSingleUsd??ap.stakeSingleUsd??1)}"></div><div class="formrow" style="grid-template-columns:1fr 90px"><label>Combo stake $</label><input class="field" id="polyApStakeCombo" type="number" min="0.25" step="0.25" value="${polyEscape(polyApDraft.stakeComboUsd??ap.stakeComboUsd??2.5)}"></div><div class="formrow" style="grid-template-columns:1fr 90px"><label>Max open %</label><input class="field" id="polyApMaxOpen" type="number" min="1" max="100" step="1" value="${polyEscape(polyApDraft.maxOpenPct??ap.maxOpenPct??65)}"></div><div class="toolbar"><button class="btn" id="polyApApply">Apply autopilot</button><button class="btn" id="polyApRun">Run now</button></div><div style="font-size:10px">Combos ${Number(ap.openCombos||0)} / ${Number(ap.comboLimit||1)} · settled profit ${polyUsd(ap.settledProfitUsd)}<br>Next slot bankroll: ${ap.nextComboEquityUsd?polyUsd(ap.nextComboEquityUsd):"max slots"} with settled winnings<br>Exposure ${polyUsd(ap.openExposureUsd)} / cap ${polyUsd(ap.exposureCapUsd)} · last run ${polyTime(ap.lastRunAt)}<br>Last action: ${polyEscape(ap.lastAction||'—')}<br><span class="muted">Skipped: ${skipped||'—'}</span></div></fieldset><fieldset><legend>Fast-turnover filter</legend><p>${polyEscape(st.rule||'Live only · late stage · fresh score stream · high-probability paper candidates · liquid markets.')}</p><p class="muted">Scanner funnel: ${Number(diag.accepted||0)} accepted / ${Number(diag.total||0)} markets${rejects?' · '+rejects:''}</p><p class="muted">Paper bankroll auto-refills to $25 after a full bust once all open positions are settled. Auto refills: ${Number(p.autoResets||0)}</p><label>Paper stake USD</label><input class="field" id="polyStake" type="number" min="0.25" step="0.25" value="${polyEscape(polyStakeValue)}" style="width:100%"><div class="toolbar" style="margin-top:6px"><button class="btn" id="polyPaperBet" ${chosen.length<2?'disabled':''}>Record Paper Combo</button><button class="btn" id="polyPaperSingle" ${chosen.length===1?'':'disabled'}>Record Single</button></div><div class="muted" style="font-size:10px">${chosen.length} row${chosen.length===1?'':'s'} checked · combo needs 2+, single needs exactly 1.</div>${quoteLine}<div class="toolbar"><button class="btn polyReset" data-v="25">Reset $25</button><button class="btn polyReset" data-v="100">$100</button></div></fieldset><fieldset><legend>Open paper positions · ${posList.length}</legend>${positions}</fieldset><fieldset><legend>Legacy sports research connector</legend><b class="green">PAPER / SHADOW</b><p>This lower section remains the fast sports research lab. Real U.S. account connectivity and manual-confirm execution live in the Polymarket US suite above.</p></fieldset></div></div></div>`;
- $('#polyStake')?.addEventListener('input',e=>{polyStakeValue=e.target.value});
- $('#polyApMode')?.addEventListener('change',e=>{polyApDraft.mode=e.target.value});
- $('#polyApStakeSingle')?.addEventListener('input',e=>{polyApDraft.stakeSingleUsd=e.target.value});
- $('#polyApStakeCombo')?.addEventListener('input',e=>{polyApDraft.stakeComboUsd=e.target.value});
- $('#polyApMaxOpen')?.addEventListener('input',e=>{polyApDraft.maxOpenPct=e.target.value});
- $$('.polyLeg').forEach(el=>el.onchange=()=>{const m=c[Number(el.dataset.i)];if(!m)return;const id=String(m.marketId);if(el.checked)polySelected.add(id);else polySelected.delete(id);polyModuleSig.delete('paper');renderSportsbook()});
- const autopilotPost=async patch=>{
-  try{const res=await post('/api/polymarket/autopilot',patch);
-   if(!res?.ok)return showDialog('Sportsbook Paper Lab','Autopilot not updated',res?.error||'The trading service rejected the autopilot change.');
-   polyApDraft={};
-  }catch(e){showDialog('Sportsbook Paper Lab','Autopilot not updated',e.message)}
-  finally{await refreshPolymarket()}
- };
- $('#polyApToggle')?.addEventListener('click',()=>autopilotPost({enabled:!apOn}));
- $('#polyApApply')?.addEventListener('click',()=>autopilotPost({mode:$('#polyApMode')?.value||apMode,stakeSingleUsd:Number($('#polyApStakeSingle')?.value),stakeComboUsd:Number($('#polyApStakeCombo')?.value),maxOpenPct:Number($('#polyApMaxOpen')?.value)}));
- $('#polyApRun')?.addEventListener('click',async()=>{const r=await post('/api/polymarket/autopilot/run',{}).catch(e=>({ok:false,error:e.message}));if(!r?.ok)showDialog('Sportsbook Paper Lab','Autopilot run failed',r?.error||'Unknown error');await refreshPolymarket()});
- $('#polyPaperBet')?.addEventListener('click',async()=>{
-  if(polySubmitting)return;polySubmitting=true;$('#polyPaperBet').disabled=true;
-  try{const legs=[...$$('.polyLeg:checked')].map(el=>c[Number(el.dataset.i)]).filter(Boolean);const result=await post('/api/polymarket/paper-combo',{legs,stakeUsd:Number(polyStakeValue)});
-   if(!result?.ok){showDialog('Sportsbook Paper Lab','Paper combo rejected',result?.error||'Unknown error');return}
-   const pos=result.position||{};polySelected.clear();polyAutoSeedKey=seedKey;showDialog('Sportsbook Paper Lab','Paper combo placed',`${legs.length} live legs · $${fmt(pos.stakeUsd,2)} paper stake · ${fmt(pos.decimalOdds,2)}× modeled net odds`);
-  }catch(e){showDialog('Sportsbook Paper Lab','Could not record combo',e.message)}finally{polySubmitting=false;await refreshPolymarket()}
- });
- $('#polyPaperSingle')?.addEventListener('click',async()=>{
-  if(polySubmitting)return;const leg=[...$$('.polyLeg:checked')].map(el=>c[Number(el.dataset.i)]).filter(Boolean)[0];
-  if(!leg)return showDialog('Sportsbook Paper Lab','No leg selected','Check exactly one candidate row to record a single.');
-  polySubmitting=true;$('#polyPaperSingle').disabled=true;
-  try{const result=await post('/api/polymarket/paper-single',{leg,stakeUsd:Number(polyStakeValue)});
-   if(!result?.ok){showDialog('Sportsbook Paper Lab','Paper single rejected',result?.error||'Unknown error');return}
-   const pos=result.position||{};polySelected.clear();polyAutoSeedKey=seedKey;showDialog('Sportsbook Paper Lab','Paper single placed',`${leg.outcome||leg.question||'leg'} · $${fmt(pos.stakeUsd??Number(polyStakeValue),2)} paper stake · fill ${fmt(Number(pos.fillPrice??leg.fillPrice??leg.price)*100,1)}%`);
-  }catch(e){showDialog('Sportsbook Paper Lab','Could not record single',e.message)}finally{polySubmitting=false;await refreshPolymarket()}
- });
- $$('.polyReset').forEach(b=>b.onclick=async()=>{polySelected.clear();polyAutoSeedKey=seedKey;await post('/api/polymarket/reset',{amountUsd:Number(b.dataset.v)});await refreshPolymarket()});
-}
-
 function renderNetwork(){
  const n=networkState||{},self=n.self||{},peers=n.peers||[],online=peers.filter(p=>p.online),msgs=n.messages||[],events=n.events||[];
  const esc=v=>String(v??'—').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
@@ -935,7 +842,7 @@ function renderProductEconomics(){
 function renderAll(force=false){
  if(force)renderSig.clear(); const s=state||{},m=s.system?.metrics||{},e=s.evolutionLoop||{},p=s.portfolio||{}; const t0=performance.now();
  renderChanged('trade',[p.equitySol,p.cashSol,s.dailyPnlSol,s.system?.health,s.watchlist,s.positions],renderTrade);
- renderChanged('sportsbook',polyState,renderSportsbook);
+ renderChanged('sportsbook',[polyUSComboState,polyUSState],renderSportsbook);
  renderChanged('robinhood',rhState,renderRobinhood);
  renderChanged('researchmon',researchMonitor,renderResearchMonitor);
  renderChanged('journal',[projectJournal,journal,journalFilter,journalQuery],renderJournal);
@@ -966,7 +873,6 @@ async function refreshState(){
    perf.refreshMs=performance.now()-t0;trackRealizedProfitBurst();updateDesktopEffects();renderAll();
  }catch(e){const led=$('#feedLed');if(led){led.classList.add('bad');led.style.background='var(--mpo-led-bad)'}if(!state)showDialog('Money Printer OS','Backend connection lost','The desktop is running, but the local trading service is unavailable. Money Printer OS will keep retrying automatically.')}
 }
-async function refreshPolymarket(){if(polyRefreshBusy)return;polyRefreshBusy=true;try{const r=await fetch('/api/polymarket',{cache:'no-store',signal:AbortSignal.timeout(25000)});if(!r.ok)throw new Error('Sportsbook HTTP '+r.status);const next=await r.json();if(!next.feed||!next.paper)throw new Error('Invalid sportsbook response');polyState=next}catch(e){polyState={...polyState,feed:{...(polyState.feed||{}),ok:false,error:e.message||'Polymarket feed unavailable'}}}finally{polyRefreshBusy=false;renderSig.delete('sportsbook');renderAll()}}
 async function refreshPolymarketUS(){try{const r=await fetch('/api/polymarket-us',{cache:'no-store',signal:AbortSignal.timeout(30000)});if(r.ok)polyUSState=await r.json();else polyUSState={...polyUSState,error:'US API '+r.status}}catch(e){polyUSState={...polyUSState,error:e.message||'Polymarket US unavailable'}}renderSig.delete('sportsbook');renderAll()}
 function scheduleUSComboBuild(){
  if(usComboBuildTimer)clearTimeout(usComboBuildTimer);
@@ -1012,11 +918,10 @@ function boot(){
  let i=0;
  const tick=()=>{if(i>=steps.length){setTimeout(()=>$('#boot').classList.add('hide'),250);return}$('#bootText').textContent=steps[i][0];$('#bootBar').style.width=steps[i][1]+'%';i++;setTimeout(tick,180)};tick();
 }
-buildIcons();buildWindows();buildStart();boot();refreshRobinhood();refreshJournal();refreshProjectJournal();refreshNetwork();refreshPolymarket();refreshPolymarketUS();refreshUSComboSnapshot();refreshUpdater();refreshResearchMonitor();refreshState();
+buildIcons();buildWindows();buildStart();boot();refreshRobinhood();refreshJournal();refreshProjectJournal();refreshNetwork();refreshPolymarketUS();refreshUSComboSnapshot();refreshUpdater();refreshResearchMonitor();refreshState();
 refreshProductEconomics();
 setInterval(()=>{if(!document.hidden)refreshState()},1500);
 setInterval(()=>{if(!document.hidden)refreshNetwork()},5000);
-setInterval(()=>{if(!document.hidden)refreshPolymarket()},5000);
 setInterval(()=>{if(!document.hidden&&windowVisible('sportsbook')&&polyModules.us.visible&&polyModules.us.open)refreshPolymarketUS()},15000);
 setInterval(()=>{if(!document.hidden&&windowVisible('sportsbook')&&polyModules.combos.visible&&polyModules.combos.open)refreshUSComboSnapshot()},5000);
 setInterval(()=>{if(!document.hidden)refreshUpdater()},15000);

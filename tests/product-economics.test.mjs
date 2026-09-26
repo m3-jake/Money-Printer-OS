@@ -140,16 +140,17 @@ test('retention uses mature activation cohorts and real return days, not future 
   assert.equal(l.summary({now:BASE}).eventCount,2);
 });
 
-test('cookie persists visits and server-confirmed paper activation without recording fake money',t=>{
+test('cookie persists visits and server-confirmed combo-build activation without recording fake money',t=>{
   const l=fixture(t),headers={},res={setHeader:(k,v)=>headers[k]=v};
   const req={headers:{host:'127.0.0.1:8792'},socket:{}};
   l.recordVisit(req,res,new URL('http://127.0.0.1/?utm_source=pilot&utm_medium=referral'));
   assert.match(headers['set-cookie'],/HttpOnly; SameSite=Strict/);
   req.headers.cookie=headers['set-cookie'].split(';')[0];
   l.recordVisit(req,res,new URL('http://127.0.0.1/'));
-  l.recordPaperActivation(req,{ok:false});assert.equal(l.summary().totals.activatedUsers,0);
-  l.recordPaperActivation(req,{ok:true,position:{id:'paper-1'}});
-  l.recordPaperActivation(req,{ok:true,position:{id:'paper-2'}});
+  l.recordComboBuildActivation(req,{ok:false});assert.equal(l.summary().totals.activatedUsers,0);
+  l.recordComboBuildActivation(req,{ok:true,combo:{legs:[{}]}});assert.equal(l.summary().totals.activatedUsers,0);
+  l.recordComboBuildActivation(req,{ok:true,combo:{legs:[{},{}]}});
+  l.recordComboBuildActivation(req,{ok:true,combo:{legs:[{},{},{}]}});
   const s=l.summary();assert.equal(s.totals.visitors,1);assert.equal(s.totals.activatedUsers,1);assert.equal(s.totals.netRevenueUsd,0);assert.equal(s.totals.payingUsers,0);assert.equal(s.bySource[0].attribution.source,'pilot');
   const forged={headers:{cookie:req.headers.cookie.replace(/.$/,'z')},socket:{}};
   assert.equal(l.visitor(forged,null),null);
