@@ -4,7 +4,7 @@
 (`CURRENT_TASKS.md`, `KNOWN_BUGS.md`, `PROJECT_STATE.md`, `RELEASE_STATUS.md`) and in `reports/NEXT-STEPS-2026-09-25.md`.
 Don't re-inventory the repo. Update this file at the end of every batch.
 
-Last updated: 2026-09-26, batch 25 (Polymarket combo module PARKED: no combo beta access). Branch `feature/polymarket-combo-only`, version `0.5.0-alpha.57`.
+Last updated: 2026-09-26, batch 26 (alpha.58 built, installed and verified). Branch `feature/polymarket-combo-only`, version `0.5.0-alpha.57`.
 
 ## Architecture (inventoried once)
 
@@ -498,3 +498,20 @@ What was finished and committed before parking (all tested; nothing can place wi
 - Tests: the deletion-pinning tests were replaced with 14 guard tests plus 1 settlement-shape test. Full trader sweep `node --test tests/*.mjs tests/*.cjs` **609 pass / 0 fail**.
 - Still running while parked: the research collector's public-data evidence tick (legs tape, outcomes, shadow). Turn it off with `MPO_POLY_US_EVIDENCE=false` if unwanted. The Lab `polymarket-combo` worker (default in `MPO_LAB_MODULES`) only reads those tapes.
 - Not done (was batch 6): version bump, Windows build/install, live verification.
+
+## Batch 26 (2026-09-26): alpha.58 build, install and live verification
+
+- Tests: trader `npm run test:all` **609 pass / 0 fail**.
+- Lab `npm run test:all`: 1 failure, `tests/lab-server.test.mjs` roster pin (`['polymarket','robinhood']`), broken by my Lab commit `c65b06a` registering `polymarket-combo`. **Not fixed here:** a parallel session ("Money Printer Evolution Lab startup issue") owns the Lab repo and its install (commits 893b6b7, 44f4e0d). It was asked to fix the roster test and to leave `polymarket-combo` out of the default `MPO_LAB_MODULES` (parked). The Lab was not built or installed by this session.
+- Version `0.5.0-alpha.58` (`6dd3a70`: package.json, package-lock.json, robinhoodTransport.js).
+- **Build** from the clean tested commit: `Desktop\Money Printer OS\Windows-6dd3a70-20260926\app.asar`, release `0.5.0-alpha.58+windows.6dd3a70`, sha256 `f7e18a3053abecd57f6bc81afde2fa7dab376d5d2fd7e0cdee82eff6df10e0cd`, 30,464,332 bytes, 2,639 entries. Contains `public/js/mpo-viz.js` and `src/polymarketUSEvidence.js`; no `.env` or tests.
+- The installed app was closed gracefully (taskkill without /F), freeing 8792. `smoke:windows` on 8792 passed (dashboard 200, health 200, isolated temp data dir).
+- **Install:** the previous `resources\app.asar` (alpha.57, sha `635DD4A3…`, 30,366,811 bytes) was backed up as `resources\app.asar.alpha57-a244ffb-backup-20260926`. The new archive was copied in and its hash matches the build. Relaunched from `%LOCALAPPDATA%\Programs\money-printer-os`.
+- **Verified live (8792):**
+  - `/api/state`: alpha.58, mode paper, HEALTHY.
+  - `/api/polymarket-us/account`: keyStatus **VERIFIED** (signed call OK), balance $10.10 USD, buying power $10.10, 0 open orders. Unknown balance fields (names only): depositReservation, bonusReservation, displayedBonus, displayedAvailableSoon, displayedCash, availableToWithdraw, bonusHold.
+  - Feed: 905 events over 4 pages, 66 live, 64 combo-enabled, all 64 on the board, 2 eligible (NEAR_END).
+  - Auto combo: OFF. Blockers: session not armed, and shadow NEAR_END 0/20 settled. betaAccess shows `unknown` after the restart; the 403 returns on the first combo call.
+  - Evidence collector running (2 scans, 82 leg rows, 61 legs tracked).
+  - `/js/mpo-viz.js` 200; a `/js/..%2Fdashboard.html` traversal attempt returns 404.
+- **Rollback:** quit the app, then copy `resources\app.asar.alpha57-a244ffb-backup-20260926` over `resources\app.asar`.
