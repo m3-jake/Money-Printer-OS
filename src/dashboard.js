@@ -5,6 +5,7 @@ import { dataCoverage } from './dataCoverage.js';
 import { solanaBookView } from './solanaEconomics.js';
 import { traderSwitches } from './killSwitches.js';
 import { robinhoodReadiness } from './robinhoodAutoTrader.js';
+import { holderRpcHealth } from './rpc.js';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -343,6 +344,7 @@ function snapshot() {
     liveExecution: 'manual',
     walletIntel: {
       wallets: Object.values(s.research?.walletProfiles || {}).sort((a,b)=>(b.recurrenceScore||0)-(a.recurrenceScore||0)).slice(0,24),
+      holderRpc: holderRpcHealth(),
     },
     researchSummary: {
       universeCount: Object.keys(s.research?.universe || {}).length,

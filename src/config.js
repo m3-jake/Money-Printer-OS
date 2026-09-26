@@ -20,7 +20,7 @@ export const cfg={
  breakEvenTriggerPct:num('BREAK_EVEN_TRIGGER_PCT',8), maxHoldMin:num('MAX_HOLD_MIN',60), cooldownMin:num('COOLDOWN_MIN',30),
  maxSlippageBps:num('MAX_SLIPPAGE_BPS',300), simulatedSlippageBps:num('SIMULATED_SLIPPAGE_BPS',80), simulatedFeeBps:num('SIMULATED_FEE_BPS',25),
  minSolReserve:num('MIN_SOL_RESERVE',.02),
- jupiterApiKey:str('JUPITER_API_KEY'), privateKey:str('BS58_PRIVATE_KEY'), rpcUrl:str('SOLANA_RPC_URL','https://api.mainnet-beta.solana.com'),
+ jupiterApiKey:str('JUPITER_API_KEY'), privateKey:str('BS58_PRIVATE_KEY'), rpcUrl:str('SOLANA_RPC_URL','https://api.mainnet-beta.solana.com'), holderRpcUrl:str('HOLDER_RPC_URL').trim(), holderRpcDailyCalls:Math.max(0,num('HOLDER_RPC_DAILY_CALLS',25000)||0),
  backupRpcUrls:str('BACKUP_RPC_URLS').split(',').map(x=>x.trim()).filter(Boolean), telegramBotToken:str('TELEGRAM_BOT_TOKEN'),
  telegramChatId:str('TELEGRAM_CHAT_ID'), alertWebhookUrl:str('ALERT_WEBHOOK_URL'), enableLiveTrading:bool('ENABLE_LIVE_TRADING',false), jitoEnabled:bool('JITO_ENABLED',false), jitoBlockEngineUrl:str('JITO_BLOCK_ENGINE_URL','https://mainnet.block-engine.jito.wtf/api/v1/transactions'), jitoAuth:str('JITO_AUTH'), socialFeedUrl:str('SOCIAL_FEED_URL'), socialFeedToken:str('SOCIAL_FEED_TOKEN'), heliusApiKey:str('HELIUS_API_KEY'), txFeedUrl:str('TX_FEED_URL'), txFeedToken:str('TX_FEED_TOKEN'), alphaWorkerEnabled:bool('ALPHA_WORKER_ENABLED',false), alphaTxMinEdge:num('ALPHA_TX_MIN_EDGE',45), programLogIds:str('PROGRAM_LOG_IDS').split(',').map(x=>x.trim()).filter(Boolean), directStreamEnabled:bool('DIRECT_STREAM_ENABLED',false)
 };
