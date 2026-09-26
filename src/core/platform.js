@@ -24,6 +24,7 @@ import { MACRO_INDICATORS,FredSource,transform as macroTransform,impliedLadder,a
 import { EdgarSource,analyseFiling } from './edgar.js';
 import { WEATHER_CITIES,WeatherSource,bucketLadder,weatherLinks } from './weather.js';
 import { buildSportsEvents,mlbLive,nhlLive,attachLive } from './sports.js';
+import { tokenGraph,whaleFlow,walletView,authorityOf } from './whales.js';
 import { WIRE_FEEDS,WIRE_FILTERS,parseRss,extractEntities,relatedMarkets,importance,categoriesOf } from './wire.js';
 export const SPORTS_SERIES=['KXMLBGAME','KXNFLGAME','KXNCAAFGAME','KXNHLGAME','KXNBAGAME','KXWNBAGAME','KXATPMATCH','KXWTAMATCH','KXTTSTARMATCH','KXTTELITEMATCH','KXUEFANLGAME','KXMLSGAME','KXEPLGAME'];
 import { ReplaySession,runReplay,readTape,tapeSymbols,bookRecords,fetchAlpacaMinutes,REPLAY_STRATEGIES,strategyParams } from './replay.js';
@@ -34,7 +35,9 @@ const swapSides=book=>({...book,yes:book.no,no:book.yes});
 
 export class MarketPlatform {
   constructor({file=':memory:',dataDir=null,providers=null,stockQuotes=undefined,stockClock=undefined,stockSession=undefined}={}){
-    this.store=new CoreDatabase(file);this.ledger=new UnifiedLedger(this.store);this.bus=new MarketEventBus();this.risk=new RiskGovernor(this.store,this.ledger,this.bus);this.strategies=new StrategyRegistry(this.store);this.legacyReaders={};this.replays=new Map();this.fred=new FredSource();this.macroCache=null;this.edgar=new EdgarSource();this.weather=new WeatherSource();this.weatherCache=null;this.sportsCache=null;this.sportsLive=new Map();this.sportsFetch=(url,opt)=>globalThis.fetch(url,opt);this.wireFetch=(url,opt)=>globalThis.fetch(url,opt);this.wireFeeds=new Map();
+    this.store=new CoreDatabase(file);this.ledger=new UnifiedLedger(this.store);this.bus=new MarketEventBus();this.risk=new RiskGovernor(this.store,this.ledger,this.bus);this.strategies=new StrategyRegistry(this.store);this.legacyReaders={};this.replays=new Map();this.fred=new FredSource();this.macroCache=null;this.edgar=new EdgarSource();this.weather=new WeatherSource();this.weatherCache=null;this.sportsCache=null;this.sportsLive=new Map();this.sportsFetch=(url,opt)=>globalThis.fetch(url,opt);this.wireFetch=(url,opt)=>globalThis.fetch(url,opt);this.wireFeeds=new Map();this.whaleSeenTs=Date.now();
+    this.store.db.exec(`CREATE TABLE IF NOT EXISTS wallet_labels(address TEXT PRIMARY KEY, label TEXT NOT NULL, note TEXT NOT NULL, at INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS wallet_label_events(seq INTEGER PRIMARY KEY AUTOINCREMENT, address TEXT NOT NULL, label TEXT, note TEXT NOT NULL, at INTEGER NOT NULL);`);
     this.store.db.exec(`CREATE TABLE IF NOT EXISTS lab_runs(id TEXT PRIMARY KEY, at INTEGER NOT NULL, source TEXT NOT NULL, key TEXT NOT NULL, start_ms INTEGER NOT NULL, end_ms INTEGER NOT NULL,
       strategy TEXT NOT NULL, params TEXT NOT NULL, dataset_fp TEXT NOT NULL, records INTEGER NOT NULL, code_version TEXT NOT NULL, machine TEXT NOT NULL, seed TEXT, result TEXT NOT NULL);
       CREATE TRIGGER IF NOT EXISTS lab_runs_no_update BEFORE UPDATE ON lab_runs BEGIN SELECT RAISE(ABORT,'Experiment records are append-only'); END;
@@ -338,6 +341,35 @@ export class MarketPlatform {
     items.sort((a,b)=>b.at-a.at);
     return {at:now,feeds,items:items.slice(0,400),filters:WIRE_FILTERS,counts:Object.fromEntries(WIRE_FILTERS.map(f=>[f,f==='ALL'?items.length:items.filter(i=>i.categories.includes(f)).length])),
       note:'Items are source facts (title, time, link). Entities, related markets, "my positions" and importance are rule-based analysis. Scheduled macro items are dated by the Kalshi close.'};
+  }
+  // Whale Watch over the engine's research state and indexed swaps (readers set by the host).
+  whaleInputs({since=Date.now()-7*86400000,limit=20000}={}){
+    // Reader failures are reported, never turned into silent empty data.
+    let researchError=null,eventsError=null;
+    const r=(()=>{try{return this.legacyReaders.solanaResearch?.()||null;}catch(e){researchError=String(e.message||e).slice(0,200);return null;}})();
+    const events=(()=>{try{return this.legacyReaders.txEvents?.({since,limit})||[];}catch(e){eventsError=String(e.message||e).slice(0,200);return [];}})();
+    const labels=Object.fromEntries(this.store.db.prepare('SELECT * FROM wallet_labels').all().map(l=>[l.address,{label:l.label,note:l.note,at:l.at}]));
+    return {available:{research:!!r,events:events.length,researchError,eventsError},universe:r?.universe||{},wallets:r?.walletProfiles||{},deployers:r?.deployerProfiles||{},events,labels};
+  }
+  whaleSnapshot({minSol=10}={}){
+    const inp=this.whaleInputs(),flow=whaleFlow(inp.events,{minSol:Math.max(0.1,Number(minSol)||10),universe:inp.universe,labels:inp.labels});
+    for(const f of flow.filter(f=>f.ts>this.whaleSeenTs))this.bus.publish('WALLET_ACTIVITY',{wallet:f.wallet,side:f.side,sol:f.sol,mint:f.mint,ts:f.ts});
+    if(flow.length)this.whaleSeenTs=Math.max(this.whaleSeenTs,...flow.map(f=>f.ts));
+    const authorities=Object.values(inp.deployers).map(d=>({address:d.address,tokens:Object.keys(d.mints||{}).length,lastSeen:d.lastSeen||null,label:inp.labels[d.address]||null})).sort((a,b)=>b.tokens-a.tokens).slice(0,30);
+    const recurring=Object.values(inp.wallets).sort((a,b)=>(b.seen||0)-(a.seen||0)).slice(0,30).map(w=>({address:w.address,tokensSeen:w.seen,recurrenceScore:w.recurrenceScore??null,label:inp.labels[w.address]||null}));
+    const tokens=Object.values(inp.universe).sort((a,b)=>(b.lastSeen||0)-(a.lastSeen||0)).slice(0,60).map(t=>({mint:t.mint,symbol:t.symbol||null,lastSeen:t.lastSeen||null,authority:authorityOf(t.mint,inp.deployers)?.address||null}));
+    let scorecard=null;try{scorecard=this.legacyReaders.walletScorecard?.()||null;}catch{}
+    return {at:Date.now(),available:inp.available,flow,authorities,recurring,tokens,scorecard,labels:inp.labels,exchangeFlows:'UNAVAILABLE (needs exchange wallet attribution)',
+      note:'Observed on-chain activity and rule-based flags. Wallet behaviour is not identity or intent. Labels are your own notes.'};
+  }
+  whaleToken(mint){const s=String(mint||'').trim();if(!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(s))throw new Error('Invalid Solana mint address');return tokenGraph(s,this.whaleInputs());}
+  whaleWallet(address){const s=String(address||'').trim();if(!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(s))throw new Error('Invalid Solana address');const inp=this.whaleInputs();let score=null;try{score=(this.legacyReaders.walletScorecard?.()?.wallets||[]).find(w=>w.wallet===s||w.address===s)||null;}catch{}return walletView(s,{...inp,score});}
+  labelWallet({address,label,note=''}){
+    const a=String(address||'').trim();if(!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(a))throw new Error('Invalid Solana address');
+    const l=String(label||'').trim().slice(0,60),n=String(note||'').slice(0,500),now=Date.now();
+    this.store.transaction(()=>{if(l)this.store.db.prepare('INSERT INTO wallet_labels VALUES(?,?,?,?) ON CONFLICT(address) DO UPDATE SET label=excluded.label,note=excluded.note,at=excluded.at').run(a,l,n,now);else this.store.db.prepare('DELETE FROM wallet_labels WHERE address=?').run(a);
+      this.store.db.prepare('INSERT INTO wallet_label_events(address,label,note,at) VALUES(?,?,?,?)').run(a,l||null,n,now);});
+    return {address:a,label:l||null,note:n};
   }
   async edgarLatest(form='8-K'){return {status:this.edgar.status(),form,filings:this.recordFilings(await this.edgar.latest(form))};}
   async edgarCompany(ticker){const {filingsFromSubmissions}=await import('./edgar.js');const sub=await this.edgar.company(ticker);return {status:this.edgar.status(),company:sub.name,cik:sub.cik,tickers:sub.tickers,sic:sub.sicDescription||null,filings:this.recordFilings(filingsFromSubmissions(sub,{limit:60}))};}

@@ -24,6 +24,9 @@ export async function handlePlatformRequest(req,res,url,{json,body,platform=mark
       if(route==='/lab/runs')return json(res,{ok:true,runs:platform.labRuns(50)});
       if(route==='/macro')return json(res,{ok:true,...await platform.macroSnapshot({force:url.searchParams.get('force')==='1'})});
       if(route==='/macro/asof')return json(res,{ok:true,...await platform.macroAsOf({id:url.searchParams.get('id'),asOf:url.searchParams.get('asOf')})});
+      if(route==='/whales')return json(res,{ok:true,...platform.whaleSnapshot({minSol:url.searchParams.get('minSol')})});
+      if(route==='/whales/token')return json(res,{ok:true,...platform.whaleToken(url.searchParams.get('mint'))});
+      if(route==='/whales/wallet')return json(res,{ok:true,...platform.whaleWallet(url.searchParams.get('address'))});
       if(route==='/wire')return json(res,{ok:true,...await platform.wireSnapshot({force:url.searchParams.get('force')==='1'})});
       if(route==='/sports')return json(res,{ok:true,...await platform.sportsSnapshot({force:url.searchParams.get('force')==='1'})});
       if(route==='/weather')return json(res,{ok:true,...await platform.weatherSnapshot({force:url.searchParams.get('force')==='1'})});
@@ -53,6 +56,7 @@ export async function handlePlatformRequest(req,res,url,{json,body,platform=mark
       else if(route==='/lab/run')result=await platform.labRun(input);
       else if(route==='/lab/replay/start')result=await platform.labReplayStart(input);
       else if(route==='/lab/replay/step')result=platform.labReplayStep(input);
+      else if(route==='/whales/label')result=platform.labelWallet(input);
       else if(route==='/watchlist')result=platform.watch(input.id,input.on===true);
       else if(route==='/compare/verify')result=platform.verifyPair(input);
       else if(route==='/compare')result=await platform.compare(input);

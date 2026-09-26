@@ -1035,3 +1035,16 @@ Kalshi and Robinhood event contracts are already covered by the MPOS core platfo
 - **Live:** fed 20, BEA 48, CFTC 10 items; 173 total with weather/sports/macro calendar. Top items: FOMC statement/minutes (100, linked to 8 Fed-rate ladders) and GDP estimates (85).
 - **UI:** Wire window (WIR icon; next to Command Center on the desktop).
 - Tests: 2 new (RSS variants incl. CDATA/attributes, entities, related markets, importance, categories; snapshot stores NewsEvents at publish time, 5-min feed cache, my-positions flag via a real paper fill). `market-core` 52.
+
+## Batch AB (2026-09-26): Whale Watch (Solana wallet intelligence, Phase 4)
+
+- **New `src/core/whales.js`**, built on data the engine already records. It adds no new collection: research `universe` (tokens), `walletProfiles` (on-curve top holders per mint), `deployerProfiles` (**mint authority** → mints, labelled as mint authority because it is not always the deployer), alphaDb `tx_events` (signer swaps from the capped Helius indexer), and the wallet PnL scorecard.
+  - `tokenGraph(mint)`: token → mint authority → its other tokens; token → top holders → holders that also hold sibling tokens (overlap); first N buyers; buyers who were also early in sibling tokens; large swaps. Also returns a node/edge list for the graph.
+  - **Rule-based flags:** SERIAL_MINT_AUTHORITY (≥5 tokens), MINT_AUTHORITY_PRESENT, HOLDER_OVERLAP, REPEAT_EARLY_BUYERS. Each says explicitly that it isn't proof of coordination or identity. Exchange inflows/outflows are **UNAVAILABLE** (MPOS has no exchange wallet attribution).
+  - `whaleFlow` lists large swaps; new ones publish `WALLET_ACTIVITY`. `walletView` shows everything observed about one address.
+- **Wallet labels** are user notes: `wallet_labels` holds the current value, and `wallet_label_events` is an append-only history.
+- **Readers** come from the dashboard (research state, tx_events query, scorecard). Reader failures show in the window instead of turning into empty data. The first draft had a missing `alphaDb` import that would have looked like "no swaps"; that is now visible and tested.
+- **UI:** **Whale Watch is a tab of the Pump.fun window** (it extends the Solana terminal rather than being a separate app). It has: availability line, token/wallet lookup, radial relationship graph (SVG), flags, authority/siblings, early buyers, large swaps, whale-flow table with a min-SOL setting, top mint authorities, recurring holders, recently scanned tokens, and a wallet pane with a label form.
+- **Live (isolated):** research loaded, 60 recently scanned tokens; no holder, authority or swap data here (no Helius key). The installed app has holder RPC running and will show more.
+- Tests: 2 new (graph, overlap, repeat-early, flags; flow; wallet view; label history; reader failure reported). `market-core` 54.
+- **Phase 4 complete** (FRED/Macro, EDGAR, Wire, Sports, Weather, Whale Watch). Next: Phase 5 event correlation / Command Center event pages.

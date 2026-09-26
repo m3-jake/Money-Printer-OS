@@ -27,6 +27,7 @@ import { filingsFromSubmissions,filingsFromAtom,parseForm4,analyseFiling,userAge
 import { bucketLadder,dailyHighs,parseAlerts,parseStorms,weatherLinks,WeatherSource } from '../src/core/weather.js';
 import { sportOf,familyOf,buildSportsEvents,mlbLive,nhlLive,attachLive } from '../src/core/sports.js';
 import { parseRss,extractEntities,relatedMarkets,importance,categoriesOf } from '../src/core/wire.js';
+import { tokenGraph,whaleFlow,walletView } from '../src/core/whales.js';
 import { StrategyRegistry,promotionCheck,labChampionLifecycle } from '../src/core/strategies.js';
 import { assertGlobalTradingNotHalted } from '../src/core/executionBoundary.js';
 import { localMutationAllowed } from '../src/core/http.js';
@@ -610,5 +611,40 @@ test('wire snapshot: stores RSS as NewsEvents at min(published, received), flags
   const fomc=w.items.find(i=>/FOMC/.test(i.title));assert.equal(fomc.importance,100);assert.equal(fomc.myPositions,true);assert.ok(fomc.categories.includes('MY POSITIONS'));
   assert.ok(w.items.some(i=>i.kind==='FILL'));
   const stored=p.store.list({kind:'NewsEvent'});assert.equal(stored.length,2);assert.equal(stored.find(n=>/FOMC/.test(n.data.title)).availableAt,Date.parse('2026-09-16T18:00:00Z'));
+  p.close();
+});
+
+const W=(n)=>('W'+String(n).padStart(3,'0')+'1111111111111111111111111111111111111').slice(0,44).replace(/0/g,'A');
+const M=(n)=>('M'+String(n).padStart(3,'0')+'pump111111111111111111111111111111111111').slice(0,44).replace(/0/g,'B');
+const AUTH='Auth1111111111111111111111111111111111111111'.slice(0,44);
+function whaleFixture(){
+  const universe={},wallets={},deployers={[AUTH]:{address:AUTH,mints:{},tokens:0}},events=[];
+  for(let i=1;i<=6;i++){universe[M(i)]={mint:M(i),symbol:'T'+i,firstSeen:i*1000};deployers[AUTH].mints[M(i)]=1;}
+  for(let w=1;w<=4;w++)wallets[W(w)]={address:W(w),tokens:{[M(1)]:1,[M(2)]:1,[M(3)]:1},seen:3,recurrenceScore:55};
+  let ts=10000;for(const m of [M(1),M(2)])for(let w=1;w<=3;w++)events.push({signature:'s'+ts,eventIndex:0,ts:ts++,slot:1,mint:m,wallet:W(w),side:'BUY',solDelta:-(w*2)});
+  events.push({signature:'big',eventIndex:0,ts:ts++,slot:1,mint:M(1),wallet:W(9),side:'SELL',solDelta:40});
+  return {universe,wallets,deployers,events,labels:{[W(9)]:{label:'my note'}}};
+}
+test('whale token graph: authority, siblings, holder overlap, early buyers, big swaps, labelled flags',()=>{
+  const g=tokenGraph(M(1),{...whaleFixture(),earlyN:3,bigSol:5});
+  assert.equal(g.authority.address,AUTH);assert.equal(g.siblings.length,5);assert.equal(g.holders.length,4);
+  assert.equal(g.overlap.length,4);assert.deepEqual(g.early.map(b=>b.wallet),[W(1),W(2),W(3)]);
+  assert.equal(g.repeatEarly.length,3);// all three were early in sibling M(2) too
+  assert.equal(g.bigSwaps[0].wallet,W(9));assert.equal(g.bigSwaps[0].sol,40);
+  assert.deepEqual(g.flags.map(f=>f.code).sort(),['HOLDER_OVERLAP','MINT_AUTHORITY_PRESENT','REPEAT_EARLY_BUYERS','SERIAL_MINT_AUTHORITY']);
+  assert.match(g.flags.find(f=>f.code==='REPEAT_EARLY_BUYERS').detail,/not proof/);assert.match(g.exchangeFlows,/UNAVAILABLE/);
+  assert.ok(g.edges.some(e=>e.relation==='MINT_AUTHORITY_OF')&&g.edges.some(e=>e.relation==='EARLY_BUY'));
+  const none=tokenGraph(M(99),whaleFixture());assert.equal(none.authority,null);assert.deepEqual(none.flags,[]);
+});
+test('whale flow and wallet view; labels are append-only user notes; reader failures are reported',()=>{
+  const fx=whaleFixture();
+  const flow=whaleFlow(fx.events,{minSol:10,universe:fx.universe,labels:fx.labels});assert.equal(flow.length,1);assert.equal(flow[0].label,'my note');assert.equal(flow[0].symbol,'T1');
+  const v=walletView(W(1),fx);assert.equal(v.holderOf.length,3);assert.equal(v.swaps.length,2);assert.equal(v.netSolFromSwaps,-4);assert.match(v.note,/not identity/);
+  const p=new MarketPlatform({providers:new ProviderRegistry()});
+  p.setLegacyReaders({solanaResearch:()=>({universe:fx.universe,walletProfiles:fx.wallets,deployerProfiles:fx.deployers}),txEvents:()=>{throw new Error('alphaDb is not defined');}});
+  const s=p.whaleSnapshot({minSol:10});assert.equal(s.available.research,true);assert.match(s.available.eventsError,/alphaDb/);assert.equal(s.authorities[0].tokens,6);
+  assert.throws(()=>p.whaleToken('not a mint'),/Invalid/);assert.equal(p.whaleToken(M(1)).authority.address,AUTH);
+  p.labelWallet({address:W(1),label:'fast flipper?',note:'guess'});p.labelWallet({address:W(1),label:''});
+  assert.equal(p.store.db.prepare('SELECT COUNT(*) n FROM wallet_labels').get().n,0);assert.equal(p.store.db.prepare('SELECT COUNT(*) n FROM wallet_label_events').get().n,2);
   p.close();
 });
