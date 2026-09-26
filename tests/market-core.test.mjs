@@ -116,7 +116,7 @@ test('matching needs complete verified settlement terms, never just equal titles
 test('arbitrage prices both complementary books with depth, fees and stale-data refusal',()=>{
   const a={...terms,venue:'kalshi'},b={...terms,venue:'polymarket'},book={observedAt:1000,yes:{asks:[{price:.4,quantity:2},{price:.6,quantity:2}]},no:{asks:[{price:.5,quantity:5}]}};
   const q=arbitrageQuote(a,b,book,book,{quantity:3,feeA:.01,feeB:.02,now:1000});
-  assert.ok(Math.abs(q.directions[0].capitalRequired-2.93)<1e-10);assert.ok(Math.abs(q.directions[0].theoreticalLockedReturn-.07)<1e-10);assert.equal(q.directions[0].riskFree,false);
+  assert.ok(Math.abs(q.directions[0].capitalRequired-2.93)<1e-10);assert.ok(Math.abs(q.directions[0].conditionalMatchedPayoff-.07)<1e-10);assert.equal(q.directions[0].theoreticalLockedReturn,null);assert.equal(q.directions[0].riskFree,false);
   for(const opts of [{quantity:5,feeA:0,feeB:0,now:1000},{quantity:1,now:1000},{quantity:1,feeA:0,feeB:0,now:50000}])assert.equal(arbitrageQuote(a,b,book,book,opts).directions[0].theoreticalLockedReturn,null);
 });
 test('Kalshi fixed-point dollars and reciprocal books preserve subcent prices',()=>{
@@ -169,7 +169,7 @@ test('core mutations reject cross-origin browser requests and remote clients',()
   assert.equal(localMutationAllowed(req),true);assert.equal(localMutationAllowed({...req,headers:{...req.headers,origin:'https://evil.example'}}),false);assert.equal(localMutationAllowed({...req,socket:{remoteAddress:'192.168.1.5'}}),false);assert.equal(localMutationAllowed({...req,headers:{host:'127.0.0.1:8897','content-type':'text/plain'}}),false);
 });
 
-const good={sampleSize:80,outOfSampleNetUsd:12,costsModeled:true,maxDrawdownPct:10,positiveFoldShare:.75,brier:.2};
+const good={evaluatorVersion:'market-replay.v2',verifiedEvaluatorOutput:true,sampleSize:80,effectiveSampleSize:75,outOfSampleNetUsd:12,costsModeled:true,maxDrawdownPct:10,positiveFoldShare:.75,brier:.2,lookAheadViolations:0,syntheticShare:0,pendingOpenPositions:0};
 test('promotion needs every criterion; one strong metric is never enough',()=>{
   assert.equal(promotionCheck('CANDIDATE',good,{probabilistic:true}).allowed,true);
   assert.equal(promotionCheck('CANDIDATE',{outOfSampleNetUsd:1e6}).allowed,false);
@@ -185,13 +185,16 @@ test('strategy lifecycle follows allowed edges, never reaches LIVE, and keeps ap
   assert.throws(()=>r.transition('tennis-fast','PAPER',{reason:'skip'}),/not allowed/);
   r.transition('tennis-fast','BACKTESTING',{reason:'start'});
   assert.throws(()=>r.transition('tennis-fast','PAPER',{reason:'no evidence'}),/SAMPLE_SIZE/);
-  r.transition('tennis-fast','PAPER',{reason:'walk-forward ok',evidence:good});
+  s.db.exec('CREATE TABLE lab_runs(id TEXT PRIMARY KEY,at INTEGER,dataset_fp TEXT,result TEXT)');
+  s.db.prepare('INSERT INTO lab_runs VALUES(?,?,?,?)').run('run-1',Date.now(),'dataset-1',JSON.stringify({evidence:good}));
+  r.attachEvidence('tennis-fast',{...good,labRunId:'run-1',datasetFp:'dataset-1'},'verified replay');
+  r.transition('tennis-fast','PAPER',{reason:'walk-forward ok'});
   assert.equal(r.transition('tennis-fast','CANDIDATE',{reason:'paper ok'}).promoted,true);
   assert.throws(()=>r.transition('tennis-fast','LIVE',{reason:'go'}),/unavailable/);
   assert.equal(r.transition('tennis-fast','PAUSED',{reason:'drawdown'}).state,'PAUSED');
   r.transition('tennis-fast','RETIRED',{reason:'done'});
   assert.throws(()=>r.transition('tennis-fast','DRAFT',{reason:'revive'}),/not allowed/);
-  assert.deepEqual(r.history('tennis-fast').map(h=>h.to_state),['DRAFT','BACKTESTING','PAPER','CANDIDATE','PAUSED','RETIRED']);
+  assert.deepEqual(r.history('tennis-fast').map(h=>h.to_state),['DRAFT','BACKTESTING','BACKTESTING','PAPER','CANDIDATE','PAUSED','RETIRED']);
   assert.throws(()=>s.db.exec('DELETE FROM strategy_transitions'),/append-only/);
   assert.throws(()=>s.db.exec("UPDATE strategy_transitions SET reason='x'"),/append-only/);
   s.close();
@@ -304,7 +307,7 @@ test('complement legs are priced from both books with fees; never flagged risk-f
   const match={classification:'EXACT MATCH',missing:[],differences:[],fields:[]};
   const q=arbitrageQuote({venue:'kalshi'},{venue:'polymarket'},book(.4,.62),book(.58,.45),{quantity:1,feeA:0,feeB:0,now:1000,match});
   // SAME orientation: YES(A) .40 + NO(B) .45 = .85 -> 0.15 locked.
-  assert.equal(q.directions[0].theoreticalLockedReturn.toFixed(2),'0.15');assert.equal(q.directions[0].riskFree,false);
+  assert.equal(q.directions[0].conditionalMatchedPayoff.toFixed(2),'0.15');assert.equal(q.directions[0].theoreticalLockedReturn,null);assert.equal(q.directions[0].riskFree,false);
 });
 
 test('regressions from the live check: lazy names; single-market fetch keeps the parent event',async()=>{
@@ -335,7 +338,7 @@ test("arbitrage prices fees on each direction's actual fills; unknown fees block
   const k=kalshiFeeModel({fee_type:'quadratic',fee_multiplier:1}).model,pm=polymarketFeeModel({feesEnabled:true,feeSchedule:{rate:'0.05',exponent:1}}).model;
   const q=arbitrageQuote({venue:'kalshi'},{venue:'polymarket'},book(.4,.62),book(.58,.45),{quantity:100,now:1000,match,feeModels:{a:k,b:pm}});
   const d=q.directions[0];// YES A @ .40 (fee .07*100*.24=1.68), NO B @ .45 (fee .05*100*.2475=1.2375)
-  assert.equal(d.feeA,1.68);assert.equal(d.feeB,1.2375);assert.equal(d.theoreticalLockedReturn.toFixed(4),(100-40-45-1.68-1.2375).toFixed(4));
+  assert.equal(d.feeA,1.68);assert.equal(d.feeB,1.2375);assert.equal(d.conditionalMatchedPayoff.toFixed(4),(100-40-45-1.68-1.2375).toFixed(4));assert.equal(d.theoreticalLockedReturn,null);
   const none=arbitrageQuote({venue:'kalshi'},{venue:'polymarket'},book(.4,.62),book(.58,.45),{quantity:100,now:1000,match,feeModels:{a:k,b:null}});
   assert.equal(none.directions[0].theoreticalLockedReturn,null);assert.ok(none.directions[0].blocked.includes('FEES_UNAVAILABLE'));
 });
@@ -410,11 +413,11 @@ test('Alpaca snapshot parsing keeps IEX sizes and timestamps; auth errors are la
 
 test('replay reveals data by availability: candle-derived samples only after their minute closes',()=>{
   const rec=tapeRecords([{t:60000,bid:10,ask:10,src:'coinbase-candles'},{t:75000,bid:12,ask:12,src:'coinbase-candles'},{t:80000,bid:11,ask:11.1,src:'robinhood'}],'X');
-  assert.deepEqual(rec.map(r=>r.availableAt),[120000,120000,80000]);assert.equal(rec[0].synthetic,true);assert.equal(rec[2].synthetic,false);
+  assert.deepEqual(rec.map(r=>r.availableAt),[80000]);assert.equal(rec[0].synthetic,false);
   const sess=new ReplaySession(rec,{start:60000,end:200000});
   assert.equal(sess.quote('X'),null);// nothing is knowable at 60 s, although two rows are stamped 60 s / 75 s
   sess.advanceTo(90000);assert.equal(sess.quote('X').bid,11);// the live quote at 80 s
-  sess.advanceTo(130000);assert.equal(sess.history('X').length,3);assert.equal(sess.quote('X').bid,12);
+  sess.advanceTo(130000);assert.equal(sess.history('X').length,1);assert.equal(sess.quote('X').bid,11);
   sess.advanceTo(100000);assert.equal(sess.clock,130000);// the clock never goes back
   assert.deepEqual(alpacaMinuteRecords([{t:'2025-06-10T13:30:00Z',c:200}],'AAPL')[0].availableAt,Date.parse('2025-06-10T13:31:00Z'));
 });
@@ -604,7 +607,7 @@ test('wire parsing and rule-based extraction: RSS variants, entities, related ma
   assert.equal(importance({kind:'SPORTS',title:'x',fastSettling:true}),30);
   assert.ok(categoriesOf({kind:'CORPORATE',entities:[{type:'crypto',key:'BTC'}],relatedMarkets:[{}],myPositions:true}).includes('MY POSITIONS'));
 });
-test('wire snapshot: stores RSS as NewsEvents at min(published, received), flags items touching held positions',async()=>{
+test('wire snapshot: stores RSS as NewsEvents at first receipt, flags items touching held positions',async()=>{
   const registry=new ProviderRegistry();
   registry.register({id:'kalshi',status:()=>({}),market:async()=>normalizeKalshi({ticker:'KXFED-26OCT-T4.00',event_ticker:'KXFED-26OCT',title:'Fed funds rate after Oct meeting above 4%?',status:'active'},Date.now(),{ticker:'KXFED',fee_type:'quadratic',fee_multiplier:1}),
     book:async()=>normalizeKalshiBook({orderbook_fp:{yes_dollars:[['0.4','100']],no_dollars:[['0.5','100']]}},Date.now()),markets:async()=>({markets:[],cursor:null})});
@@ -616,7 +619,7 @@ test('wire snapshot: stores RSS as NewsEvents at min(published, received), flags
   assert.equal(w.feeds.find(f=>f.id==='fed').status,'CONNECTED');assert.equal(w.feeds.find(f=>f.id==='bea').status,'DISCONNECTED');
   const fomc=w.items.find(i=>/FOMC/.test(i.title));assert.equal(fomc.importance,100);assert.equal(fomc.myPositions,true);assert.ok(fomc.categories.includes('MY POSITIONS'));
   assert.ok(w.items.some(i=>i.kind==='FILL'));
-  const stored=p.store.list({kind:'NewsEvent'});assert.equal(stored.length,2);assert.equal(stored.find(n=>/FOMC/.test(n.data.title)).availableAt,Date.parse('2026-09-16T18:00:00Z'));
+  const stored=p.store.list({kind:'NewsEvent'});assert.equal(stored.length,2);const news=stored.find(n=>/FOMC/.test(n.data.title));assert.equal(news.availableAt,news.data.receivedAt);assert.ok(news.availableAt>=news.data.publishedAt);
   p.close();
 });
 
@@ -681,7 +684,7 @@ test('walk-forward chooses parameters on the previous fold only; test folds cann
   assert.equal(a.folds.length,3);assert.equal(a.folds[0].train.candidates,4);
   // The last fold's data differs between a and b, but its training fold (the one before) is identical, so the choice is too.
   assert.deepEqual(a.folds[2].train.params,b.folds[2].train.params);assert.notEqual(a.folds[2].test.returnPct,b.folds[2].test.returnPct);
-  assert.equal(a.evidence.lookAheadViolations,0);assert.equal(a.evidence.costsModeled,true);assert.ok(a.evidence.positiveFoldShare>=0&&a.evidence.positiveFoldShare<=1);
+  assert.equal(a.evidence.lookAheadViolations,0);assert.equal(a.evidence.costsModeled,false);assert.ok(a.evidence.positiveFoldShare>=0&&a.evidence.positiveFoldShare<=1);
   assert.equal(paramGrid('momentum',{lookback:[1,2,3,4,5,6,7,8,9],thresholdBps:[1,2,3,4,5,6,7,8]}).length,64);assert.throws(()=>paramGrid('nope',{}),/Unknown/);
   assert.throws(()=>walkForward([],{key:'X',strategy:'momentum',folds:1,start:0,end:1}),/Folds/);
 });
@@ -762,7 +765,8 @@ test('Kalshi event fee overrides: pending, applied after vanishing, unverified u
 test('Market Lab worker pool: same results as inline, and the main thread keeps running during a heavy job',async()=>{
   const rows=[];for(let i=0;i<6000;i++)rows.push({t:i*15000,bid:100+Math.sin(i/9)*2+i*1e-4,ask:100.03+Math.sin(i/9)*2+i*1e-4,src:'robinhood'});
   const records=tapeRecords(rows,'X'),opts={key:'X',strategy:'momentum',grid:{lookback:[3,6,12,24],thresholdBps:[2,5,10,20]},folds:6,start:0,end:5999*15000,stepMs:15000,feeBps:10,cash:1000};
-  const pool=new LabPool({size:2});
+  const leaseDir=fs.mkdtempSync(path.join(os.tmpdir(),'mpo-market-lab-'));
+  const pool=new LabPool({size:2,leaseFile:path.join(leaseDir,'compute-budget.json')});
   let ticks=0;const timer=setInterval(()=>ticks++,5);
   const t0=Date.now();const viaPool=await pool.run({kind:'walkforward',records,opts});const ms=Date.now()-t0;
   clearInterval(timer);
@@ -771,7 +775,7 @@ test('Market Lab worker pool: same results as inline, and the main thread keeps 
   // The main loop was free while the worker computed (a blocked loop would record ~0 ticks).
   assert.ok(ticks>=Math.floor(ms/5/4),`ticks ${ticks} over ${ms} ms`);
   await assert.rejects(pool.run({kind:'nope'}),/Unknown lab task/);
-  assert.equal(pool.status().failed,1);await pool.close();
+  assert.equal(pool.status().failed,1);await pool.close();fs.rmSync(leaseDir,{recursive:true,force:true});
 });
 
 test('AI filing summaries: cited, labelled, never truncated, refusals surfaced',async()=>{

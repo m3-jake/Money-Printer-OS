@@ -14,18 +14,28 @@ import path from 'node:path';
 //   core order-book history       availableAt = the stored availableAt of that book observation
 
 export const CANDLE_SRC = 'coinbase-candles';
+// Historical Market Lab results before this version used intrabar candle prices and incomplete
+// round-trip accounting. They remain readable, but cannot qualify a strategy.
+export const REPLAY_EVALUATOR_VERSION = 'market-replay.v2';
 const num = v => (v === null || v === undefined || v === '' ? null : Number.isFinite(Number(v)) ? Number(v) : null);
 const minuteEnd = t => Math.floor(t / 60000) * 60000 + 60000;
 
 export function tapeRecords(rows, symbol) {
   const out = [];
+  const candles = new Map();
   for (const r of rows || []) {
     const t = num(r?.t), bid = num(r?.bid), ask = num(r?.ask);
     if (t === null || !(bid > 0) || !(ask >= bid)) continue;
     const synthetic = r.src === CANDLE_SRC;
-    out.push({ key: symbol, observedAt: t, availableAt: synthetic ? minuteEnd(t) : t, bid, ask, synthetic, src: r.src || null });
+    // Warm-start expands OHLC into samples at :00/:15/:30/:45. Only :45 is the
+    // candle close. Missing close samples cannot be reconstructed from an open or high.
+    if (synthetic) {
+      if (t % 60000 === 45000) candles.set(minuteEnd(t), { key: symbol, observedAt: t, availableAt: minuteEnd(t), bid, ask, synthetic: true, src: r.src });
+      continue;
+    }
+    out.push({ key: symbol, observedAt: t, availableAt: t, bid, ask, synthetic: false, src: r.src || null });
   }
-  return out;
+  return out.concat([...candles.values()]).sort((a, b) => a.availableAt - b.availableAt || a.observedAt - b.observedAt);
 }
 export function readTape(dataDir, symbol, { start = 0, end = Infinity } = {}) {
   const file = path.join(dataDir, 'robinhood-tape', `${String(symbol).toUpperCase()}.ndjson`);
@@ -116,9 +126,11 @@ export function strategyParams(id, patch = {}) {
 // Sequential backtest over a session. Decisions see only session-visible data; fills use the next
 // record that becomes available after the decision. lookAheadViolations counts any decision input
 // whose availableAt is later than the decision time (must be 0; tested).
-export function runReplay(session, { key, strategy = 'buy-hold', params = {}, stepMs = 15000, cash = 1000, feeBps = 0, maxPoints = 600 } = {}) {
+export function runReplay(session, { key, strategy = 'buy-hold', params = {}, stepMs = 15000, cash = 1000, feeBps = 0, slippageBps = 0, maxPoints = 600 } = {}) {
   const s = REPLAY_STRATEGIES[strategy]; if (!s) throw new Error('Unknown replay strategy');
+  if (!(Number.isFinite(stepMs) && stepMs > 0 && Number.isFinite(cash) && cash > 0 && Number.isFinite(feeBps) && feeBps >= 0 && Number.isFinite(slippageBps) && slippageBps >= 0 && slippageBps < 10000)) throw new Error('Invalid replay step, cash, fee, or slippage');
   const p = strategyParams(strategy, params);
+  const initialCash = cash;
   let position = null, pending = null, violations = 0; const trades = [], curve = [];
   const fee = v => v * feeBps / 10000;
   const markEquity = q => cash + (position && q ? position.qty * q.bid : 0);
@@ -127,8 +139,8 @@ export function runReplay(session, { key, strategy = 'buy-hold', params = {}, st
     if (pending) {
       const fill = session.nextAvailableAfter(pending.at, key);
       if (fill && fill.availableAt <= t) {
-        if (pending.side === 'BUY') { const px = fill.ask, qty = cash / (px * (1 + feeBps / 10000)); const f = fee(qty * px); cash -= qty * px + f; position = { qty, px, at: fill.availableAt }; trades.push({ side: 'BUY', at: fill.availableAt, decidedAt: pending.at, price: px, qty, fee: f, synthetic: fill.synthetic }); }
-        else { const px = fill.bid, gross = position.qty * px, f = fee(gross); cash += gross - f; trades.push({ side: 'SELL', at: fill.availableAt, decidedAt: pending.at, price: px, qty: position.qty, fee: f, pnl: gross - f - position.qty * position.px, ret: (gross - f) / (position.qty * position.px) - 1, synthetic: fill.synthetic }); position = null; }
+        if (pending.side === 'BUY') { const px = fill.ask * (1 + slippageBps / 10000), qty = cash / (px * (1 + feeBps / 10000)); const f = fee(qty * px); cash -= qty * px + f; position = { qty, px, entryFee: f, at: fill.availableAt }; trades.push({ side: 'BUY', at: fill.availableAt, decidedAt: pending.at, price: px, qty, fee: f, synthetic: fill.synthetic }); }
+        else { const px = fill.bid * (1 - slippageBps / 10000), gross = position.qty * px, f = fee(gross), basis = position.qty * position.px + position.entryFee; cash += gross - f; trades.push({ side: 'SELL', at: fill.availableAt, decidedAt: pending.at, price: px, qty: position.qty, fee: f, entryFee: position.entryFee, pnl: gross - f - basis, ret: (gross - f) / basis - 1, synthetic: fill.synthetic }); position = null; }
         pending = null;
       }
     }
@@ -138,13 +150,16 @@ export function runReplay(session, { key, strategy = 'buy-hold', params = {}, st
     curve.push({ t, equity: markEquity(quote), mid: quote ? mid(quote) : null });
     session.advanceTo(t + stepMs);
   }
+  // The terminal observation is available for marking only. An order still pending at end
+  // is cancelled; an open position remains open and is valued at the latest bid.
   const last = session.quote(key), finalEquity = markEquity(last), start = curve.find(c => c.mid !== null);
+  if (!curve.length || curve.at(-1).t !== session.clock) curve.push({ t: session.clock, equity: finalEquity, mid: last ? mid(last) : null });
   let peak = -Infinity, maxDd = 0; for (const c of curve) { peak = Math.max(peak, c.equity); maxDd = Math.max(maxDd, peak > 0 ? (peak - c.equity) / peak : 0); }
   const every = Math.max(1, Math.ceil(curve.length / maxPoints)), rows = session.seen.filter(r => r.key === key);
   return {
-    strategy, params: p, key, start: session.start, end: session.end, stepMs, feeBps, startCash: curve[0]?.equity ?? cash, finalEquity,
-    returnPct: curve.length ? (finalEquity / curve[0].equity - 1) * 100 : null,
-    buyHoldPct: start && last ? (last.bid / start.mid - 1) * 100 : null, maxDrawdownPct: maxDd * 100, trades, openPosition: position,
+    evaluatorVersion: REPLAY_EVALUATOR_VERSION, strategy, params: p, key, start: session.start, end: session.end, stepMs, feeBps, slippageBps, startCash: initialCash, finalEquity,
+    returnPct: (finalEquity / initialCash - 1) * 100,
+    buyHoldPct: start && last ? (last.bid / start.mid - 1) * 100 : null, maxDrawdownPct: maxDd * 100, trades, openPosition: position, pendingOrder: pending,
     records: rows.length, syntheticShare: rows.length ? rows.filter(r => r.synthetic).length / rows.length : null, lookAheadViolations: violations,
     curve: curve.filter((_, i) => i % every === 0 || i === curve.length - 1),
   };
@@ -162,20 +177,44 @@ export function paramGrid(strategy, grid = {}) {
   if (combos.length > 64) throw new Error('Parameter grid too large (max 64 combinations)');
   return combos.map(c => strategyParams(strategy, c));
 }
-export function walkForward(records, { key, strategy, grid = {}, folds = 4, start, end, stepMs = 15000, feeBps = 0, cash = 1000 } = {}) {
+function effectiveClosedSamples(returns) {
+  const n = returns.length;
+  if (n < 2) return n;
+  const mean = returns.reduce((a, b) => a + b, 0) / n;
+  const variance = returns.reduce((s, x) => s + (x - mean) ** 2, 0);
+  if (variance <= 1e-20) return 1;
+  let dependence = 0;
+  for (let lag = 1; lag <= Math.min(10, Math.floor(n / 4)); lag++) {
+    let covariance = 0;
+    for (let i = lag; i < n; i++) covariance += (returns[i] - mean) * (returns[i - lag] - mean);
+    const rho = covariance / variance;
+    if (rho <= 0) break;
+    dependence += rho;
+  }
+  return Math.max(1, Math.min(n, Math.floor(n / (1 + 2 * dependence))));
+}
+export function walkForward(records, { key, strategy, grid = {}, folds = 4, start, end, stepMs = 15000, feeBps = 0, slippageBps = 0, feeModelVerified = false, cash = 1000 } = {}) {
   if (!(folds >= 2 && folds <= 12)) throw new Error('Folds must be between 2 and 12');
   const combos = paramGrid(strategy, grid), span = (end - start) / folds, out = [];
-  const run = (params, a, b) => runReplay(new ReplaySession(records, { start: a, end: b }), { key, strategy, params, stepMs, feeBps, cash, maxPoints: 50 });
+  const run = (params, a, b, selectedStrategy = strategy) => runReplay(new ReplaySession(records, { start: a, end: b }), { key, strategy: selectedStrategy, params, stepMs, feeBps, slippageBps, cash, maxPoints: 50 });
   for (let i = 1; i < folds; i++) {
     const trA = start + (i - 1) * span, trB = start + i * span, teB = start + (i + 1) * span;
     const trained = combos.map(p => ({ p, r: run(p, trA, trB) })).sort((x, y) => (y.r.returnPct ?? -Infinity) - (x.r.returnPct ?? -Infinity));
-    const best = trained[0], test = run(best.p, trB, teB);
-    out.push({ fold: i, train: { start: trA, end: trB, params: best.p, returnPct: best.r.returnPct, candidates: combos.length }, test: { start: trB, end: teB, returnPct: test.returnPct, buyHoldPct: test.buyHoldPct, trades: test.trades.length, maxDrawdownPct: test.maxDrawdownPct, lookAheadViolations: test.lookAheadViolations, syntheticShare: test.syntheticShare, tradeReturns: test.trades.filter(t => t.side === 'SELL').map(t => t.ret) } });
+    const best = trained[0], test = run(best.p, trB, teB), baseline = run({}, trB, teB, 'buy-hold');
+    const closed = test.trades.filter(t => t.side === 'SELL');
+    out.push({ fold: i, train: { start: trA, end: trB, params: best.p, returnPct: best.r.returnPct, candidates: combos.length }, test: { start: trB, end: teB, returnPct: test.returnPct, buyHoldPct: baseline.returnPct, trades: test.trades.length, closedTrades: closed.length, openPosition: !!test.openPosition, maxDrawdownPct: test.maxDrawdownPct, lookAheadViolations: test.lookAheadViolations, syntheticShare: test.syntheticShare, tradeReturns: closed.map(t => t.ret) } });
   }
   const tests = out.map(f => f.test), compounded = tests.reduce((m, t) => m * (1 + (t.returnPct ?? 0) / 100), 1);
-  const evidence = { sampleSize: tests.reduce((s, t) => s + t.trades, 0), outOfSampleNetPct: Math.round((compounded - 1) * 1e6) / 1e4, costsModeled: feeBps > 0,
+  const closedReturns = tests.flatMap(t => t.tradeReturns);
+  // Round trips, not order legs, are observations. Estimate effective N within each
+  // chronological fold using the positive serial-correlation sequence; flat returns count
+  // as one observation. This estimate cannot establish independence by itself.
+  const effectiveN = tests.reduce((s, t) => s + effectiveClosedSamples(t.tradeReturns), 0);
+  const evidence = { evaluatorVersion: REPLAY_EVALUATOR_VERSION, sampleSize: closedReturns.length, effectiveSampleSize: effectiveN, outOfSampleNetPct: Math.round((compounded - 1) * 1e6) / 1e4,
+    costsModeled: feeBps > 0 && slippageBps > 0 && feeModelVerified === true && tests.every(t => t.syntheticShare === 0), feeBps, slippageBps, feeModelVerified,
     maxDrawdownPct: Math.max(0, ...tests.map(t => t.maxDrawdownPct || 0)), positiveFoldShare: tests.length ? tests.filter(t => (t.returnPct ?? 0) > 0).length / tests.length : null,
-    lookAheadViolations: tests.reduce((s, t) => s + (t.lookAheadViolations || 0), 0), syntheticShare: tests.length ? Math.max(...tests.map(t => t.syntheticShare ?? 0)) : null, method: `walk-forward ${folds} folds, train on previous fold, ${combos.length} parameter sets` };
+    lookAheadViolations: tests.reduce((s, t) => s + (t.lookAheadViolations || 0), 0), syntheticShare: tests.length ? Math.max(...tests.map(t => t.syntheticShare ?? 0)) : null, pendingOpenPositions: tests.filter(t => t.openPosition).length,
+    method: `walk-forward ${folds} folds, train on previous fold, ${combos.length} parameter sets; effective N estimated from positive serial autocorrelation within folds` };
   return { strategy, key, folds: out, evidence };
 }
 

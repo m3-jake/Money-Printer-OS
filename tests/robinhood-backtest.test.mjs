@@ -16,7 +16,7 @@ test('a trending noisy tape produces strategy closes with fee-aware P/L and hold
  const r=backtestTape(series(),{params,feeRatio:0.0085,orderUsd:25,startUsd:1000});
  assert.ok(r.closes.length>=3,'expected several closes, got '+r.closes.length);assert.equal(r.metrics.closes,r.closes.length);
  assert.ok(r.metrics.feesUsd>0);assert.ok(r.metrics.avgHoldMin>0);assert.ok(r.metrics.exposureMin>0);assert.ok(r.metrics.tradesPerDay>0);assert.ok(r.metrics.spanDays>0);
- for(const c of r.closes){assert.ok(c.closedAt>c.openedAt);assert.ok(['stop','take','trail','time','fade'].includes(c.reason));assert.ok(c.feeUsd>0)}
+ for(const c of r.closes){assert.ok(c.entryDecidedAt<c.openedAt);assert.ok(c.exitDecidedAt<c.closedAt);assert.ok(c.closedAt>c.openedAt);assert.ok(['stop','take','trail','time','fade'].includes(c.reason));assert.ok(c.feeUsd>0)}
  const pnl=r.closes.reduce((s,c)=>s+c.pnlUsd,0);assert.ok(Math.abs(pnl-r.metrics.pnlUsd)<0.01);
  assert.ok(r.metrics.hitRate>=0&&r.metrics.hitRate<=1);assert.ok(r.metrics.maxDrawdownUsd>=0);
  assert.deepEqual(Object.keys(r.metrics).slice(0,11),['closes','wins','hitRate','profitFactor','pnlUsd','feesUsd','maxDrawdownUsd','exposureMin','tradesPerDay','avgHoldMin','samples']);
@@ -27,6 +27,9 @@ test('replay is deterministic and a flat tape never enters',()=>{
  const flat=series({drift:0,noise:0.0002});const r=backtestTape(flat,{params,feeRatio:0.0085});
  assert.equal(r.closes.length,0);assert.equal(r.metrics.entries,0);assert.equal(r.metrics.pnlUsd,0);assert.equal(r.metrics.hitRate,null);assert.equal(r.metrics.profitFactor,null);
  assert.deepEqual(backtestTape([],{params}).closes,[]);assert.equal(backtestTape([{t:1,bid:1,ask:1}],{params}).metrics.samples,1);
+ assert.equal(backtestTape([],{params}).evaluatorVersion,'robinhood-backtest.v2');
+ const ordered=tape.slice(0,300),duplicate=[...ordered.slice(50),ordered[50],...ordered.slice(0,50)];
+ assert.deepEqual(backtestTape(duplicate,{params}).closes,backtestTape(ordered,{params}).closes,'duplicate timestamps cannot become a same-time fill');
 });
 test('fees reduce net P/L on the same tape; fee-free replay has zero fees',()=>{
  const tape=series();const free=backtestTape(tape,{params,feeRatio:0}),paid=backtestTape(tape,{params,feeRatio:0.0085});
@@ -36,7 +39,17 @@ test('fees reduce net P/L on the same tape; fee-free replay has zero fees',()=>{
  assert.ok(paid.metrics.pnlUsd+paid.metrics.feesUsd>paid.metrics.pnlUsd);
  for(const c of paid.closes)assert.ok(c.feeUsd>0);for(const c of free.closes)assert.equal(c.feeUsd,0);
  const wide={...params,slipBps:50};const slipped=backtestTape(tape,{params:wide,feeRatio:0.0085});
- if(slipped.closes.length&&paid.closes.length)assert.ok(slipped.closes[0].pnlUsd<=paid.closes[0].pnlUsd+1e-9||slipped.closes[0].openedAt!==paid.closes[0].openedAt);
+ if(slipped.closes.length&&paid.closes.length&&slipped.closes[0].openedAt===paid.closes[0].openedAt&&slipped.closes[0].closedAt===paid.closes[0].closedAt)assert.ok(slipped.closes[0].pnlUsd<=paid.closes[0].pnlUsd+1e-9);
+});
+test('a quote-only crash marks open risk even when the next-quote exit recovers',()=>{
+ const tape=series(),base=backtestTape(tape,{params,feeRatio:0.0085,orderUsd:25});
+ const entry=tape.findIndex(s=>s.t===base.closes[0].openedAt);
+ assert.ok(entry>0);
+ tape[entry+1]={...tape[entry+1],bid:tape[entry+1].bid*.1,ask:tape[entry+1].ask*.1};
+ const replay=backtestTape(tape,{params,feeRatio:0.0085,orderUsd:25});
+ assert.ok(replay.closes[0].pnlUsd>0,'the exit fill used the recovered next quote');
+ assert.ok(replay.metrics.maxDrawdownUsd>20,'the intratrade loss must still be recorded');
+ assert.equal(replay.evaluatorVersion,'robinhood-backtest.v2');
 });
 test('replay only looks back the live window and never at the future',()=>{
  assert.equal(REPLAY_WINDOW,720);
