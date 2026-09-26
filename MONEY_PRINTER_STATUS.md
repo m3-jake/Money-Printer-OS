@@ -780,7 +780,20 @@ bing pasted the full MPOS unification brief (35 sections, phases 0–7). Phase 0
 - **Tests:** 2 regression tests in `tests/market-core.test.mjs` (18 pass). `npm run test:all`: **700 pass, 0 fail**. No browser check this batch (small CSS/label change).
 
 ### Next recommended (unification brief, in dependency order)
-1. Phase 1: strategy metadata + lifecycle states (DRAFT…RETIRED) as a core table, with a promotion check that needs several criteria, not one metric. Map the existing Lab champion lifecycle onto it rather than duplicating it.
+1. ~~Strategy lifecycle~~ done in batch N.
 2. Phase 1: read-only import of legacy books (Solana, Robinhood practice, US combos) into the core ledger as `LEGACY` coverage, so Command Center totals stop excluding them.
 3. Phase 2: POLYMARKET.EXE consolidation (Markets / Live / Sports / Positions / History / Combo Engine), and decide on `polymarketPaperCombos.js`.
 4. Phase 2: contract-term extraction for Kalshi/Polymarket so ARBITRAGE.EXE can reach STRONG/EXACT for real pairs (today every pair lacks verified terms).
+
+## Batch N (2026-09-26): strategy registry and lifecycle (Phase 1 / Phase 6 foundation)
+
+- **New `src/core/strategies.js`:** the `strategies` table holds the common metadata (id, name, version, markets, params, allocation, state, execution mode, evidence). `strategy_transitions` is append-only, enforced by UPDATE and DELETE triggers. States are DRAFT / BACKTESTING / PAPER / CANDIDATE / LIVE / PAUSED / RETIRED, with explicit allowed edges. RETIRED is terminal.
+- **Promotion gate (`promotionCheck`):** moving to PAPER or CANDIDATE needs all of these: sample size, fees and slippage modeled, out-of-sample net profit after costs, max drawdown, and share of positive walk-forward folds. CANDIDATE also needs Brier calibration for probabilistic strategies. Missing values fail closed. LIVE is refused outright, in line with the no-real-money policy.
+- **Lab mapping:** `labChampionLifecycle()` reads a Lab champion's INCUBATOR/SHADOW/PAPER/LIVE state as DRAFT/BACKTESTING/PAPER/PAPER. It is a read-only mapping and does not change the Lab's own lifecycle. Syncing Lab champions into the registry isn't wired yet.
+- **API and UI:** `GET /api/platform/strategies`, `GET /api/platform/strategies/history?id=`, `POST /api/platform/strategies/register` and `POST /api/platform/strategies/transition`. Transitions write a project-journal milestone. Command Center has a Strategies table.
+- **Tests:** 2 new tests in `market-core` (20 pass). `npm run test:all`: **703 pass, 0 fail**. Browser check on an isolated engine (`engine-core`, :8851): register → BACKTESTING worked; PAPER without evidence was refused with all five blockers named; the table rendered.
+
+### Next recommended
+1. Legacy books into the core ledger as read-only LEGACY coverage (Solana, Robinhood practice, US combos).
+2. Sync Lab champions (`lab-link/modules/*-champion.json`) into the strategy registry, using `labChampionLifecycle` and the champions' walk-forward evidence.
+3. POLYMARKET.EXE consolidation; contract-term extraction for ARBITRAGE.EXE.

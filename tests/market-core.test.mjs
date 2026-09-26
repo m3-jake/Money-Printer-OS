@@ -14,6 +14,7 @@ import { compareContracts,arbitrageQuote } from '../src/core/contracts.js';
 import { normalizeKalshi,normalizeKalshiBook,normalizePolymarket,KalshiProvider } from '../src/core/predictionProviders.js';
 import { ProviderRegistry,JsonProvider } from '../src/core/provider.js';
 import { MarketPlatform } from '../src/core/platform.js';
+import { StrategyRegistry,promotionCheck,labChampionLifecycle } from '../src/core/strategies.js';
 import { assertGlobalTradingNotHalted } from '../src/core/executionBoundary.js';
 import { localMutationAllowed } from '../src/core/http.js';
 
@@ -146,4 +147,32 @@ test('emergency stop persists across connections/processes and blocks a previous
 test('core mutations reject cross-origin browser requests and remote clients',()=>{
   const req={socket:{remoteAddress:'127.0.0.1'},headers:{host:'127.0.0.1:8897','content-type':'application/json',origin:'http://127.0.0.1:8897'}};
   assert.equal(localMutationAllowed(req),true);assert.equal(localMutationAllowed({...req,headers:{...req.headers,origin:'https://evil.example'}}),false);assert.equal(localMutationAllowed({...req,socket:{remoteAddress:'192.168.1.5'}}),false);assert.equal(localMutationAllowed({...req,headers:{host:'127.0.0.1:8897','content-type':'text/plain'}}),false);
+});
+
+const good={sampleSize:80,outOfSampleNetUsd:12,costsModeled:true,maxDrawdownPct:10,positiveFoldShare:.75,brier:.2};
+test('promotion needs every criterion; one strong metric is never enough',()=>{
+  assert.equal(promotionCheck('CANDIDATE',good,{probabilistic:true}).allowed,true);
+  assert.equal(promotionCheck('CANDIDATE',{outOfSampleNetUsd:1e6}).allowed,false);
+  for(const [k,v] of [['sampleSize',10],['outOfSampleNetUsd',0],['costsModeled',false],['maxDrawdownPct',40],['positiveFoldShare',.3],['brier',.4],['sampleSize',null]])
+    assert.equal(promotionCheck('CANDIDATE',{...good,[k]:v},{probabilistic:true}).allowed,false,k);
+  assert.equal(promotionCheck('PAUSED',{}).allowed,true);
+  assert.equal(labChampionLifecycle('LIVE'),'PAPER');assert.equal(labChampionLifecycle('bogus'),'BACKTESTING');
+});
+test('strategy lifecycle follows allowed edges, never reaches LIVE, and keeps append-only history',()=>{
+  const s=new CoreDatabase(':memory:'),r=new StrategyRegistry(s);
+  r.register({id:'tennis-fast',name:'Tennis fast settle',markets:['polymarket','kalshi'],allocationUsd:50,probabilistic:true});
+  assert.throws(()=>r.register({id:'tennis-fast',name:'dup'}),/already/);
+  assert.throws(()=>r.transition('tennis-fast','PAPER',{reason:'skip'}),/not allowed/);
+  r.transition('tennis-fast','BACKTESTING',{reason:'start'});
+  assert.throws(()=>r.transition('tennis-fast','PAPER',{reason:'no evidence'}),/SAMPLE_SIZE/);
+  r.transition('tennis-fast','PAPER',{reason:'walk-forward ok',evidence:good});
+  assert.equal(r.transition('tennis-fast','CANDIDATE',{reason:'paper ok'}).promoted,true);
+  assert.throws(()=>r.transition('tennis-fast','LIVE',{reason:'go'}),/unavailable/);
+  assert.equal(r.transition('tennis-fast','PAUSED',{reason:'drawdown'}).state,'PAUSED');
+  r.transition('tennis-fast','RETIRED',{reason:'done'});
+  assert.throws(()=>r.transition('tennis-fast','DRAFT',{reason:'revive'}),/not allowed/);
+  assert.deepEqual(r.history('tennis-fast').map(h=>h.to_state),['DRAFT','BACKTESTING','PAPER','CANDIDATE','PAUSED','RETIRED']);
+  assert.throws(()=>s.db.exec('DELETE FROM strategy_transitions'),/append-only/);
+  assert.throws(()=>s.db.exec("UPDATE strategy_transitions SET reason='x'"),/append-only/);
+  s.close();
 });
