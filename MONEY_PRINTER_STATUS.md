@@ -235,6 +235,20 @@ Last updated: 2026-09-26, batch 10 + Solana/Robinhood/Lab review (read-only). Br
   - **Gap:** until a signed call happens, `authCode` is null, so a stored-but-rejected key shows "CONNECTED" and can be armed. Placing still fails closed on the 401 at the first signed call (quote).
   - A cheap signed readiness probe on connect or arm would surface "KEY REJECTED" earlier. Not built; it is a candidate follow-up.
 
+## Batch 11 (2026-09-26): slim the trader
+
+- **Robinhood evolve:** the scheduled in-process search is now off by default. `ROBINHOOD_EVOLVE_ENABLED` must be exactly `true` to schedule it. "Run now" still works.
+  - Files: `src/robinhoodEvolve.js`, `.env.example`, docs §13/§22.
+- **Alpha worker (hypothesis-miner child):** `ALPHA_WORKER_ENABLED` now defaults to `false`. While it's off, the engine stops writing `alpha-queue.ndjson`, because nothing would drain it.
+  - Files: `src/config.js`, `src/index.js`.
+  - **Caveat:** an existing `.env` that sets `ALPHA_WORKER_ENABLED=true` still wins. bing should check the installed `.env`.
+- **State caps:** learner outcomes 3000→1500 (the learner trains on the newest 1000), universe 5000→1500, postmortems 500→200 (`src/store.js`).
+  - I did **not** split `research` into its own file. That touches the accounting, backup and recovery path; it's deferred.
+- **Idle measurement:** isolated data dir, no `.env`, Robinhood/Polymarket autostart off, 60 s sample after 30 s warmup.
+  - Engine: **0.9% CPU, 97 MB RSS (peak 103 MB), no node child process.**
+  - A fresh `state.json` is 506 KB.
+- **Tests:** `store-recovery` 19/0 (+1 cap test), `robinhood-*` 13 files all green, `lab-link` 8/0, `action-queue-rails` 7/0, `alpha-queue-rails` 5/0, SELFTEST PASS.
+
 ## Next recommended batch (priority order)
 
 0. **bing:**

@@ -260,3 +260,17 @@ test('F6 ordinary opens and closes are unaffected', async () => {
   f.saveState(r);
   assert.equal(f.loadState().positions.length, 1);
 });
+test('save caps the research blob: learner outcomes, universe and postmortems', async () => {
+  const f = await fixture();
+  const s = f.loadState();
+  s.research.learner = { ...(s.research.learner || {}), pending: [], outcomes: Array.from({ length: 4000 }, (_, i) => ({ ts: 4000 - i, horizonMin: 5 })) };
+  s.research.universe = Object.fromEntries(Array.from({ length: 3000 }, (_, i) => ['m' + i, { mint: 'm' + i, lastSeen: i }]));
+  s.research.postmortems = Array.from({ length: 900 }, (_, i) => ({ i }));
+  f.saveState(s);
+  const saved = JSON.parse(f.read('state.json'));
+  assert.equal(saved.research.learner.outcomes.length, f.OUTCOME_KEEP);
+  assert.equal(saved.research.learner.outcomes[0].ts, 4000, 'the newest outcomes are kept');
+  assert.equal(Object.keys(saved.research.universe).length, f.UNIVERSE_KEEP);
+  assert.ok(saved.research.universe.m2999 && !saved.research.universe.m0, 'the most recently seen mints are kept');
+  assert.equal(saved.research.postmortems.length, 200);
+});

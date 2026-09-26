@@ -13,6 +13,10 @@ const backupFile = path.join(dir, 'state.backup.json');
 const journalFile = path.join(dir, 'market.ndjson');
 const actionFile = path.join(dir, 'actions.ndjson');
 const JOURNAL_MAX_BYTES = 128 * 1024 * 1024;
+// state.json is rewritten every cycle; on 2026-09-26 it was 9.6 MB, 7 MB of it research.
+// The learner trains on the newest 1000 outcomes (learner.js), so 1500 keeps its window.
+export const OUTCOME_KEEP = 1500;
+export const UNIVERSE_KEEP = 1500;
 let lastSaveMs = 0;
 let lastBackupAt = 0;
 let readCache = { stamp: '', value: null };
@@ -226,14 +230,14 @@ function pruneState(s) {
 
   if (s.research) {
     if (s.research.feedStats?.unknown) delete s.research.feedStats.unknown;
-    s.research.postmortems = (s.research.postmortems || []).slice(0, 500);
+    s.research.postmortems = (s.research.postmortems || []).slice(0, 200);
     s.research.lessons = (s.research.lessons || []).slice(0, 400);
     s.research.experiments = (s.research.experiments || []).slice(0, 400);
     s.research.daily = (s.research.daily || []).slice(0, 180);
     s.research.challengers = (s.research.challengers || []).slice(-128);
     if (s.research.learner) {
       s.research.learner.pending = (s.research.learner.pending || []).slice(-1800);
-      s.research.learner.outcomes = (s.research.learner.outcomes || []).slice(0, 3000);
+      s.research.learner.outcomes = (s.research.learner.outcomes || []).slice(0, OUTCOME_KEEP);
     }
     const walletEntries = Object.entries(s.research.walletProfiles || {});
     if (walletEntries.length > 10000) {
@@ -254,9 +258,9 @@ function pruneState(s) {
       a.counterfactuals=(a.counterfactuals||[]).slice(-500);a.evidence=(a.evidence||[]).slice(0,20);
     }
     const universeEntries = Object.entries(s.research.universe || {});
-    if (universeEntries.length > 5000) {
+    if (universeEntries.length > UNIVERSE_KEEP) {
       universeEntries.sort((a, b) => Number(b[1]?.lastSeen || 0) - Number(a[1]?.lastSeen || 0));
-      s.research.universe = Object.fromEntries(universeEntries.slice(0, 5000));
+      s.research.universe = Object.fromEntries(universeEntries.slice(0, UNIVERSE_KEEP));
     }
   }
   return s;

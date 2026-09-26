@@ -25,10 +25,10 @@ function writeTape(symbol,days,opts={}){const n=Math.floor(days*DAY/STEP),rows=s
 const qualify=()=>{const p=J.loadPaper();p.params=S.normalizeParams({...p.params,sampleMs:RH.__testing.TICK_MS});p.paramsHash=S.paramsHash(p.params);p.history=Array.from({length:25},(_,i)=>({id:'rp'+i,symbol:'BTC-USD',status:'CLOSED',placedBy:'paper-autopilot',closedBy:'strategy',paramsHash:p.paramsHash,pnlUsd:1,feeUsd:0.1,exit:{feeUsd:0.1,reason:'take'},costUsd:10,costPct:0.0185,stopPct:0.0185,takePct:0.074,closedAt:mock.state.time-i*60000}));J.savePaper(p,{force:true});assert.equal(RH.robinhoodReadiness().qualified,true)};
 test.after(()=>{RH.stopRobinhoodLoops();globalThis.fetch=nativeFetch;fs.rmSync(root,{recursive:true,force:true})});
 
-test('config defaults: enabled, 360 min, 24 candidates, 15% min gain, autopromote off; env overrides re-read every call',()=>{
- reset();const c=E.evolveConfig();assert.equal(c.enabled,true);assert.equal(c.intervalMin,360);assert.equal(c.candidates,6,'env override from this suite');assert.equal(c.minGain,0.15);assert.equal(c.autopromote,false);assert.equal(c.budgetMs,20000);assert.equal(c.minTapeDays,3);
- process.env.ROBINHOOD_EVOLVE_ENABLED='false';process.env.ROBINHOOD_EVOLVE_AUTOPROMOTE='TRUE';process.env.ROBINHOOD_EVOLVE_MIN_GAIN='0.5';
- const d=E.evolveConfig();assert.equal(d.enabled,false);assert.equal(d.autopromote,true);assert.equal(d.minGain,0.5);
+test('config defaults: disabled, 360 min, 24 candidates, 15% min gain, autopromote off; env overrides re-read every call',()=>{
+ reset();const c=E.evolveConfig();assert.equal(c.enabled,false,'the scheduled search is off unless ROBINHOOD_EVOLVE_ENABLED is exactly true');assert.equal(c.intervalMin,360);assert.equal(c.candidates,6,'env override from this suite');assert.equal(c.minGain,0.15);assert.equal(c.autopromote,false);assert.equal(c.budgetMs,20000);assert.equal(c.minTapeDays,3);
+ process.env.ROBINHOOD_EVOLVE_ENABLED='TRUE';process.env.ROBINHOOD_EVOLVE_AUTOPROMOTE='TRUE';process.env.ROBINHOOD_EVOLVE_MIN_GAIN='0.5';
+ const d=E.evolveConfig();assert.equal(d.enabled,true);assert.equal(d.autopromote,true);assert.equal(d.minGain,0.5);
  delete process.env.ROBINHOOD_EVOLVE_ENABLED;delete process.env.ROBINHOOD_EVOLVE_AUTOPROMOTE;delete process.env.ROBINHOOD_EVOLVE_MIN_GAIN;
  assert.equal(path.basename(E.EVOLVE_FILE),'robinhood-evolve.json');assert.equal(path.dirname(E.EVOLVE_FILE),process.env.MONEY_PRINTER_DATA_DIR);
 });

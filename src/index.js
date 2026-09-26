@@ -23,9 +23,11 @@ import { fastEdgeScore, queueOutcomeSamples, settleOutcomeSamples, dueOutcomeMin
 import { recordChampionPublication } from './researchControlPlane.js';
 import { syncLabLink, publishLabFeed } from './labLink.js';
 import { estimatePaperExecution, deterministicFillAllowed, estimateRoundTripFrictionPct } from './executionSim.js';
-import { enqueueAlphaEvent } from './alphaQueue.js';
+import { enqueueAlphaEvent as enqueueAlphaRaw } from './alphaQueue.js';
 import { dailyPnl, recentPnl, bookClosedPnl, unrealizedPnl, equity, updatePortfolio } from './accounting.js';
 import { startAlphaWorker, stopAlphaWorker } from './alphaWorkerManager.js';
+// With the alpha worker off (the default since batch 11) nothing drains alpha-queue.ndjson, so don't write it.
+const enqueueAlphaEvent = row => { if (cfg.alphaWorkerEnabled) enqueueAlphaRaw(row); };
 import { exitSimulation, paperExitQuote, reviewPositionPrice, entrySizing, paperEntryRejection } from './positionExecution.js';
 import { apiUnitEconomicsSnapshot, persistApiUnitEconomics, attributeScanCycle, strategyNetPnlAfterDataCost } from './apiUnitEconomics.js';
 

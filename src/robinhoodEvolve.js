@@ -30,7 +30,7 @@ export const EVOLVE_KEYS=Object.keys(EVOLVE_BOUNDS);
 
 export function evolveConfig(){
  return {
-  enabled:String(process.env.ROBINHOOD_EVOLVE_ENABLED??'true').toLowerCase()!=='false',
+  enabled:String(process.env.ROBINHOOD_EVOLVE_ENABLED??'false').toLowerCase()==='true',
   intervalMin:envNum('ROBINHOOD_EVOLVE_INTERVAL_MIN',360),
   candidates:Math.max(1,Math.min(200,Math.floor(envNum('ROBINHOOD_EVOLVE_CANDIDATES',24)))),
   minGain:(()=>{const v=Number(process.env.ROBINHOOD_EVOLVE_MIN_GAIN);return Number.isFinite(v)&&v>=0?v:0.15})(),
