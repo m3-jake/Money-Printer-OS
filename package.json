@@ -4,12 +4,13 @@
   "description": "Money Printer OS â€” native retro trading workstation with continuous research, monitoring, and desktop supervision.",
   "type": "module",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.128.0",
+    "@noble/ed25519": "^2.3.0",
     "@solana/web3.js": "^1.98.4",
     "bs58": "^6.0.0",
     "dotenv": "^17.2.1",
     "polymarket-us": "^0.1.1",
-    "ws": "^8.18.3",
-    "@noble/ed25519": "^2.3.0"
+    "ws": "^8.18.3"
   },
   "engines": {
     "node": ">=22"

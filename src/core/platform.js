@@ -23,6 +23,7 @@ import fs from 'node:fs';
 import { createHash } from 'node:crypto';
 import { MACRO_INDICATORS,FredSource,transform as macroTransform,impliedLadder,asOf as macroAsOf,indicator as macroIndicator } from './macro.js';
 import { EdgarSource,analyseFiling } from './edgar.js';
+import { summarizeFiling,htmlToText,aiConfigured,SUMMARY_MODEL } from './aiSummary.js';
 import { WEATHER_CITIES,WeatherSource,bucketLadder,weatherLinks } from './weather.js';
 import { buildSportsEvents,mlbLive,nhlLive,attachLive } from './sports.js';
 import { buildEventPages,EVENT_TEMPLATES,sportsPages,weatherPages,corporatePages } from './correlation.js';
@@ -41,8 +42,9 @@ const swapSides=book=>({...book,yes:book.no,no:book.yes});
 export class MarketPlatform {
   constructor({file=':memory:',dataDir=null,providers=null,stockQuotes=undefined,stockClock=undefined,stockSession=undefined,labWorkers=false}={}){
     this.labPool=labWorkers?new LabPool():null;
-    this.store=new CoreDatabase(file);this.ledger=new UnifiedLedger(this.store);this.bus=new MarketEventBus();this.risk=new RiskGovernor(this.store,this.ledger,this.bus);this.strategies=new StrategyRegistry(this.store);this.legacyReaders={};this.replays=new Map();this.fred=new FredSource();this.macroCache=null;this.edgar=new EdgarSource();this.weather=new WeatherSource();this.weatherCache=null;this.sportsCache=null;this.sportsLive=new Map();this.sportsFetch=(url,opt)=>globalThis.fetch(url,opt);this.wireFetch=(url,opt)=>globalThis.fetch(url,opt);this.wireFeeds=new Map();this.whaleSeenTs=Date.now();this.eventsCache=null;
+    this.store=new CoreDatabase(file);this.ledger=new UnifiedLedger(this.store);this.bus=new MarketEventBus();this.risk=new RiskGovernor(this.store,this.ledger,this.bus);this.strategies=new StrategyRegistry(this.store);this.legacyReaders={};this.replays=new Map();this.fred=new FredSource();this.macroCache=null;this.edgar=new EdgarSource();this.summarize=args=>summarizeFiling(args);this.weather=new WeatherSource();this.weatherCache=null;this.sportsCache=null;this.sportsLive=new Map();this.sportsFetch=(url,opt)=>globalThis.fetch(url,opt);this.wireFetch=(url,opt)=>globalThis.fetch(url,opt);this.wireFeeds=new Map();this.whaleSeenTs=Date.now();this.eventsCache=null;
     this.store.db.exec(`CREATE TABLE IF NOT EXISTS wallet_labels(address TEXT PRIMARY KEY, label TEXT NOT NULL, note TEXT NOT NULL, at INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS ai_summaries(accession TEXT PRIMARY KEY, at INTEGER NOT NULL, model TEXT NOT NULL, status TEXT NOT NULL, chars INTEGER NOT NULL, result TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS legacy_sync(source TEXT PRIMARY KEY, epoch INTEGER NOT NULL, synced_at INTEGER NOT NULL, status TEXT NOT NULL, detail TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS integration_milestones(id TEXT PRIMARY KEY, at INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS wallet_label_events(seq INTEGER PRIMARY KEY AUTOINCREMENT, address TEXT NOT NULL, label TEXT, note TEXT NOT NULL, at INTEGER NOT NULL);`);
@@ -462,7 +464,7 @@ export class MarketPlatform {
     let dbBytes=null;try{const f=this.store.db.prepare('PRAGMA page_count').get().page_count*this.store.db.prepare('PRAGMA page_size').get().page_size;dbBytes=f;}catch{}
     const counts=Object.fromEntries(['entities','entity_versions','relationships','ledger','proposals','core_events','lab_runs','strategies'].map(t=>{try{return [t,this.store.db.prepare(`SELECT COUNT(*) n FROM ${t}`).get().n];}catch{return [t,null];}}));
     const sources=[...this.providers.status().map(p=>({id:p.id,kind:'prediction venue',status:p.status,lastSuccess:p.lastSuccess,lastError:p.lastError,latencyMs:p.latencyMs,queueDepth:p.queueDepth,websocket:p.websocket})),
-      {id:'alpaca-iex',kind:'stock quotes',...this.stocks.quoteSource.status()},{id:'fred',kind:'macro',...this.fred.status()},{id:'nws',kind:'weather',...this.weather.status()},{id:'sec-edgar',kind:'filings',...this.edgar.status()},
+      {id:'alpaca-iex',kind:'stock quotes',...this.stocks.quoteSource.status()},{id:'fred',kind:'macro',...this.fred.status()},{id:'nws',kind:'weather',...this.weather.status()},{id:'sec-edgar',kind:'filings',...this.edgar.status()},{id:'anthropic',kind:'AI summaries',status:aiConfigured()?'IDLE':'NOT CONFIGURED',lastSuccess:null,lastError:null},
       ...(this.sportsCache?.data?.feeds||[]).map(f=>({id:f.sport.toLowerCase()+'-live',kind:'sports live',status:f.status,lastSuccess:this.sportsCache.at,lastError:f.error||null})),
       ...[...this.wireFeeds.values()].map(v=>({id:'rss-'+v.status.id,kind:'wire feed',status:v.status.status,lastSuccess:v.status.status==='CONNECTED'?v.at:null,lastError:v.status.error||null}))];
     // Journal: the first time each source connects in this data dir is a project milestone.
@@ -477,6 +479,19 @@ export class MarketPlatform {
   }
   async edgarLatest(form='8-K'){return {status:this.edgar.status(),form,filings:this.recordFilings(await this.edgar.latest(form))};}
   async edgarCompany(ticker){const {filingsFromSubmissions}=await import('./edgar.js');const sub=await this.edgar.company(ticker);return {status:this.edgar.status(),company:sub.name,cik:sub.cik,tickers:sub.tickers,sic:sub.sicDescription||null,filings:this.recordFilings(filingsFromSubmissions(sub,{limit:60}))};}
+  // AI filing summary (aiSummary.js): on request only, stored in ai_summaries apart from the Filing facts.
+  async edgarSummary({accession,force=false}){
+    const acc=String(accession||'').trim();if(!/^[\d-]{10,25}$/.test(acc))throw new Error('Accession number required');
+    const prior=this.store.db.prepare('SELECT * FROM ai_summaries WHERE accession=?').get(acc);
+    if(prior&&!force)return {...JSON.parse(prior.result),accession:acc,at:prior.at,cached:true,kind:'AI_GENERATED_ANALYSIS'};
+    if(!aiConfigured())throw Object.assign(new Error('AI summaries need ANTHROPIC_API_KEY in %APPDATA%\\Money Printer OS\\.env (each summary costs API usage)'),{code:'NOT_CONFIGURED'});
+    const f=this.store.get(stableId('Filing','sec',acc));if(!f)throw new Error('Load this filing in EDGAR first');
+    const text=htmlToText(await this.edgar.document(f.data.url));
+    const result=await this.summarize({text,facts:f.data});
+    this.store.db.prepare('INSERT INTO ai_summaries VALUES(?,?,?,?,?,?) ON CONFLICT(accession) DO UPDATE SET at=excluded.at,model=excluded.model,status=excluded.status,chars=excluded.chars,result=excluded.result')
+      .run(acc,Date.now(),result.model||SUMMARY_MODEL,result.status,text.length,JSON.stringify(result));
+    return {...result,accession:acc,at:Date.now(),cached:false,chars:text.length,kind:'AI_GENERATED_ANALYSIS'};
+  }
   async edgarForm4(url){return {status:this.edgar.status(),facts:await this.edgar.form4(url),kind:'FORM_4_FACTS'};}
   // Market Lab compute: worker threads when enabled (the app), inline otherwise (tests, scripts).
   labCompute(task){return this.labPool?this.labPool.run(task):Promise.resolve().then(()=>computeTask(task));}

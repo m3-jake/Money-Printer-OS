@@ -106,5 +106,6 @@ export class EdgarSource {
   async tickers() { const j = await this.#get('https://www.sec.gov/files/company_tickers.json', { ttlMs: 86400000 }); const map = new Map(); for (const v of Object.values(j || {})) map.set(String(v.ticker).toUpperCase(), { cik: String(v.cik_str), name: v.title }); return map; }
   async company(ticker) { const t = (await this.tickers()).get(String(ticker).toUpperCase()); if (!t) throw new Error(`Unknown ticker ${ticker}`); return this.#get(`https://data.sec.gov/submissions/CIK${pad10(t.cik)}.json`); }
   async latest(form = '8-K') { if (!FORMS.includes(form)) throw new Error('Unsupported form'); return filingsFromAtom(await this.#get(`https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=${encodeURIComponent(form)}&count=40&output=atom`, { ttlMs: 120000, as: 'text' })); }
+  async document(url) { if (!/^https:\/\/www\.sec\.gov\/Archives\/edgar\/data\//.test(String(url))) throw new Error('SEC Archives URL required'); return this.#get(url, { ttlMs: 86400000, as: 'text' }); }
   async form4(url) { if (!/^https:\/\/www\.sec\.gov\/Archives\/edgar\/data\//.test(url) || !/\.xml$/i.test(url)) throw new Error('Form 4 XML URL required'); return parseForm4(await this.#get(url, { ttlMs: 86400000, as: 'text' })); }
 }

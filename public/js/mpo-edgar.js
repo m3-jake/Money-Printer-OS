@@ -2,7 +2,13 @@
 (() => {
   const escape = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const when = v => v ? new Date(v).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }) : '—';
-  let status = null, list = null, company = null, form4 = {}, error = '', busy = false, stamp = 0, drawn = '', form = '8-K', mode = 'latest', ticker = '';
+  let summaries = {}, status = null, list = null, company = null, form4 = {}, error = '', busy = false, stamp = 0, drawn = '', form = '8-K', mode = 'latest', ticker = '';
+  const post = async (p, body) => { const r = await fetch('/api/platform' + p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }); const j = await r.json(); if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`); return j.result; };
+  // AI summary panel: always labelled, shows the model, and every sentence with the filing passages it cites.
+  const aiPanel = s => s.error ? `<div class="edgar-ai"><b>AI summary unavailable:</b> ${escape(s.error)}</div>` : s.status === 'REFUSED' ? `<div class="edgar-ai"><b>AI summary declined</b> (${escape(s.category || 'no category')}). Read the filing directly.</div>`
+    : `<details class="edgar-ai" open><summary><span class="mpo-badge">AI-GENERATED ANALYSIS</span> ${escape(s.model)}${s.cached ? ' · stored' : ''} · ${s.citedShare === null || s.citedShare === undefined ? '' : Math.round(s.citedShare * 100) + '% of claims cited'}${s.status === 'TRUNCATED_OUTPUT' ? ' · <b>output hit its length limit</b>' : ''}</summary>
+      ${s.blocks.map(b => `<span class="${b.citations.length ? 'ai-cited' : 'ai-uncited'}" title="${escape(b.citations.map(c => c.quote).join(' | ').slice(0, 900) || 'no citation')}">${escape(b.text).split(String.fromCharCode(10)).join('<br>')}</span>`).join('')}
+      <p class="core-muted">Generated from the filing text only. Hover a sentence to see the filing passage it cites; uncited sentences are dimmed. This is not the filing and not advice.</p></details>`;
   const api = async p => { const r = await fetch('/api/platform' + p, { cache: 'no-store' }); const j = await r.json(); if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`); return j; };
   const table = (head, rows, empty) => `<div class="core-table-wrap"><table class="table"><thead><tr>${head.map(h => `<th>${escape(h)}</th>`).join('')}</tr></thead><tbody>${rows || `<tr><td colspan="${head.length}">${escape(empty)}</td></tr>`}</tbody></table></div>`;
   const row = f => { const x = f.facts, a = f.analysis, f4 = form4[x.accession];
@@ -10,7 +16,7 @@
       <td>${x.items.map(i => `<div><small>${escape(i.code)}</small> ${escape(i.name)}</div>`).join('') || '—'}${x.rawXmlUrl ? `<button class="btn" type="button" data-edgar="form4" data-acc="${escape(x.accession)}" data-url="${escape(x.rawXmlUrl)}">Transactions</button>` : ''}
         ${f4 ? `<div class="edgar-f4">${escape(f4.owner || '')} (${escape((f4.roles || []).join(', '))}): ${f4.transactions.map(t => `${escape(t.meaning)} ${t.shares ?? '?'} @ ${t.price ?? '—'} on ${escape(t.date)}`).join('; ') || 'no non-derivative rows'}</div>` : ''}</td>
       <td class="edgar-analysis">${a.catalysts.map(c => `<span class="mpo-badge">${escape(c)}</span>`).join(' ') || '—'}${a.relatedMarkets.length ? `<div><small>Related: ${a.relatedMarkets.map(m => escape(m.venue + ': ' + m.title)).join(' · ')}</small></div>` : ''}</td>
-      <td>${x.url ? `<a href="${escape(x.url)}" target="_blank" rel="noreferrer">Filing</a>` : ''} ${x.indexUrl && x.indexUrl !== x.url ? `<a href="${escape(x.indexUrl)}" target="_blank" rel="noreferrer">Index</a>` : ''}</td></tr>`; };
+      <td>${x.url ? `<a href="${escape(x.url)}" target="_blank" rel="noreferrer">Filing</a>` : ''} ${x.indexUrl && x.indexUrl !== x.url ? `<a href="${escape(x.indexUrl)}" target="_blank" rel="noreferrer">Index</a>` : ''}${x.url ? `<br><button class="btn" type="button" data-edgar="ai" data-acc="${escape(x.accession)}" title="Uses Anthropic API credits; stored after the first run">AI summary</button>` : ''}</td></tr>${summaries[x.accession] ? `<tr><td colspan="6">${aiPanel(summaries[x.accession])}</td></tr>` : ''}`; };
   function view() {
     const st = status || {}, rows = mode === 'company' ? company?.filings : list?.filings;
     return `<div class="core-heading"><h2>EDGAR</h2><span class="mpo-badge">SEC FILINGS · FACTS + LABELLED ANALYSIS</span></div>
@@ -36,6 +42,7 @@
   document.addEventListener('click', e => {
     const b = e.target.closest('[data-edgar]'); if (!b || !root()?.contains(b)) return;
     if (b.dataset.edgar === 'latest') act(async () => { mode = 'latest'; list = await api('/edgar/latest?form=' + encodeURIComponent(form)); });
+    if (b.dataset.edgar === 'ai') act(async () => { try { summaries[b.dataset.acc] = await post('/edgar/summary', { accession: b.dataset.acc }); } catch (e) { summaries[b.dataset.acc] = { error: e.message }; } });
     if (b.dataset.edgar === 'form4') act(async () => { form4[b.dataset.acc] = (await api('/edgar/form4?url=' + encodeURIComponent(b.dataset.url))).facts; });
   });
   document.addEventListener('submit', e => { const f = e.target.closest('[data-edgar-company]'); if (!f || !root()?.contains(f)) return; e.preventDefault(); ticker = String(new FormData(f).get('ticker') || '').trim().toUpperCase(); act(async () => { mode = 'company'; company = await api('/edgar/company?ticker=' + encodeURIComponent(ticker)); }); });

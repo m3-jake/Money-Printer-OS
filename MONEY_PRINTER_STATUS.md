@@ -1152,3 +1152,18 @@ Kalshi and Robinhood event contracts are already covered by the MPOS core platfo
 - **Test:** pool results equal inline results, and the main event loop keeps ticking during a 6000-record × 16-parameter walk-forward. **Live:** walk-forward via the app pool returned in 58 ms while 92 diagnostics requests were served concurrently.
 - **Cross-machine distribution: not built, on purpose.** The existing mesh (`src/networkMesh.js`) is presence/chat over unauthenticated LAN UDP, and accepting compute jobs over it would let any LAN host run work on this machine. Heavy cross-machine search already goes through the Evolution Lab and its HMAC-signed bridge. If bing wants Market Lab jobs on the Windows box specifically, the safe route is a signed job endpoint on that bridge.
 - `market-core` 62.
+
+## Batch AK (2026-09-26): AI-assisted SEC filing summaries, cited and labelled
+
+- **New dependency `@anthropic-ai/sdk`** (official SDK; the Claude API guidance says to use it rather than raw HTTP). **New `src/core/aiSummary.js`:**
+  - SEC filing HTML → text → `claude-opus-5` (effort medium) with the **server-side refusal fallback** (`fallbacks: "default"`).
+  - The filing is attached as a **document with citations enabled**, so every summary sentence carries the exact filing passages it came from (`cited_text` + character range). `citedShare` reports how many claim sentences are backed.
+  - Fixed sections: what happened / numbers / people and deals / risks. "State only what the filing says", no predictions or advice.
+  - Refusals come back as REFUSED with category. Filings over 1.5M characters are **refused, never cut short**; SDK errors map to typed codes (auth, rate limit, API).
+- **Platform:**
+  - `edgarSummary({accession, force})` runs **on request only** (it costs API usage) and stores results in `ai_summaries`, **separate from the Filing facts**, which are never modified. A second request returns the stored copy (not billed again).
+  - Without `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` it reports NOT CONFIGURED.
+  - `POST /api/platform/edgar/summary`; the diagnostics list the "anthropic" source.
+- **EDGAR window:** an "AI summary" button per filing opens a panel labelled **AI-GENERATED ANALYSIS** with the model name, stored flag and cited share. Hovering a sentence shows its filing quote; uncited sentences are dimmed; a footer says it is not the filing and not advice.
+- **Not exercised against the live API** (no Anthropic key and no SEC contact on this machine). Tests use a fake client and check the exact request shape (model, fallback beta, document citations, full text), the refusal path, the no-truncation rule, caching and facts isolation.
+- `market-core` 63.
