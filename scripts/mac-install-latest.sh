@@ -37,4 +37,4 @@ ditto "$APP" "$DEST"
 open "$DEST"
 
 echo "Installed $(basename "$OUT") to $DEST"
-[ -n "$BACKUP" ] && echo "Rollback: quit the app, delete \"$DEST\", and rename \"$BACKUP\" back."
+if [ -n "$BACKUP" ]; then echo "Rollback: quit the app, delete \"$DEST\", and rename \"$BACKUP\" back."; fi
