@@ -694,6 +694,41 @@ What was finished and committed before parking (all tested; nothing can place wi
 - **Installed and verified (2026-09-26 13:08Z):** bing added `HOLDER_RPC_URL` (Helius mainnet; `HELIUS_API_KEY` left empty). A direct `getTokenLargestAccounts` test returned 200 with 20 holders in 178 ms. App stopped (polite close, then force, same as the update script); backup `resources\app.asar.alpha60-backup-20260926-090805`; new asar hash verified `D02B7214...`; relaunched. `/api/state`: alpha.60, paper, `holderRpc` **OK via mainnet.helius-rpc.com**, 0 errors, ~66 ms, Wallet Intel populated for the first time. First-minute rate ~14 calls/min (about 20.7k/day projected, under the 25k cap). Recheck the day's `calls` / `budgetSkips` later and tune `HOLDER_RPC_DAILY_CALLS` if the cap gets hit.
 - Rollback: quit the app, copy the backup over `resources\app.asar`.
 
+## Kalshi module scoping (2026-09-26, read-only, no code changed)
+
+bing asked how hard a Kalshi module would be and what it adds. Findings were web-researched against docs.kalshi.com, the rulebook and CFTC filings, and Kalshi's live public API (no key). Each critical claim was checked by a second agent.
+- **Adds that we don't have:**
+  - Combos without a beta gate. Rulebook 5.3 lets any direct member RFQ, and the spec has no allowlist. Not tested end to end with a Basic account. It needs a direct Kalshi account, not Robinhood (FCM customers aren't members).
+  - A demo exchange with mock funds, for testing order paths only. Demo prices are not evidence.
+  - Keyless REST for markets, orderbook, trades, candlesticks and `/live_data/*` (game_stats may supply the sports clock; unconfirmed). The WebSocket needs a key.
+  - Non-sports markets: CPI/Fed, weather, 15-minute/hourly crypto ranges. They are legal in every state.
+  - A second price on the same US games.
+  - Volume about 8x Polymarket US, but only about 2x in straight sports. 53% of September's volume is combos.
+- **Doesn't fix:**
+  - Taker fee is the same: 0.07·P(1−P) vs PM US 0.0695. Makers are worse off: Kalshi charges 0.0175 on major sports, PM US pays a 0.0125 rebate. Combo maker fee 0.035 since 08-20.
+  - Retail parlay takers lost about 15% (Jan–Apr 2026). Our PM US evidence shows no edge: 465 legs, −1.3 to −4.5 pp after fees; shadow combos −18% to −37%.
+- **Legal:** sports are blocked or geofenced in NV, WA, MI and some CA tribal land. UT, OH, TN, CT and IA can now enforce. MD and MA are pending. Non-sports markets are available everywhere.
+- **RFQ rule 5.3(b)(h):** RFQs must be bona fide. A paper lane must not fire production RFQs to harvest prices.
+- **Effort:**
+  - Keyless evidence lane (collector tick, the same calibration, a Lab `kalshi` lane): S–M, 1–2 batches.
+  - Paper/demo singles trader plus a HUD window: L, about Robinhood's size. Wait until after the HUD declutter.
+  - Real-money combos: L, and they need a policy change.
+  - Signing is easy: Ed25519 is accepted since 09-24, the same scheme as PM US. RSA PEM would break `rewriteEnv` (strips newlines).
+- **Recommendation given:** don't build the full module now. Optional next step: the keyless evidence lane only, to test major-league calibration, cross-venue gaps after both fees, and BTC ranges vs the Robinhood volatility model.
+- **Found in passing:** the `/api/polymarket-us/*` POST routes (`src/dashboard.js:493-506`, including `/arm` and `/combos/autopilot`) lack the localhost/Origin/JSON/sec-fetch-site guard in `src/robinhoodHttp.js:11-26`. `body()` parses any content type.
+
 ### Next recommended
 - **HUD declutter (bing, 2026-09-26):** "too much clutter when you open a window; the full detail should be an option; keep it sleek; text too small." Measured on the live HUD at 1280x720: 3 windows open stacked on launch, 793 visible text elements, most at 10-12 px. Proposal in chat: bigger base text plus a size setting, one window on launch, a summary-first view per window with a Details toggle, empty/idle sections hidden.
 - Copy-trading step 2 (SOL amounts per swap, capped Helius indexer) once the holder data has been flowing for a day or so.
+
+## Batch K (2026-09-26): HUD declutter, Simple / Advanced (branch `feature/hud-declutter`, on top of `fix/holder-rpc-helius`)
+
+- bing's direction, in order: too much clutter, text too small; think like an art director; keep the Windows 98 theme ("slightly higher-tech Win98"); don't gut the graphs; add a switch between simple and advanced for every window so nothing is lost.
+- **Simple mode (default):** each window opens as one card: sunken LCD hero number, three LCD readouts, the window's live graphs in sunken panels, and a sunken status bar. Pump.fun: tape ticker, Task Manager-style equity graph, meme gauge, opportunity map, entry funnel. Polymarket: live-games lanes, price vs floor, top picks. Robinhood: tape ticker, LCD price tiles, edge meter. System: CPU/memory history graph (client-side, about 6 min) and a service list with LEDs. Journal: latest 14. About: module status list. `public/css/mpo-glance.css`; `glance()` / `GLANCE` registry / `taskGraph()` in `dashboard.html`.
+- **Advanced mode:** the previous workstations, unchanged. There is a taskbar `Simple | Advanced` switch (all windows) and a per-window title-bar button; opening a specific tab switches that window to Advanced. Settings > Display: text size S/M/L (the fit-zoom ceiling, default 1.25), Advanced everywhere, reopen every window at launch.
+- Launch opens only the last-used window, centred. `LAYOUT_VERSION` is now `2026-09-26-glance` and `DEFAULT_OPEN=['trade']` (test pins updated in visual-contract, robinhood-hud, robinhood-http). Visible text elements at launch went from 793 to about 60.
+- Data for glances keeps flowing: `windowShown()` gates fetches, and `windowVisible()` (detail renderers) is false for glance windows.
+- Fixed: Settings > Reset window layout never worked (the beforeunload `persist()` wrote the old layout back); `layoutResetting` guard.
+- Tests: `test:all` **640 pass / 0 fail** (new glance contract test). Previewed in an isolated engine on 8813 at 1440x900: every glance, the switch both ways, and the Settings display section.
+- Build: `Desktop\Money Printer OS\Windows-68c1a40-glance\app.asar`, `0.5.0-alpha.60+windows.68c1a40`, sha256 `e93aa4b6b2822acfc4fc73bd73eb642f97efbc9899c57a8e592d7cc23ed9d445`, smoke on 18792 passed. Includes batch J. **Not installed yet**: waiting on bing's OK.
+- Untracked `artifacts/sky-refs/` and `artifacts/money-fx-refs/` belong to another session; left alone.
