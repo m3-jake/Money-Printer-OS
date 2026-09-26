@@ -544,3 +544,27 @@ What was finished and committed before parking (all tested; nothing can place wi
   4. Early-return passes skip the standing-proposal check.
   5. A standing proposal is never re-scored or aged out. Add a max age and re-score it each pass.
 - **Next Lab batch:** fix 1–5 above. Then the Solana scorer: freeze stop/take/hold until exits are simulated, and score MPO's real SPRINT policy as the incumbent. See `reports/EVOLUTION-LAB-AUDIT-2026-09-26.md`.
+
+## Batch 27 (2026-09-26): Robinhood live quotes unblocked; HUD fit-to-window
+
+- **Robinhood (`9ef08a9`).** After bing added real keys, every Robinhood quote was rejected and both paper books froze on "quote stale" (`lastError` "Robinhood returned no valid current quotes").
+  - Live v2 `best_bid_ask` crosses by up to ~2 bps (−1.6 to +0.7 bps over 8 samples), and its timestamps run ~1.1 s ahead of this PC. `fresh()` needs `ask>=bid` and `at<=now`.
+  - Fix: uncross when the cross is ≤ 5 bps; stamp a timestamp ≤ 5 s ahead with the receipt time. Wider crosses and far-future quotes are still rejected.
+  - "No valid quotes" is now code `badQuotes` (added to `RH_CODES`; unknown codes were becoming `unknown`). It falls back to the public paper book.
+  - Tape rows from the Robinhood API were tagged `v1`/`v2`, so the holdout's ≥ 90 % Robinhood-share gate could never pass. They are now tagged `robinhood`.
+  - Robinhood's real cost: v1 shows ~0.94 % spread per side; v2 is near-mid, with account `feeRatio` 0.0095 per side. The strict book needs a ≥ 3 % expected move; expect very few trades.
+  - The `badQuotes` fallback, the tape tag and the uncrossing have NOT been checked against the live app yet. That needs a build and install.
+- **HUD (`400e54e`), bing request: "no scrolling, things get smaller so it all fits".**
+  - `fitWindow` zooms the visible pane (50–100 %) to fit the window. It refits on resize (ResizeObserver), DOM changes (MutationObserver), tab switch and maximize.
+  - Each window has a title-bar toggle, stored in `mpo-fit-off`, and a zoom-% badge.
+  - Panes are container-query roots. `.mpo-split` gives Pump.fun and Polymarket two columns at ≥ 820 px layout width. Robinhood views are an auto-fit card grid (minmax 360 px). A maximized Pump.fun chart fills the left column.
+  - The taskbar **Tile** button puts trade/robinhood/sportsbook in the top 64 % and the rest below.
+  - Polymarket AUTO COMBO and research are `<details data-keep>` folds (open state in `mpo-open-details`).
+  - Preview (isolated, 1440×900, six windows tiled): Pump.fun 75 %, Robinhood 61 %, Money 67 %, System 60 %; all fit. Polymarket fits only at the 50 % floor and scrolls because the isolated engine shows the key form; it is parked.
+  - The dashboard server caches `dashboard.html` at startup: restart it to see edits.
+- **Evolution Lab "can't start":** the Lab backend is healthy (RUNNING, gen ~79.8 k), but the installed Lab asar (04:02) predates the window fix `893b6b7` (04:48). Relaunching opens a splash that never loads.
+  - Workaround: open http://127.0.0.1:8793, or end the Lab in Task Manager and relaunch it.
+  - The Lab session was told; it owns the build and install of `cb3c389`.
+- **Tests:** `npm run test:all` **612 pass / 0 fail** (+3).
+- **Not built or installed.** bing's app is still alpha.58 without these changes.
+- **Pending:** a read-only workflow is inventorying the paper-wallet settings for Robinhood and Pump.fun, to propose a settings batch.
