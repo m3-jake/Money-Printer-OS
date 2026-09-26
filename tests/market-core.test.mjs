@@ -739,3 +739,19 @@ test('event pages for sports, weather and corporate events share one generic, la
   const cp=corporatePages([{facts:{form:'8-K',company:'Apple Inc.',ticker:'AAPL',accession:'1',acceptedAt:10,items:[{code:'2.02',name:'Results'}],url:'u'},analysis:{catalysts:['EARNINGS'],relatedMarkets:[],note:'n'}},{facts:{form:'8-K',company:'B',accession:'2',acceptedAt:11,items:[{code:'8.01',name:'Other'}]},analysis:{catalysts:[],relatedMarkets:[]}}],{assets:{AAPL:{price:231,source:'alpaca-iex'}}});
   assert.equal(cp.length,1);assert.equal(cp[0].title,'AAPL — EARNINGS');assert.equal(cp[0].metrics[2].value,'231');
 });
+
+test('Kalshi event fee overrides: pending, applied after vanishing, unverified uses the higher multiplier',async()=>{
+  const series={ticker:'KXMLBGAME',fee_type:'quadratic_with_maker_fees',fee_multiplier:.5};
+  assert.equal(kalshiFeeModel(series,{state:'PENDING',next:{at:5,multiplier:1}}).model.multiplier,.5);
+  assert.equal(kalshiFeeModel(series,{state:'APPLIED',feeType:'quadratic_with_maker_fees',multiplier:1}).model.multiplier,1);
+  assert.equal(kalshiFeeModel(series,{state:'UNVERIFIED',feeType:'quadratic',multiplier:1}).model.rate,.07);
+  assert.equal(kalshiFeeModel(series,{state:'UNVERIFIED',multiplier:.25}).model.multiplier,.5);// never lowers the fee
+  let now=1000,list=[{id:'c1',event_ticker:'E1',series_ticker:'KXMLBGAME',fee_type_override:'quadratic_with_maker_fees',fee_multiplier_override:1,scheduled_ts:new Date(2000).toISOString()}];
+  const k=new KalshiProvider({fetchImpl:async url=>{const u=String(url);if(u.includes('fee_changes'))return {ok:true,json:async()=>({event_fee_changes:list,cursor:''})};if(u.includes('/series/'))return {ok:true,json:async()=>({series})};
+    return {ok:true,json:async()=>({markets:[{ticker:'E1-A',event_ticker:'E1',title:'A wins'},{ticker:'E2-A',event_ticker:'E2',title:'B wins'}],cursor:''})};}});
+  await k.refreshFeeChanges();
+  assert.equal(k.feeOverride('E1','KXMLBGAME',now).state,'PENDING');
+  list=[];k.feeFetchedAt=0;await k.refreshFeeChanges();// the change dropped off the public list once it took effect
+  assert.equal(k.feeOverride('E1','KXMLBGAME',3000).state,'APPLIED');assert.equal(k.feeOverride('E1','KXMLBGAME',3000).multiplier,1);
+  assert.equal(k.feeOverride('E2','KXMLBGAME',3000).state,'UNVERIFIED');assert.equal(k.feeOverride('E3','KXOTHER',3000).state,'NONE');
+});

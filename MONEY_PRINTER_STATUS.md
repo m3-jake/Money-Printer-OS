@@ -1133,3 +1133,15 @@ Kalshi and Robinhood event contracts are already covered by the MPOS core platfo
 - **Bug found in the live check:** `sameName` failed when both names had the same word count ("Los Angeles A" vs "Los Angeles Angels"), so the Angels' Kalshi price was dropped from the event. The abbreviated name is now always the short side (regression test added).
 - **Live:** 19 pages (7 macro, 8 sports, 4 weather: Gonzalo, Odalys, Polo, Nolo; corporate 0 until SEC_USER_AGENT is set). First load ≈60–90 s (all desks); cached 5 minutes.
 - Tests: 1 new (+ sameName regression). `market-core` 60.
+
+## Batch AI (2026-09-26): Kalshi event-level fee overrides
+
+- **Finding:** Kalshi schedules event fee overrides (`GET /events/fee_changes`), e.g. **MLB game events move from multiplier 0.5 to 1 at first pitch**. The public list holds only **pending** changes (242 live, all future); a change vanishes once it takes effect.
+- **Provider:** `refreshFeeChanges()` (10-min cache, ≤5 pages) keeps every change it has seen. `feeOverride(event, series, now)` returns:
+  - **PENDING:** series fee now, next change shown;
+  - **APPLIED:** a change we saw whose time has passed; it is the fee even after it leaves the list;
+  - **UNVERIFIED:** the series uses overrides but this event has none pending (probably already started), so the **higher multiplier seen for the series** is used and costs are never understated;
+  - **NONE.**
+  - Markets and single-market lookups attach it to the fee model. `describeFeeModel` says which case applies, e.g. "changes to × 1 at 2026-09-27T19:05Z".
+- **Live:** KXMLBGAME: 44 markets PENDING (× 0.5 until first pitch), 4 in-progress games UNVERIFIED at × 1.
+- Tests: 1 new (the four states, including a change dropping off the list). `market-core` 61.

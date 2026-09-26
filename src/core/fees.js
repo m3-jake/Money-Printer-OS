@@ -13,13 +13,22 @@ const num = v => (v === null || v === undefined || v === '' || typeof v === 'boo
 const ceilTo = (v, dp) => { const f = 10 ** dp; return Math.ceil(v * f - 1e-9) / f + 0; }; // + 0: no -0
 const KALSHI_QUADRATIC = new Set(['quadratic', 'quadratic_with_maker_fees', 'quadratic_with_combo_maker_fees']);
 
-export function kalshiFeeModel(series) {
+// Event fee overrides (GET /events/fee_changes) are layered on the series. The public list only
+// holds PENDING changes (e.g. MLB game events move from multiplier 0.5 to 1 at first pitch) and a
+// change disappears once it takes effect. override: { state: 'NONE' | 'PENDING' | 'UNVERIFIED',
+// feeType, multiplier, next: {at, feeType, multiplier} }. UNVERIFIED means the series uses overrides
+// but this event has no pending one (it may already apply); the higher multiplier seen for the
+// series is used so costs are never understated.
+export function kalshiFeeModel(series, override = null) {
   if (!series || typeof series !== 'object') return { model: null, reason: 'Kalshi series fee data not loaded' };
-  const mult = num(series.fee_multiplier);
-  if (!KALSHI_QUADRATIC.has(series.fee_type)) return { model: null, reason: `Kalshi fee type ${series.fee_type || 'unknown'} not supported` };
+  let type = series.fee_type, mult = num(series.fee_multiplier), source = `Kalshi series ${series.ticker || ''}`.trim();
+  // APPLIED: a change we saw pending whose time has passed; it is the event's fee (null fields = cleared).
+  if (override?.state === 'APPLIED') { if (override.feeType) type = override.feeType; if (num(override.multiplier) !== null) mult = num(override.multiplier); source += ' + event override (applied)'; }
+  if (override?.state === 'UNVERIFIED' && num(override.multiplier) !== null && override.multiplier > (mult ?? 0)) { type = override.feeType || type; mult = num(override.multiplier); source += ' + event override (unverified; higher multiplier used)'; }
+  if (!KALSHI_QUADRATIC.has(type)) return { model: null, reason: `Kalshi fee type ${type || 'unknown'} not supported` };
   if (mult === null || mult < 0) return { model: null, reason: 'Kalshi fee multiplier missing' };
-  return { model: { venue: 'kalshi', kind: 'KALSHI_QUADRATIC_TAKER', rate: Math.round(0.07 * mult * 1e8) / 1e8, feeType: series.fee_type, multiplier: mult, rounding: 'CENT_PER_ORDER',
-    source: `Kalshi series ${series.ticker || ''}`.trim(), overridesChecked: false }, reason: null };
+  return { model: { venue: 'kalshi', kind: 'KALSHI_QUADRATIC_TAKER', rate: Math.round(0.07 * mult * 1e8) / 1e8, feeType: type, multiplier: mult, rounding: 'CENT_PER_ORDER',
+    source, overridesChecked: !!override, overrideState: override?.state || null, nextChange: override?.next || null }, reason: null };
 }
 
 export function polymarketFeeModel(raw) {
@@ -47,7 +56,7 @@ export function takerFee(model, fills) {
 
 export function describeFeeModel(model, reason = null) {
   if (!model) return `Unavailable: ${reason || 'no fee model'}`;
-  if (model.kind === 'KALSHI_QUADRATIC_TAKER') return `Kalshi ${model.feeType} × ${model.multiplier} → ${model.rate} × C × P(1−P), rounded to the cent per order (${model.source}; event overrides not checked)`;
+  if (model.kind === 'KALSHI_QUADRATIC_TAKER') return `Kalshi ${model.feeType} × ${model.multiplier} → ${model.rate} × C × P(1−P), rounded to the cent per order (${model.source}; ${!model.overridesChecked ? 'event overrides not checked' : model.nextChange ? `changes to × ${model.nextChange.multiplier} at ${new Date(model.nextChange.at).toISOString().slice(0, 16)}Z` : model.overrideState === 'UNVERIFIED' ? 'override may already apply' : 'no event override pending'})`;
   if (model.kind === 'POLYMARKET_NO_FEE') return 'Polymarket: fees disabled for this market';
   if (model.rate === 0) return `Polymarket: zero-fee market (${model.source})`;
   return `Polymarket taker ${model.rate} × C × p(1−p), rounded to 5 decimals (${model.source})`;
