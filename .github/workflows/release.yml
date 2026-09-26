@@ -7,12 +7,14 @@
 # holds that key (docs/RELEASE-CHANNEL.md). Until that manifest is uploaded and the draft is
 # published, the updater cannot see the release at all.
 #
-# Runs on a `v*` tag push or by hand. macOS runners bill at 10x, so this is deliberately not a
-# per-push job; CI (ci.yml) is the per-push gate.
+# Runs on a `v*` tag push, by hand, or on a main push whose commit message contains
+# `[build-unified]`. macOS runners bill at 10x, so ordinary main pushes skip this job; CI
+# (ci.yml) remains the per-push gate.
 name: Release build
 
 on:
   push:
+    branches: [main]
     tags: ['v*']
   workflow_dispatch:
     inputs:
@@ -30,6 +32,9 @@ concurrency:
 
 jobs:
   unified:
+    # A normal main push creates only a skipped workflow run. Add [build-unified] to an intentional
+    # integration commit when a fresh cross-platform package is wanted.
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/') || contains(github.event.head_commit.message, '[build-unified]') }}
     name: unified mac arm64 + windows x64
     # Apple silicon: scripts/build-unified.mjs refuses anything but darwin/arm64 (codesign, ditto, plutil).
     runs-on: macos-15
