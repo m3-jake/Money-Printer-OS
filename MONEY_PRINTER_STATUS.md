@@ -732,3 +732,9 @@ bing asked how hard a Kalshi module would be and what it adds. Findings were web
 - Tests: `test:all` **640 pass / 0 fail** (new glance contract test). Previewed in an isolated engine on 8813 at 1440x900: every glance, the switch both ways, and the Settings display section.
 - Build: `Desktop\Money Printer OS\Windows-68c1a40-glance\app.asar`, `0.5.0-alpha.60+windows.68c1a40`, sha256 `e93aa4b6b2822acfc4fc73bd73eb642f97efbc9899c57a8e592d7cc23ed9d445`, smoke on 18792 passed. Includes batch J. **Not installed yet**: waiting on bing's OK.
 - Untracked `artifacts/sky-refs/` and `artifacts/money-fx-refs/` belong to another session; left alone.
+- **Installed (2026-09-26 13:32Z) on bing's go:** backup `resources\app.asar.holder-rpc-140e923-backup-20260926-093252`, new asar hash verified `E93AA4B6...`, relaunched. Live check on 8792: alpha.60 paper, holder data OK, the page serves `mpo-glance.css` (200) and the mode switch, no console errors; the Pump.fun glance rendered with live data (1.3777 SOL, +0.3380 today, 8 open, 37% hit rate, lab gen 87,390). Rollback: quit, copy that backup over `resources\app.asar`.
+
+### Next recommended
+- bing's feedback on the installed glances (tune per window).
+- Push `fix/holder-rpc-helius` and `feature/hud-declutter` and open PRs to main (not done; ask first).
+- Copy-trading step 2 once holder data has flowed for a day (SOL per swap, capped Helius indexer). Check the day's holder `calls` / `budgetSkips` against the 25k cap.
