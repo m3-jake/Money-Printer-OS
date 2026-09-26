@@ -59,5 +59,15 @@ export function realisticSpreads(rows, { params } = {}) {
 //   trailingVenueSpreads Robinhood spreads seen before this row in the same tape (may be empty)
 //   maxSpreadBps         the strategy's spread gate; entrySignal refuses rows wider than this
 export function syntheticSpreadPct({ ownSpreadPct, trailingVenueSpreads, maxSpreadBps }) {
-  // TODO(human)
+  const own = Number(ownSpreadPct);
+  const ownFloor = Number.isFinite(own) && own >= 0 ? own : 0;
+  const samples = (Array.isArray(trailingVenueSpreads) ? trailingVenueSpreads : [])
+    .map(Number).filter(v => Number.isFinite(v) && v >= 0);
+  const bps = Number(maxSpreadBps);
+  const gate = Number.isFinite(bps) && bps > 0 ? bps / 1e4 : 0;
+  const venueMedian = samples.length ? quantile(samples, 0.5) : null;
+  // Prefer the observed venue median. If no usable venue spread exists, charge the strategy's
+  // own spread gate; keep a tiny positive floor so a synthetic zero-spread candle is never free.
+  const reference = Number.isFinite(venueMedian) && venueMedian > 0 ? venueMedian : gate > 0 ? gate : 1e-6;
+  return Math.max(ownFloor, reference);
 }
