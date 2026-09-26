@@ -28,6 +28,7 @@ import { bucketLadder,dailyHighs,parseAlerts,parseStorms,weatherLinks,WeatherSou
 import { sportOf,familyOf,buildSportsEvents,mlbLive,nhlLive,attachLive } from '../src/core/sports.js';
 import { parseRss,extractEntities,relatedMarkets,importance,categoriesOf } from '../src/core/wire.js';
 import { tokenGraph,whaleFlow,walletView } from '../src/core/whales.js';
+import { buildEventPages } from '../src/core/correlation.js';
 import { StrategyRegistry,promotionCheck,labChampionLifecycle } from '../src/core/strategies.js';
 import { assertGlobalTradingNotHalted } from '../src/core/executionBoundary.js';
 import { localMutationAllowed } from '../src/core/http.js';
@@ -647,4 +648,23 @@ test('whale flow and wallet view; labels are append-only user notes; reader fail
   p.labelWallet({address:W(1),label:'fast flipper?',note:'guess'});p.labelWallet({address:W(1),label:''});
   assert.equal(p.store.db.prepare('SELECT COUNT(*) n FROM wallet_labels').get().n,0);assert.equal(p.store.db.prepare('SELECT COUNT(*) n FROM wallet_label_events').get().n,2);
   p.close();
+});
+
+test('event pages join the Kalshi event, same-window Polymarket markets, macro values, assets, exposure and signals',()=>{
+  const now=Date.parse('2026-09-26T12:00:00Z'),close=Date.parse('2026-10-28T17:55:00Z');
+  const macro={calendar:[{id:'FEDFUNDS',label:'Fed funds',closeAt:close,eventTicker:'KXFED-26OCT',title:'Fed funds rate after Oct 2026 meeting?',impliedMedian:4.058}],
+    indicators:[{id:'FEDFUNDS',label:'Fed funds target',unit:'%',last:{value:4,date:'2026-09-26'},ladder:{rungs:[{strike:4,p:.65},{strike:4.25,p:.02}]}},{id:'DGS10',label:'10y',unit:'%',last:{value:5.18,date:'2026-09-24'}}]};
+  const k={id:'contract:kalshi:KXFED-26OCT-T4.00',provider:'kalshi',sourceId:'KXFED-26OCT-T4.00',data:{title:'Above 4%?',closeAt:close}};
+  const pSame={id:'contract:polymarket:1',provider:'polymarket',sourceId:'1',data:{title:'Will the Fed increase interest rates by 25 bps after the October 2026 meeting?',eventTitle:'Fed Decision in October?',closeAt:close+36e5*10,yesBid:.64,yesAsk:.65}};
+  const pOther={id:'contract:polymarket:2',provider:'polymarket',sourceId:'2',data:{title:'Will the Fed cut rates after the December meeting?',closeAt:close+42*864e5,yesBid:.3,yesAsk:.31}};
+  const pOff={id:'contract:polymarket:3',provider:'polymarket',sourceId:'3',data:{title:'Will Spain win?',closeAt:close,yesBid:.5,yesAsk:.51}};
+  const wire=[{title:'FOMC statement',at:now-1,importance:100,source:'fed',entities:[{type:'macro',key:'FEDFUNDS'}]},{title:'GDP',at:now,importance:85,source:'bea',entities:[{type:'macro',key:'GDP'}]}];
+  const pages=buildEventPages({macro,contracts:[k,pSame,pOther,pOff],wire,held:new Set([k.id]),heldCost:new Map([[k.id,3.2]]),assets:{BTC:{price:84000,source:'tape'}},now});
+  assert.equal(pages.length,1);const pg=pages[0];
+  assert.equal(pg.title,'FED DECISION — OCTOBER');assert.equal(pg.predictionMarkets.kalshi.impliedMedian,4.058);assert.equal(pg.predictionMarkets.kalshi.link,'SAME_KALSHI_EVENT');
+  assert.deepEqual(pg.predictionMarkets.polymarket.map(x=>x.id),['contract:polymarket:1']);// December market and unrelated market excluded
+  assert.equal(pg.predictionMarkets.polymarket[0].yes,0.645);assert.equal(pg.exposure.costUsd,3.2);assert.equal(pg.signalCount,1);
+  assert.equal(pg.assets.find(a=>a.symbol==='BTC').price,84000);assert.equal(pg.assets.find(a=>a.symbol==='SPY').price,null);
+  assert.match(pg.provenance,/rule-based/);
+  assert.equal(buildEventPages({macro:{calendar:[{...macro.calendar[0],closeAt:now-2*864e5}],indicators:[]},now}).length,0);// past events drop off
 });

@@ -45,6 +45,7 @@ window.MPOSPlatform = (() => {
       <p class="core-muted">The stop persists across restarts. Orders already at a venue require reconciliation or cancellation in that program.</p>
       ${r.halted?button('resume','Resume core paper trading'):''}
       <div class="core-toolbar">${button('open-kalshi','Kalshi')}${button('open-poly','Polymarket')}${button('open-arbitrage','Arbitrage')}${button('refresh','Refresh')}</div>
+      ${eventsCard()}
       ${scoreboardCard()}
       <h3>Ledger accounts <small>Simulated funds</small></h3>
       ${table(['Venue / account','Cash','Realized P/L','Fees','Positions'],accounts.map(a=>`<tr><td>${escape(a.venue)} / ${escape(a.account)}</td><td>${dollars(a.cash)}</td><td>${dollars(a.realized)}</td><td>${dollars(a.fees)}</td><td>${a.positions.length}</td></tr>`).join(''),'No core accounts have been funded. Add an explicit simulated deposit in Markets to begin.')}
@@ -94,16 +95,44 @@ window.MPOSPlatform = (() => {
   }
   function render(){ids.forEach(draw);}
   async function refreshScoreboard(){try{const r=await fetch('/api/scoreboard',{cache:'no-store'});const v=await r.json();if(!r.ok||!Array.isArray(v.rows))throw new Error(v.error||'Scoreboard unavailable');scoreboard=v;scoreboardError='';}catch(e){scoreboardError=e.message;}}
-  async function refresh(){const [s,e]=await Promise.all([request('/status'),request('/entities?kind=Contract'),refreshScoreboard()]);snapshot=s;contracts=e.entities;render();}
+  // Event pages (one event, many markets). Heavier than /status, so fetched every 5 minutes while
+  // Command Center is open, without blocking the rest of the window.
+  let events=null,eventsAt=0,eventsBusy=false,openEvent=null;
+  function loadEvents(force=false){
+    const w=document.querySelector('.window[data-app="command"]');if(!w||w.classList.contains('hidden')||eventsBusy||(!force&&Date.now()-eventsAt<300000))return;
+    eventsBusy=true;request('/events'+(force?'?force=1':'')).then(v=>{events=v;eventsAt=Date.now();}).catch(e=>{events={error:e.message,pages:[]};eventsAt=Date.now()-240000;}).finally(()=>{eventsBusy=false;render();});
+  }
+  function eventsCard(){
+    if(!events)return `<h3>Events <small>One event → many markets</small></h3><p class="core-muted">${eventsBusy?'Joining macro, Kalshi, Polymarket, assets and the Wire…':'Loading…'}</p>`;
+    const fmt=(v,u)=>v===null||v===undefined?'—':`${Number(v).toLocaleString(undefined,{maximumFractionDigits:3})}${u==='%'?'%':u?' '+u:''}`;
+    const card=pg=>{const k=pg.predictionMarkets.kalshi,open=openEvent===pg.id;
+      return `<section class="event-card ${open?'open':''}"><header><button class="linkbtn" type="button" data-core-action="event" data-id="${escape(pg.id)}"><b>${escape(pg.title)}</b></button><small>${escape(new Date(pg.when).toLocaleString())} · ${escape(pg.whenLabel)}</small></header>
+        <div class="event-grid"><div><small>Kalshi</small><b>${fmt(k.impliedMedian,k.unit)}</b><small>implied median</small></div>
+          <div><small>Polymarket</small><b>${pg.predictionMarkets.polymarket.length}</b><small>linked markets</small></div>
+          <div><small>MPOS exposure</small><b>${pg.exposure.contracts.length?dollars(pg.exposure.costUsd):'none'}</b><small>core ledger</small></div>
+          <div><small>Signals</small><b>${pg.signalCount}</b><small>Wire items</small></div></div>
+        ${open?`<div class="event-detail"><h4>Macro</h4><p>${pg.macro.map(m=>`${escape(m.label)}: <b>${fmt(m.value,m.unit)}</b> <small>${escape(m.date||'')}</small>`).join(' · ')}</p>
+          <h4>Kalshi ladder <small>${escape(k.eventTicker)} (same Kalshi event)</small></h4><div class="macro-ladder">${k.rungs.map(r=>`<div><span>&gt; ${fmt(r.strike,k.unit)}</span><i style="--p:${(r.p*100).toFixed(0)}%"></i><em>${(r.p*100).toFixed(0)}%</em></div>`).join('')||'<small>No rungs</small>'}</div>
+          <h4>Polymarket <small>topic + same window (rule-based)</small></h4>${table(['Market','Event','YES'],pg.predictionMarkets.polymarket.map(x=>`<tr><td>${escape(x.title)}</td><td><small>${escape(x.event||'')}</small></td><td>${pct(x.yes)}</td></tr>`).join(''),'No linked Polymarket markets.')}
+          <h4>Markets</h4><p>${pg.assets.map(a=>`${escape(a.symbol)} <b>${a.price===null?'unavailable':Number(a.price).toLocaleString(undefined,{maximumFractionDigits:2})}</b>${a.source?` <small>${escape(a.source)}</small>`:''}`).join(' · ')}</p>
+          <h4>Exposure</h4><p>${pg.exposure.contracts.map(c=>`${escape(c.title)} ${dollars(c.costUsd)}`).join('<br>')||'No core-ledger positions in this event.'} <small>${escape(pg.exposure.note)}</small></p>
+          <h4>Signals</h4>${pg.signals.map(s=>`<p><small>${escape(new Date(s.at).toLocaleString())} · ${escape(s.source)} · ${s.importance}</small><br>${s.url?`<a href="${escape(s.url)}" target="_blank" rel="noreferrer">${escape(s.title)}</a>`:escape(s.title)}</p>`).join('')||'<p class="core-muted">None.</p>'}
+          <p class="core-muted">${escape(pg.provenance)}</p></div>`:''}</section>`;};
+    return `<h3>Events <small>One event → many markets · ${escape(events.note||'')}</small></h3>${events.error?`<p class="core-error">${escape(events.error)}</p>`:''}
+      <div class="event-list">${(events.pages||[]).map(card).join('')||'<p class="core-muted">No upcoming events with Kalshi ladders.</p>'}</div>${(events.errors||[]).length?`<p class="core-muted">${events.errors.map(escape).join(' · ')}</p>`:''}`;
+  }
+  async function refresh(){const [s,e]=await Promise.all([request('/status'),request('/entities?kind=Contract'),refreshScoreboard()]);snapshot=s;contracts=e.entities;loadEvents();render();}
   async function action(fn){if(busy)return;busy=true;error='';render();try{await fn();await refresh();}catch(e){error=e.message;}finally{busy=false;render();}}
   function install(api){
     hostApi=api;
     document.addEventListener('click',e=>{
       const btn=e.target.closest('[data-core-action]');if(!btn)return;const id=btn.closest('[data-core-id]')?.dataset.coreId,a=btn.dataset.coreAction,st=states[id];
+      // Expanding an event page is local UI state: never blocked by a refresh in progress.
+      if(a==='event'){openEvent=openEvent===btn.dataset.id?null:btn.dataset.id;render();return;}
       if(a==='halt'){request('/risk/halt',{}).then(refresh).catch(e=>{error=e.message;render();});return;}
       if(a.startsWith('open-')){const dest={kalshi:'kalshi',poly:'predictionmarkets',arbitrage:'arbitrage'}[a.slice(5)];api.open(dest);render();return;}
       action(async()=>{
-        if(a==='refresh')return;
+        if(a==='refresh'){loadEvents(true);return;}
         if(a==='halt')await request('/risk/halt',{});
         else if(a==='resume')await request('/risk/resume-paper',{confirmation:'RESUME PAPER TRADING'});
         else if(a==='load'||a==='next'){const data=await request(`/markets?venue=${venues[id]}${a==='next'?'&cursor='+encodeURIComponent(st.cursor):''}`);st.rows=data.markets;st.cursor=data.cursor;st.detail=null;}

@@ -1048,3 +1048,21 @@ Kalshi and Robinhood event contracts are already covered by the MPOS core platfo
 - **Live (isolated):** research loaded, 60 recently scanned tokens; no holder, authority or swap data here (no Helius key). The installed app has holder RPC running and will show more.
 - Tests: 2 new (graph, overlap, repeat-early, flags; flow; wallet view; label history; reader failure reported). `market-core` 54.
 - **Phase 4 complete** (FRED/Macro, EDGAR, Wire, Sports, Weather, Whale Watch). Next: Phase 5 event correlation / Command Center event pages.
+
+## Batch AC (2026-09-26): Phase 5, event correlation and Command Center event pages
+
+- **New `src/core/correlation.js`:** `buildEventPages()` makes **one page per upcoming event** (Fed decision, CPI/core/YoY, jobs report, unemployment, GDP, claims, retail) from what the desks already load. Each page has:
+  - **Macro:** the template's FRED values (e.g. Fed page: Fed funds, 2y, 10y, curve, CPI YoY).
+  - **Kalshi:** the event's ladder and implied median (link = **same Kalshi event**, a fact).
+  - **Polymarket:** markets matching the topic **and** ending within 5 days of the Kalshi close (rule-based; a December Fed market doesn't attach to October).
+  - **Markets:** SPY/QQQ/TLT (Alpaca, or "unavailable"), BTC/SOL from the tape with source label.
+  - **MPOS exposure:** core-ledger positions in linked contracts, with cost basis.
+  - **Signals:** Wire items tagged with the event's macro entities.
+  - **Provenance:** every page says which links are facts and which are rule-based.
+- **Polymarket provider:** new `search(q)` via gamma `public-search`; each market carries its parent event. Top-by-volume listing alone found no macro markets because it is mostly sports.
+- **Platform:** `eventPages()` (5-min cache) runs macro, Polymarket topic searches, Wire, held positions and asset prices. It stores an `Event` entity (fact=false) and `MARKET_FOR_EVENT` relationships (fact=true for the same Kalshi event, false for keyword matches). `GET /api/platform/events`.
+- **Command Center:** new **Events** section (loaded in the background every 5 minutes, Refresh forces it). Cards show when, Kalshi median, number of Polymarket links, exposure and signals; clicking one expands macro values, ladder bars, Polymarket table, assets, exposure and signal links.
+- **Bug fixed:** expanding a card went through the busy-guarded action wrapper, so clicks during a refresh were dropped. Now local UI state.
+- **Live:** 7 event pages. **FED DECISION — OCTOBER** (Kalshi closes Oct 28): Kalshi 65% above 4.00% (implied median 4.058%) and Polymarket "increase 25 bps" 64.5%, so the venues agree. Also shown: 2y 4.87%, 10y 5.18%, BTC 84,144 / SOL 121 (tape), 6 Fed Wire items. CPI pages link 12 Polymarket September-CPI markets each. First load ≈60 s (macro ladders plus searches), cached after.
+- Tests: 1 new (page assembly, window filter, exposure, signals, provenance, past events dropped). `market-core` 55.
+- **Not yet:** event pages for sports, weather and corporate events. Those live in the Sports/Weather/EDGAR windows and the Wire, but have no Command Center pages yet.

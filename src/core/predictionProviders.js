@@ -64,6 +64,15 @@ export class PolymarketProvider extends JsonProvider {
     for(const [k,v] of Object.entries({active:true,closed:false,limit:Math.min(200,limit),offset,order:'volume24hr',ascending:false}))u.searchParams.set(k,String(v));const raw=await this.get(u,{ttlMs:10000});if(!Array.isArray(raw))throw new ProviderError('MALFORMED_DATA','Polymarket markets array missing');return {markets:raw.map(m=>normalizePolymarket(m,this.observedAt(raw))),cursor:raw.length===limit?String(Number(offset)+limit):null};}
   // The list endpoint filtered by id includes the parent event (title, id); /markets/{id} omits it,
   // which would drop the participants that contract matching reads from the event title.
+  // Public search (events with their markets). Each market is given its parent event so matching can
+  // read the event title, the same way the list endpoint provides it.
+  async search(q,{limit=10}={}){
+    const u=new URL('https://gamma-api.polymarket.com/public-search');u.searchParams.set('q',String(q).slice(0,100));u.searchParams.set('limit_per_type',String(limit));
+    const raw=await this.get(u,{ttlMs:300000});if(!Array.isArray(raw?.events))throw new ProviderError('MALFORMED_DATA','Polymarket search events missing');
+    const at=this.observedAt(raw),out=[];
+    for(const e of raw.events){if(e.closed)continue;for(const m of e.markets||[]){if(m.closed)continue;try{out.push(normalizePolymarket({...m,events:[{id:e.id,title:e.title,slug:e.slug}]},at));}catch{}}}
+    return out;
+  }
   async market(id){const raw=await this.get(`https://gamma-api.polymarket.com/markets?id=${encodeURIComponent(id)}`);if(!Array.isArray(raw)||!raw[0])throw new ProviderError('MALFORMED_DATA','Polymarket market not found');return normalizePolymarket(raw[0],this.observedAt(raw));}
   async book(id,contract){
     if(!contract?.data?.binary||!contract.data.yesToken||!contract.data.noToken)throw new ProviderError('UNSUPPORTED_MARKET','Only complete binary token books are supported');

@@ -24,6 +24,7 @@ import { MACRO_INDICATORS,FredSource,transform as macroTransform,impliedLadder,a
 import { EdgarSource,analyseFiling } from './edgar.js';
 import { WEATHER_CITIES,WeatherSource,bucketLadder,weatherLinks } from './weather.js';
 import { buildSportsEvents,mlbLive,nhlLive,attachLive } from './sports.js';
+import { buildEventPages,EVENT_TEMPLATES } from './correlation.js';
 import { tokenGraph,whaleFlow,walletView,authorityOf } from './whales.js';
 import { WIRE_FEEDS,WIRE_FILTERS,parseRss,extractEntities,relatedMarkets,importance,categoriesOf } from './wire.js';
 export const SPORTS_SERIES=['KXMLBGAME','KXNFLGAME','KXNCAAFGAME','KXNHLGAME','KXNBAGAME','KXWNBAGAME','KXATPMATCH','KXWTAMATCH','KXTTSTARMATCH','KXTTELITEMATCH','KXUEFANLGAME','KXMLSGAME','KXEPLGAME'];
@@ -35,7 +36,7 @@ const swapSides=book=>({...book,yes:book.no,no:book.yes});
 
 export class MarketPlatform {
   constructor({file=':memory:',dataDir=null,providers=null,stockQuotes=undefined,stockClock=undefined,stockSession=undefined}={}){
-    this.store=new CoreDatabase(file);this.ledger=new UnifiedLedger(this.store);this.bus=new MarketEventBus();this.risk=new RiskGovernor(this.store,this.ledger,this.bus);this.strategies=new StrategyRegistry(this.store);this.legacyReaders={};this.replays=new Map();this.fred=new FredSource();this.macroCache=null;this.edgar=new EdgarSource();this.weather=new WeatherSource();this.weatherCache=null;this.sportsCache=null;this.sportsLive=new Map();this.sportsFetch=(url,opt)=>globalThis.fetch(url,opt);this.wireFetch=(url,opt)=>globalThis.fetch(url,opt);this.wireFeeds=new Map();this.whaleSeenTs=Date.now();
+    this.store=new CoreDatabase(file);this.ledger=new UnifiedLedger(this.store);this.bus=new MarketEventBus();this.risk=new RiskGovernor(this.store,this.ledger,this.bus);this.strategies=new StrategyRegistry(this.store);this.legacyReaders={};this.replays=new Map();this.fred=new FredSource();this.macroCache=null;this.edgar=new EdgarSource();this.weather=new WeatherSource();this.weatherCache=null;this.sportsCache=null;this.sportsLive=new Map();this.sportsFetch=(url,opt)=>globalThis.fetch(url,opt);this.wireFetch=(url,opt)=>globalThis.fetch(url,opt);this.wireFeeds=new Map();this.whaleSeenTs=Date.now();this.eventsCache=null;
     this.store.db.exec(`CREATE TABLE IF NOT EXISTS wallet_labels(address TEXT PRIMARY KEY, label TEXT NOT NULL, note TEXT NOT NULL, at INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS wallet_label_events(seq INTEGER PRIMARY KEY AUTOINCREMENT, address TEXT NOT NULL, label TEXT, note TEXT NOT NULL, at INTEGER NOT NULL);`);
     this.store.db.exec(`CREATE TABLE IF NOT EXISTS lab_runs(id TEXT PRIMARY KEY, at INTEGER NOT NULL, source TEXT NOT NULL, key TEXT NOT NULL, start_ms INTEGER NOT NULL, end_ms INTEGER NOT NULL,
@@ -370,6 +371,26 @@ export class MarketPlatform {
     this.store.transaction(()=>{if(l)this.store.db.prepare('INSERT INTO wallet_labels VALUES(?,?,?,?) ON CONFLICT(address) DO UPDATE SET label=excluded.label,note=excluded.note,at=excluded.at').run(a,l,n,now);else this.store.db.prepare('DELETE FROM wallet_labels WHERE address=?').run(a);
       this.store.db.prepare('INSERT INTO wallet_label_events(address,label,note,at) VALUES(?,?,?,?)').run(a,l||null,n,now);});
     return {address:a,label:l||null,note:n};
+  }
+  // Command Center event pages (correlation.js). Cached 5 minutes.
+  async eventPages({force=false}={}){
+    if(!force&&this.eventsCache&&Date.now()-this.eventsCache.at<300000)return this.eventsCache.data;
+    const now=Date.now(),errors=[],poly=this.providers.providers.get('polymarket')||null;
+    const macro=await this.macroSnapshot().catch(e=>{errors.push('macro: '+e.message);return null;});
+    // Topic searches on Polymarket for each upcoming release (paced; the provider caches 5 minutes).
+    if(poly&&poly.search)for(const id of [...new Set((macro?.calendar||[]).map(c=>c.id))]){const q=EVENT_TEMPLATES[id]?.search;if(!q)continue;
+      try{for(const c of await poly.search(q))this.store.put(c);await new Promise(r=>setTimeout(r,this.macroPaceMs??150));}catch(e){errors.push(`polymarket search "${q}": ${e.message}`);}}
+    const wire=await this.wireSnapshot().then(w=>w.items).catch(e=>{errors.push('wire: '+e.message);return [];});
+    const held=new Set(),heldCost=new Map();
+    for(const a of this.ledger.portfolio('PAPER').accounts)for(const p of a.positions){const [,venue,enc]=String(p.instrumentId).split(':'),m=decodeURIComponent(enc||'').match(/^(.+):(YES|NO)$/);if(m){const id=stableId('Contract',decodeURIComponent(venue),m[1]);held.add(id);heldCost.set(id,(heldCost.get(id)||0)+Number(p.costBasis));}}
+    const assets={},dir=this.dataDir||path.resolve(process.env.MONEY_PRINTER_DATA_DIR||'data');
+    for(const [sym,tape] of [['BTC','BTC-USD'],['ETH','ETH-USD'],['SOL','SOL-USD']]){const r=readTape(dir,tape,{start:now-6*3600000,end:now});const last=r.at(-1);if(last)assets[sym]={price:(last.bid+last.ask)/2,at:last.availableAt,source:last.synthetic?'tape (candle-derived)':'tape'};}
+    try{const q=await this.stocks.quotes(['SPY','QQQ','TLT','XRT']);for(const [s,x] of Object.entries(q))if(x.last||x.bid)assets[s]={price:x.last??(x.bid+x.ask)/2,at:x.quoteAt,source:x.source};}catch(e){errors.push('stock quotes: '+e.message);}
+    const pages=buildEventPages({macro,contracts:this.store.list({kind:'Contract',limit:1000}),wire,held,heldCost,assets,now});
+    for(const pg of pages){try{const ev=this.store.put({kind:'Event',provider:'mpos',sourceId:pg.eventTicker,data:{title:pg.title,indicator:pg.indicator,when:pg.when},observedAt:now,availableAt:now,fact:false});
+      for(const id of pg.relatedContractIds){if(!this.store.get(id))continue;this.store.relate({sourceId:id,targetId:ev.id,relation:'MARKET_FOR_EVENT',evidence:id.startsWith('contract:kalshi:')?'Same Kalshi event':'Keyword template match',fact:id.startsWith('contract:kalshi:'),at:now});}}catch(e){errors.push('store: '+e.message);}}
+    const data={at:now,pages,errors,note:'Kalshi links are the venue\'s own event grouping; Polymarket, asset and signal links are rule-based. Exposure covers the core ledger only.'};
+    this.eventsCache={at:now,data};return data;
   }
   async edgarLatest(form='8-K'){return {status:this.edgar.status(),form,filings:this.recordFilings(await this.edgar.latest(form))};}
   async edgarCompany(ticker){const {filingsFromSubmissions}=await import('./edgar.js');const sub=await this.edgar.company(ticker);return {status:this.edgar.status(),company:sub.name,cik:sub.cik,tickers:sub.tickers,sic:sub.sicDescription||null,filings:this.recordFilings(filingsFromSubmissions(sub,{limit:60}))};}
