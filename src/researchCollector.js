@@ -19,6 +19,12 @@ const LEVELS=Math.max(3,Math.min(20,Number(process.env.MPO_POLY_CAPTURE_LEVELS||
 const RAW_KEEP_DAYS=Math.max(3,Number(process.env.MPO_RAW_KEEP_DAYS||45));
 const RAW_BUDGET_BYTES=Math.max(256,Number(process.env.MPO_RAW_BUDGET_MB||20480))*1024*1024;
 const PRUNE_MS=60*60*1000;
+// Jupiter quote tape (public quote GETs only): every JUP_MS, up to JUP_TARGETS tokens, JUP_DAILY calls a UTC day.
+const JUP_ON=String(process.env.MPO_JUP_QUOTES??'true').toLowerCase()!=='false';
+const JUP_MS=Math.max(30_000,Number(process.env.MPO_JUP_QUOTE_MS||120_000));
+const JUP_TARGETS=Math.max(1,Math.min(20,Number(process.env.MPO_JUP_QUOTE_TARGETS||6)));
+const JUP_DAILY=Math.max(0,Number(process.env.MPO_JUP_QUOTES_DAILY||10_000));
+const JUP_NOTIONAL_SOL=Math.max(0.001,Math.min(10,Number(process.env.MPO_JUP_QUOTE_SOL||0.1)));
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
 function readJson(file,fallback={}){try{return JSON.parse(fs.readFileSync(file,'utf8'))}catch{return fallback}}
@@ -111,7 +117,7 @@ async function run(){
  if(!lock.ok){console.log(`research collector: another collector (pid ${lock.heldBy??'unknown'}) owns ${DATA_DIR}; exiting`);return}
  const release=()=>releaseCollectorLock(LOCK_FILE);process.on('exit',release);
  for(const sig of ['SIGINT','SIGTERM'])process.on(sig,()=>{release();process.exit(0)});
- let cursor=readJson(CURSOR_FILE,{solana:{},books:{},stats:{solanaRows:0,polyRows:0,bytes:0}}),lastPoly=0,polyApi=null,lastPolyUS=0,usEvidence=null,lastPrune=0;
+ let cursor=readJson(CURSOR_FILE,{solana:{},books:{},stats:{solanaRows:0,polyRows:0,bytes:0}}),lastPoly=0,polyApi=null,lastPolyUS=0,usEvidence=null,lastPrune=0,lastJup=0,jupBackoffUntil=0,jupApi=null;
  process.env.POLYMARKET_AUTOSTART='false';
  const status={schema:'mpo.research-capture-status.v1',startedAt:Date.now(),pid:process.pid,liveOrderAccess:false};
  while(true){
@@ -141,6 +147,20 @@ async function run(){
     const r=await usEvidence.evidenceTick();
     status.polymarketUS={lastAt:Date.now(),legRows:r.legRows,estimates:r.estimates,resolved:r.resolved,rateLimited:r.rateLimited,shadowDecisions:r.decisions.length};
    }catch(e){status.polymarketUS={...(status.polymarketUS||{}),error:String(e?.message||e),lastErrorAt:Date.now()}}
+  }
+  if(JUP_ON&&Date.now()-lastJup>=JUP_MS&&Date.now()>=jupBackoffUntil){
+   lastJup=Date.now();
+   try{
+    jupApi ||= await import('./jupiterQuoteSampler.js');
+    const today=day(),j=cursor.jupiter&&cursor.jupiter.day===today?cursor.jupiter:{day:today,calls:0,rows:0};
+    const state=readJson(path.join(DATA_DIR,'state.json'),{});
+    const r=await jupApi.sampleJupiterQuotes({state,limit:JUP_TARGETS,callsLeft:JUP_DAILY-j.calls,notionalSol:JUP_NOTIONAL_SOL});
+    const bytes=appendNdjson('jupiter-quotes',r.rows);cursor.stats.bytes=Number(cursor.stats.bytes||0)+bytes;
+    j.calls+=r.calls;j.rows+=r.rows.length;cursor.jupiter=j;cursor.stats.jupiterRows=Number(cursor.stats.jupiterRows||0)+r.rows.length;
+    if(r.rateLimited)jupBackoffUntil=Date.now()+5*60_000;
+    status.jupiter={lastAt:Date.now(),rowsTotal:cursor.stats.jupiterRows,lastBatch:r.rows.length,callsToday:j.calls,dailyCap:JUP_DAILY,rateLimitedAt:r.rateLimited?Date.now():(status.jupiter?.rateLimitedAt||null),
+     errors:r.errors.slice(0,3),medianRoundTripPct:(()=>{const v=r.rows.map(x=>x.roundTripPct).filter(Number.isFinite).sort((a,b)=>a-b);return v.length?v[v.length>>1]:null})(),quotesOnly:true};
+   }catch(e){status.jupiter={...(status.jupiter||{}),error:String(e?.message||e),lastErrorAt:Date.now()}}
   }
   if(Date.now()-lastPrune>=PRUNE_MS){
    lastPrune=Date.now();
