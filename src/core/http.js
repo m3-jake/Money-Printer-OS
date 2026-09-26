@@ -54,6 +54,7 @@ export async function handlePlatformRequest(req,res,url,{json,body,platform=mark
       else if(route==='/stocks/preview')result=await platform.stocksPreview(input);
       else if(route==='/stocks/submit')result=platform.stocks.submit(input.id);
       else if(route==='/stocks/cancel')result=platform.stocks.cancel(input.id);
+      else if(route==='/lab/walkforward')result=await platform.labWalkForward(input);
       else if(route==='/lab/run')result=await platform.labRun(input);
       else if(route==='/lab/replay/start')result=await platform.labReplayStart(input);
       else if(route==='/lab/replay/step')result=platform.labReplayStep(input);

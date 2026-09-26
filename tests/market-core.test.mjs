@@ -21,6 +21,7 @@ import { extractTerms,matchTerms,sameName,participants,candidatePairs,termsFinge
 import { VERIFY_PHRASE } from '../src/core/platform.js';
 import { kalshiFeeModel,polymarketFeeModel,takerFee } from '../src/core/fees.js';
 import { AlpacaQuotes,STOCK_VENUE } from '../src/core/brokers.js';
+import { walkForward,monteCarlo,paramGrid } from '../src/core/replay.js';
 import { ReplaySession,runReplay,tapeRecords,alpacaMinuteRecords,fetchAlpacaMinutes,strategyParams } from '../src/core/replay.js';
 import { endOfDayEt,transform as macroTransform,parseFredCsv,vintagesFrom,asOf as macroAsOfFn,impliedLadder,FredSource } from '../src/core/macro.js';
 import { filingsFromSubmissions,filingsFromAtom,parseForm4,analyseFiling,userAgent,EdgarSource } from '../src/core/edgar.js';
@@ -667,4 +668,31 @@ test('event pages join the Kalshi event, same-window Polymarket markets, macro v
   assert.equal(pg.assets.find(a=>a.symbol==='BTC').price,84000);assert.equal(pg.assets.find(a=>a.symbol==='SPY').price,null);
   assert.match(pg.provenance,/rule-based/);
   assert.equal(buildEventPages({macro:{calendar:[{...macro.calendar[0],closeAt:now-2*864e5}],indicators:[]},now}).length,0);// past events drop off
+});
+
+test('walk-forward chooses parameters on the previous fold only; test folds cannot change the choice',()=>{
+  const mk=(tail)=>{const rows=[];for(let i=0;i<400;i++){const px=i<300?100+Math.sin(i/6)*2:tail(i);rows.push({t:i*15000,bid:px,ask:px+.02,src:'robinhood'});}return tapeRecords(rows,'X');};
+  const a=walkForward(mk(i=>100+Math.sin(i/6)*2),{key:'X',strategy:'momentum',grid:{lookback:[3,8],thresholdBps:[5,50]},folds:4,start:0,end:399*15000,feeBps:10});
+  const b=walkForward(mk(i=>50+i),{key:'X',strategy:'momentum',grid:{lookback:[3,8],thresholdBps:[5,50]},folds:4,start:0,end:399*15000,feeBps:10});
+  assert.equal(a.folds.length,3);assert.equal(a.folds[0].train.candidates,4);
+  // The last fold's data differs between a and b, but its training fold (the one before) is identical, so the choice is too.
+  assert.deepEqual(a.folds[2].train.params,b.folds[2].train.params);assert.notEqual(a.folds[2].test.returnPct,b.folds[2].test.returnPct);
+  assert.equal(a.evidence.lookAheadViolations,0);assert.equal(a.evidence.costsModeled,true);assert.ok(a.evidence.positiveFoldShare>=0&&a.evidence.positiveFoldShare<=1);
+  assert.equal(paramGrid('momentum',{lookback:[1,2,3,4,5,6,7,8,9],thresholdBps:[1,2,3,4,5,6,7,8]}).length,64);assert.throws(()=>paramGrid('nope',{}),/Unknown/);
+  assert.throws(()=>walkForward([],{key:'X',strategy:'momentum',folds:1,start:0,end:1}),/Folds/);
+});
+test('Monte Carlo is seeded and reproducible; evidence attaches without promoting',async()=>{
+  const r=[.02,-.01,.03,-.02,.01];
+  assert.deepEqual(monteCarlo(r,{runs:500,seed:7}),monteCarlo(r,{runs:500,seed:7}));assert.notDeepEqual(monteCarlo(r,{runs:500,seed:7}).p50,undefined);
+  assert.equal(monteCarlo([.1]).runs,0);
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'mpo-wf-'));fs.mkdirSync(path.join(dir,'robinhood-tape'));
+  fs.writeFileSync(path.join(dir,'robinhood-tape','BTC-USD.ndjson'),Array.from({length:400},(_,i)=>JSON.stringify({t:1e12+i*15000,bid:100+Math.sin(i/5)*3,ask:100.05+Math.sin(i/5)*3,src:'robinhood'})).join(String.fromCharCode(10))+String.fromCharCode(10));
+  const p=new MarketPlatform({providers:new ProviderRegistry(),dataDir:dir});
+  p.strategies.register({id:'mr',name:'Mean reversion BTC',markets:['robinhood']});p.strategies.transition('mr','BACKTESTING',{reason:'start'});
+  const res=await p.labWalkForward({source:'tape',key:'BTC-USD',start:1e12,end:1e12+399*15000,strategy:'mean-reversion',grid:{lookback:[5,10],thresholdBps:[10,30]},folds:4,feeBps:10,seed:3,strategyId:'mr'});
+  assert.equal(res.attached.state,'BACKTESTING');// evidence attached, not promoted
+  assert.equal(res.attached.evidence.labRunId,res.id);assert.ok(res.checks.PAPER.blockers.length>0);// 400 samples is far below the gate
+  assert.equal(p.labRuns()[0].strategy,'walkforward:mean-reversion');assert.equal(p.labRuns()[0].seed,'3');
+  assert.equal(p.strategies.history('mr').at(-1).reason.startsWith('Market Lab walk-forward'),true);
+  p.close();fs.rmSync(dir,{recursive:true,force:true});
 });

@@ -128,7 +128,7 @@ export function runReplay(session, { key, strategy = 'buy-hold', params = {}, st
       const fill = session.nextAvailableAfter(pending.at, key);
       if (fill && fill.availableAt <= t) {
         if (pending.side === 'BUY') { const px = fill.ask, qty = cash / (px * (1 + feeBps / 10000)); const f = fee(qty * px); cash -= qty * px + f; position = { qty, px, at: fill.availableAt }; trades.push({ side: 'BUY', at: fill.availableAt, decidedAt: pending.at, price: px, qty, fee: f, synthetic: fill.synthetic }); }
-        else { const px = fill.bid, gross = position.qty * px, f = fee(gross); cash += gross - f; trades.push({ side: 'SELL', at: fill.availableAt, decidedAt: pending.at, price: px, qty: position.qty, fee: f, pnl: gross - f - position.qty * position.px, synthetic: fill.synthetic }); position = null; }
+        else { const px = fill.bid, gross = position.qty * px, f = fee(gross); cash += gross - f; trades.push({ side: 'SELL', at: fill.availableAt, decidedAt: pending.at, price: px, qty: position.qty, fee: f, pnl: gross - f - position.qty * position.px, ret: (gross - f) / (position.qty * position.px) - 1, synthetic: fill.synthetic }); position = null; }
         pending = null;
       }
     }
@@ -148,4 +148,44 @@ export function runReplay(session, { key, strategy = 'buy-hold', params = {}, st
     records: rows.length, syntheticShare: rows.length ? rows.filter(r => r.synthetic).length / rows.length : null, lookAheadViolations: violations,
     curve: curve.filter((_, i) => i % every === 0 || i === curve.length - 1),
   };
+}
+
+// ---------------------------------------------------------------- validation
+// Walk-forward: the window is cut into consecutive folds. For each fold after the first, every
+// parameter set in the grid is run on the PREVIOUS fold only (train), the best by return is chosen,
+// and only that choice is run on the current fold (test). Test folds never influence the choice.
+// The result carries the evidence fields the strategy promotion gate reads (strategies.js).
+export function paramGrid(strategy, grid = {}) {
+  const base = REPLAY_STRATEGIES[strategy]?.params; if (!base) throw new Error('Unknown replay strategy');
+  let combos = [{}];
+  for (const k of Object.keys(base)) { const vals = Array.isArray(grid[k]) && grid[k].length ? grid[k].slice(0, 8) : [base[k]]; combos = combos.flatMap(c => vals.map(v => ({ ...c, [k]: v }))); }
+  if (combos.length > 64) throw new Error('Parameter grid too large (max 64 combinations)');
+  return combos.map(c => strategyParams(strategy, c));
+}
+export function walkForward(records, { key, strategy, grid = {}, folds = 4, start, end, stepMs = 15000, feeBps = 0, cash = 1000 } = {}) {
+  if (!(folds >= 2 && folds <= 12)) throw new Error('Folds must be between 2 and 12');
+  const combos = paramGrid(strategy, grid), span = (end - start) / folds, out = [];
+  const run = (params, a, b) => runReplay(new ReplaySession(records, { start: a, end: b }), { key, strategy, params, stepMs, feeBps, cash, maxPoints: 50 });
+  for (let i = 1; i < folds; i++) {
+    const trA = start + (i - 1) * span, trB = start + i * span, teB = start + (i + 1) * span;
+    const trained = combos.map(p => ({ p, r: run(p, trA, trB) })).sort((x, y) => (y.r.returnPct ?? -Infinity) - (x.r.returnPct ?? -Infinity));
+    const best = trained[0], test = run(best.p, trB, teB);
+    out.push({ fold: i, train: { start: trA, end: trB, params: best.p, returnPct: best.r.returnPct, candidates: combos.length }, test: { start: trB, end: teB, returnPct: test.returnPct, buyHoldPct: test.buyHoldPct, trades: test.trades.length, maxDrawdownPct: test.maxDrawdownPct, lookAheadViolations: test.lookAheadViolations, syntheticShare: test.syntheticShare, tradeReturns: test.trades.filter(t => t.side === 'SELL').map(t => t.ret) } });
+  }
+  const tests = out.map(f => f.test), compounded = tests.reduce((m, t) => m * (1 + (t.returnPct ?? 0) / 100), 1);
+  const evidence = { sampleSize: tests.reduce((s, t) => s + t.trades, 0), outOfSampleNetPct: Math.round((compounded - 1) * 1e6) / 1e4, costsModeled: feeBps > 0,
+    maxDrawdownPct: Math.max(0, ...tests.map(t => t.maxDrawdownPct || 0)), positiveFoldShare: tests.length ? tests.filter(t => (t.returnPct ?? 0) > 0).length / tests.length : null,
+    lookAheadViolations: tests.reduce((s, t) => s + (t.lookAheadViolations || 0), 0), syntheticShare: tests.length ? Math.max(...tests.map(t => t.syntheticShare ?? 0)) : null, method: `walk-forward ${folds} folds, train on previous fold, ${combos.length} parameter sets` };
+  return { strategy, key, folds: out, evidence };
+}
+
+// Seeded bootstrap of per-trade returns: distribution of the compounded result over the same number
+// of trades. Deterministic for a given seed (recorded with the run).
+export function mulberry32(seed) { let a = seed >>> 0; return () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+export function monteCarlo(tradeReturns, { runs = 1000, seed = 1 } = {}) {
+  const r = (tradeReturns || []).filter(Number.isFinite); if (r.length < 2) return { runs: 0, seed, note: 'Needs at least 2 closed trades' };
+  const rand = mulberry32(seed), finals = [];
+  for (let i = 0; i < Math.min(10000, runs); i++) { let m = 1; for (let j = 0; j < r.length; j++) m *= 1 + r[Math.floor(rand() * r.length)]; finals.push((m - 1) * 100); }
+  finals.sort((a, b) => a - b); const q = p => Math.round(finals[Math.min(finals.length - 1, Math.floor(p * finals.length))] * 100) / 100;
+  return { runs: finals.length, seed, trades: r.length, p5: q(0.05), p50: q(0.5), p95: q(0.95), probLoss: Math.round(finals.filter(x => x < 0).length / finals.length * 1000) / 1000 };
 }

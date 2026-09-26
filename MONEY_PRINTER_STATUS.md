@@ -1066,3 +1066,16 @@ Kalshi and Robinhood event contracts are already covered by the MPOS core platfo
 - **Live:** 7 event pages. **FED DECISION — OCTOBER** (Kalshi closes Oct 28): Kalshi 65% above 4.00% (implied median 4.058%) and Polymarket "increase 25 bps" 64.5%, so the venues agree. Also shown: 2y 4.87%, 10y 5.18%, BTC 84,144 / SOL 121 (tape), 6 Fed Wire items. CPI pages link 12 Polymarket September-CPI markets each. First load ≈60 s (macro ladders plus searches), cached after.
 - Tests: 1 new (page assembly, window filter, exposure, signals, provenance, past events dropped). `market-core` 55.
 - **Not yet:** event pages for sports, weather and corporate events. Those live in the Sports/Weather/EDGAR windows and the Wire, but have no Command Center pages yet.
+
+## Batch AD (2026-09-26): Phase 6, walk-forward validation, seeded Monte Carlo, evidence into the promotion gate
+
+- **`src/core/replay.js`:**
+  - **`walkForward`:** the window is cut into K consecutive folds. For each fold after the first, every parameter set in the grid (≤64) runs on the **previous fold only**, the best by return is chosen, and only that set runs on the current fold. Test data never influences the choice. A test proves it: two datasets that differ only in the last fold pick identical parameters for it.
+  - **Evidence** comes out in exactly the shape the promotion gate reads: test trades, compounded out-of-sample net %, costs modeled (fee > 0), worst fold drawdown, share of positive folds, plus look-ahead violations and synthetic share.
+  - **`monteCarlo`:** seeded (mulberry32) bootstrap of per-trade returns → p5/p50/p95 and P(loss); the seed is stored. The replay engine now records `ret` per closed trade.
+- **Strategy registry:** `attachEvidence(id, evidence, reason)` replaces a strategy's evidence and appends a same-state history row. It **never promotes**; promotion is still a separate transition through the gate. Retired strategies are refused.
+- **Platform:** `labWalkForward()` stores the run in `lab_runs` (strategy `walkforward:<id>`, grid/folds/fee, dataset fingerprint, code version, machine, **seed**), optionally attaches the evidence to a registry strategy, and returns the gate preview for PAPER and CANDIDATE. `POST /api/platform/lab/walkforward`.
+- **Market Lab UI:** a Walk-forward panel (folds, lookback and threshold lists, seed, "attach evidence to" a registry strategy) with evidence tiles, Monte Carlo, a per-fold table (chosen params, train/test return, test buy & hold, trades, DD), and a gate preview naming the blockers.
+- **Live (isolated tape, 1301 BTC records ≈5.5 h):** momentum 4 folds, 0 look-ahead violations, 6 test trades, −0.41% on the last fold. Gate: SAMPLE_SIZE, OUT_OF_SAMPLE_NOT_PROFITABLE_AFTER_COSTS, UNSTABLE_ACROSS_FOLDS, as expected for 5 hours of data.
+- Tests: 2 new (fold isolation, grid limits, seeded MC reproducibility, evidence attached without promotion, experiment row with seed). `market-core` 57.
+- **Phase 6 status:** common strategy metadata/lifecycle (N), Lab champions (P), reproducible experiments (V), walk-forward/MC evidence (AD). **Not done:** a GPU/Windows distributed sweep worker for Market Lab. The existing Evolution Lab/Furnace does the heavy search; Market Lab stays in-process with capped grids so the desktop stays responsive.

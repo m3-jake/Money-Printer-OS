@@ -80,6 +80,20 @@ export class StrategyRegistry {
       return this.get(id);
     });
   }
+  // Evidence from a validation run (e.g. Market Lab walk-forward) replaces the stored evidence without
+  // changing state; the history row keeps what was attached and why. Promotion still needs a transition.
+  attachEvidence(id, evidence, reason, now = Date.now()) {
+    requiredText(reason, 'Evidence reason', 500);
+    if (!evidence || typeof evidence !== 'object') throw new Error('Evidence object required');
+    return this.store.transaction(() => {
+      const s = this.get(id); if (!s) throw new Error('Unknown strategy');
+      if (s.state === 'RETIRED') throw new Error('Retired strategies do not take new evidence');
+      this.store.db.prepare('UPDATE strategies SET evidence=?,updated_at=? WHERE id=?').run(canonicalJson(evidence), now, id);
+      this.store.db.prepare('INSERT INTO strategy_transitions(strategy_id,from_state,to_state,at,reason,evidence) VALUES(?,?,?,?,?,?)').run(id, s.state, s.state, now, reason, canonicalJson(evidence));
+      this.store.record('STRATEGY_EVIDENCE_ATTACHED', { id, reason }, now);
+      return { ...this.get(id), checks: { PAPER: promotionCheck('PAPER', evidence, { probabilistic: s.probabilistic }), CANDIDATE: promotionCheck('CANDIDATE', evidence, { probabilistic: s.probabilistic }) } };
+    });
+  }
   list() { return this.store.db.prepare('SELECT id FROM strategies ORDER BY updated_at DESC').all().map(r => this.get(r.id)); }
   history(id) { return this.store.db.prepare('SELECT * FROM strategy_transitions WHERE strategy_id=? ORDER BY seq').all(id).map(r => ({ ...r, evidence: JSON.parse(r.evidence) })); }
   transition(id, to, { reason, evidence = null } = {}, now = Date.now()) {

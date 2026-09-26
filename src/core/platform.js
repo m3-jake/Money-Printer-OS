@@ -28,6 +28,8 @@ import { buildEventPages,EVENT_TEMPLATES } from './correlation.js';
 import { tokenGraph,whaleFlow,walletView,authorityOf } from './whales.js';
 import { WIRE_FEEDS,WIRE_FILTERS,parseRss,extractEntities,relatedMarkets,importance,categoriesOf } from './wire.js';
 export const SPORTS_SERIES=['KXMLBGAME','KXNFLGAME','KXNCAAFGAME','KXNHLGAME','KXNBAGAME','KXWNBAGAME','KXATPMATCH','KXWTAMATCH','KXTTSTARMATCH','KXTTELITEMATCH','KXUEFANLGAME','KXMLSGAME','KXEPLGAME'];
+import { walkForward,monteCarlo } from './replay.js';
+import { promotionCheck } from './strategies.js';
 import { ReplaySession,runReplay,readTape,tapeSymbols,bookRecords,fetchAlpacaMinutes,REPLAY_STRATEGIES,strategyParams } from './replay.js';
 const CODE_VERSION=(()=>{try{const pkg=JSON.parse(fs.readFileSync(new URL('../../package.json',import.meta.url),'utf8'));const h=createHash('sha256').update(fs.readFileSync(new URL('./replay.js',import.meta.url))).digest('hex').slice(0,12);return `${pkg.version}+replay.${h}`;}catch{return 'unknown';}})();
 
@@ -201,6 +203,21 @@ export class MarketPlatform {
     const summary={...result,curve:undefined,trades:result.trades.slice(-200)};
     this.store.db.prepare('INSERT INTO lab_runs VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(id,Date.now(),source,k,Number(start),Number(end),strategy,JSON.stringify(result.params),datasetFp,records.length,CODE_VERSION,os.hostname(),null,JSON.stringify(summary));
     return {id,datasetFp,codeVersion:CODE_VERSION,machine:os.hostname(),...result};
+  }
+  // Walk-forward validation + seeded Monte Carlo, stored as an experiment and optionally attached to a
+  // registry strategy as its evidence (the promotion gate then decides; nothing is promoted here).
+  async labWalkForward({source,key,start,end,strategy='momentum',grid={},folds=4,stepMs=15000,feeBps=10,cash=1000,seed=1,strategyId=null}){
+    const records=await this.labRecords({source,key,start,end});if(!records.length)throw new Error('No records in that window');
+    const k=records[0].key,step=Math.max(1000,Math.min(3600000,Number(stepMs)||15000)),fee=Math.max(0,Math.min(1000,Number(feeBps)||0)),sd=Math.max(1,Math.floor(Number(seed)||1));
+    const wf=walkForward(records,{key:k,strategy,grid,folds:Math.floor(Number(folds)||4),start:Number(start),end:Number(end),stepMs:step,feeBps:fee,cash:Math.max(1,Number(cash)||1000)});
+    const mc=monteCarlo(wf.folds.flatMap(f=>f.test.tradeReturns),{runs:2000,seed:sd});
+    const datasetFp=createHash('sha256').update(JSON.stringify(records.map(r=>[r.availableAt,r.observedAt,r.bid,r.ask,r.synthetic?1:0]))).digest('hex'),id=randomUUID();
+    const summary={evidence:wf.evidence,monteCarlo:mc,folds:wf.folds.map(f=>({...f,test:{...f.test,tradeReturns:undefined}}))};
+    this.store.db.prepare('INSERT INTO lab_runs VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(id,Date.now(),source,k,Number(start),Number(end),'walkforward:'+strategy,JSON.stringify({grid,folds:wf.folds.length+1,stepMs:step,feeBps:fee}),datasetFp,records.length,CODE_VERSION,os.hostname(),String(sd),JSON.stringify(summary));
+    let attached=null;
+    if(strategyId)attached=this.strategies.attachEvidence(String(strategyId),{...wf.evidence,monteCarloP5:mc.p5??null,labRunId:id,datasetFp},`Market Lab walk-forward ${id.slice(0,8)} on ${k}`);
+    return {id,datasetFp,codeVersion:CODE_VERSION,machine:os.hostname(),seed:sd,...summary,attached,
+      checks:{PAPER:promotionCheck('PAPER',wf.evidence),CANDIDATE:promotionCheck('CANDIDATE',wf.evidence)}};
   }
   labRuns(limit=50){return this.store.db.prepare('SELECT * FROM lab_runs ORDER BY at DESC LIMIT ?').all(Math.max(1,Math.min(500,limit))).map(r=>({...r,params:JSON.parse(r.params),result:JSON.parse(r.result)}));}
   async labReplayStart(input){

@@ -7,7 +7,7 @@
   const pctv = v => v === null || v === undefined ? '—' : Number(v).toFixed(2) + '%';
   const tone = v => Number(v) > 0 ? 'pm-up' : Number(v) < 0 ? 'pm-down' : '';
   const localInput = ms => { const d = new Date(ms - new Date(ms).getTimezoneOffset() * 60000); return d.toISOString().slice(0, 16); };
-  let sources = null, runs = [], result = null, replay = null, error = '', busy = false, stamp = 0, drawn = '', form = { source: 'tape', key: '', start: null, minutes: 60, strategy: 'momentum', lookback: 20, thresholdBps: 10, stepMs: 15000, feeBps: 10, cash: 1000 }, timer = null, speed = 60;
+  let wf = null, strategies = [], sources = null, runs = [], result = null, replay = null, error = '', busy = false, stamp = 0, drawn = '', form = { source: 'tape', key: '', start: null, minutes: 60, strategy: 'momentum', lookback: 20, thresholdBps: 10, stepMs: 15000, feeBps: 10, cash: 1000 }, timer = null, speed = 60;
 
   const api = async (p, body) => { const r = await fetch('/api/platform' + p, body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : { cache: 'no-store' }); const j = await r.json(); if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`); return j; };
   const table = (head, rows, empty) => `<div class="core-table-wrap"><table class="table"><thead><tr>${head.map(h => `<th>${escape(h)}</th>`).join('')}</tr></thead><tbody>${rows || `<tr><td colspan="${head.length}">${escape(empty)}</td></tr>`}</tbody></table></div>`;
@@ -43,6 +43,14 @@
         ${window.MPOViz ? `<div class="mpo-viz-grid">${MPOViz.canvas('lab-equity', 120, 'equity')}${MPOViz.canvas('lab-price', 120, 'mid price')}</div>` : ''}
         ${result.syntheticShare > 0.1 ? `<p class="core-notice">${(result.syntheticShare * 100).toFixed(0)}% of this window is candle-derived (no real spread). Treat fills as optimistic.</p>` : ''}
         <p class="core-muted">Code ${escape(result.codeVersion)} · machine ${escape(result.machine)} · deterministic (no random seed)</p>` : ''}
+      <h3>Walk-forward validation <small>Parameters chosen on the previous fold only; judged on the next</small></h3>
+      <form data-lab-form="wf" class="core-toolbar"><label>Folds<input name="folds" type="number" min="2" max="12" value="4"></label><label>Lookbacks<input name="lookbacks" value="10,20,40" placeholder="10,20,40"></label><label>Thresholds bps<input name="thresholds" value="5,10,20"></label><label>Seed<input name="seed" type="number" min="1" value="1"></label>
+        <label>Attach evidence to<select name="strategyId"><option value="">(don't attach)</option>${strategies.filter(s => s.state !== 'RETIRED').map(s => `<option value="${escape(s.id)}">${escape(s.name)} · ${escape(s.state)}</option>`).join('')}</select></label><button class="btn" type="submit">Run walk-forward</button></form>
+      <p class="core-muted">Uses the source, window, strategy, step and fee above. Buy-and-hold has no parameters to choose.</p>
+      ${wf ? `<div class="pm-tiles">${tile('Out-of-sample net', pctv(wf.evidence.outOfSampleNetPct), tone(wf.evidence.outOfSampleNetPct))}${tile('Positive folds', wf.evidence.positiveFoldShare === null ? '—' : (wf.evidence.positiveFoldShare * 100).toFixed(0) + '%')}${tile('Test trades', wf.evidence.sampleSize)}${tile('Worst fold DD', pctv(wf.evidence.maxDrawdownPct))}${tile('MC p5 / p50 / p95', wf.monteCarlo.runs ? `${wf.monteCarlo.p5} / ${wf.monteCarlo.p50} / ${wf.monteCarlo.p95}%` : '—')}${tile('MC P(loss)', wf.monteCarlo.runs ? (wf.monteCarlo.probLoss * 100).toFixed(0) + '%' : '—')}${tile('Look-ahead violations', wf.evidence.lookAheadViolations, wf.evidence.lookAheadViolations ? 'pm-down' : 'pm-up')}</div>
+        ${table(['Fold', 'Chosen on train', 'Train return', 'Test return', 'Test B&H', 'Test trades', 'Test DD'], wf.folds.map(f => `<tr><td>${f.fold}</td><td><small>${escape(JSON.stringify(f.train.params))}</small></td><td>${pctv(f.train.returnPct)}</td><td class="${tone(f.test.returnPct)}">${pctv(f.test.returnPct)}</td><td>${pctv(f.test.buyHoldPct)}</td><td>${f.test.trades}</td><td>${pctv(f.test.maxDrawdownPct)}</td></tr>`).join(''), 'No folds.')}
+        <p class="core-muted">Promotion gate preview — PAPER: ${wf.checks.PAPER.allowed ? 'passes' : escape(wf.checks.PAPER.blockers.join(', '))} · CANDIDATE: ${wf.checks.CANDIDATE.allowed ? 'passes' : escape(wf.checks.CANDIDATE.blockers.join(', '))}${wf.attached ? ` · Evidence attached to <b>${escape(wf.attached.name)}</b> (${escape(wf.attached.state)}); promote it from Command Center when the gate passes.` : ''}</p>
+        <p class="core-muted">Run ${escape(wf.id.slice(0, 8))} · dataset ${escape(wf.datasetFp.slice(0, 10))} · seed ${wf.seed} · ${escape(wf.evidence.method)}</p>` : ''}
       <h3>Experiment history <small>Append-only; same dataset + parameters + code reproduce the same result</small></h3>
       ${table(['Time', 'Source', 'Instrument', 'Strategy', 'Params', 'Records', 'Return', 'B&H', 'Max DD', 'Dataset', 'Code'], runs.map(r => `<tr><td>${when(r.at)}</td><td>${escape(r.source)}</td><td>${escape(r.key)}</td><td>${escape(r.strategy)}</td><td><small>${escape(JSON.stringify(r.params))}</small></td><td>${r.records}</td><td class="${tone(r.result.returnPct)}">${pctv(r.result.returnPct)}</td><td>${pctv(r.result.buyHoldPct)}</td><td>${pctv(r.result.maxDrawdownPct)}</td><td>${escape(r.dataset_fp.slice(0, 10))}</td><td><small>${escape(r.code_version)}</small></td></tr>`).join(''), 'No runs yet.')}`;
   }
@@ -58,7 +66,7 @@
     if (window.MPOViz && replay) MPOViz.set('lab-replay', 'lines', { series: [{ label: replay.key, color: '#7fe39a', points: replay.mids.slice(-600) }], empty: 'Nothing revealed yet', zero: false });
     r.scrollTop = top;
   }
-  async function load() { try { const [s, h] = await Promise.all([api('/lab/sources'), api('/lab/runs')]); sources = s; runs = h.runs; error = ''; } catch (e) { error = e.message; } stamp++; draw(); }
+  async function load() { try { const [s, h, st] = await Promise.all([api('/lab/sources'), api('/lab/runs'), api('/strategies')]); sources = s; runs = h.runs; strategies = st.strategies || []; error = ''; } catch (e) { error = e.message; } stamp++; draw(); }
   async function act(fn) { if (busy) return; busy = true; error = ''; stamp++; draw(true); try { await fn(); } catch (e) { error = e.message; } finally { busy = false; stamp++; draw(true); } }
   const readForm = () => { const f = root()?.querySelector('[data-lab-form=run]'); if (!f) return; const i = Object.fromEntries(new FormData(f)); Object.assign(form, { source: i.source, key: i.key, strategy: i.strategy, minutes: Number(i.minutes) || 60, feeBps: Number(i.feeBps) || 0, cash: Number(i.cash) || 1000, stepMs: (Number(i.stepSec) || 15) * 1000, start: i.start ? new Date(i.start).getTime() : form.start }); if (i.lookback) form.lookback = Number(i.lookback); if (i.thresholdBps) form.thresholdBps = Number(i.thresholdBps); };
   const query = () => ({ source: form.source, key: form.key, start: form.start, end: form.start + form.minutes * 60000 });
@@ -84,6 +92,11 @@
   });
   document.addEventListener('submit', e => {
     const f = e.target.closest('[data-lab-form]'); if (!f || !root()?.contains(f)) return; e.preventDefault(); readForm();
+    if (f.dataset.labForm === 'wf') {
+      const i = Object.fromEntries(new FormData(f)), list = v => String(v || '').split(',').map(x => Number(x.trim())).filter(n => n > 0);
+      act(async () => { wf = (await api('/lab/walkforward', { ...query(), strategy: form.strategy, grid: { lookback: list(i.lookbacks), thresholdBps: list(i.thresholds) }, folds: Number(i.folds) || 4, seed: Number(i.seed) || 1, stepMs: form.stepMs, feeBps: form.feeBps, cash: form.cash, strategyId: i.strategyId || null })).result; runs = (await api('/lab/runs')).runs; });
+      return;
+    }
     act(async () => { result = (await api('/lab/run', { ...query(), strategy: form.strategy, params: { lookback: form.lookback, thresholdBps: form.thresholdBps }, stepMs: form.stepMs, feeBps: form.feeBps, cash: form.cash })).result; runs = (await api('/lab/runs')).runs; });
   });
   window.MPOMarketLab = { render() { if (!visible()) return; if (!sources && !busy) { busy = true; load().finally(() => { busy = false; }); } draw(); } };
