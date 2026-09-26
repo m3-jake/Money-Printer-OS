@@ -20,7 +20,7 @@
   <div class="money-event-feed" id="moneyEventFeed" aria-live="polite"></div>
   <div id="windows"></div>
   <div class="startmenu" id="startMenu"><div class="rail">MONEY PRINTER OS</div><div class="menuitems" id="startItems"></div></div>
-  <div class="taskbar"><button class="start" id="startBtn"><img class="tico" src="/assets/icons/money.png" alt=""> Start</button><div class="tasks" id="tasks"></div><div class="tray"><span class="led" id="feedLed"></span><span class="mpo-badge mpo-badge--paper" id="trayMode">PAPER</span><span id="clock"></span></div></div>
+  <div class="taskbar"><button class="start" id="startBtn"><img class="tico" src="/assets/icons/money.png" alt=""> Start</button><div class="tasks" id="tasks"></div><button class="task-tool" id="tileBtn" title="Tile: arrange every open window to fill the desktop, no overlap">▦ Tile</button><div class="tray"><span class="led" id="feedLed"></span><span class="mpo-badge mpo-badge--paper" id="trayMode">PAPER</span><span id="clock"></span></div></div>
   <div class="dialog-layer" id="dialogLayer"><div class="dialog hidden" id="dialog"><div class="titlebar"><div class="title" id="dialogTitle">Money Printer OS</div><div class="win-buttons"><button type="button" id="dialogX">×</button></div></div><div class="msg"><div class="mpo-dialog-ico" aria-hidden="true">!</div><div><b id="dialogHead"></b><p id="dialogText"></p><button class="btn" id="dialogOk">OK</button></div></div></div><div class="dialog mpo-dialog hidden" id="polyConfirm" role="dialog" aria-modal="true"><div class="titlebar"><div class="title" id="polyConfirmTitle">Confirm</div><div class="win-buttons"><button type="button" id="polyConfirmX">×</button></div></div><div class="msg"><span class="mpo-dialog-ico" aria-hidden="true">!</span><div><b id="polyConfirmHead"></b><div id="polyConfirmBody"></div><p id="polyConfirmCountdown"></p><input class="field" id="polyConfirmPhrase" autocomplete="off" spellcheck="false"><div class="toolbar"><button class="btn" id="polyConfirmRequote" hidden>Re-quote</button><button class="btn" id="polyConfirmCancel">Cancel</button><button class="btn" id="polyConfirmOk" disabled>Confirm</button></div></div></div></div></div>
   <div class="boot" id="boot"><div class="bootbox"><div class="titlebar"><div class="title">Money Printer OS</div></div><div class="bootbody dark terminal"><img class="bootmark" src="/assets/money-printer-logo.png" alt="" width="64" height="64"><div class="bootlogo">MONEY <span>PRINTER</span> OS</div><div class="bootline" id="bootText">Starting system services...</div><div class="progress bootprog"><i id="bootBar"></i></div></div></div></div>
 </div>
@@ -373,12 +373,13 @@ function appShell(id,title){
  const strip=tabbed?`<div class="tabs win-tabs" data-host="${id}">${tabs.map(t=>`<button class="tab98 ${t===act?'on':''}" data-host="${id}" data-tab="${t}">${TAB_LABEL[t]||appMeta(t)?.[1]||t}</button>`).join('')}</div>`:'';
  const body=tabbed?`<div class="body tabbed">${tabs.map(t=>`<div class="tabpane ${t===act?'on':''}" id="body-${t}" data-scroll="pane-${t}"></div>`).join('')}</div>`:`<div class="body" id="body-${id}" data-scroll="body-${id}"></div>`;
  return `<section class="window ${L.max?'max':''} ${L.min||!openSet.has(id)?'hidden':''}" data-app="${id}" style="left:${L.x}px;top:${L.y}px;width:${L.w}px;height:${L.h}px">
- <div class="titlebar"><div class="title">${title}</div><div class="win-buttons"><button data-act="min">_</button><button data-act="max">□</button><button data-act="close">×</button></div></div>
+ <div class="titlebar"><div class="title">${title}</div><span class="fit-pct"></span><div class="win-buttons"><button data-act="fit" class="fit-btn ${fitOff.has(id)?'':'on'}" title="Fit to window">⤢</button><button data-act="min">_</button><button data-act="max">□</button><button data-act="close">×</button></div></div>
  ${strip}${body}<div class="resize"></div></section>`;
 }
 function buildWindows(){
  $('#windows').innerHTML=HOSTS.map(id=>appShell(id,appMeta(id)[1])).join('');
  $$('.window').forEach(initWindow);
+ $$('.window').forEach(w=>{fitResize?.observe(w);fitMutations.observe(w,{childList:true,subtree:true,characterData:true})});
  $$('.win-tabs .tab98').forEach(b=>b.onclick=e=>{e.stopPropagation();setTab(b.dataset.host,b.dataset.tab)});
  clampAll(); renderTasks();
 }
@@ -388,7 +389,7 @@ function setTab(host,id){
  activeTab[host]=id;
  w.querySelectorAll('.win-tabs .tab98').forEach(b=>b.classList.toggle('on',b.dataset.tab===id));
  w.querySelectorAll('.tabpane').forEach(p=>p.classList.toggle('on',p.id==='body-'+id));
- persist(); renderSig.delete(id); renderAll();
+ persist(); renderSig.delete(id); renderAll(); scheduleFit(w);
 }
 // Windows must never end up unreachable: keep at least 60px of the title bar on the desktop.
 function clampWin(w){
@@ -408,6 +409,66 @@ function clampWin(w){
  w.style.left=Math.round(x)+'px';w.style.top=Math.round(y)+'px';
 }
 function clampAll(){$$('.window').forEach(clampWin)}
+// Fit to window: the visible pane (window body or active tab) is scaled with CSS zoom so its whole
+// content fits the window and shrinks as the window shrinks. The pane carries the zoom itself with
+// an explicit size of box/zoom, so it still fills exactly its box and #body-x>… selectors keep
+// working. Panes are container-query roots, so a smaller zoom (a wider layout) lets modules reflow
+// into columns before they shrink further. Only content that cannot fit at FIT_MIN scrolls.
+const FIT_MIN=.5,FIT_MAX=1;
+let fitOff=(()=>{try{const v=JSON.parse(localStorage.getItem('mpo-fit-off')||'[]');return new Set(Array.isArray(v)?v:[])}catch{return new Set()}})();
+const fitZoom=new Map(),fitQueue=new Set();let fitRaf=0;
+function fitPaneOf(w){return w.querySelector('.body:not(.tabbed)')||w.querySelector('.tabpane.on')}
+function fitTry(pane,z,W,H){pane.style.zoom=z;pane.style.width=(W/z)+'px';pane.style.height=(H/z)+'px';return pane.scrollHeight<=pane.clientHeight+1&&pane.scrollWidth<=pane.clientWidth+1}
+function fitWindow(w){
+ if(!w||w.classList.contains('hidden'))return;
+ const pane=fitPaneOf(w);if(!pane)return;
+ w.querySelectorAll('.tabpane:not(.on)').forEach(p=>{p.style.zoom=p.style.width=p.style.height=p.style.overflow=''});
+ pane.style.zoom=pane.style.width=pane.style.height=pane.style.overflow='';
+ if(fitOff.has(w.dataset.app)){fitZoom.delete(pane.id);fitBadge(w,null);return}
+ const W=pane.offsetWidth,H=pane.offsetHeight;if(W<40||H<40)return;
+ pane.style.overflow='hidden';
+ const prev=fitZoom.get(pane.id);let z;
+ // Keep the last zoom while it still fits and is not more than ~4% too small: no jitter on refresh.
+ if(prev&&fitTry(pane,prev,W,H)&&(prev>=FIT_MAX||!fitTry(pane,Math.min(FIT_MAX,prev*1.04),W,H)))z=prev;
+ else if(fitTry(pane,FIT_MAX,W,H))z=FIT_MAX;
+ else if(!fitTry(pane,FIT_MIN,W,H))z=FIT_MIN;
+ else{let lo=FIT_MIN,hi=FIT_MAX;for(let i=0;i<7;i++){const mid=(lo+hi)/2;if(fitTry(pane,mid,W,H))lo=mid;else hi=mid}z=Math.floor(lo*100)/100}
+ const fits=fitTry(pane,z,W,H);pane.style.overflow=fits?'hidden':'auto';
+ fitZoom.set(pane.id,z);fitBadge(w,z);
+}
+function fitBadge(w,z){
+ const b=w.querySelector('[data-act=fit]'),pct=w.querySelector('.fit-pct');if(!b)return;
+ b.classList.toggle('on',z!==null);
+ b.title=z===null?'Fit to window is off (content scrolls). Click to fit.':`Fit to window is on (${Math.round(z*100)}%). Click for actual size.`;
+ if(pct)pct.textContent=z!==null&&z<.995?Math.round(z*100)+'%':'';
+}
+function scheduleFit(w){if(!w)return;fitQueue.add(w);if(!fitRaf)fitRaf=requestAnimationFrame(()=>{fitRaf=0;const ws=[...fitQueue];fitQueue.clear();for(const x of ws)fitWindow(x)})}
+function fitAll(){$$('.window').forEach(scheduleFit)}
+const fitResize=typeof ResizeObserver==='function'?new ResizeObserver(es=>{for(const e of es)scheduleFit(e.target)}):null;
+const fitMutations=new MutationObserver(ms=>{for(const m of ms){const n=m.target.nodeType===1?m.target:m.target.parentElement;const w=n&&n.closest&&n.closest('.window');if(w)scheduleFit(w)}});
+// Tile: lay every open window out to fill the desktop with no overlap. The trading modules get the
+// top band (about two thirds of the height); System, Journal, Money and the rest share the band below.
+const TILE_PRIMARY=['trade','robinhood','sportsbook'];
+function tileGrid(ws,x0,y0,W,H,gap){
+ const n=ws.length;if(!n)return;
+ const cols=Math.max(1,Math.min(n,Math.ceil(Math.sqrt(n*W/H/1.25))||1)),rows=Math.ceil(n/cols);
+ ws.forEach((w,i)=>{const r=Math.floor(i/cols),inRow=r===rows-1?n-r*cols:cols,c=i-r*cols,cw=(W-gap)/inRow,rh=(H-gap)/rows;
+  w.classList.remove('max');w.style.left=Math.round(x0+gap+c*cw)+'px';w.style.top=Math.round(y0+gap+r*rh)+'px';w.style.width=Math.round(cw-gap)+'px';w.style.height=Math.round(rh-gap)+'px'});
+}
+function tileWindows(){
+ const d=$('#desktop'),bar=$('.taskbar');if(!d)return;
+ const ws=$$('.window').filter(w=>!w.classList.contains('hidden')).sort((a,b)=>(Number(b.style.zIndex)||0)-(Number(a.style.zIndex)||0));if(!ws.length)return;
+ const W=d.clientWidth,H=d.clientHeight-(bar?bar.offsetHeight:36),gap=4;
+ const main=ws.filter(w=>TILE_PRIMARY.includes(w.dataset.app)),rest=ws.filter(w=>!TILE_PRIMARY.includes(w.dataset.app));
+ if(main.length&&rest.length){const top=Math.round(H*.64);tileGrid(main,0,0,W,top,gap);tileGrid(rest,0,top-gap,W,H-top+gap,gap)}
+ else tileGrid(ws,0,0,W,H,gap);
+ persist();fitAll();
+}
+// Collapsible sections that survive innerHTML re-renders: templates call keepOpen('key') inside
+// <details data-keep="key">, and a capturing toggle listener remembers what the operator opened.
+const keptOpen=(()=>{try{const v=JSON.parse(localStorage.getItem('mpo-open-details')||'[]');return new Set(Array.isArray(v)?v:[])}catch{return new Set()}})();
+const keepOpen=k=>keptOpen.has(k)?'open':'';
+document.addEventListener('toggle',e=>{const k=e.target?.dataset?.keep;if(!k)return;if(e.target.open)keptOpen.add(k);else keptOpen.delete(k);try{localStorage.setItem('mpo-open-details',JSON.stringify([...keptOpen]))}catch{}},true);
 function initWindow(w){
  const bar=w.querySelector('.titlebar'),resize=w.querySelector('.resize'); let sx,sy,ox,oy,ow,oh,mode;
  const EDGE=10;
@@ -419,6 +480,7 @@ function initWindow(w){
  w.addEventListener('pointermove',e=>{if(mode||e.target.closest('.titlebar,.resize,.win-buttons,.win-tabs'))return;const r=w.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;let m='';if(y<EDGE)m+='n';else if(r.height-y<EDGE)m+='s';if(x<EDGE)m+='w';else if(r.width-x<EDGE)m+='e';w.style.cursor=m?(m==='n'||m==='s'?'ns-resize':m==='e'||m==='w'?'ew-resize':m==='ne'||m==='sw'?'nesw-resize':'nwse-resize'):''});
  w.addEventListener('pointerdown',e=>{if(e.target.closest('.titlebar,.resize,.win-buttons,.win-tabs,button,input,select,textarea'))return;const r=w.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;let m='';if(y<EDGE)m+='n';else if(r.height-y<EDGE)m+='s';if(x<EDGE)m+='w';else if(r.width-x<EDGE)m+='e';if(m)begin(e,m)});
  w.onpointerdown=()=>focus(w);
+ w.querySelector('[data-act=fit]').onclick=e=>{e.stopPropagation();const id=w.dataset.app;if(fitOff.has(id))fitOff.delete(id);else fitOff.add(id);try{localStorage.setItem('mpo-fit-off',JSON.stringify([...fitOff]))}catch{}scheduleFit(w)};
  w.querySelector('[data-act=min]').onclick=e=>{e.stopPropagation();w.classList.add('hidden');persist();renderTasks()};
  w.querySelector('[data-act=close]').onclick=e=>{e.stopPropagation();w.classList.add('hidden');openSet.delete(w.dataset.app);persist();renderTasks()};
  w.querySelector('[data-act=max]').onclick=e=>{e.stopPropagation();w.classList.toggle('max');if(!w.classList.contains('max'))clampWin(w);persist()};
@@ -510,8 +572,8 @@ function tradeViz(s){
 }
 function renderTrade(){
  const s=state||{},p=s.portfolio||{},sol=s.market?.solUsd;
- const health=s.system?.health||'—',healthBad=health==='DEGRADED',watch=(s.watchlist||[]).slice(0,7);
- setBody('trade',`<div class="dark terminal mpo-surface-dark" style="height:100%;padding:7px"><div class="mpo-status"><span class="cyan">SOL/USD</span> <span class="heroPrice">${money(sol)}</span> <span class="${s.dailyPnlSol>=0?'green':'red'}">${s.dailyPnlSol>=0?'+':''}${fmt(s.dailyPnlSol,4)} SOL session</span><b class="mpo-badge ${healthBad?'mpo-badge--degraded':'mpo-badge--live'}">${polyEscape(health)}</b></div><div class="mpo-metrics"><div class="mpo-metric"><label>EQUITY</label><b>${fmt(p.equitySol,4)} SOL</b></div><div class="mpo-metric"><label>CASH</label><b>${fmt(p.cashSol,4)}</b></div><div class="mpo-metric"><label>OPEN</label><b class="${(s.positions||[]).length?'cyan':''}">${(s.positions||[]).length}</b></div><div class="mpo-metric"><label>FEED</label><b class="${healthBad?'amber':'green'}">${polyEscape(health)}</b></div></div>${solanaBookStrip(s.solanaBook)}<div class="chart" title="wheel zoom · drag pan · dbl-click reset"><div class="chart-grid"></div><canvas id="priceChart"></canvas><div class="chart-tip" id="chartTip"></div></div><div class="toolbar" style="margin-top:6px"><button class="btn range-btn ${chartView.range==='m1'?'on':''}" data-range="m1">1m</button><button class="btn range-btn ${chartView.range==='m5'?'on':''}" data-range="m5">5m</button><button class="btn range-btn ${chartView.range==='m15'?'on':''}" data-range="m15">15m</button><button class="btn range-btn ${chartView.range==='h1'?'on':''}" data-range="h1">1h</button><button class="btn range-btn ${chartView.range==='session'?'on':''}" data-range="session">Session</button><button class="btn" id="chartZoomOut">−</button><button class="btn" id="chartZoomIn">+</button><button class="btn" id="chartFit">Fit</button><span class="chart-readout" id="chartReadout">● REAL EQUITY DATA</span></div>${tradeViz(s)}<div class="mpo-table-wrap"><table class="table mpo-table terminal"><thead><tr><th>Symbol</th><th>Edge</th><th>5m</th><th>Liq</th><th>Stage</th></tr></thead><tbody>${watch.length?watch.map(x=>`<tr><td>${polyEscape(x.symbol||'?')}</td><td>${fmt(x.fastEdgeScore??x.edgeScore,0)}</td><td class="${Number(x.pc5)>=0?'green':'red'}">${fmt(x.pc5,1)}%</td><td>${money(x.liq)}</td><td>${polyEscape(x.stage||'')}</td></tr>`).join(''):'<tr><td colspan="5"><div class="mpo-empty">No watchlist names yet.</div></td></tr>'}</tbody></table></div></div>`);bindChartControls();$$('.sol-profile').forEach(b=>b.onclick=async()=>{await post('/api/profile',{profile:b.dataset.profile});showDialog('Money Printer OS','Solana profile queued',`Profile ${b.dataset.profile} was sent to the trading engine.`)});drawChart();
+ const health=s.system?.health||'—',healthBad=health==='DEGRADED',watch=(s.watchlist||[]).slice(0,10);
+ setBody('trade',`<div class="dark terminal mpo-surface-dark" style="height:100%;padding:7px"><div class="mpo-split"><div class="pf-left"><div class="mpo-status"><span class="cyan">SOL/USD</span> <span class="heroPrice">${money(sol)}</span> <span class="${s.dailyPnlSol>=0?'green':'red'}">${s.dailyPnlSol>=0?'+':''}${fmt(s.dailyPnlSol,4)} SOL session</span><b class="mpo-badge ${healthBad?'mpo-badge--degraded':'mpo-badge--live'}">${polyEscape(health)}</b></div><div class="mpo-metrics"><div class="mpo-metric"><label>EQUITY</label><b>${fmt(p.equitySol,4)} SOL</b></div><div class="mpo-metric"><label>CASH</label><b>${fmt(p.cashSol,4)}</b></div><div class="mpo-metric"><label>OPEN</label><b class="${(s.positions||[]).length?'cyan':''}">${(s.positions||[]).length}</b></div><div class="mpo-metric"><label>FEED</label><b class="${healthBad?'amber':'green'}">${polyEscape(health)}</b></div></div>${solanaBookStrip(s.solanaBook)}<div class="chart" title="wheel zoom · drag pan · dbl-click reset"><div class="chart-grid"></div><canvas id="priceChart"></canvas><div class="chart-tip" id="chartTip"></div></div><div class="toolbar" style="margin-top:6px"><button class="btn range-btn ${chartView.range==='m1'?'on':''}" data-range="m1">1m</button><button class="btn range-btn ${chartView.range==='m5'?'on':''}" data-range="m5">5m</button><button class="btn range-btn ${chartView.range==='m15'?'on':''}" data-range="m15">15m</button><button class="btn range-btn ${chartView.range==='h1'?'on':''}" data-range="h1">1h</button><button class="btn range-btn ${chartView.range==='session'?'on':''}" data-range="session">Session</button><button class="btn" id="chartZoomOut">−</button><button class="btn" id="chartZoomIn">+</button><button class="btn" id="chartFit">Fit</button><span class="chart-readout" id="chartReadout">● REAL EQUITY DATA</span></div></div><div class="pf-right">${tradeViz(s)}<div class="mpo-table-wrap"><table class="table mpo-table terminal"><thead><tr><th>Symbol</th><th>Edge</th><th>5m</th><th>Liq</th><th>Stage</th></tr></thead><tbody>${watch.length?watch.map(x=>`<tr><td>${polyEscape(x.symbol||'?')}</td><td>${fmt(x.fastEdgeScore??x.edgeScore,0)}</td><td class="${Number(x.pc5)>=0?'green':'red'}">${fmt(x.pc5,1)}%</td><td>${money(x.liq)}</td><td>${polyEscape(x.stage||'')}</td></tr>`).join(''):'<tr><td colspan="5"><div class="mpo-empty">No watchlist names yet.</div></td></tr>'}</tbody></table></div></div></div></div>`);bindChartControls();$$('.sol-profile').forEach(b=>b.onclick=async()=>{await post('/api/profile',{profile:b.dataset.profile});showDialog('Money Printer OS','Solana profile queued',`Profile ${b.dataset.profile} was sent to the trading engine.`)});drawChart();
 }
 function drawChart(){
  const c=$('#priceChart');if(!c)return;const rect=c.getBoundingClientRect(),dpr=Math.min(2,window.devicePixelRatio||1),W=Math.max(300,Math.round(rect.width*dpr)),H=Math.max(150,Math.round(rect.height*dpr));if(c.width!==W)c.width=W;if(c.height!==H)c.height=H;const x=c.getContext('2d');x.clearRect(0,0,W,H);const raw=chartSeries();if(raw.length<1)return;const frac=1/chartView.zoom,maxStart=Math.max(0,1-frac),start=Math.min(maxStart,chartView.pan),a=Math.floor(start*Math.max(0,raw.length-1)),count=Math.max(2,Math.ceil(raw.length*frac)),pts=raw.slice(a,a+count);if(!pts.length)return;let lo=Math.min(...pts.map(q=>q.equitySol)),hi=Math.max(...pts.map(q=>q.equitySol));const pad=Math.max(.001,(hi-lo)*.12);lo-=pad;hi+=pad;const px=(i)=>pts.length===1?W/2:i*W/(pts.length-1),py=v=>H-((v-lo)/(hi-lo||1))*H;
@@ -764,14 +826,14 @@ function renderPolyCombos(box){
  const openRows=open.map(e=>entryRow(e,true)).join('')||'<tr><td colspan=6>No open combos.</td></tr>';
  const histRows=hist.slice(0,8).map(e=>entryRow(e,false)).join('')||'<tr><td colspan=5>No settled combos yet.</td></tr>';
  box.innerHTML=`<div class="dark terminal" style="padding:8px"><fieldset class="mpo-danger-fieldset" style="margin-top:6px"><legend>LIVE COMBOS · POLYMARKET US · REAL</legend>
-  ${status}${usBoardViz(ucs,boardRows,st,chosen)}${keyForm}${(()=>{const bw=stats.byWindow||{},ks=Object.keys(bw);return `<div class="muted" style="font-size:10px;margin:3px 0">Window rule: ${polyEscape((ucs.windowRules||{})[st.window||'NEAR_END']||'—')}${ks.length?' · Record by window: '+ks.map(k=>{const r=bw[k];return `${polyEscape(k)} ${Number(r.won)}W-${Number(r.lost)}L${r.open?' ('+Number(r.open)+' open)':''}${r.roi==null?'':' ROI '+(Number(r.roi)*100).toFixed(0)+'%'}`}).join(' · '):''}</div>`})()}${err?`<div class="mpo-error"><b>Polymarket US</b> — ${polyEscape(err)}</div>`:''}${settings}
+  ${status}<div class="mpo-split"><div class="poly-left">${usBoardViz(ucs,boardRows,st,chosen)}${keyForm}${(()=>{const bw=stats.byWindow||{},ks=Object.keys(bw);return `<div class="muted" style="font-size:10px;margin:3px 0">Window rule: ${polyEscape((ucs.windowRules||{})[st.window||'NEAR_END']||'—')}${ks.length?' · Record by window: '+ks.map(k=>{const r=bw[k];return `${polyEscape(k)} ${Number(r.won)}W-${Number(r.lost)}L${r.open?' ('+Number(r.open)+' open)':''}${r.roi==null?'':' ROI '+(Number(r.roi)*100).toFixed(0)+'%'}`}).join(' · '):''}</div>`})()}${err?`<div class="mpo-error"><b>Polymarket US</b> — ${polyEscape(err)}</div>`:''}${settings}
   <div data-scroll="combo-cands" style="overflow:auto;max-height:240px"><table class="table terminal"><thead><tr><th>Event</th><th>Clock / score</th><th>Side</th><th>Win %</th><th>Spread</th><th>Left</th><th>Status</th><th></th></tr></thead><tbody>${rows||`<tr><td colspan=8>${empty}</td></tr>`}</tbody></table></div>${sgLine}
-  <div class="muted" style="font-size:10px;margin:3px 0">Feed: ${Number(fd.total??fd.eventsInPlay??0)} sports events scanned${fd.pages?' over '+Number(fd.pages)+' pages':''}${fd.capped?' (CAPPED)':''} · ${Number(fd.eventsLive||0)} live · ${fd.comboLive==null?'—':Number(fd.comboLive)} combo-enabled live · ${Number(fd.candidates||0)} eligible${rej?' · Filtered: '+rej:''}</div>
-  <div class="inset" style="padding:6px;margin-top:6px"><div class="toolbar" style="flex-wrap:wrap;gap:8px"><label>Stake $ <input class="field" id="usComboStake" type="number" min="1" max="${Number(ucs.limits?.maxStakeUsd||25)}" step="0.5" value="${polyEscape(usComboStakeValue||5)}" style="width:70px"></label><span style="font-size:11px">${buildLine}</span></div>
+  <div class="muted" style="font-size:10px;margin:3px 0">Feed: ${Number(fd.total??fd.eventsInPlay??0)} sports events scanned${fd.pages?' over '+Number(fd.pages)+' pages':''}${fd.capped?' (CAPPED)':''} · ${Number(fd.eventsLive||0)} live · ${fd.comboLive==null?'—':Number(fd.comboLive)} combo-enabled live · ${Number(fd.candidates||0)} eligible${rej?' · Filtered: '+rej:''}</div></div>
+  <div class="poly-right"><div class="inset" style="padding:6px;margin-top:6px"><div class="toolbar" style="flex-wrap:wrap;gap:8px"><label>Stake $ <input class="field" id="usComboStake" type="number" min="1" max="${Number(ucs.limits?.maxStakeUsd||25)}" step="0.5" value="${polyEscape(usComboStakeValue||5)}" style="width:70px"></label><span style="font-size:11px">${buildLine}</span></div>
   <div class="toolbar" style="margin-top:4px"><button class="btn" id="usComboPlace" ${canPlace?'':'disabled'}>${betaDenied?'Place (combos beta pending)':'Place combo…'}</button><span class="muted" style="font-size:10px">${polyEscape(placeHint)}</span></div></div>
-  ${usAutoHtml(ucs.autopilot)}
+  <details class="mpo-fold" data-keep="poly-auto" ${keepOpen('poly-auto')}><summary>AUTO COMBO · ${ucs.autopilot?.enabled?'ON':'off'}</summary>${usAutoHtml(ucs.autopilot)}</details>
   <div class="grid2" style="margin-top:6px"><fieldset><legend>Open combos · ${open.length}</legend><div class="toolbar" style="margin-bottom:4px"><button class="btn" id="usComboSettle">Check settlement</button></div><div data-scroll="combo-open" style="overflow:auto;max-height:160px"><table class="table terminal"><thead><tr><th>Legs</th><th>Price × Qty</th><th>Stake</th><th>Status</th><th>P/L</th><th></th></tr></thead><tbody>${openRows}</tbody></table></div></fieldset><fieldset><legend>History</legend><div data-scroll="combo-hist" style="overflow:auto;max-height:160px"><table class="table terminal"><thead><tr><th>Legs</th><th>Price × Qty</th><th>Stake</th><th>Status</th><th>P/L</th></tr></thead><tbody>${histRows}</tbody></table></div><div class="muted" style="font-size:10px;margin-top:3px">${Number(stats.placed||0)} placed · ${Number(stats.won||0)} won · ${Number(stats.lost||0)} lost · P/L ${polyUsd(stats.pnlUsd)} · hit rate ${stats.hitRate==null?'—':polyPct(stats.hitRate)}</div></fieldset></div>
- ${usResearchHtml(polyUSEvidence)}
+ <details class="mpo-fold" data-keep="poly-research" ${keepOpen('poly-research')}><summary>Research · shadow record · calibration · Lab proposal</summary>${usResearchHtml(polyUSEvidence)}</details></div></div>
  </fieldset></div>`;
  const rerender=()=>{polyModuleSig='';renderSportsbook()};
  $$('.usComboLeg').forEach(el=>el.onchange=()=>{const k=el.dataset.key;if(!k)return;if(el.checked&&usComboSelected.size>=maxLegs){el.checked=false;return}if(el.checked)usComboSelected.add(k);else usComboSelected.delete(k);scheduleUSComboBuild();rerender()});
@@ -1117,6 +1179,7 @@ setInterval(()=>{if(!document.hidden&&windowVisible('researchmon'))refreshResear
 setInterval(()=>{if(!document.hidden)refreshJournal()},15000);
 setInterval(()=>{if(!document.hidden&&windowVisible('journal'))refreshProjectJournal()},15000);
 window.addEventListener('resize',()=>{clampAll()});
+$('#tileBtn').onclick=()=>tileWindows();
 document.addEventListener('keydown',e=>{if(e.key==='Escape')$('#startMenu').classList.remove('open')});
 $('#startBtn').onclick=e=>{e.stopPropagation();$('#startMenu').classList.toggle('open')};document.addEventListener('pointerdown',e=>{if(!e.target.closest('.startmenu')&&!e.target.closest('#startBtn'))$('#startMenu').classList.remove('open')});
 setInterval(()=>$('#clock').textContent=new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}),1000);

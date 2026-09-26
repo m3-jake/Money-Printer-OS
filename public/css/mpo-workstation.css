@@ -652,9 +652,9 @@ textarea:disabled {
 #body-robinhood .mpo-fieldset,#body-robinhood .mpo-danger-fieldset{margin:0 0 6px;padding:4px 8px}
 #body-robinhood p{margin:3px 0}
 #body-robinhood .metric-grid{margin:4px 0}
-.rh-v-paper,.rh-v-why{display:grid;grid-template-columns:1fr 1fr;gap:0 10px;align-content:start}
-.rh-v-why{grid-template-columns:1fr}
-.rh-v-paper>[data-rh-part=head]{grid-column:1/-1}
+/* Every view is a card grid: as many columns as the (zoomed) width allows, header and wide parts span. */
+[class*=rh-v-]{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:0 10px;align-content:start}
+[class*=rh-v-]>[data-rh-part=head],[class*=rh-v-]>[data-rh-part=live],[class*=rh-v-]>[data-rh-part=charts],[class*=rh-v-]>[data-rh-part=signals]{grid-column:1/-1}
 #body-robinhood #rhCharts .mpo-table-wrap{max-height:110px!important}
 #body-robinhood #rhCharts svg[id^=rhEquity]{max-height:70px}
 .rh-v-why .metric-grid,.rh-v-charts .metric-grid,.rh-v-explore .metric-grid,.rh-v-more .metric-grid{display:none}
@@ -675,12 +675,27 @@ textarea:disabled {
 #body-trade #solanaBook .mpo-metric,#body-trade .mpo-metrics .mpo-metric{padding:2px 6px}
 #body-trade .toolbar{margin-top:3px!important}
 #body-trade .chart{height:105px}
-#body-trade .mpo-table-wrap{max-height:92px}
+#body-trade .mpo-table-wrap{max-height:none;overflow:visible}
 
-/* Polymarket US: the window body never scrolls; the combos list scrolls inside its module. */
-#body-sportsbook{display:flex;flex-direction:column;overflow:hidden}
-#body-sportsbook>.poly-mod{flex:1;min-height:0;display:flex;flex-direction:column}
-#body-sportsbook>.poly-mod>.poly-body{flex:1;min-height:0;overflow:auto}
+/* Polymarket US: one natural-height module; fit-to-window scales it instead of scrolling it. */
+#body-sportsbook>.poly-mod>.poly-body{overflow:visible}
+
+/* Fit to window (fitWindow in dashboard.html). Panes are container-query roots: once a pane is wide
+   (a wide window, or a small zoom), modules reflow into columns before they have to shrink more. */
+.body:not(.tabbed),.tabpane{container-type:inline-size}
+.fit-pct{font:bold 10px ui-monospace,Consolas,monospace;color:#cfe;margin:0 6px 0 4px;white-space:nowrap}
+.win-buttons button.fit-btn{width:20px;font-size:12px;line-height:12px}
+.win-buttons button.fit-btn.on{border-style:inset;background:#ddd}
+.task-tool{height:29px;padding:0 9px;font-size:11px;font-weight:bold;border:var(--mpo-border-outset);background:var(--mpo-chrome);white-space:nowrap}
+.task-tool:hover{background:var(--mpo-chrome-mid)}
+.task-tool:active{border-style:inset;background:#ddd}
+.mpo-split{display:grid;grid-template-columns:minmax(0,1fr);gap:0 10px;align-items:start}
+.mpo-split>*{min-width:0}
+@container (min-width:820px){.mpo-split{grid-template-columns:minmax(0,1.15fr) minmax(0,1fr)}}
+.mpo-fold{margin-top:6px;border:1px solid rgba(120,170,135,.3)}
+.mpo-fold>summary{cursor:pointer;padding:3px 6px;font:bold 10px ui-monospace,Consolas,monospace;letter-spacing:.06em;color:#9fd8b0;user-select:none}
+.mpo-fold>summary:hover{color:#fff}
+.mpo-fold[open]>summary{border-bottom:1px solid rgba(120,170,135,.3)}
 
 /* Live visuals (public/js/mpo-viz.js). Canvases are drawn by one animation loop. */
 .mpo-viz{position:relative;margin:6px 0;border:1px solid rgba(120,170,135,.22);background:linear-gradient(180deg,rgba(0,20,10,.55),rgba(0,0,0,.35));border-radius:2px}
@@ -689,5 +704,12 @@ textarea:disabled {
 .mpo-viz-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:6px}
 .mpo-viz-grid>.mpo-viz{margin:0}
 .rh-v-paper>[data-rh-part=live],.rh-v-why>[data-rh-part=live]{grid-column:1/-1}
-#body-trade .pf-viz-row{display:grid;grid-template-columns:150px 1fr 220px;gap:6px}
+#body-trade .pf-viz-row{display:grid;grid-template-columns:minmax(110px,150px) minmax(120px,1fr) minmax(150px,220px);gap:6px}
+@container (min-width:820px){
+ #body-trade .mpo-table-wrap{max-height:none}
+ /* Wide: the chart takes whatever height the left column has spare (150px minimum for fitting). */
+ #body-trade .mpo-split{height:100%;grid-template-rows:100%}
+ #body-trade .pf-left{display:flex;flex-direction:column;min-height:0;align-self:stretch}
+ #body-trade .pf-left .chart{flex:1 1 150px;min-height:150px;height:auto}
+}
 #body-trade .pf-viz-row>.mpo-viz{margin:4px 0}
