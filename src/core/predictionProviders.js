@@ -33,18 +33,25 @@ export class KalshiProvider extends JsonProvider {
 }
 export function normalizePolymarket(raw,observedAt=Date.now()) {
   if(!raw?.id||typeof raw.question!=='string')throw new ProviderError('MALFORMED_DATA','Polymarket market lacks id/question');
-  const outcomes=list(raw.outcomes),tokens=list(raw.clobTokenIds),prices=list(raw.outcomePrices),yes=outcomes.findIndex(v=>String(v).toLowerCase()==='yes'),no=outcomes.findIndex(v=>String(v).toLowerCase()==='no'),event=raw.events?.[0];
+  const outcomes=list(raw.outcomes),tokens=list(raw.clobTokenIds),prices=list(raw.outcomePrices),event=raw.events?.[0];
+  // Two named outcomes ("Ole Miss" / "Florida", "Over" / "Under") are a binary market too: the first
+  // outcome is carried as YES and the second as NO, and the labels travel with the contract.
+  const named=outcomes.length===2&&!outcomes.some(v=>/^(yes|no)$/i.test(String(v)));
+  let yes=outcomes.findIndex(v=>String(v).toLowerCase()==='yes'),no=outcomes.findIndex(v=>String(v).toLowerCase()==='no');if(named){yes=0;no=1;}
   return entity('Contract','polymarket',String(raw.id),{...ruleDefaults,venue:'polymarket',title:raw.question,sourceEventId:event?.id?String(event.id):null,eventId:event?.id?stableId('Event','polymarket',String(event.id)):null,
     outcomeDefinition:raw.question,expiresAt:timestamp(raw.endDate),closeAt:timestamp(raw.endDate),resolutionSource:raw.resolutionSource||null,settlementRules:raw.description||null,
     status:raw.closed?'CLOSED':raw.active?'OPEN':'INACTIVE',category:raw.category||null,yesBid:probability(raw.bestBid),yesAsk:probability(raw.bestAsk),noBid:null,noAsk:null,
     impliedProbability:yes>=0?probability(prices[yes]):null,volume:finite(raw.volumeNum??raw.volume),liquidityUsd:finite(raw.liquidityNum??raw.liquidity),
-    outcomes,tokenIds:tokens,yesToken:yes>=0?tokens[yes]||null:null,noToken:no>=0?tokens[no]||null:null,binary:outcomes.length===2&&yes>=0&&no>=0,feeSchedule:null,quoteSource:'market-metadata',quoteExecutable:false},
+    outcomes,yesLabel:yes>=0?String(outcomes[yes]):null,noLabel:no>=0?String(outcomes[no]):null,eventTitle:event?.title||null,tokenIds:tokens,yesToken:yes>=0?tokens[yes]||null:null,noToken:no>=0?tokens[no]||null:null,binary:outcomes.length===2&&yes>=0&&no>=0,feeSchedule:null,quoteSource:'market-metadata',quoteExecutable:false},
     {observedAt,sourceUrl:raw.slug?`https://polymarket.com/event/${encodeURIComponent(event?.slug||raw.slug)}`:null});
 }
 export class PolymarketProvider extends JsonProvider {
   constructor(options={}){super('polymarket',{minIntervalMs:0,...options});}
-  async markets({offset=0,limit=100}={}){const u=new URL('https://gamma-api.polymarket.com/markets');for(const [k,v] of Object.entries({active:true,closed:false,limit:Math.min(200,limit),offset}))u.searchParams.set(k,String(v));const raw=await this.get(u,{ttlMs:10000});if(!Array.isArray(raw))throw new ProviderError('MALFORMED_DATA','Polymarket markets array missing');return {markets:raw.map(m=>normalizePolymarket(m,this.observedAt(raw))),cursor:raw.length===limit?String(Number(offset)+limit):null};}
-  async market(id){const raw=await this.get(`https://gamma-api.polymarket.com/markets/${encodeURIComponent(id)}`);return normalizePolymarket(raw,this.observedAt(raw));}
+  async markets({offset=0,limit=100}={}){const u=new URL('https://gamma-api.polymarket.com/markets');// Most-traded first, so live and near-term markets (where cross-venue pairs exist) load first.
+    for(const [k,v] of Object.entries({active:true,closed:false,limit:Math.min(200,limit),offset,order:'volume24hr',ascending:false}))u.searchParams.set(k,String(v));const raw=await this.get(u,{ttlMs:10000});if(!Array.isArray(raw))throw new ProviderError('MALFORMED_DATA','Polymarket markets array missing');return {markets:raw.map(m=>normalizePolymarket(m,this.observedAt(raw))),cursor:raw.length===limit?String(Number(offset)+limit):null};}
+  // The list endpoint filtered by id includes the parent event (title, id); /markets/{id} omits it,
+  // which would drop the participants that contract matching reads from the event title.
+  async market(id){const raw=await this.get(`https://gamma-api.polymarket.com/markets?id=${encodeURIComponent(id)}`);if(!Array.isArray(raw)||!raw[0])throw new ProviderError('MALFORMED_DATA','Polymarket market not found');return normalizePolymarket(raw[0],this.observedAt(raw));}
   async book(id,contract){
     if(!contract?.data?.binary||!contract.data.yesToken||!contract.data.noToken)throw new ProviderError('UNSUPPORTED_MARKET','Only complete binary token books are supported');
     const result=await Promise.all([contract.data.yesToken,contract.data.noToken].map(token=>this.get(`https://clob.polymarket.com/book?token_id=${encodeURIComponent(token)}`,{ttlMs:1000})));

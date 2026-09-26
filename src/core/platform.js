@@ -13,6 +13,10 @@ import { activateExecutionBoundary } from './executionBoundary.js';
 import { StrategyRegistry } from './strategies.js';
 import { legacyCoverage } from './legacyBooks.js';
 import { syncLabChampions } from './labSync.js';
+import { extractTerms,matchTerms,termsFingerprint,candidatePairs } from './contractTerms.js';
+
+export const VERIFY_PHRASE='I READ BOTH RULE TEXTS AND THEY SETTLE IDENTICALLY';
+const swapSides=book=>({...book,yes:book.no,no:book.yes});
 
 export class MarketPlatform {
   constructor({file=':memory:',dataDir=null,providers=null}={}){
@@ -86,7 +90,36 @@ export class MarketPlatform {
     });
     this.bus.publish(result.status==='FILLED'?'ORDER_FILLED':'ORDER_REJECTED',result);return result;
   }
-  async compare({a,b,quantity=1}){const [left,right]=await Promise.all([this.book(a.venue,a.sourceId),this.book(b.venue,b.sourceId)]);return {a:left.contract,b:right.contract,...arbitrageQuote(left.contract.data,right.contract.data,left.book,right.book,{quantity:Number(quantity)})};}
+  // Structured term match, upgraded to EXACT MATCH only by a still-valid human attestation.
+  pairMatch(ca,cb){
+    const m=matchTerms(extractTerms(ca.data),extractTerms(cb.data)),row=this.store.db.prepare("SELECT * FROM relationships WHERE source_id=? AND target_id=? AND relation='SETTLEMENT_VERIFIED'").get(ca.id,cb.id);
+    let attestation=null;
+    if(row){const ev=JSON.parse(row.evidence);attestation={at:row.at,note:ev.note||null,valid:ev.fpA===termsFingerprint(ca.data)&&ev.fpB===termsFingerprint(cb.data)&&ev.orientation===m.orientation};}
+    const exact=m.classification==='STRONG MATCH'&&attestation?.valid===true;
+    const fields=['type','teams','side','line','stat','day','scope','yesMeans','cancellation','resolutionSource'].map(k=>({field:k,a:m.termsA[k]==null?null:Array.isArray(m.termsA[k])?m.termsA[k].join(' vs '):String(m.termsA[k]),b:m.termsB[k]==null?null:Array.isArray(m.termsB[k])?m.termsB[k].join(' vs '):String(m.termsB[k])}));
+    return {...m,classification:exact?'EXACT MATCH':m.classification,attestation,fields,missing:[...new Set([...m.termsA.missing,...m.termsB.missing])],differences:m.reasons,
+      settlementMismatchRisk:exact?'HUMAN_VERIFIED_TERMS_STILL_SUBJECT_TO_VENUE_RISK':'UNVERIFIED_OR_DIFFERENT_TERMS',extraction:'HEURISTIC'};
+  }
+  async compare({a,b,quantity=1}){
+    const [left,right]=await Promise.all([this.book(a.venue,a.sourceId),this.book(b.venue,b.sourceId)]),match=this.pairMatch(left.contract,right.contract);
+    // INVERTED: YES on A pays when NO on B pays, so B's sides are swapped before pricing complements.
+    const bookB=match.orientation==='INVERTED'?swapSides(right.book):right.book;
+    return {a:left.contract,b:right.contract,...arbitrageQuote(left.contract.data,right.contract.data,left.book,bookB,{quantity:Number(quantity),match})};
+  }
+  verifyPair({a,b,confirmation,note=''}){
+    if(confirmation!==VERIFY_PHRASE)throw new Error(`Type "${VERIFY_PHRASE}" to attest`);
+    const ca=this.store.get(stableId('Contract',a?.venue,a?.sourceId)),cb=this.store.get(stableId('Contract',b?.venue,b?.sourceId));
+    if(!ca||!cb)throw new Error('Load both contracts (compare them) before verifying');
+    const m=this.pairMatch(ca,cb);if(!['STRONG MATCH','EXACT MATCH'].includes(m.classification))throw new Error(`Only a STRONG MATCH can be verified (this pair is ${m.classification})`);
+    const evidence=JSON.stringify({fpA:termsFingerprint(ca.data),fpB:termsFingerprint(cb.data),orientation:m.orientation,note:String(note).slice(0,500)});
+    this.store.transaction(()=>{this.store.relate({sourceId:ca.id,targetId:cb.id,relation:'SETTLEMENT_VERIFIED',evidence,fact:true});this.store.record('PAIR_VERIFIED',{a:ca.id,b:cb.id,orientation:m.orientation});});
+    return this.pairMatch(ca,cb);
+  }
+  arbitrageCandidates({limit=50}={}){
+    const k=this.store.list({kind:'Contract',provider:'kalshi',limit:1000}),p=this.store.list({kind:'Contract',provider:'polymarket',limit:1000});
+    return {scanned:{kalshi:k.length,polymarket:p.length},pairs:candidatePairs(k,p,{limit}).map(x=>{const ca=this.store.get(x.a),cb=this.store.get(x.b);return {...x,a:{venue:'kalshi',sourceId:ca.sourceId},b:{venue:'polymarket',sourceId:cb.sourceId},classification:this.pairMatch(ca,cb).classification};}),
+      note:'Heuristic matches among contracts already loaded in Kalshi and Polymarket Markets. STRONG MATCH is not EXACT: read both rule texts before trusting a pair.'};
+  }
   transitionStrategy({id,to,reason,evidence=null}){
     const r=this.strategies.transition(id,to,{reason,evidence});
     if(this.dataDir)try{appendProjectJournal(path.join(this.dataDir,'project-journal.ndjson'),{kind:'strategy',title:`Strategy ${r.promoted?'promoted':'moved'}: ${r.name} → ${to}`,detail:reason,at:Date.now()});}catch{this.journalError='Could not append strategy milestone';}

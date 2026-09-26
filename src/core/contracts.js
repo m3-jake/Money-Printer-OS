@@ -20,8 +20,10 @@ export function walkBook(levels,requested) {
   const filled=requested-remaining,average=filled?cost/filled:null,top=sorted.find(l=>l.quantity>0)?.price;
   return {quantity:filled,cost,averagePrice:average,slippageBps:average!==null&&top>0?(average/top-1)*10000:null,complete:remaining<=1e-9};
 }
-export function arbitrageQuote(a,b,bookA,bookB,{quantity=1,feeA=null,feeB=null,now=Date.now(),maxAgeMs=15000}={}) {
-  const match=compareContracts(a,b),reasons=[];
+// match: optional structured result (contractTerms.matchTerms + attestation). Without it the plain
+// field comparison applies. Only EXACT MATCH lets a locked return be shown.
+export function arbitrageQuote(a,b,bookA,bookB,{quantity=1,feeA=null,feeB=null,now=Date.now(),maxAgeMs=15000,match:given=null}={}) {
+  const match=given||compareContracts(a,b),reasons=[];
   if(a.venue===b.venue)reasons.push('SAME_VENUE');
   if(match.classification!=='EXACT MATCH')reasons.push('SETTLEMENT_NOT_VERIFIED_EQUIVALENT');
   if(!timestamp(bookA?.observedAt)||!timestamp(bookB?.observedAt)||[bookA,bookB].some(x=>x.observedAt>now||now-x.observedAt>maxAgeMs))reasons.push('STALE_BOOK');

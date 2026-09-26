@@ -11,12 +11,14 @@ import { entity,stableId,units,decimal,availableHistory } from '../src/core/mode
 import { MarketEventBus } from '../src/core/eventBus.js';
 import { evaluateRisk,DEFAULT_LIMITS,validateLimits,portfolioRiskState } from '../src/core/risk.js';
 import { compareContracts,arbitrageQuote } from '../src/core/contracts.js';
-import { normalizeKalshi,normalizeKalshiBook,normalizePolymarket,KalshiProvider } from '../src/core/predictionProviders.js';
+import { normalizeKalshi,normalizeKalshiBook,normalizePolymarket,KalshiProvider,PolymarketProvider } from '../src/core/predictionProviders.js';
 import { ProviderRegistry,JsonProvider } from '../src/core/provider.js';
 import { MarketPlatform } from '../src/core/platform.js';
 import { legacyCoverage,solanaLegacy,usCombosLegacy,legacyTotals } from '../src/core/legacyBooks.js';
 import { syncLabChampions,labEvidence,LAB_CHAMPION_SOURCES } from '../src/core/labSync.js';
 import { comboPerformance,wilson } from '../src/core/comboPerformance.js';
+import { extractTerms,matchTerms,sameName,participants,candidatePairs,termsFingerprint } from '../src/core/contractTerms.js';
+import { VERIFY_PHRASE } from '../src/core/platform.js';
 import { StrategyRegistry,promotionCheck,labChampionLifecycle } from '../src/core/strategies.js';
 import { assertGlobalTradingNotHalted } from '../src/core/executionBoundary.js';
 import { localMutationAllowed } from '../src/core/http.js';
@@ -234,4 +236,65 @@ test('combo performance: empty is unknown, not zero; rates, interval, edge and c
   assert.deepEqual(p.calibration.map(c=>[c.lo,c.n,c.winRate]),[[.8,2,.5],[.9,1,1]]);
   const ci=wilson(2,3);assert.ok(ci.low<.6667&&ci.high>.6667&&ci.low>=0&&ci.high<=1);
   assert.equal(comboPerformance([{status:'WON',pnlUsd:1,costUsd:1}]).edge,null); // no fill price -> no edge claim
+});
+
+// Rule text below is copied from live Kalshi / Polymarket markets (2026-09-26).
+const kSpread=normalizeKalshi({ticker:'KXNFLSPREAD-26SEP27KCMIA-KC4',title:'KC Chiefs wins by over 3.5 points?',event_ticker:'KXNFLSPREAD-26SEP27KCMIA',status:'active',expiration_time:'2026-10-11T17:00:00Z',
+  rules_primary:'If Kansas City wins by more than 3.5 points in the Kansas City vs Miami professional football game originally scheduled for Sep 27, 2026, then the market resolves to Yes.'},1000);
+const pSpread=normalizePolymarket({id:'77',question:'Spread: Chiefs (-3.5)',outcomes:'["Chiefs","Dolphins"]',clobTokenIds:'["kc","mia"]',outcomePrices:'["0.55","0.45"]',endDate:'2026-09-27T17:00:00Z',active:true,resolutionSource:'https://www.nfl.com/scores',
+  description:'In the upcoming NFL game, scheduled for September 27 at 1:00 PM ET:  This market will resolve to "Chiefs" if the Chiefs win the game by 4 or more points.  Otherwise, this market will resolve to "Dolphins".',events:[{id:'9',title:'Chiefs vs. Dolphins'}]},1000);
+const kTotal=normalizeKalshi({ticker:'KXMLBTOTAL-X-8',title:'Over 7.5 runs scored',status:'active',expiration_time:'2026-10-03T17:00:00Z',
+  rules_primary:'If the teams in the game collectively score more than 7.5 runs in the Texas vs Minnesota professional baseball game originally scheduled for Sep 26, 2026, then the market resolves to Yes.'},1000);
+const pTotal=normalizePolymarket({id:'78',question:'Texas Rangers vs. Minnesota Twins: O/U 7.5',outcomes:'["Over","Under"]',clobTokenIds:'["o","u"]',outcomePrices:'["0.5","0.5"]',endDate:'2026-09-26T23:00:00Z',active:true,
+  description:'In the upcoming MLB game between the Texas Rangers and Minnesota Twins, scheduled for September 26 at 7:10PM ET: This market will resolve to "Over" if the teams combine to score more than 7.5 runs. If the game is canceled entirely, this market will resolve 50-50.'},1000);
+test('contract terms: real venue text becomes a comparable proposition',()=>{
+  assert.deepEqual(participants('If Chicago C wins the Chicago C vs Boston professional baseball game'),['Chicago C','Boston']);
+  assert.deepEqual(participants('In the upcoming college football game between UConn and Miami (OH), scheduled for'),['UConn','Miami (OH)']);
+  assert.ok(sameName('Chicago C','Chicago Cubs'));assert.ok(!sameName('Chicago C','Chicago White Sox'));assert.ok(!sameName('New York Y','New York Mets'));assert.ok(sameName('Youngstown St.','Youngstown State'));
+  const a=extractTerms(kSpread.data),b=extractTerms(pSpread.data);
+  assert.equal(a.type,'SPREAD');assert.equal(a.line,3.5);assert.equal(a.day,'2026-09-27');assert.equal(b.type,'SPREAD');assert.equal(b.day,'2026-09-27');
+  assert.equal(pSpread.data.binary,true);assert.equal(pSpread.data.yesLabel,'Chiefs');assert.equal(pSpread.data.yesToken,'kc');
+  // Different city/nickname naming: Kansas City vs Chiefs is not assumed equal.
+  assert.equal(matchTerms(a,b).classification,'NOT EQUIVALENT');
+  const t1=extractTerms(kTotal.data),t2=extractTerms(pTotal.data),m=matchTerms(t1,t2);
+  assert.equal(t1.type,'TOTAL');assert.equal(t2.type,'TOTAL');assert.equal(m.classification,'STRONG MATCH');assert.equal(m.orientation,'SAME');
+  assert.ok(m.residualRisks.some(r=>r.startsWith('CANCELLATION')));
+});
+test('contract matching: lines, dates, scope and inverted outcomes; never EXACT automatically',()=>{
+  const base=extractTerms(kTotal.data),other=extractTerms(pTotal.data);
+  assert.equal(matchTerms(base,{...other,line:8.5}).classification,'RELATED');
+  assert.equal(matchTerms(base,{...other,day:'2026-09-27'}).classification,'NOT EQUIVALENT');
+  assert.equal(matchTerms({...base,scope:'REGULATION'},{...other,scope:'INCLUDING_OT'}).classification,'NOT EQUIVALENT');
+  assert.equal(matchTerms(base,{...other,yesMeans:'UNDER'}).orientation,'INVERTED');
+  assert.equal(matchTerms(base,{...other,type:'OTHER'}).classification,'RELATED');
+  for(const x of [matchTerms(base,other),matchTerms(base,base)])assert.notEqual(x.classification,'EXACT MATCH');
+  const pairs=candidatePairs([kTotal,kSpread],[pTotal,pSpread]);assert.equal(pairs.length,1);assert.equal(pairs[0].a,kTotal.id);
+});
+test('EXACT MATCH needs an attestation that dies when either venue edits its rules',async()=>{
+  const p=new MarketPlatform({providers:new ProviderRegistry()});p.store.put(kTotal);p.store.put(pTotal);
+  assert.equal(p.pairMatch(kTotal,pTotal).classification,'STRONG MATCH');
+  assert.throws(()=>p.verifyPair({a:{venue:'kalshi',sourceId:kTotal.sourceId},b:{venue:'polymarket',sourceId:pTotal.sourceId},confirmation:'yes'}),/Type/);
+  const v=p.verifyPair({a:{venue:'kalshi',sourceId:kTotal.sourceId},b:{venue:'polymarket',sourceId:pTotal.sourceId},confirmation:VERIFY_PHRASE,note:'read both'});
+  assert.equal(v.classification,'EXACT MATCH');assert.equal(v.attestation.valid,true);
+  const edited={...pTotal,observedAt:2000,availableAt:2000,data:{...pTotal.data,settlementRules:pTotal.data.settlementRules+' Extra innings excluded.'}};
+  assert.notEqual(termsFingerprint(edited.data),termsFingerprint(pTotal.data));p.store.put(edited);
+  const after=p.pairMatch(kTotal,p.store.get(pTotal.id));assert.equal(after.classification,'STRONG MATCH');assert.equal(after.attestation.valid,false);
+  // A non-matching pair can never be attested.
+  p.store.put(kSpread);p.store.put(pSpread);
+  assert.throws(()=>p.verifyPair({a:{venue:'kalshi',sourceId:kSpread.sourceId},b:{venue:'polymarket',sourceId:pSpread.sourceId},confirmation:VERIFY_PHRASE}),/Only a STRONG MATCH/);
+  p.close();
+});
+test('complement legs are priced from both books with fees; never flagged risk-free',()=>{
+  const book=(y,n)=>({observedAt:1000,yes:{bids:[],asks:[{price:y,quantity:10}]},no:{bids:[],asks:[{price:n,quantity:10}]}});
+  const match={classification:'EXACT MATCH',missing:[],differences:[],fields:[]};
+  const q=arbitrageQuote({venue:'kalshi'},{venue:'polymarket'},book(.4,.62),book(.58,.45),{quantity:1,feeA:0,feeB:0,now:1000,match});
+  // SAME orientation: YES(A) .40 + NO(B) .45 = .85 -> 0.15 locked.
+  assert.equal(q.directions[0].theoreticalLockedReturn.toFixed(2),'0.15');assert.equal(q.directions[0].riskFree,false);
+});
+
+test('regressions from the live check: lazy names; single-market fetch keeps the parent event',async()=>{
+  assert.deepEqual(participants('If Houston wins by more than 2.5 points in the HOU Texans vs IND Colts Pro Football game originally'),['HOU Texans','IND Colts']);
+  let asked=null;const p=new PolymarketProvider({fetchImpl:async url=>{asked=String(url);return {ok:true,json:async()=>[{id:'77',question:'Spread: Texans (-2.5)',outcomes:'["Texans","Colts"]',clobTokenIds:'["h","i"]',active:true,events:[{id:'9',title:'Texans vs. Colts'}]}]};}});
+  const c=await p.market('77');assert.ok(asked.endsWith('/markets?id=77'),asked);assert.equal(c.data.eventTitle,'Texans vs. Colts');assert.deepEqual(extractTerms(c.data).teams,['Texans','Colts']);
+  const empty=new PolymarketProvider({fetchImpl:async()=>({ok:true,json:async()=>[]})});await assert.rejects(empty.market('1'),/not found/);
 });
