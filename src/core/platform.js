@@ -13,6 +13,7 @@ import { activateExecutionBoundary } from './executionBoundary.js';
 import { StrategyRegistry } from './strategies.js';
 import { legacyCoverage } from './legacyBooks.js';
 import { solanaPlan,practicePlan } from './legacyImport.js';
+import { reconcileVenue } from './accountReconcile.js';
 import { syncLabChampions } from './labSync.js';
 import { extractTerms,matchTerms,termsFingerprint,candidatePairs } from './contractTerms.js';
 import { describeFeeModel,takerFee } from './fees.js';
@@ -44,6 +45,7 @@ export class MarketPlatform {
     this.labPool=labWorkers?new LabPool():null;
     this.store=new CoreDatabase(file);this.ledger=new UnifiedLedger(this.store);this.bus=new MarketEventBus();this.risk=new RiskGovernor(this.store,this.ledger,this.bus);this.strategies=new StrategyRegistry(this.store);this.legacyReaders={};this.replays=new Map();this.fred=new FredSource();this.macroCache=null;this.edgar=new EdgarSource();this.summarize=args=>summarizeFiling(args);this.weather=new WeatherSource();this.weatherCache=null;this.sportsCache=null;this.sportsLive=new Map();this.sportsFetch=(url,opt)=>globalThis.fetch(url,opt);this.wireFetch=(url,opt)=>globalThis.fetch(url,opt);this.wireFeeds=new Map();this.whaleSeenTs=Date.now();this.eventsCache=null;
     this.store.db.exec(`CREATE TABLE IF NOT EXISTS wallet_labels(address TEXT PRIMARY KEY, label TEXT NOT NULL, note TEXT NOT NULL, at INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS venue_reconcile(venue TEXT PRIMARY KEY, at INTEGER NOT NULL, state TEXT NOT NULL, snapshot TEXT NOT NULL, result TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS ai_summaries(accession TEXT PRIMARY KEY, at INTEGER NOT NULL, model TEXT NOT NULL, status TEXT NOT NULL, chars INTEGER NOT NULL, result TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS legacy_sync(source TEXT PRIMARY KEY, epoch INTEGER NOT NULL, synced_at INTEGER NOT NULL, status TEXT NOT NULL, detail TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS integration_milestones(id TEXT PRIMARY KEY, at INTEGER NOT NULL);
@@ -61,7 +63,7 @@ export class MarketPlatform {
   }
   snapshot(){
     return {at:Date.now(),risk:this.risk.state(),providers:this.providers.status(),database:this.store.health(),eventBus:this.bus.snapshot(),journalError:this.journalError,
-      strategies:this.strategies.list(),legacy:{...legacyCoverage(this.legacyReaders),mirror:this.store.db.prepare('SELECT * FROM legacy_sync').all().map(r=>({...r,detail:JSON.parse(r.detail)}))},labSync:this.labSync||null,portfolio:this.ledger.portfolio(),livePortfolio:this.ledger.portfolio('LIVE'),ledger:this.ledger.entries(),events:this.store.events(),
+      strategies:this.strategies.list(),venueAccounts:this.store.db.prepare('SELECT venue,at,state,result FROM venue_reconcile').all().map(r=>({...JSON.parse(r.result),at:r.at})),legacy:{...legacyCoverage(this.legacyReaders),mirror:this.store.db.prepare('SELECT * FROM legacy_sync').all().map(r=>({...r,detail:JSON.parse(r.detail)}))},labSync:this.labSync||null,portfolio:this.ledger.portfolio(),livePortfolio:this.ledger.portfolio('LIVE'),ledger:this.ledger.entries(),events:this.store.events(),
       watchlist:this.store.db.prepare('SELECT * FROM watchlist ORDER BY added_at DESC').all(),proposals:this.store.db.prepare('SELECT * FROM proposals ORDER BY created_at DESC LIMIT 100').all().map(r=>({...r,payload:JSON.parse(r.payload),decision:JSON.parse(r.decision)})),
       coverage:{legacyBooks:'MIRRORED_AND_RECONCILED_WHERE_POSSIBLE',liveAccounts:'NOT_RECONCILED',riskValuation:'PAPER_COST_BASIS_AND_REALIZED_LOSS',note:'Core accounts are reconstructed from this ledger only. The Solana paper book (SOL) and the Robinhood practice book are mirrored into this ledger and reconciled against their own cash; US combos stay read-only (no readable account balance).'}};
   }
@@ -205,6 +207,33 @@ export class MarketPlatform {
     run('robinhood-practice','robinhood-practice',()=>{const x=this.legacyReaders.robinhoodPracticeBook?.();return x||null;},practicePlan,b=>!(b.positions||[]).length&&!(b.history||[]).length);
     results.push({source:'polymarket-us-combos',status:'NOT_MIRRORED',reason:'Real venue orders; no readable account balance (Polymarket US auth), so they cannot be reconciled. Shown read-only.'});
     this.legacySync={at:now,results};return results;
+  }
+  // Read-only reconciliation of real venue accounts (accountReconcile.js). Never unlocks execution.
+  async reconcileAccounts(){
+    const readers=this.legacyReaders.venueAccounts||{},now=Date.now(),out=[];
+    const live=this.ledger.portfolio('LIVE').accounts;
+    for(const [venue,read] of Object.entries(readers)){
+      let snap;try{snap={venue,...(await read())};}catch(e){snap={venue,ok:false,code:e.code==='AUTH_ERROR'?'AUTH_ERROR':'READ_FAILED',error:String(e.message||e).slice(0,200)};}
+      if(snap.ok){try{this.store.put({kind:'Portfolio',provider:venue,sourceId:'venue-snapshot',data:{cashUsd:snap.cashUsd??null,positions:snap.positions??null,cashLabel:snap.cashLabel||null},observedAt:now,availableAt:now});}catch{}}
+      const acct=live.find(a=>a.venue===venue&&a.account==='main'&&a.currency==='USD')||null;
+      const ledgerAccount=acct?{cash:acct.cash,positions:acct.positions.map(p=>({asset:decodeURIComponent(String(p.instrumentId).split(':').pop()),quantity:p.quantity}))}:null;
+      const r={...reconcileVenue(snap,ledgerAccount),at:now,cashLabel:snap.cashLabel||null};
+      this.store.db.prepare('INSERT INTO venue_reconcile VALUES(?,?,?,?,?) ON CONFLICT(venue) DO UPDATE SET at=excluded.at,state=excluded.state,snapshot=excluded.snapshot,result=excluded.result').run(venue,now,r.state,JSON.stringify(snap),JSON.stringify(r));
+      out.push(r);
+    }
+    return {at:now,results:out,note:'Read-only. Live execution stays locked whatever these show; reconciliation is only its prerequisite.'};
+  }
+  recordVenueOpeningBalance({venue,confirmation}){
+    if(confirmation!=='RECORD VENUE OPENING BALANCE')throw new Error('Type RECORD VENUE OPENING BALANCE to confirm');
+    const row=this.store.db.prepare('SELECT * FROM venue_reconcile WHERE venue=?').get(String(venue||''));if(!row)throw new Error('Reconcile this venue first');
+    const r=JSON.parse(row.result),snap=JSON.parse(row.snapshot);
+    if(r.state!=='NOT_IN_LEDGER')throw new Error(`Only a venue in state NOT_IN_LEDGER can take an opening balance (it is ${r.state})`);
+    if(Date.now()-row.at>600000)throw new Error('The venue snapshot is older than 10 minutes; reconcile again first');
+    const cash=Number(snap.cashUsd);if(!(cash>=0))throw new Error('Venue cash is unknown; nothing to record');
+    // Cash only: the cost basis of positions already held at the venue is unknown and is not invented.
+    this.ledger.append({sourceKey:`venue-opening:${venue}:${row.at}`,at:row.at,mode:'LIVE',venue,account:'main',currency:'USD',kind:'DEPOSIT',gross:cash.toFixed(6),reference:`Opening balance from ${venue} account snapshot at ${new Date(row.at).toISOString()} (${snap.cashLabel||'cash'}; user-confirmed)`});
+    this.store.record('VENUE_OPENING_BALANCE',{venue,cash,at:row.at});
+    return {venue,recorded:cash,positionsNotRecorded:(snap.positions||[]).filter(p=>Number(p.qty)).length};
   }
   // Sync, read-only accessors supplied by the host (dashboard). Keys: solana, robinhoodPractice, usCombos.
   setLegacyReaders(readers={}){this.legacyReaders={...readers};}

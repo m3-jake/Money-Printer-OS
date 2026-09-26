@@ -72,10 +72,17 @@ Everything below lives in `src/core/` behind `/api/platform/*` (`src/core/http.j
 | `SEC_USER_AGENT="Name you@example.com"` | EDGAR filings (SEC requires a declared contact) |
 | `NWS_USER_AGENT` | Optional contact in NWS requests |
 
+## Added after the first pass (batches AG–AM)
+
+- Legacy books mirrored into the ledger with reconciliation (`legacyImport.js`); US combos stay read-only.
+- Event pages for sports, weather and corporate events.
+- Kalshi event-level fee overrides (pending / applied / unverified, conservative when unknown).
+- Market Lab compute in a worker-thread pool (`labWorker.js`).
+- AI filing summaries (`aiSummary.js`, official Anthropic SDK): cited to the filing, stored apart from facts, on request only; needs `ANTHROPIC_API_KEY`.
+- Read-only venue account reconciliation (`accountReconcile.js`) for Robinhood crypto and Polymarket US, with a user-confirmed cash opening balance. It never unlocks execution.
+
 ## Remaining work (not done)
 
-- Live venue certification and account reconciliation (policy: no real money).
-- A reconciled import of legacy books into the ledger (they are shown read-only).
-- Event pages for sports, weather and corporate events (they exist in their own windows and the Wire).
-- Kalshi event-level fee overrides; soccer three-way, player-prop and non-sports contract terms.
-- Distributed Market Lab sweeps (the Evolution Lab/Furnace does heavy search).
+- **Real-money order routing.** Deliberately not written: no working venue credentials to certify against here, and real-money actions need the owner's explicit decision at the time. Reconciliation (above) is the prerequisite that now exists.
+- Cross-machine Market Lab jobs (unsafe over the unauthenticated mesh; the Evolution Lab's signed bridge is the right channel).
+- Soccer three-way, player-prop and non-sports contract terms for Arbitrage.

@@ -1175,3 +1175,13 @@ Kalshi and Robinhood event contracts are already covered by the MPOS core platfo
 - `robinhoodHistory.js` minute samples use the same expansion, but that path is documented as **not wired**. If it is ever wired, it needs the same rule. Daily bars are complete UTC days and unaffected.
 - **Effect:** Robinhood lane search/holdout results computed on candle-heavy tape before this fix may have been optimistic. The evidence gate's 10% synthetic cap limited it for promotion.
 - Tests: new `tests/candle-lookahead.test.mjs` (2); **all 231 Lab tests pass** (per-file run).
+
+## Batch AM (2026-09-26): read-only venue account reconciliation
+
+- **New `src/core/accountReconcile.js`** plus `reconcileAccounts()` / `recordVenueOpeningBalance()`. The dashboard supplies GET-only readers: Robinhood crypto (`fetchAccount` buying power + `fetchHoldings`) and Polymarket US (`polymarketUSAccount` balance; positions not readable).
+- **States:** NO_CREDENTIALS / AUTH_ERROR / READ_FAILED / NOT_IN_LEDGER / DIFFERENCE / RECONCILED.
+- **Snapshots** are stored as `Portfolio` entities (fact). Results are in `venue_reconcile` and shown in Command Center → **Venue accounts**, with a "Reconcile venue accounts now" button.
+- **Opening balance:** a venue that holds value the ledger never recorded can take a **cash** opening balance. It needs the typed phrase `RECORD VENUE OPENING BALANCE` and a snapshot less than 10 minutes old, and writes a LIVE DEPOSIT referencing that snapshot. **Positions are not recorded** (cost basis unknown; not invented), so they stay listed as differences.
+- **Live stays locked:** the Risk Governor still refuses LIVE (LIVE_NOT_AUTHORIZED), the proposal path still refuses LIVE, and the execution boundary is unchanged (tested after a reconciled opening balance).
+- **Real-money order routing: still not written** (see docs/MPOS-UNIFICATION.md → Remaining work).
+- **Isolated check:** both venues NO_CREDENTIALS (the scratch env has no keys). The installed app has Robinhood keys and will read that account when bing presses Reconcile. `market-core` 64.

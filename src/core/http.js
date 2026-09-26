@@ -62,6 +62,8 @@ export async function handlePlatformRequest(req,res,url,{json,body,platform=mark
       else if(route==='/whales/label')result=platform.labelWallet(input);
       else if(route==='/legacy/sync')result=platform.syncLegacyLedger();
       else if(route==='/edgar/summary')result=await platform.edgarSummary(input);
+      else if(route==='/accounts/reconcile')result=await platform.reconcileAccounts();
+      else if(route==='/accounts/opening-balance')result=platform.recordVenueOpeningBalance(input);
       else if(route==='/watchlist')result=platform.watch(input.id,input.on===true);
       else if(route==='/compare/verify')result=platform.verifyPair(input);
       else if(route==='/compare')result=await platform.compare(input);

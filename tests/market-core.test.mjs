@@ -33,6 +33,7 @@ import { buildEventPages,sportsPages,weatherPages,corporatePages } from '../src/
 import { solanaPlan,practicePlan } from '../src/core/legacyImport.js';
 import { LabPool,computeTask } from '../src/core/labWorker.js';
 import { summarizeFiling,htmlToText,MAX_FILING_CHARS } from '../src/core/aiSummary.js';
+import { reconcileVenue } from '../src/core/accountReconcile.js';
 import { StrategyRegistry,promotionCheck,labChampionLifecycle } from '../src/core/strategies.js';
 import { assertGlobalTradingNotHalted } from '../src/core/executionBoundary.js';
 import { localMutationAllowed } from '../src/core/http.js';
@@ -796,5 +797,27 @@ test('AI filing summaries: cited, labelled, never truncated, refusals surfaced',
     assert.equal(s1.kind,'AI_GENERATED_ANALYSIS');assert.equal(s2.cached,true);assert.equal(calls,1);
     assert.equal(p.store.get(stableId('Filing','sec','0000320193-26-000101')).data.summary,undefined);// facts untouched
   }finally{if(saved.a===undefined)delete process.env.ANTHROPIC_API_KEY;else process.env.ANTHROPIC_API_KEY=saved.a;if(saved.b!==undefined)process.env.ANTHROPIC_AUTH_TOKEN=saved.b;}
+  p.close();
+});
+
+test('venue reconciliation: read-only states, confirmed cash opening balance, and live stays locked',async()=>{
+  assert.equal(reconcileVenue({venue:'x',ok:false,code:'NO_CREDENTIALS'},null).state,'NO_CREDENTIALS');
+  assert.equal(reconcileVenue({venue:'x',ok:true,cashUsd:0,positions:[]},null).state,'RECONCILED');
+  assert.equal(reconcileVenue({venue:'x',ok:true,cashUsd:10,positions:null},null).state,'NOT_IN_LEDGER');
+  const d=reconcileVenue({venue:'x',ok:true,cashUsd:10,positions:[{asset:'BTC',qty:.5}]},{cash:'10.000000',positions:[]});
+  assert.equal(d.state,'DIFFERENCE');assert.deepEqual(d.differences.map(x=>x.field),['position:BTC']);
+  const p=new MarketPlatform({providers:new ProviderRegistry()});
+  let cash=250;p.setLegacyReaders({venueAccounts:{robinhood:async()=>({ok:true,cashUsd:cash,cashLabel:'crypto buying power',positions:[]}),'polymarket-us':async()=>({ok:false,code:'AUTH_ERROR',error:'keyNotFound'})}});
+  let r=await p.reconcileAccounts();
+  assert.equal(r.results.find(x=>x.venue==='robinhood').state,'NOT_IN_LEDGER');assert.equal(r.results.find(x=>x.venue==='polymarket-us').state,'AUTH_ERROR');
+  assert.throws(()=>p.recordVenueOpeningBalance({venue:'robinhood',confirmation:'yes'}),/Type RECORD/);
+  assert.throws(()=>p.recordVenueOpeningBalance({venue:'polymarket-us',confirmation:'RECORD VENUE OPENING BALANCE'}),/NOT_IN_LEDGER/);
+  assert.equal(p.recordVenueOpeningBalance({venue:'robinhood',confirmation:'RECORD VENUE OPENING BALANCE'}).recorded,250);
+  r=await p.reconcileAccounts();assert.equal(r.results.find(x=>x.venue==='robinhood').state,'RECONCILED');
+  cash=240;r=await p.reconcileAccounts();const rh=r.results.find(x=>x.venue==='robinhood');assert.equal(rh.state,'DIFFERENCE');assert.equal(rh.differences[0].venue,240);
+  // Live remains unavailable no matter what reconciliation says.
+  const live={mode:'LIVE',venue:'robinhood',account:'main',currency:'USD',instrumentId:'i',strategyId:'s',eventId:'e',side:'BUY',quantity:1,price:1,feeUsd:0,slippageBps:0,liquidityUsd:100,quoteAt:Date.now()};
+  assert.ok(p.risk.evaluate(live).reasons.includes('LIVE_NOT_AUTHORIZED'));assert.equal(p.risk.state().liveAvailable,false);
+  await assert.rejects(p.propose({venue:'kalshi',mode:'LIVE'}),/Live execution is unavailable/);
   p.close();
 });

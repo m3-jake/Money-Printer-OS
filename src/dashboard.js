@@ -28,6 +28,7 @@ import { marketPlatform, closeMarketPlatform } from './core/platform.js';
 import { practiceSnapshot,loadPracticeBook } from './robinhoodPractice.js';
 import { comboPerformance } from './core/comboPerformance.js';
 import { alphaDb } from './alphaDb.js';
+import { creds as rhCreds,fetchAccount as rhFetchAccount,fetchHoldings as rhFetchHoldings } from './robinhoodTransport.js';
 import { JOURNAL_FILE as RH_JOURNAL_FILE } from './robinhoodJournal.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -381,6 +382,11 @@ function snapshot() {
 export function startDashboard() {
   marketPlatform().setLegacyReaders({solana:loadStateCached,robinhoodPractice:()=>practiceSnapshot({dataDir:path.dirname(RH_JOURNAL_FILE)}),robinhoodPracticeBook:()=>loadPracticeBook(path.dirname(RH_JOURNAL_FILE)),usCombos:usComboJournalView,
     solanaResearch:()=>loadStateCached().research,walletScorecard:()=>walletScorecardView(),
+    // Read-only venue account readers for reconciliation (GET requests only).
+    venueAccounts:{
+      robinhood:async()=>{if(!rhCreds().apiKey||!rhCreds().privateKeyBase64)return {ok:false,code:'NO_CREDENTIALS',error:'ROBINHOOD_API_KEY / ROBINHOOD_PRIVATE_KEY not set'};const a=await rhFetchAccount(),h=await rhFetchHoldings(a.accountNumber);return {ok:true,cashUsd:a.buyingPowerUsd,cashLabel:'crypto buying power',positions:h.map(x=>({asset:x.assetCode,qty:x.totalQty}))};},
+      'polymarket-us':async()=>{const r=await polymarketUSAccount({force:true});if(r.keyStatus==='KEYS_NEEDED')return {ok:false,code:'NO_CREDENTIALS',error:'Polymarket US keys not set'};if(!r.ok)return {ok:false,code:/401|403|key/i.test(String(r.error||r.keyStatus))?'AUTH_ERROR':'READ_FAILED',error:String(r.error||r.keyStatus||'read failed')};return {ok:true,cashUsd:r.balance?.currentBalance??null,cashLabel:'current balance',positions:null};},
+    },
     txEvents:({since,limit})=>alphaDb().prepare('SELECT signature,event_index eventIndex,ts,slot,mint,wallet,side,token_delta tokenDelta,sol_delta solDelta FROM tx_events WHERE ts>=? ORDER BY ts DESC LIMIT ?').all(since,limit)});
   // Lab champions -> strategy registry, once now and every minute. Failures stay in the snapshot, never thrown.
   // Lab champions -> registry and legacy books -> ledger mirror, now and every minute.
