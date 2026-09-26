@@ -1,0 +1,29 @@
+{
+ "source": "bliss-4k.jpg",
+ "size": [
+  3840,
+  2160
+ ],
+ "sprites": [
+  {
+   "file": "cloud-01.webp",
+   "box": [
+    0,
+    0,
+    3840,
+    1317
+   ],
+   "w": 3840,
+   "h": 1317,
+   "kind": "top-edge",
+   "meanAlpha": 0.458,
+   "dense": 0.187,
+   "cut": [
+    "left",
+    "right",
+    "top"
+   ],
+   "bytes": 624100
+  }
+ ]
+}

@@ -40,6 +40,26 @@
         "ROBINHOOD_REAL_ENABLED": "false",
         "MPO_RESEARCH_COLLECTOR": "false"
       }
+    },
+    {
+      "name": "engine-moneyfx",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "src/index.js"
+      ],
+      "port": 8821,
+      "env": {
+        "DASHBOARD_PORT": "8821",
+        "DASHBOARD_HOST": "127.0.0.1",
+        "MODE": "paper",
+        "MONEY_PRINTER_DATA_DIR": "C:/Users/jakem/AppData/Local/Temp/claude/W--money-printer-os/0ce6fcce-2373-4a69-b400-a55ae1cc8987/scratchpad/mpo-data",
+        "DOTENV_CONFIG_PATH": "C:/Users/jakem/AppData/Local/Temp/claude/W--money-printer-os/da1856d7-275e-4e42-9d22-c4473a4e9e05/scratchpad/no.env",
+        "POLYMARKET_AUTOSTART": "false",
+        "ROBINHOOD_API_KEY": "",
+        "ROBINHOOD_PRIVATE_KEY": "",
+        "ROBINHOOD_REAL_ENABLED": "false",
+        "MPO_RESEARCH_COLLECTOR": "false"
+      }
     }
   ]
 }

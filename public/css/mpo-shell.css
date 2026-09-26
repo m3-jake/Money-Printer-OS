@@ -834,3 +834,25 @@ textarea:focus-visible,
 }
 .bill:before,
 .bill:after { content: none; display: none; }
+
+/* Money FX v2: real bill sprites fall, land on the taskbar edge, rest, then fade. */
+img.bill { top: auto; bottom: 0; height: auto; background: none; border: 0; box-shadow: none; opacity: 0; filter: drop-shadow(0 3px 3px #0005);
+  transform-origin: 50% 100%; }
+img.bill.burst, img.bill.rain { animation: billDrop cubic-bezier(.35,0,.75,1) 1 both, billTumble ease-out 1 both; }
+img.bill.bill.rain { animation-iteration-count: infinite, infinite; }
+img.bill.stack { filter: drop-shadow(0 6px 6px #0007); }
+@keyframes billDrop {
+  0% { translate: 0 calc(-100vh - 60px); opacity: 1; }
+  55% { translate: var(--drift) 0px; animation-timing-function: ease-out; }
+  60% { translate: var(--drift) calc(0px - 10px); animation-timing-function: ease-in; }
+  65% { translate: var(--drift) 0px; opacity: 1; }
+  78% { opacity: 1; }
+  100% { translate: var(--drift) calc(0px + 6px); opacity: 0; }
+}
+@keyframes billTumble {
+  0% { transform: rotateX(0) rotateY(0); rotate: 0deg; }
+  20% { transform: rotateX(55deg) rotateY(-30deg); }
+  40% { transform: rotateX(-40deg) rotateY(35deg); }
+  55% { transform: rotateX(0) rotateY(0); rotate: var(--spin); }
+  65%, 100% { transform: none; rotate: var(--rot); }
+}
