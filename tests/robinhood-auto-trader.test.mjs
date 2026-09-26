@@ -132,7 +132,7 @@ test('configure validates the key, writes USER_ROOT/.env with mode 0600 and disa
  if(process.platform!=='win32')assert.equal(fs.statSync(RH.__testing.envFile).mode&0o777,0o600);
  RH.configureRobinhood({apiKey:KEYS.apiKey,privateKey:KEYS.seed,realEnabled:true});assert.equal((fs.readFileSync(RH.__testing.envFile,'utf8').match(/^ROBINHOOD_API_KEY=/gm)||[]).length,1,'rewriteEnv replaces in place');
 });
-test('startRobinhoodLoops returns the unref timer when autostart is on and null when off; idle tick makes no request',async()=>{
+test('startRobinhoodLoops returns the unref timer when autostart is on and null when off; paper practice never writes a real order',async()=>{
  reset();assert.equal(RH.startRobinhoodLoops(),null);process.env.ROBINHOOD_AUTOSTART='true';process.env.ROBINHOOD_WARM_START='false';const t=RH.startRobinhoodLoops();assert.ok(t);assert.equal(RH.startRobinhoodLoops(),t);RH.stopRobinhoodLoops();process.env.ROBINHOOD_AUTOSTART='false';delete process.env.ROBINHOOD_WARM_START;
- process.env.ROBINHOOD_COLLECT_QUOTES='false';try{mock.calls.length=0;assert.equal((await RH.__testing.tick()).reason,'idle');assert.equal(mock.calls.length,0)}finally{delete process.env.ROBINHOOD_COLLECT_QUOTES}
+ process.env.ROBINHOOD_COLLECT_QUOTES='false';try{mock.calls.length=0;await RH.__testing.tick();assert.equal(mock.writes().length,0)}finally{delete process.env.ROBINHOOD_COLLECT_QUOTES}
 });
