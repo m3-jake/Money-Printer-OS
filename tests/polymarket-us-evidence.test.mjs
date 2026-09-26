@@ -163,3 +163,73 @@ test('polymarketFitness: per-window settled/open, hit rate, P/L, calibration; se
  st.shadow[W[0]].history.pop();assert.equal(ev.polymarketFitness(st).verdict,'BLOCKED','one window short blocks the search');
  assert.ok(ev.evidenceSummary(st).fitness);
 });
+
+test('shadow settlement uses the durable outcome map, not the 300-row resolvedRecent window',async()=>{
+ const now=Date.now(),st=ev.defaultEvidenceState();
+ const events=[soccer('s1',88,now),soccer('s2',89,now),soccer('s3',88,now),soccer('s4',89,now)];
+ const byWindow=ev.scanWindows(events,now,settings);
+ ev.trackLegs(st,byWindow,now);
+ ev.shadowStep(st,byWindow,{now,legs:2});ev.shadowStep(st,byWindow,{now:now+1,legs:2});
+ const ne=st.shadow.NEAR_END;assert.equal(ne.open.length,ev.SHADOW_MAX_OPEN);
+ const [a,b]=ne.open;
+ // a: both legs win; b: one leg loses.
+ const loser=b.legs[0].symbol;
+ await ev.resolveTracked(st,{now:now+2,fetchImpl:async()=>res({markets:['m-s1','m-s2','m-s3','m-s4'].map(s=>resolvedMarket(s,s===loser?0:1))})});
+ // Push 400 unrelated outcomes through so the legs fall out of resolvedRecent.
+ const filler=Array.from({length:400},(_,i)=>({id:`x${i}|NEAR_END`,key:`x${i}`,window:'NEAR_END',outcome:'LOST'}));
+ st.resolvedRecent=[...filler,...st.resolvedRecent].slice(0,300);
+ assert.ok(!st.resolvedRecent.some(r=>a.legs.some(l=>l.key===r.key)),'legs gone from the display window');
+ ev.shadowStep(st,{},{now:now+3,legs:2,legOutcome:ev.outcomeLookup(st)});
+ const hist=Object.fromEntries(ne.history.map(h=>[h.id,h.status]));
+ assert.equal(hist[a.id],'WON');assert.equal(hist[b.id],'LOST');
+ assert.equal(ne.open.length,0,'slots freed');
+ // state round-trips the map, and a fresh state backfills from the raw outcomes tape
+ const raw=path.join(DIR,'raw-seed');fs.mkdirSync(raw,{recursive:true});
+ fs.writeFileSync(path.join(raw,'polymarket-us-outcomes-2026-09-20.ndjson'),JSON.stringify({id:`${a.legs[0].key}|NEAR_END`,key:a.legs[0].key,window:'NEAR_END',outcome:'WON',resolvedAt:now})+'\n');
+ const fresh=ev.defaultEvidenceState();ev.seedOutcomeMap(fresh,raw,now);
+ assert.equal(ev.outcomeLookup(fresh)(a.legs[0],'NEAR_END'),'WON');
+});
+
+test('singles: every eligible market is tracked; the combo-shaped calibration keeps best-per-event only',async()=>{
+ const now=Date.now(),st=ev.defaultEvidenceState();
+ const two={...soccer('dbl',88,now),markets:[market('m-dbl-a',.9,.89),market('m-dbl-b',.85,.84)]};
+ const byWindow=ev.scanWindows([two],now,settings);
+ assert.equal(byWindow.NEAR_END.candidates.length,1,'combo candidates unchanged: one per event');
+ assert.equal(byWindow.NEAR_END.singles.length,2);
+ ev.trackLegs(st,byWindow,now);
+ const ne=Object.values(st.tracked).filter(t=>t.window==='NEAR_END');
+ assert.equal(ne.length,2);assert.equal(ne.filter(t=>t.best).length,1);
+ await ev.resolveTracked(st,{now:now+1,fetchImpl:async()=>res({markets:[resolvedMarket('m-dbl-a',1),resolvedMarket('m-dbl-b',1)]})});
+ const sum=ev.evidenceSummary(st);
+ const n=rows=>rows.filter(c=>c.window==='NEAR_END').reduce((x,c)=>x+c.n,0);
+ assert.equal(n(sum.calibration),1);assert.equal(n(sum.calibrationSingles),2);
+});
+
+test('cross-venue gap log: conservative match, unmatched recorded, kill flag, no network',async()=>{
+ const cv=await import('../src/polymarketCrossVenue.js');
+ const now=Date.now(),raw=path.join(DIR,'raw-cv');
+ const mk=(slug,q)=>({...market(slug,.9,.88),question:q});
+ const evs=[{...soccer('c1',88,now),markets:[mk('m-c1','Will A win?')]},{...soccer('c2',88,now),markets:[mk('m-c2','Will B win?')]},{...soccer('c3',88,now),markets:[mk('m-c3','Will C win?')]}];
+ const byWindow=ev.scanWindows(evs,now,settings);
+ const calls=[];
+ const fetchImpl=async(url,opts)=>{calls.push({url:String(url),opts});
+  if(String(url).includes('gamma'))return res([
+   {slug:'m-c1',question:'Will A win?',outcomes:'["Yes","No"]',bestBid:'0.86',bestAsk:'0.88',active:true,closed:false},
+   {slug:'m-c2',question:'Will someone else win?',outcomes:'["Yes","No"]',bestBid:'0.5',bestAsk:'0.52'}]);
+  return res({},404)};
+ cv.resetCrossVenueMemory();
+ const off=await cv.crossVenueTick({byWindow,now,rawDir:raw,fetchImpl,env:{POLYMARKET_CROSS_VENUE_LOG:'false'}});
+ assert.equal(off.enabled,false);assert.equal(calls.length,0);
+ const r=await cv.crossVenueTick({byWindow,now,rawDir:raw,fetchImpl,env:{}});
+ assert.equal(r.rows,3);assert.equal(r.matched,1);
+ assert.ok(calls.every(c=>!c.opts?.method||c.opts.method==='GET'),'GET only');
+ assert.ok(calls.every(c=>!Object.keys(c.opts?.headers||{}).some(h=>/auth|key|sign/i.test(h))),'no auth headers');
+ const file=fs.readdirSync(raw).find(n=>n.startsWith('polymarket-cross-venue-'));
+ const rows=fs.readFileSync(path.join(raw,file),'utf8').trim().split('\n').map(l=>JSON.parse(l));
+ const by=Object.fromEntries(rows.map(x=>[x.slug,x]));
+ assert.equal(by['m-c1'].matched,true);assert.equal(by['m-c1'].intl.mid,0.87);assert.equal(by['m-c1'].us.mid,0.89);assert.equal(by['m-c1'].gap,0.02);
+ assert.deepEqual([by['m-c2'].matched,by['m-c2'].reason,by['m-c2'].gap],[false,'question-mismatch',null]);
+ assert.deepEqual([by['m-c3'].matched,by['m-c3'].reason],[false,'no-intl-market-with-slug']);
+ const again=await cv.crossVenueTick({byWindow,now:now+1000,rawDir:raw,fetchImpl,env:{}});
+ assert.equal(again.skipped,'cadence');
+});
