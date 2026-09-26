@@ -19,7 +19,7 @@ test('dashboard captures real visits/order outcomes and rejects unauthenticated 
   process.env.DASHBOARD_PORT='0';
   process.env.DASHBOARD_HOST='127.0.0.1';
   process.env.MODE='paper';
-  process.env.POLYMARKET_AUTOSTART='false';
+  process.env.POLYMARKET_AUTOSTART='false';process.env.ROBINHOOD_AUTOSTART='false';
   process.env.POLYMARKET_AUTOPILOT='false';
   process.env.POLYMARKET_US_COMBO_BBO='false';
   const realFetch=globalThis.fetch;

@@ -120,3 +120,10 @@ test('gauge fields per symbol for both books in the snapshot',async()=>{
  reset();const cold=await RH.robinhoodSnapshot({force:true}),g=cold.gauges.strict['BTC-USD'];
  assert.equal(g.blocking,'warmup');assert.ok(g.warmup.pct<1);assert.equal(cold.loop.alwaysOn,true);
 });
+
+test('collection follows ROBINHOOD_AUTOSTART only: POLYMARKET_AUTOSTART=false no longer silences the Robinhood loop',()=>{
+ reset();const saved=process.env.ROBINHOOD_AUTOSTART;delete process.env.ROBINHOOD_AUTOSTART;process.env.ROBINHOOD_WARM_START='false';
+ try{assert.equal(process.env.POLYMARKET_AUTOSTART,'false');const t=RH.startRobinhoodLoops();assert.ok(t,'loop runs');RH.stopRobinhoodLoops();
+  process.env.ROBINHOOD_AUTOSTART='false';assert.equal(RH.startRobinhoodLoops(),null)}
+ finally{RH.stopRobinhoodLoops();process.env.ROBINHOOD_AUTOSTART=saved??'false';delete process.env.ROBINHOOD_WARM_START}
+});
