@@ -274,3 +274,11 @@ test('glance telemetry recipes land on laggard panes without restyling Suite', (
   assert.doesNotMatch(html, /function renderSportsbook\(\)[\s\S]{0,400}mpo-surface/);
   assert.match(html, /window\.prompt/);
 });
+
+test('Polymarket key shows CONNECTED only after a verified signed call, and the balance is served read-only', () => {
+  assert.match(html, /'KEY NOT VERIFIED'/);
+  assert.match(html, /keyOk\?'CONNECTED'/);
+  assert.doesNotMatch(html, /rd\.credentialsReady\?'CONNECTED'/);
+  assert.match(html, /id="usBalance"/);
+  assert.match(dashJs, /req\.method === 'GET' && u\.pathname === '\/api\/polymarket-us\/account'/);
+});

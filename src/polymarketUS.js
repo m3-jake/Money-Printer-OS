@@ -37,7 +37,7 @@ const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 
 function creds(){return {keyId:String(process.env.POLYMARKET_KEY_ID||'').trim(),secretKey:String(process.env.POLYMARKET_SECRET_KEY||'').trim()}}
 function client(){const c=creds(),k=c.keyId+'|'+c.secretKey;if(!c.keyId||!c.secretKey)return null;if(!authClient||k!==authKey){authClient=new PolymarketUS({...c,timeout:20000});authKey=k}return authClient}
-export function usReadiness(){const c=creds();return {platform:'Polymarket US',hasKeyId:!!c.keyId,hasSecretKey:!!c.secretKey,credentialsReady:!!(c.keyId&&c.secretKey),realEnabled:String(process.env.POLYMARKET_US_REAL_ENABLED||'true').toLowerCase()!=='false',sessionArmed,execution:'manual-confirm-only',developerPortal:'https://polymarket.us/developer',lastAuthError:lastAuth.error,authCode:lastAuth.code,lastAuthAt:lastAuth.at}}
+export function usReadiness(){const c=creds();return {platform:'Polymarket US',hasKeyId:!!c.keyId,hasSecretKey:!!c.secretKey,credentialsReady:!!(c.keyId&&c.secretKey),realEnabled:String(process.env.POLYMARKET_US_REAL_ENABLED||'true').toLowerCase()!=='false',sessionArmed,execution:'manual-confirm-only',developerPortal:'https://polymarket.us/developer',lastAuthError:lastAuth.error,authCode:lastAuth.code,keyVerified:lastAuth.code==='ok',lastAuthAt:lastAuth.at}}
 
 function feePerContract(p,taker=true){return (taker?.05:-.0125)*p*(1-p)}
 function marketScore(m,reward=0,live=false){
@@ -134,7 +134,7 @@ export async function polymarketUSSnapshot({force=false}={}){
 }
 
 function rewriteEnv(values){let text='';try{text=fs.readFileSync(ENV_FILE,'utf8')}catch{}for(const [k,v] of Object.entries(values)){const line=`${k}=${String(v).replace(/\n/g,'')}`;const re=new RegExp(`^${k}=.*$`,'m');text=re.test(text)?text.replace(re,line):`${text.trimEnd()}\n${line}\n`}fs.mkdirSync(USER_ROOT,{recursive:true});fs.writeFileSync(ENV_FILE,text,'utf8');try{fs.chmodSync(ENV_FILE,0o600)}catch{}}
-export function configurePolymarketUS({keyId,secretKey,realEnabled=true}={}){keyId=String(keyId||'').trim();secretKey=String(secretKey||'').trim();if(keyId.length<8||secretKey.length<20)throw new Error('Key ID or Secret Key looks incomplete');process.env.POLYMARKET_KEY_ID=keyId;process.env.POLYMARKET_SECRET_KEY=secretKey;process.env.POLYMARKET_US_REAL_ENABLED=realEnabled?'true':'false';rewriteEnv({POLYMARKET_KEY_ID:keyId,POLYMARKET_SECRET_KEY:secretKey,POLYMARKET_US_REAL_ENABLED:realEnabled?'true':'false'});authClient=null;authKey='';privateWs=null;marketWs=null;marketWsKey='';sessionArmed=false;return usReadiness()}
+export function configurePolymarketUS({keyId,secretKey,realEnabled=true}={}){keyId=String(keyId||'').trim();secretKey=String(secretKey||'').trim();if(keyId.length<8||secretKey.length<20)throw new Error('Key ID or Secret Key looks incomplete');process.env.POLYMARKET_KEY_ID=keyId;process.env.POLYMARKET_SECRET_KEY=secretKey;process.env.POLYMARKET_US_REAL_ENABLED=realEnabled?'true':'false';rewriteEnv({POLYMARKET_KEY_ID:keyId,POLYMARKET_SECRET_KEY:secretKey,POLYMARKET_US_REAL_ENABLED:realEnabled?'true':'false'});authClient=null;authKey='';privateWs=null;marketWs=null;marketWsKey='';sessionArmed=false;lastAuth={error:null,code:null,at:0};accountCache={at:0,data:null};return usReadiness()}
 export function armPolymarketUS(armed=false){if(!usReadiness().credentialsReady)throw new Error('Connect Polymarket US API credentials first');sessionArmed=!!armed;return usReadiness()}
 
 function cleanOrder(x={}){const price=clamp(n(x.price),.001,.999),qty=Math.max(1,Math.floor(n(x.quantity)));if(!x.marketSlug||!qty)throw new Error('marketSlug and quantity are required');return {marketSlug:String(x.marketSlug),intent:['ORDER_INTENT_BUY_LONG','ORDER_INTENT_BUY_SHORT','ORDER_INTENT_SELL_LONG','ORDER_INTENT_SELL_SHORT'].includes(x.intent)?x.intent:'ORDER_INTENT_BUY_LONG',type:'ORDER_TYPE_LIMIT',price:{value:price.toFixed(3).replace(/0+$/,'').replace(/\.$/,''),currency:'USD'},quantity:qty,tif:'TIME_IN_FORCE_GOOD_TILL_CANCEL',participateDontInitiate:x.makerOnly!==false,manualOrderIndicator:'MANUAL_ORDER_INDICATOR_MANUAL'}}
@@ -144,3 +144,30 @@ export async function closePolymarketUSPosition(input={}){const c=client(),r=usR
 export async function cancelAllPolymarketUS(input={}){const c=client();if(!c)throw new Error('Polymarket US API credentials are not configured');if(input.confirmation!=='CANCEL REAL ORDERS')throw new Error('Explicit CANCEL REAL ORDERS confirmation required');return c.orders.cancelAll(input.marketSlug?{slugs:[String(input.marketSlug)]}:{})}
 
 export async function cancelPolymarketUSOrder(input={}){const c=client();if(!c)throw new Error('Polymarket US API credentials are not configured');if(input.confirmation!=='CANCEL REAL ORDER')throw new Error('Explicit CANCEL REAL ORDER confirmation required');if(!input.orderId)throw new Error('orderId is required');if(!input.marketSlug)throw new Error('marketSlug is required');return c.orders.cancel(String(input.orderId),{marketSlug:String(input.marketSlug)})}
+
+// Read-only account view (balance, buying power, open-order count), cached 15 s.
+// Shapes come from the polymarket-us SDK typings (GetAccountBalancesResponse, GetOpenOrdersResponse).
+// Fields we don't know are listed by name only, never by value.
+const ACCOUNT_TTL_MS=15000,KNOWN_BALANCE_FIELDS=new Set(['currentBalance','currency','lastUpdated','buyingPower','assetNotional','assetAvailable','pendingCredit','openOrders','unsettledFunds','pendingWithdrawals','marginRequirement','balanceReservation']);
+let accountCache={at:0,data:null};
+export function usKeyStatus(r=usReadiness()){if(!r.credentialsReady)return 'KEYS_NEEDED';if(r.authCode==='ok')return 'VERIFIED';if(r.authCode==='keyNotFound')return 'REJECTED';return 'NOT_VERIFIED'}
+export async function polymarketUSAccount({force=false,clientOverride=null,now=Date.now()}={}){
+ if(!force&&accountCache.data&&now-accountCache.at<ACCOUNT_TTL_MS)return {...accountCache.data,cached:true};
+ const c=clientOverride||client();
+ if(!c){const data={ok:false,keyStatus:'KEYS_NEEDED',balance:null,openOrders:null,at:now};accountCache={at:now,data};return data}
+ let data;
+ try{
+  const [bal,ord]=await Promise.all([c.account.balances(),c.orders.list()]);
+  noteUSAuthResult({code:'ok'});
+  const rows=Array.isArray(bal?.balances)?bal.balances:[];
+  const b=rows.find(x=>String(x?.currency||'').toUpperCase()==='USD')||rows[0]||null;
+  const num=v=>Number.isFinite(Number(v))?Number(v):null;
+  const unknownFields=b?Object.keys(b).filter(k=>!KNOWN_BALANCE_FIELDS.has(k)):[];
+  data={ok:true,keyStatus:'VERIFIED',balance:b?{currentBalance:num(b.currentBalance),buyingPower:num(b.buyingPower),currency:b.currency||null,lastUpdated:b.lastUpdated||null}:null,balanceRows:rows.length,openOrders:Array.isArray(ord?.orders)?ord.orders.length:null,unknownFields,at:now};
+ }catch(e){
+  noteUSAuthResult({message:String(e?.message||e),status:Number(e?.status||0)});
+  data={ok:false,keyStatus:usKeyStatus(),authCode:lastAuth.code,error:lastAuth.error,balance:null,openOrders:null,at:now};
+ }
+ accountCache={at:now,data};return data;
+}
+export function resetUSAccountCacheForTests(){accountCache={at:0,data:null}}

@@ -564,7 +564,7 @@ function renderControl(){
 }
 
 // Polymarket US combos (real execution): selection, stake and the in-flight build.
-let usComboSelected=new Set(),usComboStakeValue='',usComboSubmitting=false,usComboBuildState=null,usComboBuildTimer=null,usComboRefreshBusy=false,usComboSettingsDraft={};
+let polyUSAccount=null,usComboSelected=new Set(),usComboStakeValue='',usComboSubmitting=false,usComboBuildState=null,usComboBuildTimer=null,usComboRefreshBusy=false,usComboSettingsDraft={};
 const polyEscape=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function researchParamLine(p={}){const keys=[['aggression','agg'],['tp','tp'],['stop','stop'],['trail','trail'],['maxHold','hold'],['cooldown','cool'],['filter','filter'],['entry','in'],['exit','out']];return keys.filter(([k])=>p[k]!=null).map(([k,l])=>`${l} ${p[k]}`).join(' · ')||'default profile'}
 function monNum(v){const n=Number(v);return Number.isFinite(n)?n:null}
@@ -700,11 +700,13 @@ function renderPolyCombos(box){
  // A tick on a game that left the live list can no longer be priced; drop it rather than keep a stale leg.
  if(ucs.candidates){const live=new Set(cands.map(c=>String(c.key)));let dropped=false;for(const k of [...usComboSelected])if(!live.has(k)){usComboSelected.delete(k);dropped=true}if(dropped)scheduleUSComboBuild()}
  const chosen=[...usComboSelected];
- const keyBad=rd.authCode==='keyNotFound',needKeys=!rd.credentialsReady||keyBad;
- const keyText=keyBad?'KEY REJECTED':rd.credentialsReady?'CONNECTED':'KEYS NEEDED',keyCls=keyBad?'red':rd.credentialsReady?'green':'amber';
+ const acct=polyUSAccount||{},keyBad=rd.authCode==='keyNotFound'||acct.keyStatus==='REJECTED',keyOk=!keyBad&&(rd.authCode==='ok'||acct.keyStatus==='VERIFIED'),needKeys=!rd.credentialsReady||keyBad;
+ // CONNECTED only after a signed call has succeeded.
+ const keyText=keyBad?'KEY REJECTED':!rd.credentialsReady?'KEYS NEEDED':keyOk?'CONNECTED':'KEY NOT VERIFIED',keyCls=keyBad?'red':keyOk?'green':'amber';
+ const bal=acct.balance||null,balText=bal&&bal.currentBalance!=null?'$'+Number(bal.currentBalance).toFixed(2):'—';
  const betaDenied=beta==='denied';
  const betaText=beta==='enabled'?'COMBOS ENABLED':betaDenied?'BETA PENDING':'NOT YET TESTED',betaCls=beta==='enabled'?'green':betaDenied?'amber':'muted';
- const status=`<div class="metric-grid"><div class="metric"><label>KEY</label><b class="${keyCls}">${keyText}</b><label>${keyBad?'regenerate at polymarket.us/developer':'polymarket.us account'}</label></div><div class="metric"><label>COMBOS</label><b class="${betaCls}">${betaText}</b><label>${betaDenied?'Polymarket has not enabled combos here':'shown after the first combo call'}</label></div><div class="metric"><label>SESSION</label><b class="${rd.sessionArmed?'red':'amber'}">${rd.sessionArmed?'ARMED':'SAFE'}</b>${rd.credentialsReady&&!keyBad?`<button class="btn" id="usArm">${rd.sessionArmed?'Disarm':'Arm real money'}</button>`:'<label>connect a key to arm</label>'}</div><div class="metric"><label>FEED</label><b class="${fd.ok===false?'red':'green'}">${Number(fd.eventsLive||0)} live</b><label>age ${polyAgeS(fd.ageMs)}</label></div></div>`;
+ const status=`<div class="metric-grid"><div class="metric"><label>KEY</label><b class="${keyCls}">${keyText}</b><label>${keyBad?'regenerate at polymarket.us/developer':keyOk?'signed call OK':'no signed call has succeeded yet'}</label></div><div class="metric"><label>BALANCE</label><b id="usBalance">${balText}</b><label>${bal&&bal.buyingPower!=null?'buying power $'+Number(bal.buyingPower).toFixed(2):'—'}${acct.openOrders!=null?' · '+acct.openOrders+' open orders':''}</label></div><div class="metric"><label>COMBOS</label><b class="${betaCls}">${betaText}</b><label>${betaDenied?'Polymarket has not enabled combos here':'shown after the first combo call'}</label></div><div class="metric"><label>SESSION</label><b class="${rd.sessionArmed?'red':'amber'}">${rd.sessionArmed?'ARMED':'SAFE'}</b>${rd.credentialsReady&&!keyBad?`<button class="btn" id="usArm">${rd.sessionArmed?'Disarm':'Arm real money'}</button>`:'<label>connect a key to arm</label>'}</div><div class="metric"><label>FEED</label><b class="${fd.ok===false?'red':'green'}">${Number(fd.eventsLive||0)} live</b><label>age ${polyAgeS(fd.ageMs)}</label></div></div>`;
  const keyForm=needKeys?`<div class="inset" style="padding:6px;margin:6px 0"><b>${keyBad?'Replace your Polymarket US key':'Connect your Polymarket US account'}</b><div class="formrow"><input class="field" id="usKeyId" autocomplete="off" spellcheck="false" placeholder="Key ID"><button class="btn usPaste" data-target="usKeyId">Paste</button><input class="field" id="usSecret" type="password" autocomplete="off" spellcheck="false" placeholder="Secret key (stored locally)"><button class="btn usPaste" data-target="usSecret">Paste</button><button class="btn" id="usSaveKeys">Connect</button></div><span class="muted">Generate these at polymarket.us/developer. The secret is never shown again.</span></div>`:'';
  const floorPct=v=>(Number(v)*100).toFixed(1);
  const settings=`<div class="toolbar" style="margin:6px 0;flex-wrap:wrap;gap:8px"><label>Win % from <input class="field" id="usSetFloor" type="number" min="${floorPct(bound('priceMin','min',.6))}" max="${floorPct(bound('priceMin','max',.985))}" step="0.5" value="${floorPct(sd.priceMin)}" style="width:70px"></label><label>Max minutes left <input class="field" id="usSetMinutes" type="number" min="${bound('maxMinutesLeft','min',1)}" max="${bound('maxMinutesLeft','max',30)}" step="1" value="${Number(sd.maxMinutesLeft)}" style="width:60px"></label><label>Max legs <select class="field" id="usSetLegs">${[2,3].map(v=>`<option value="${v}" ${Number(sd.maxLegs)===v?'selected':''}>${v}</option>`).join('')}</select></label><button class="btn" id="usSetSave" ${Object.keys(usComboSettingsDraft).length?'':'disabled'}>Save settings</button></div>`;
@@ -951,6 +953,7 @@ async function refreshUSComboSnapshot(){
   const r=await fetch('/api/polymarket-us/combos',{cache:'no-store',signal:AbortSignal.timeout(20000)});
   const j=await r.json().catch(()=>null);
   if(r.ok&&j)trackComboProfitBurst(j);
+  try{const a=await fetch('/api/polymarket-us/account',{cache:'no-store',signal:AbortSignal.timeout(20000)});polyUSAccount=a.ok?await a.json():null}catch{polyUSAccount=null}
   polyUSComboState=(r.ok&&j)?j:{...(polyUSComboState||{}),error:(j&&j.error)||('Fast combos HTTP '+r.status)};
  }catch(e){polyUSComboState={...(polyUSComboState||{}),error:e.message||'Fast combos unavailable'}}
  finally{usComboRefreshBusy=false;renderSig.delete('sportsbook');renderAll()}
