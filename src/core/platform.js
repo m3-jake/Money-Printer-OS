@@ -21,6 +21,7 @@ import os from 'node:os';
 import fs from 'node:fs';
 import { createHash } from 'node:crypto';
 import { MACRO_INDICATORS,FredSource,transform as macroTransform,impliedLadder,asOf as macroAsOf,indicator as macroIndicator } from './macro.js';
+import { EdgarSource,analyseFiling } from './edgar.js';
 import { ReplaySession,runReplay,readTape,tapeSymbols,bookRecords,fetchAlpacaMinutes,REPLAY_STRATEGIES,strategyParams } from './replay.js';
 const CODE_VERSION=(()=>{try{const pkg=JSON.parse(fs.readFileSync(new URL('../../package.json',import.meta.url),'utf8'));const h=createHash('sha256').update(fs.readFileSync(new URL('./replay.js',import.meta.url))).digest('hex').slice(0,12);return `${pkg.version}+replay.${h}`;}catch{return 'unknown';}})();
 
@@ -29,7 +30,7 @@ const swapSides=book=>({...book,yes:book.no,no:book.yes});
 
 export class MarketPlatform {
   constructor({file=':memory:',dataDir=null,providers=null,stockQuotes=undefined,stockClock=undefined,stockSession=undefined}={}){
-    this.store=new CoreDatabase(file);this.ledger=new UnifiedLedger(this.store);this.bus=new MarketEventBus();this.risk=new RiskGovernor(this.store,this.ledger,this.bus);this.strategies=new StrategyRegistry(this.store);this.legacyReaders={};this.replays=new Map();this.fred=new FredSource();this.macroCache=null;
+    this.store=new CoreDatabase(file);this.ledger=new UnifiedLedger(this.store);this.bus=new MarketEventBus();this.risk=new RiskGovernor(this.store,this.ledger,this.bus);this.strategies=new StrategyRegistry(this.store);this.legacyReaders={};this.replays=new Map();this.fred=new FredSource();this.macroCache=null;this.edgar=new EdgarSource();
     this.store.db.exec(`CREATE TABLE IF NOT EXISTS lab_runs(id TEXT PRIMARY KEY, at INTEGER NOT NULL, source TEXT NOT NULL, key TEXT NOT NULL, start_ms INTEGER NOT NULL, end_ms INTEGER NOT NULL,
       strategy TEXT NOT NULL, params TEXT NOT NULL, dataset_fp TEXT NOT NULL, records INTEGER NOT NULL, code_version TEXT NOT NULL, machine TEXT NOT NULL, seed TEXT, result TEXT NOT NULL);
       CREATE TRIGGER IF NOT EXISTS lab_runs_no_update BEFORE UPDATE ON lab_runs BEGIN SELECT RAISE(ABORT,'Experiment records are append-only'); END;
@@ -232,6 +233,19 @@ export class MarketPlatform {
   }
   async macroAsOf({id,asOf}){const ind=macroIndicator(id);if(!ind)throw new Error('Unknown indicator');const t=Number(asOf);if(!Number.isFinite(t))throw new Error('asOf required');
     return {id,asOf:t,rows:macroTransform(macroAsOf(await this.fred.vintages(ind.fred),t),ind.transform).slice(-60),rule:'Each value is visible only after the end (US/Eastern) of the day FRED first published it.'};}
+  // EDGAR: facts are stored as Filing entities available at SEC acceptance time; analysis rides alongside.
+  recordFilings(filings){
+    const contracts=this.store.list({kind:'Contract',limit:1000});
+    return filings.map(f=>{
+      if(f.facts.accession&&f.facts.acceptedAt){const id=stableId('Filing','sec',f.facts.accession),isNew=!this.store.get(id);
+        this.store.put({kind:'Filing',provider:'sec',sourceId:f.facts.accession,data:f.facts,observedAt:f.facts.acceptedAt,availableAt:f.facts.acceptedAt,sourceUrl:f.facts.indexUrl});
+        if(isNew)this.bus.publish('SEC_FILING_RECEIVED',{id,form:f.facts.form,company:f.facts.company,ticker:f.facts.ticker,items:f.facts.items.map(i=>i.code)});}
+      return {...f,analysis:analyseFiling(f,contracts)};
+    });
+  }
+  async edgarLatest(form='8-K'){return {status:this.edgar.status(),form,filings:this.recordFilings(await this.edgar.latest(form))};}
+  async edgarCompany(ticker){const {filingsFromSubmissions}=await import('./edgar.js');const sub=await this.edgar.company(ticker);return {status:this.edgar.status(),company:sub.name,cik:sub.cik,tickers:sub.tickers,sic:sub.sicDescription||null,filings:this.recordFilings(filingsFromSubmissions(sub,{limit:60}))};}
+  async edgarForm4(url){return {status:this.edgar.status(),facts:await this.edgar.form4(url),kind:'FORM_4_FACTS'};}
   close(){this.store.close();}
 }
 let platform;

@@ -23,6 +23,7 @@ import { kalshiFeeModel,polymarketFeeModel,takerFee } from '../src/core/fees.js'
 import { AlpacaQuotes,STOCK_VENUE } from '../src/core/brokers.js';
 import { ReplaySession,runReplay,tapeRecords,alpacaMinuteRecords,fetchAlpacaMinutes,strategyParams } from '../src/core/replay.js';
 import { endOfDayEt,transform as macroTransform,parseFredCsv,vintagesFrom,asOf as macroAsOfFn,impliedLadder,FredSource } from '../src/core/macro.js';
+import { filingsFromSubmissions,filingsFromAtom,parseForm4,analyseFiling,userAgent,EdgarSource } from '../src/core/edgar.js';
 import { StrategyRegistry,promotionCheck,labChampionLifecycle } from '../src/core/strategies.js';
 import { assertGlobalTradingNotHalted } from '../src/core/executionBoundary.js';
 import { localMutationAllowed } from '../src/core/http.js';
@@ -465,5 +466,40 @@ test('macro snapshot: FRED and Kalshi failures stay local to their indicator',as
   const cpi=m.indicators.find(i=>i.id==='CPI'),un=m.indicators.find(i=>i.id==='UNRATE');
   assert.equal(cpi.last.value,1);assert.ok(cpi.ladder.impliedMedian>0.1);assert.match(un.error,/500/);assert.match(un.ladder.error,/kalshi down/);
   assert.equal(m.vintageMode,false);assert.match(m.note,/context only/);assert.ok(m.calendar.length>=1);
+  p.close();
+});
+
+const SUBMISSIONS={cik:'320193',name:'Apple Inc.',tickers:['AAPL'],sicDescription:'Electronic Computers',filings:{recent:{
+  accessionNumber:['0000320193-26-000101','0000320193-26-000100','0000320193-26-000099'],filingDate:['2026-09-25','2026-09-24','2026-08-01'],
+  acceptanceDateTime:['2026-09-25T16:31:02.000Z','2026-09-24T20:05:00.000Z','2026-08-01T21:00:00.000Z'],form:['8-K','4','S-8'],
+  items:['2.02,9.01','',''],primaryDocument:['a8-k.htm','xslF345X05/wk-form4_1.xml','s8.htm']}}};
+const ATOM='<feed><entry><title>8-K - ACME CORP (0000123456) (Filer)</title><link rel="alternate" type="text/html" href="https://www.sec.gov/Archives/edgar/data/123456/000012345626000007/0000123456-26-000007-index.htm"/>'+
+  '<summary type="html"> &lt;b&gt;Filed:&lt;/b&gt; 2026-09-25 &lt;b&gt;AccNo:&lt;/b&gt; 0000123456-26-000007 &lt;b&gt;Size:&lt;/b&gt; 300 KB&lt;br&gt;Item 5.02: Departure of Directors&lt;br&gt;Item 9.01: Financial Statements</summary>'+
+  '<updated>2026-09-25T16:05:32-04:00</updated></entry><entry><title>garbage</title></entry></feed>';
+const FORM4='<ownershipDocument><issuer><issuerName>Apple Inc.</issuerName><issuerTradingSymbol>AAPL</issuerTradingSymbol></issuer><reportingOwner><reportingOwnerId><rptOwnerName>Doe Jane</rptOwnerName></reportingOwnerId>'+
+  '<reportingOwnerRelationship><isDirector>0</isDirector><isOfficer>1</isOfficer><officerTitle>CFO</officerTitle></reportingOwnerRelationship></reportingOwner><nonDerivativeTable>'+
+  '<nonDerivativeTransaction><transactionDate><value>2026-09-23</value></transactionDate><transactionCoding><transactionCode>S</transactionCode></transactionCoding><transactionAmounts><transactionShares><value>1000</value></transactionShares>'+
+  '<transactionPricePerShare><value>231.5</value></transactionPricePerShare><transactionAcquiredDisposedCode><value>D</value></transactionAcquiredDisposedCode></transactionAmounts>'+
+  '<postTransactionAmounts><sharesOwnedFollowingTransaction><value>50000</value></sharesOwnedFollowingTransaction></postTransactionAmounts></nonDerivativeTransaction></nonDerivativeTable></ownershipDocument>';
+test('EDGAR facts: submissions JSON, Atom feed and Form 4 XML parse into declared facts only',()=>{
+  const f=filingsFromSubmissions(SUBMISSIONS);
+  assert.deepEqual(f.map(x=>x.facts.form),['8-K','4']);// S-8 filtered out
+  assert.equal(f[0].facts.acceptedAt,Date.parse('2026-09-25T16:31:02.000Z'));assert.deepEqual(f[0].facts.items.map(i=>i.code),['2.02','9.01']);assert.equal(f[0].facts.ticker,'AAPL');
+  assert.equal(f[1].facts.rawXmlUrl,'https://www.sec.gov/Archives/edgar/data/320193/000032019326000100/wk-form4_1.xml');
+  const a=filingsFromAtom(ATOM);assert.equal(a.length,1);assert.equal(a[0].facts.company,'ACME CORP');assert.equal(a[0].facts.cik,'123456');assert.equal(a[0].facts.accession,'0000123456-26-000007');
+  assert.deepEqual(a[0].facts.items.map(i=>i.code),['5.02','9.01']);assert.equal(a[0].facts.acceptedAt,Date.parse('2026-09-25T20:05:32Z'));
+  const q=parseForm4(FORM4);assert.equal(q.owner,'Doe Jane');assert.deepEqual(q.roles,['Officer','CFO']);assert.equal(q.transactions[0].code,'S');assert.equal(q.transactions[0].shares,1000);assert.equal(q.transactions[0].price,231.5);assert.equal(q.transactions[0].acquired,false);
+});
+test('EDGAR analysis is labelled and separate; filings are stored at acceptance time and announced once',async()=>{
+  const f=filingsFromSubmissions(SUBMISSIONS)[0],an=analyseFiling(f,[{id:'c1',provider:'kalshi',data:{title:'Will Apple report revenue above $100B?'}},{id:'c2',provider:'kalshi',data:{title:'Will it rain?'}}]);
+  assert.equal(an.kind,'RULE_BASED_ANALYSIS');assert.deepEqual(an.catalysts,['EARNINGS']);assert.deepEqual(an.relatedMarkets.map(m=>m.id),['c1']);assert.equal(f.facts.catalysts,undefined);
+  assert.equal(userAgent({SEC_USER_AGENT:'MPOS'}),null);assert.equal(userAgent({SEC_USER_AGENT:'Jo Doe jo@example.com'}),'Jo Doe jo@example.com');
+  await assert.rejects(new EdgarSource({env:{}}).latest('8-K'),/SEC_USER_AGENT/);assert.equal(new EdgarSource({env:{}}).status().status,'NOT CONFIGURED');
+  let ua=null;const src=new EdgarSource({env:{SEC_USER_AGENT:'Jo Doe jo@example.com'},fetchImpl:async(url,opt)=>{ua=opt.headers['User-Agent'];return {ok:true,text:async()=>ATOM};}});
+  assert.equal((await src.latest('8-K')).length,1);assert.equal(ua,'Jo Doe jo@example.com');await assert.rejects(src.latest('S-1'),/Unsupported/);
+  const p=new MarketPlatform({providers:new ProviderRegistry()});const seen=[];p.bus.on('SEC_FILING_RECEIVED',e=>seen.push(e.data.id));
+  const out=p.recordFilings(filingsFromSubmissions(SUBMISSIONS));p.recordFilings(filingsFromSubmissions(SUBMISSIONS));await nextTurn();await nextTurn();
+  assert.equal(out[0].analysis.kind,'RULE_BASED_ANALYSIS');assert.equal(seen.length,2);
+  const stored=p.store.get(stableId('Filing','sec','0000320193-26-000101'));assert.equal(stored.availableAt,Date.parse('2026-09-25T16:31:02.000Z'));assert.equal(stored.fact,true);assert.equal(stored.data.catalysts,undefined);
   p.close();
 });

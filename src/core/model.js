@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-export const ENTITY_KINDS = Object.freeze(['Event', 'Market', 'Instrument', 'Contract', 'Asset', 'Outcome', 'Price', 'Probability', 'OrderBook', 'Trade', 'Position', 'Portfolio', 'NewsEvent', 'EconomicRelease', 'SportsEvent', 'Wallet', 'Entity', 'Strategy', 'Signal', 'Opportunity', 'RiskExposure']);
+export const ENTITY_KINDS = Object.freeze(['Event', 'Market', 'Instrument', 'Contract', 'Asset', 'Outcome', 'Price', 'Probability', 'OrderBook', 'Trade', 'Position', 'Portfolio', 'NewsEvent', 'EconomicRelease', 'SportsEvent', 'Wallet', 'Entity', 'Strategy', 'Signal', 'Opportunity', 'RiskExposure', 'Filing', 'WeatherAlert']);
 export const EXECUTION_MODES = Object.freeze(['PAPER', 'MANUAL_APPROVAL', 'LIVE']);
 export function requiredText(value, name, max = 512) {
   if (typeof value !== 'string' || !value.trim() || value.length > max) throw new Error(`${name} is required (max ${max} characters)`);

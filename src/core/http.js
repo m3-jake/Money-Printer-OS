@@ -24,6 +24,10 @@ export async function handlePlatformRequest(req,res,url,{json,body,platform=mark
       if(route==='/lab/runs')return json(res,{ok:true,runs:platform.labRuns(50)});
       if(route==='/macro')return json(res,{ok:true,...await platform.macroSnapshot({force:url.searchParams.get('force')==='1'})});
       if(route==='/macro/asof')return json(res,{ok:true,...await platform.macroAsOf({id:url.searchParams.get('id'),asOf:url.searchParams.get('asOf')})});
+      if(route==='/edgar/status')return json(res,{ok:true,status:platform.edgar.status()});
+      if(route==='/edgar/latest')return json(res,{ok:true,...await platform.edgarLatest(url.searchParams.get('form')||'8-K')});
+      if(route==='/edgar/company')return json(res,{ok:true,...await platform.edgarCompany(url.searchParams.get('ticker')||'')});
+      if(route==='/edgar/form4')return json(res,{ok:true,...await platform.edgarForm4(url.searchParams.get('url')||'')});
       if(route==='/relationships')return json(res,{ok:true,relationships:platform.store.relationships(url.searchParams.get('id'))});
     }
     if(req.method==='POST'){

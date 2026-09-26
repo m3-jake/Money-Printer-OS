@@ -974,3 +974,18 @@ Kalshi and Robinhood event contracts are already covered by the MPOS core platfo
 - **Live (2026-09-26, keyless):** jobs report Oct 2 (unemployment 4.07%, payrolls +95.9k implied), CPI Oct 14 (MoM 0.506%, core 0.176%, YoY 3.574%), Fed Oct 28 (upper bound 4.05%), GDP Oct 30 (3.67%). Claims and retail had no two-sided ladder open.
 - Tests: 3 new (vintage as-of, ET end-of-day across DST, transforms, CSV, ladder, per-indicator failure isolation). `market-core` 42.
 - **Polish noted:** with 12 desktop icons the column runs past the bottom at 720 px (System is cut off). Phase 7.
+
+## Batch X (2026-09-26): EDGAR window, SEC filings as facts with labelled rule-based analysis (Phase 4)
+
+- **New `src/core/edgar.js`.** SEC blocks any automated client that doesn't declare a contact; a generic User-Agent was refused live with 403 "Undeclared Automated Tool". MPOS will not send bing's email on its own, so EDGAR needs `SEC_USER_AGENT="Name you@example.com"` in `%APPDATA%\Money Printer OS\.env`. Until then it reports NOT CONFIGURED.
+  - **Facts** (what the filer declared):
+    - from data.sec.gov submissions JSON: form, company, CIK, ticker, accession, **acceptance time**, 8-K item numbers named from the official item list, links;
+    - from the latest-filings Atom feed (`getcurrent`);
+    - Form 4 XML: owner, roles, transaction code/shares/price/after.
+    - Forms: 8-K, 10-Q, 10-K, 4, 13D/13G.
+  - **Analysis** is a separate `RULE_BASED_ANALYSIS` object and is never merged into the facts: catalyst labels mapped from item numbers (2.02 EARNINGS, 5.02 EXECUTIVE_CHANGE, 3.02 DILUTION, 1.01 MATERIAL_AGREEMENT, …), related assets (the ticker), related markets (loaded Kalshi/Polymarket titles that mention the company or ticker). **No language model is used.** The brief's "AI-assisted summaries" aren't built, because no LLM integration exists in MPOS; adding one would need a key and a decision from bing.
+  - **Fair access:** at most one SEC request every 150 ms (SEC allows 10/s); responses cached.
+- **Storage/events:** filings become `Filing` entities (new entity kind; `WeatherAlert` was added too) with **availableAt = SEC acceptance time**, so backtests only see a filing once it was public. A new filing publishes `SEC_FILING_RECEIVED` once, for Wire.
+- **UI:** EDGAR window (SEC icon). Load latest by form, company lookup by ticker, table (accepted, form, company, items, Form 4 transactions button, analysis column, links), with the not-configured notice.
+- **Tests:** 2 new (fixtures of the documented formats: submissions JSON, Atom, Form 4 XML; analysis separation; User-Agent required and sent; stored availableAt; event published once). `market-core` 44. **Not checked against live SEC**, since no declared contact is configured.
+- **Tooling note:** heredoc-fed node scripts on this machine lose backslashes in regex literals, which broke `edgar.js` once and was caught at import. Use the Edit/Write tools for code with regexes.
