@@ -10,6 +10,7 @@ import { loadState, saveState, appendJournal, appendJournalBatch, drainActions, 
 import { buyWithSol, sellTokenForSol, walletSolBalance } from './jupiter.js';
 import { startDashboard } from './dashboard.js';
 import { marketPlatform } from './core/platform.js';
+import { walletScorecardSnapshot, gradedScores } from './walletScorecard.js';
 import { alert } from './alerts.js';
 import { pushTick, microFeatures, explosionScore, moonScore, buildCandles, narrative, walletSignals } from './intelligence.js';
 import { socialSignals } from './providers.js';
@@ -502,6 +503,7 @@ async function cycle() {
   const analysisStart = performance.now();
   const ranked = [];
   const alphaCandidateRows = [];
+  const graded = gradedScores(walletScorecardSnapshot({ file: path.join(path.resolve(process.env.MONEY_PRINTER_DATA_DIR || 'data'), 'alpha-lab.sqlite') }));
   for (const p of pairs) {
     const mint = p.baseToken?.address;
     if (!mint) continue;
@@ -537,7 +539,9 @@ async function cycle() {
     recordUniverse(s, a);
     const universe=s.research?.universe?.[a.mint]||{};
     const holderRows=a.risk?.largest||[];
-    const firstQuality=holderRows.length ? holderRows.reduce((q,h)=>q+Number(s.research?.walletProfiles?.[h.owner||h.address]?.recurrenceScore||50),0)/holderRows.length : 50;
+    // Holder quality for the research record: a wallet's graded copy-trade score (realized P/L) when it has one, else the old recurrence score.
+    const holderQuality=h=>{const id=h.owner||h.address;return graded.has(id)?graded.get(id):Number(s.research?.walletProfiles?.[id]?.recurrenceScore||50)};
+    const firstQuality=holderRows.length ? holderRows.reduce((q,h)=>q+holderQuality(h),0)/holderRows.length : 50;
     const createdTs=Number(p.pairCreatedAt||0);const sourceEventTs=createdTs>0&&Math.abs(Date.now()-createdTs)<=15*60_000?createdTs:0;
     alphaCandidateRows.push({a,firstQuality,sourceEventTs,universe});
     if (s.runtime.favorites.includes(mint)) a.score = Math.min(100, a.score + 8);

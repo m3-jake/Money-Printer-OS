@@ -47,7 +47,7 @@
     "test:lane-contracts": "node --test tests/research-lane-registry.test.mjs tests/money-physics.test.mjs tests/market-core.test.mjs tests/robinhood-practice.test.mjs tests/champion-state.test.mjs tests/data-coverage.test.mjs tests/runtime-controls.test.mjs",
     "test:unattended": "node --test tests/unattended-storage.test.mjs tests/self-report.test.mjs tests/lab-health.test.mjs",
     "test:fitness": "node --test tests/fitness-ledger.test.mjs tests/robinhood-lab-trial.test.mjs",
-    "test:solana": "node --test tests/solana-fair.test.mjs tests/holder-rpc.test.mjs",
+    "test:solana": "node --test tests/solana-fair.test.mjs tests/holder-rpc.test.mjs tests/wallet-scorecard.test.mjs",
     "test:latency": "node --test tests/latency-diagnosis.test.mjs tests/latency-db.test.mjs",
     "test:evidence": "node --test tests/research-evidence-gate.test.mjs tests/research-evidence-store.test.mjs tests/research-collector.test.mjs tests/research-supervision.test.cjs tests/research-control-plane.test.mjs tests/research-lifecycle.test.mjs tests/project-journal.test.mjs",
     "evidence-canary": "node scripts/research-evidence-canary.mjs",

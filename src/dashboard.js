@@ -19,6 +19,7 @@ import { seedProjectJournal } from './projectJournal.js';
 import { fitnessSnapshot, writeFitnessFiles, solanaFitnessParts, polymarketFitnessParts } from './fitnessLedger.js';
 import { robinhoodFitnessParts } from './robinhoodAutoTrader.js';
 import { runSelfReport, latestSelfReport } from './selfReport.js';
+import { walletScorecardSnapshot } from './walletScorecard.js';
 import { saveResourcePolicy, resourceSnapshot, systemTelemetry } from './resourcePolicy.js';
 // polymarketUS.js is parked except for credentials and the session arm: its scanner and single-order routes are not served.
 import { usReadiness, configurePolymarketUS, armPolymarketUS, polymarketUSAccount } from './polymarketUS.js';
@@ -359,6 +360,7 @@ function snapshot() {
     walletIntel: {
       wallets: Object.values(s.research?.walletProfiles || {}).sort((a,b)=>(b.recurrenceScore||0)-(a.recurrenceScore||0)).slice(0,24),
       holderRpc: holderRpcHealth(),
+      scorecard: (() => { const sc = walletScorecardSnapshot({ file: path.join(DATA_DIR, 'alpha-lab.sqlite') }); return { ...sc, wallets: (sc.wallets || []).slice(0, 16) }; })(),
     },
     researchSummary: {
       universeCount: Object.keys(s.research?.universe || {}).length,
