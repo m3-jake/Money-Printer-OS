@@ -279,16 +279,20 @@ button, input, select, textarea { font: inherit; }
 .money-event.ambient { color: #c7ffd0; border-left-color: #5eefff; }
 .money-event.ambient span { color: #8bbbc3; }
 
+/* Icons fill a column top to bottom and wrap into further columns, like a real desktop, so a
+   growing app list never runs under the taskbar. */
 .icons {
   position: absolute;
   left: 10px;
   top: 8px;
   bottom: var(--task);
-  width: 88px;
   z-index: 5;
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(auto-fill, 72px);
+  grid-auto-columns: 84px;
+  align-content: start;
+  gap: 4px 6px;
   padding-top: 4px;
 }
 .icon {

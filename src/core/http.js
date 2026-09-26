@@ -24,6 +24,7 @@ export async function handlePlatformRequest(req,res,url,{json,body,platform=mark
       if(route==='/lab/runs')return json(res,{ok:true,runs:platform.labRuns(50)});
       if(route==='/macro')return json(res,{ok:true,...await platform.macroSnapshot({force:url.searchParams.get('force')==='1'})});
       if(route==='/macro/asof')return json(res,{ok:true,...await platform.macroAsOf({id:url.searchParams.get('id'),asOf:url.searchParams.get('asOf')})});
+      if(route==='/diagnostics')return json(res,{ok:true,...platform.diagnostics()});
       if(route==='/events')return json(res,{ok:true,...await platform.eventPages({force:url.searchParams.get('force')==='1'})});
       if(route==='/whales')return json(res,{ok:true,...platform.whaleSnapshot({minSol:url.searchParams.get('minSol')})});
       if(route==='/whales/token')return json(res,{ok:true,...platform.whaleToken(url.searchParams.get('mint'))});

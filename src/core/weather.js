@@ -75,7 +75,7 @@ export function weatherLinks(text, contracts = []) {
 }
 
 export class WeatherSource {
-  constructor({ fetchImpl = globalThis.fetch, env = process.env } = {}) { this.fetch = fetchImpl; this.env = env; this.cache = new Map(); this.health = { status: 'DISCONNECTED', lastSuccess: null, lastError: null }; }
+  constructor({ fetchImpl = globalThis.fetch, env = process.env } = {}) { this.fetch = fetchImpl; this.env = env; this.cache = new Map(); this.health = { status: 'IDLE', lastSuccess: null, lastError: null }; }
   ua() { return String(this.env.NWS_USER_AGENT || 'MoneyPrinterOS/0.5 (weather desk)'); }
   status() { return { id: 'nws', ...this.health }; }
   async get(url, ttlMs) {

@@ -409,6 +409,20 @@ export class MarketPlatform {
     const data={at:now,pages,errors,note:'Kalshi links are the venue\'s own event grouping; Polymarket, asset and signal links are rule-based. Exposure covers the core ledger only.'};
     this.eventsCache={at:now,data};return data;
   }
+  // Diagnostics across every source and subsystem. Values that cannot be measured are "unavailable".
+  diagnostics(){
+    const now=Date.now(),age=c=>c?.at?now-c.at:null,mem=process.memoryUsage(),load=os.loadavg();
+    let dbBytes=null;try{const f=this.store.db.prepare('PRAGMA page_count').get().page_count*this.store.db.prepare('PRAGMA page_size').get().page_size;dbBytes=f;}catch{}
+    const counts=Object.fromEntries(['entities','entity_versions','relationships','ledger','proposals','core_events','lab_runs','strategies'].map(t=>{try{return [t,this.store.db.prepare(`SELECT COUNT(*) n FROM ${t}`).get().n];}catch{return [t,null];}}));
+    const sources=[...this.providers.status().map(p=>({id:p.id,kind:'prediction venue',status:p.status,lastSuccess:p.lastSuccess,lastError:p.lastError,latencyMs:p.latencyMs,queueDepth:p.queueDepth,websocket:p.websocket})),
+      {id:'alpaca-iex',kind:'stock quotes',...this.stocks.quoteSource.status()},{id:'fred',kind:'macro',...this.fred.status()},{id:'nws',kind:'weather',...this.weather.status()},{id:'sec-edgar',kind:'filings',...this.edgar.status()},
+      ...(this.sportsCache?.data?.feeds||[]).map(f=>({id:f.sport.toLowerCase()+'-live',kind:'sports live',status:f.status,lastSuccess:this.sportsCache.at,lastError:f.error||null})),
+      ...[...this.wireFeeds.values()].map(v=>({id:'rss-'+v.status.id,kind:'wire feed',status:v.status.status,lastSuccess:v.status.status==='CONNECTED'?v.at:null,lastError:v.status.error||null}))];
+    return {at:now,sources,eventBus:this.bus.snapshot(),database:{...this.store.health(),bytes:dbBytes,tables:counts},
+      caches:{macroAgeMs:age(this.macroCache),weatherAgeMs:age(this.weatherCache),sportsAgeMs:age(this.sportsCache),eventsAgeMs:age(this.eventsCache),openReplays:this.replays.size},
+      process:{rssMb:Math.round(mem.rss/1048576),heapUsedMb:Math.round(mem.heapUsed/1048576),uptimeSec:Math.round(process.uptime()),cpuCount:os.cpus().length,loadAvg1:process.platform==='win32'?'unavailable (not provided on Windows)':Math.round(load[0]*100)/100,gpu:'unavailable (not measured by MPOS core)'},
+      journalError:this.journalError};
+  }
   async edgarLatest(form='8-K'){return {status:this.edgar.status(),form,filings:this.recordFilings(await this.edgar.latest(form))};}
   async edgarCompany(ticker){const {filingsFromSubmissions}=await import('./edgar.js');const sub=await this.edgar.company(ticker);return {status:this.edgar.status(),company:sub.name,cik:sub.cik,tickers:sub.tickers,sic:sub.sicDescription||null,filings:this.recordFilings(filingsFromSubmissions(sub,{limit:60}))};}
   async edgarForm4(url){return {status:this.edgar.status(),facts:await this.edgar.form4(url),kind:'FORM_4_FACTS'};}

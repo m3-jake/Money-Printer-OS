@@ -2,7 +2,7 @@ import { finite } from './model.js';
 
 export class ProviderError extends Error { constructor(code,message){super(message);this.code=code;} }
 export class JsonProvider {
-  constructor(id,{fetchImpl=globalThis.fetch,timeoutMs=9000,minIntervalMs=0}={}) {this.id=id;this.fetch=fetchImpl;this.timeoutMs=timeoutMs;this.minIntervalMs=minIntervalMs;this.health={status:'DISCONNECTED',lastSuccess:null,lastError:null,latencyMs:null,requests:0,backoffUntil:0};this.inflight=new Map();this.cache=new Map();this.lastRequest=0;this.observedTimes=new WeakMap();}
+  constructor(id,{fetchImpl=globalThis.fetch,timeoutMs=9000,minIntervalMs=0}={}) {this.id=id;this.fetch=fetchImpl;this.timeoutMs=timeoutMs;this.minIntervalMs=minIntervalMs;this.health={status:'IDLE',lastSuccess:null,lastError:null,latencyMs:null,requests:0,backoffUntil:0};this.inflight=new Map();this.cache=new Map();this.lastRequest=0;this.observedTimes=new WeakMap();}
   copy(entry){const data=structuredClone(entry.data);this.observedTimes.set(data,entry.at);return data;}
   observedAt(data){return this.observedTimes.get(data)??null;}
   async get(url,{ttlMs=5000,headers={}}={}) {

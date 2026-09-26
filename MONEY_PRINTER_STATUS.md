@@ -1079,3 +1079,16 @@ Kalshi and Robinhood event contracts are already covered by the MPOS core platfo
 - **Live (isolated tape, 1301 BTC records ≈5.5 h):** momentum 4 folds, 0 look-ahead violations, 6 test trades, −0.41% on the last fold. Gate: SAMPLE_SIZE, OUT_OF_SAMPLE_NOT_PROFITABLE_AFTER_COSTS, UNSTABLE_ACROSS_FOLDS, as expected for 5 hours of data.
 - Tests: 2 new (fold isolation, grid limits, seeded MC reproducibility, evidence attached without promotion, experiment row with seed). `market-core` 57.
 - **Phase 6 status:** common strategy metadata/lifecycle (N), Lab champions (P), reproducible experiments (V), walk-forward/MC evidence (AD). **Not done:** a GPU/Windows distributed sweep worker for Market Lab. The existing Evolution Lab/Furnace does the heavy search; Market Lab stays in-process with capped grids so the desktop stays responsive.
+
+## Batch AE (2026-09-26): Phase 7 polish: desktop icons, strategy actions, system diagnostics
+
+- **Desktop icons** wrap into further columns (CSS grid, column flow) instead of running under the taskbar. With 16 apps it's 2 columns at 720 px.
+- **Command Center → Strategies:** each row shows its stored evidence (n, out-of-sample net, positive-fold share, DD, costs) and a **Move to** form (state + reason). The server enforces allowed edges and the promotion gate, and LIVE is unavailable. Checked in the browser: BACKTESTING → PAPER without evidence was refused with all five blockers.
+- **System diagnostics** (`GET /api/platform/diagnostics`, shown in Command Center, opened automatically when something needs attention):
+  - every source (Kalshi, Polymarket, Alpaca, FRED, NWS, SEC, MLB/NHL live, 3 RSS feeds) with state, last success, last error, latency;
+  - event bus published/delivered/dropped/queue/listener errors;
+  - database size and row counts;
+  - cache ages and open replays;
+  - engine process RSS/heap/uptime/CPU count. Load average is **"unavailable (not provided on Windows)"** and GPU is **"unavailable (not measured by MPOS core)"**, per the no-fake-metrics rule.
+- **Source states:** every source reports **IDLE** until first contact instead of a misleading DISCONNECTED.
+- Tests unchanged in count (57 core); `test:all` green.

@@ -19,7 +19,7 @@ const num = v => (v === null || v === undefined || v === '' ? null : Number.isFi
 export const cleanSymbols = list => [...new Set((Array.isArray(list) ? list : String(list || '').split(',')).map(s => String(s).trim().toUpperCase()).filter(s => SYMBOL_RE.test(s)))].slice(0, 50);
 
 export class AlpacaQuotes {
-  constructor({ fetchImpl = globalThis.fetch, env = process.env, now = () => Date.now() } = {}) { this.fetch = fetchImpl; this.env = env; this.now = now; this.health = { status: 'DISCONNECTED', lastSuccess: null, lastError: null }; }
+  constructor({ fetchImpl = globalThis.fetch, env = process.env, now = () => Date.now() } = {}) { this.fetch = fetchImpl; this.env = env; this.now = now; this.health = { status: 'IDLE', lastSuccess: null, lastError: null }; }
   configured() { return !!alpacaKeys(this.env); }
   status() { return { id: 'alpaca-iex', ...this.health, status: this.configured() ? this.health.status : 'NOT CONFIGURED', feed: 'IEX (a single exchange, not the consolidated tape)' }; }
   async quotes(symbols) {

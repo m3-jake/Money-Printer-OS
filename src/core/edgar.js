@@ -88,7 +88,7 @@ export function analyseFiling(f, contracts = []) {
 }
 
 export class EdgarSource {
-  constructor({ fetchImpl = globalThis.fetch, env = process.env } = {}) { this.fetch = fetchImpl; this.env = env; this.cache = new Map(); this.lastRequest = 0; this.health = { status: 'DISCONNECTED', lastSuccess: null, lastError: null }; }
+  constructor({ fetchImpl = globalThis.fetch, env = process.env } = {}) { this.fetch = fetchImpl; this.env = env; this.cache = new Map(); this.lastRequest = 0; this.health = { status: 'IDLE', lastSuccess: null, lastError: null }; }
   status() { return { id: 'sec-edgar', ...this.health, status: userAgent(this.env) ? this.health.status : 'NOT CONFIGURED', note: userAgent(this.env) ? null : 'Set SEC_USER_AGENT="Your Name you@example.com" (SEC fair-access policy).' }; }
   async #get(url, { ttlMs = 300000, as = 'json' } = {}) {
     const ua = userAgent(this.env); if (!ua) throw Object.assign(new Error('EDGAR needs SEC_USER_AGENT="Your Name you@example.com" (SEC requires a declared contact)'), { code: 'NO_KEY' });

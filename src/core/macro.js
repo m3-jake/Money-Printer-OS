@@ -76,7 +76,7 @@ export function asOf(vintages, asOfMs) {
 }
 
 export class FredSource {
-  constructor({ fetchImpl = globalThis.fetch, env = process.env } = {}) { this.fetch = fetchImpl; this.env = env; this.cache = new Map(); this.health = { status: 'DISCONNECTED', lastSuccess: null, lastError: null }; }
+  constructor({ fetchImpl = globalThis.fetch, env = process.env } = {}) { this.fetch = fetchImpl; this.env = env; this.cache = new Map(); this.health = { status: 'IDLE', lastSuccess: null, lastError: null }; }
   keyed() { return !!this.env.FRED_API_KEY; }
   status() { return { id: 'fred', ...this.health, mode: this.keyed() ? 'ALFRED_VINTAGES' : 'LATEST_REVISED_CSV' }; }
   async #get(url, parse) {
