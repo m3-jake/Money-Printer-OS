@@ -16,6 +16,8 @@ import { cfg } from './config.js';
 import { readEvidenceMonitor } from './researchEvidenceStore.js';
 import { readResearchControlPlane, attachControlPlaneToMonitor, leaderboardRows, championPublicationView, controlPlaneFiles } from './researchControlPlane.js';
 import { seedProjectJournal } from './projectJournal.js';
+import { fitnessSnapshot, writeFitnessFiles, solanaFitnessParts, polymarketFitnessParts } from './fitnessLedger.js';
+import { robinhoodFitnessParts } from './robinhoodAutoTrader.js';
 import { saveResourcePolicy, resourceSnapshot, systemTelemetry } from './resourcePolicy.js';
 // polymarketUS.js is parked except for credentials and the session arm: its scanner and single-order routes are not served.
 import { usReadiness, configurePolymarketUS, armPolymarketUS, polymarketUSAccount } from './polymarketUS.js';
@@ -77,6 +79,12 @@ function requestUpdater(action){
 
 function researchCaptureStatus(){try{return JSON.parse(fs.readFileSync(RESEARCH_CAPTURE_STATUS_FILE,'utf8'))}catch{return {schema:'mpo.research-capture-status.v1',updatedAt:null}}}
 function labModuleStatuses(){const out={};for(const id of ['robinhood','polymarket','polymarket-combo']){try{const v=JSON.parse(fs.readFileSync(path.join(DATA_DIR,'lab-link','modules',`${id}.json`),'utf8'));if(v&&v.module===id)out[id]=v}catch{}}return out}
+// One fitness record per module (docs/FITNESS-LEDGER.md). A failing module reports a blocker instead of throwing.
+async function fitnessNow(s = loadStateCached()) {
+  const at = Date.now(), part = fn => { try { return fn(); } catch (e) { return { blockers: [`unavailable: ${String(e?.message || e).slice(0, 160)}`] }; } };
+  let pm; try { const ev = await import('./polymarketUSEvidence.js'); pm = part(() => polymarketFitnessParts(ev.polymarketFitness(), { now: at })); } catch (e) { pm = { blockers: [`unavailable: ${String(e?.message || e).slice(0, 160)}`] }; }
+  return fitnessSnapshot({ now: at, solana: part(() => solanaFitnessParts(s, cfg, { now: at })), robinhood: part(() => robinhoodFitnessParts({ at })), polymarket: pm });
+}
 function researchPlane(s = loadStateCached(), opts = {}){
   return readResearchControlPlane({dataDir:DATA_DIR,journalLimit:300,state:s,mode:cfg.mode,...opts});
 }
@@ -472,6 +480,7 @@ export function startDashboard() {
       if (req.method === 'GET' && u.pathname === '/api/update') return json(res, updaterState());
       if (req.method === 'GET' && u.pathname === '/api/research-monitor') return json(res, researchMonitorState());
       if (req.method === 'GET' && u.pathname === '/api/research-control-plane') return json(res, researchPlane());
+      if (req.method === 'GET' && u.pathname === '/api/fitness') return json(res, await fitnessNow());
       if (req.method === 'GET' && u.pathname === '/api/project-journal') return json(res, researchPlane().journal);
 
       if (req.method !== 'POST') {
@@ -555,6 +564,11 @@ export function startDashboard() {
   startPracticeLoop({ dataDir: DATA_DIR });
   server.on('close',()=>{ stopRobinhoodLoops(); stopPracticeLoop(); closeMarketPlatform(); });
   startRobinhoodEquitiesLoop();
+  // The Lab reads <data>/lab-link/fitness/*.json; refresh it every minute (first write shortly after start).
+  const writeFitness = () => fitnessNow().then(snap => writeFitnessFiles(DATA_DIR, snap)).catch(() => {});
+  const fitnessTimer = setInterval(writeFitness, 60000), fitnessFirst = setTimeout(writeFitness, 5000);
+  fitnessTimer.unref?.(); fitnessFirst.unref?.();
+  server.on('close', () => { clearInterval(fitnessTimer); clearTimeout(fitnessFirst); });
   server.on('close',()=>stopRobinhoodEquitiesLoop());
   server.listen(cfg.dashboardPort, cfg.dashboardHost, () => console.log(`Dashboard: http://${cfg.dashboardHost}:${cfg.dashboardPort}`));
   return server;
