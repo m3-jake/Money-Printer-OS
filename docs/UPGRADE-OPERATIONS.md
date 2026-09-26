@@ -53,7 +53,7 @@ and no longer tracked. `/api/state` and `/api/platform/status` expose running bu
 
 ## Module decisions and reactivation
 
-The live capability matrix is `/api/platform/status.capabilities`. Collection readiness is separate
+The live capability matrix is the `capabilities` field in `/api/platform/status`. Collection readiness is separate
 from validation and paper authority. Current source contracts are:
 
 | Module | Decision | Evidence / reactivation condition |
@@ -174,3 +174,14 @@ node scripts/package-windows.mjs --asar-only W:\upgrade-release-20260926\lab\app
 The engine smoke uses installed Electron **as Node** against disposable data. Native renderer verification
 is separately reproducible with `node scripts/verify-electron-hud.mjs`; it opens a temporary synthetic
 window, exercises controls under four CPU workers and closes it. It loads no installed portfolio or keys.
+
+The Lab's archive can also be checked using the installed runtime without installing it:
+
+```powershell
+$env:ELECTRON_RUN_AS_NODE='1'
+& "$env:LOCALAPPDATA\Programs\money-printer-evolution-lab\Money Printer Evolution Lab.exe" W:\money-printer-os\scripts\smoke-lab-archive.mjs --asar W:\upgrade-release-20260926\lab\app.asar | Out-String
+Remove-Item Env:ELECTRON_RUN_AS_NODE
+```
+
+That helper is pinned to the reviewed Lab alpha.7 source commit and refuses a different version.
+It starts only the archived HTTP server and writes its result beside the archive.

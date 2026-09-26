@@ -73,3 +73,9 @@ the emitted document. No integration test was skipped on this machine.
 
 The shared prediction evaluator, Robinhood v2 backtest and compute lease files remain byte-identical
 across the two repositories. The Lab archive and commit above did not change during this review.
+
+Parent follow-up: provisional Kalshi fee overrides now remain `feesKnown:false`, and a bridge regression
+verifies that behavior. The final integrated trader suite passed865 tests, zero failures/skips. Both
+archives were subsequently booted with the actual installed Electron38.8.6 runtime as Node22.22.0,
+against temporary data only. Lab returned alpha.7, exactabc16ce commit, sourceDirty:false and HTTP200.
+`W:/upgrade-release-20260926/lab/WINDOWS-ENGINE-SMOKE.json` records this additional packaged-runtime proof.

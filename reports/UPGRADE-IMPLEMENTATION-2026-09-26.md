@@ -143,5 +143,28 @@ in the operator document. Existing signed release and live authorization gates r
 
 ## Packaged release verification
 
-The archive commits, hashes and final isolated boot results are appended after packaging. These
-artifacts are review payloads; the installed alpha.60/alpha.6 processes remain unchanged.
+| Artifact | Version | Packaged source | SHA256 |
+|---|---|---|---|
+| `W:/upgrade-release-20260926/trader/app.asar` | 0.5.0-alpha.61 | `b7ad48a5c0aa50d28f6f97d6f18bebd70da4034d` | `2da92602748fa47e99d3161dea575fa535c01bf6061680242a120fce41f4d2dc` |
+| `W:/upgrade-release-20260926/lab/app.asar` | 0.1.0-alpha.7 | `abc16cec35bb8957d7fb6f7b8a4791c0bad0fbdb` | `59f1fc61a2922bfb4a2079be5453f7ed9b267cabbdd4b55f4a873e7faa9b83de` |
+
+Trader archive is 44,522,133 bytes, 5,002 entries, zero native modules. Both archives were built twice
+from the same committed source/toolchain and reproduced their exact SHA256. Trader's203 packaged
+source-file hashes were reread through Electron's archive filesystem and matched BUILD.json; Lab's95
+files were extraction-verified. No tests, portfolios, `.env` secrets or private keys were packaged.
+The public updater verification key is intentionally included. Build logs retain the existing npm
+shell invocation deprecation warning; fixed local paths and pinned tooling were used.
+
+Both archives passed a separate isolated API/dashboard boot using the installed Electron38.8.6 runtime
+**as Node22.22.0**. Each returned dashboard200 and health200/ok:true with exact version/commit and
+sourceDirty:false. Trader health STARTING and Lab UNKNOWN are expected for these collector-disabled
+disposable boots; they are not claims of full research readiness. The native renderer test is the separate
+visible source fixture described above. Manifest and smoke evidence live beside each archive;
+trader additionally has `PAYLOAD-VERIFICATION.json`, `BUILD-INFO.json` and `SHA256SUMS.txt`.
+
+Final read-only installed check: trader still alpha.60, Lab still alpha.6 (generation101188), original
+root PIDs29604 and6548 with unchanged5:35PM startup times. No installed process was restarted or
+replaced. Trader pre-existing `.claude/launch.json` and the untracked owner master brief are preserved;
+Lab checkout is clean. Subsequent commit(s) only add release verification/docs and the Lab smoke helper;
+the packaged runtime source remains pinned to the commits above. These local unsigned payloads are ready
+for owner review, with installation/signing/publication and the unobserved24-hour gate still outstanding.
