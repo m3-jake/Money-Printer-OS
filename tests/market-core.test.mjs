@@ -22,6 +22,7 @@ import { VERIFY_PHRASE } from '../src/core/platform.js';
 import { kalshiFeeModel,polymarketFeeModel,takerFee } from '../src/core/fees.js';
 import { AlpacaQuotes,STOCK_VENUE } from '../src/core/brokers.js';
 import { ReplaySession,runReplay,tapeRecords,alpacaMinuteRecords,fetchAlpacaMinutes,strategyParams } from '../src/core/replay.js';
+import { endOfDayEt,transform as macroTransform,parseFredCsv,vintagesFrom,asOf as macroAsOfFn,impliedLadder,FredSource } from '../src/core/macro.js';
 import { StrategyRegistry,promotionCheck,labChampionLifecycle } from '../src/core/strategies.js';
 import { assertGlobalTradingNotHalted } from '../src/core/executionBoundary.js';
 import { localMutationAllowed } from '../src/core/http.js';
@@ -431,4 +432,38 @@ test('Market Lab runs are reproducible experiment records (fingerprint, code ver
   const st=p.labReplayStep({id:r.id,ms:30000});assert.equal(st.revealed,3);
   await assert.rejects(fetchAlpacaMinutes({symbol:'AAPL',start:1,end:2,env:{}}),/Alpaca/);
   p.close();fs.rmSync(dir,{recursive:true,force:true});
+});
+
+test('macro vintages: a revision is invisible before it was published; values count from end of publication day (ET)',()=>{
+  assert.equal(new Date(endOfDayEt('2026-10-14')).toISOString(),'2026-10-15T03:59:59.999Z');// EDT
+  assert.equal(new Date(endOfDayEt('2026-01-14')).toISOString(),'2026-01-15T04:59:59.999Z');// EST
+  const v=vintagesFrom([{date:'2026-08-01',value:'100',realtime_start:'2026-09-11'},{date:'2026-08-01',value:'101',realtime_start:'2026-10-14'},{date:'2026-09-01',value:'102',realtime_start:'2026-10-14'},{date:'2026-07-01',value:'.',realtime_start:'2026-08-12'}]);
+  assert.equal(v.length,3);
+  const sept20=Date.parse('2026-09-20T12:00:00Z'),oct14noon=Date.parse('2026-10-14T16:00:00Z'),oct16=Date.parse('2026-10-16T00:00:00Z');
+  assert.deepEqual(macroAsOfFn(v,sept20).map(r=>r.value),[100]);
+  assert.deepEqual(macroAsOfFn(v,oct14noon).map(r=>r.value),[100]);// published that day, not yet counted
+  assert.deepEqual(macroAsOfFn(v,oct16).map(r=>r.value),[101,102]);// the revision replaces the first print
+  const rows=[{date:'a',value:100},{date:'b',value:101},{date:'c',value:100}];
+  assert.deepEqual(macroTransform(rows,'mom_pct').map(r=>r.value),[1,-0.99]);assert.deepEqual(macroTransform(rows,'diff').map(r=>r.value),[1,-1]);
+  assert.deepEqual(parseFredCsv('observation_date,CPIAUCSL\n2026-07-01,332.813\n2026-08-01,.\n'),[{date:'2026-07-01',value:332.813}]);
+});
+test('macro: keyless FRED refuses as-of history; Kalshi ladder gives an implied median without inventing rungs',async()=>{
+  await assert.rejects(new FredSource({env:{}}).vintages('CPIAUCSL'),/FRED_API_KEY/);
+  const mk=(strike,bid,ask,type='greater')=>({sourceId:'K-'+strike,data:{strike,strikeType:type,yesBid:bid,yesAsk:ask,title:'t',closeAt:2000}});
+  const l=impliedLadder([mk(0.4,.83,.87),mk(0.2,.93,.97),mk(0.3,.93,.97),mk(0.5,.5,.54),mk(0.6,.15,.18),mk(0.7,null,.05),mk(0.9,.01,.02,'less')]);
+  assert.deepEqual(l.rungs.map(r=>r.strike),[0.2,0.3,0.4,0.5,0.6]);// one-sided and non-'greater' rungs dropped
+  assert.ok(l.impliedMedian>0.5&&l.impliedMedian<0.6);assert.equal(l.closeAt,2000);
+  assert.equal(impliedLadder([]).impliedMedian,null);
+});
+test('macro snapshot: FRED and Kalshi failures stay local to their indicator',async()=>{
+  const registry=new ProviderRegistry();
+  registry.register({id:'kalshi',status:()=>({}),events:async({series})=>{if(series==='KXU3')throw new Error('kalshi down');return [{event_ticker:series+'-X',title:series,settlement_sources:[{name:'BLS'}]}];},
+    markets:async({eventTicker})=>({markets:[0.1,0.2,0.3].map((k,i)=>normalizeKalshi({ticker:eventTicker+'-T'+k,event_ticker:eventTicker,title:'x',floor_strike:k,strike_type:'greater',yes_bid_dollars:String(.9-i*.3),yes_ask_dollars:String(.92-i*.3),close_time:new Date(Date.now()+86400000).toISOString()},Date.now()))})});
+  const p=new MarketPlatform({providers:registry});
+  p.fred=new FredSource({env:{},fetchImpl:async url=>String(url).includes('UNRATE')?{ok:false,status:500}:{ok:true,text:async()=>'d,v\n2026-06-01,100\n2026-07-01,101\n'}});
+  const m=await p.macroSnapshot({force:true});
+  const cpi=m.indicators.find(i=>i.id==='CPI'),un=m.indicators.find(i=>i.id==='UNRATE');
+  assert.equal(cpi.last.value,1);assert.ok(cpi.ladder.impliedMedian>0.1);assert.match(un.error,/500/);assert.match(un.ladder.error,/kalshi down/);
+  assert.equal(m.vintageMode,false);assert.match(m.note,/context only/);assert.ok(m.calendar.length>=1);
+  p.close();
 });

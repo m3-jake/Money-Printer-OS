@@ -20,6 +20,7 @@ import { readBarStore } from '../robinhoodEquitiesData.js';
 import os from 'node:os';
 import fs from 'node:fs';
 import { createHash } from 'node:crypto';
+import { MACRO_INDICATORS,FredSource,transform as macroTransform,impliedLadder,asOf as macroAsOf,indicator as macroIndicator } from './macro.js';
 import { ReplaySession,runReplay,readTape,tapeSymbols,bookRecords,fetchAlpacaMinutes,REPLAY_STRATEGIES,strategyParams } from './replay.js';
 const CODE_VERSION=(()=>{try{const pkg=JSON.parse(fs.readFileSync(new URL('../../package.json',import.meta.url),'utf8'));const h=createHash('sha256').update(fs.readFileSync(new URL('./replay.js',import.meta.url))).digest('hex').slice(0,12);return `${pkg.version}+replay.${h}`;}catch{return 'unknown';}})();
 
@@ -28,7 +29,7 @@ const swapSides=book=>({...book,yes:book.no,no:book.yes});
 
 export class MarketPlatform {
   constructor({file=':memory:',dataDir=null,providers=null,stockQuotes=undefined,stockClock=undefined,stockSession=undefined}={}){
-    this.store=new CoreDatabase(file);this.ledger=new UnifiedLedger(this.store);this.bus=new MarketEventBus();this.risk=new RiskGovernor(this.store,this.ledger,this.bus);this.strategies=new StrategyRegistry(this.store);this.legacyReaders={};this.replays=new Map();
+    this.store=new CoreDatabase(file);this.ledger=new UnifiedLedger(this.store);this.bus=new MarketEventBus();this.risk=new RiskGovernor(this.store,this.ledger,this.bus);this.strategies=new StrategyRegistry(this.store);this.legacyReaders={};this.replays=new Map();this.fred=new FredSource();this.macroCache=null;
     this.store.db.exec(`CREATE TABLE IF NOT EXISTS lab_runs(id TEXT PRIMARY KEY, at INTEGER NOT NULL, source TEXT NOT NULL, key TEXT NOT NULL, start_ms INTEGER NOT NULL, end_ms INTEGER NOT NULL,
       strategy TEXT NOT NULL, params TEXT NOT NULL, dataset_fp TEXT NOT NULL, records INTEGER NOT NULL, code_version TEXT NOT NULL, machine TEXT NOT NULL, seed TEXT, result TEXT NOT NULL);
       CREATE TRIGGER IF NOT EXISTS lab_runs_no_update BEFORE UPDATE ON lab_runs BEGIN SELECT RAISE(ABORT,'Experiment records are append-only'); END;
@@ -205,6 +206,32 @@ export class MarketPlatform {
     const fresh=r.session.advanceTo(r.session.clock+Math.max(1000,Math.min(86400000,Number(ms)||15000)));
     return {id,clock:r.session.clock,fresh:fresh.slice(-500),revealed:r.session.seen.length,total:r.session.records.length,done:r.session.done};
   }
+  // Macro desk: FRED context values plus Kalshi release ladders. Cached 10 minutes; Kalshi calls run
+  // one at a time (provider concurrency cap). Every section carries its own error instead of failing all.
+  async macroSnapshot({force=false}={}){
+    if(!force&&this.macroCache&&Date.now()-this.macroCache.at<600000)return this.macroCache.data;
+    const kalshi=this.providers.providers.get('kalshi')||null,now=Date.now();
+    const fred=await Promise.all(MACRO_INDICATORS.map(async ind=>{try{const rows=macroTransform(await this.fred.latest(ind.fred),ind.transform);return {id:ind.id,history:rows.slice(-36),last:rows.at(-1)||null,prev:rows.at(-2)||null,error:null};}catch(e){return {id:ind.id,history:[],last:null,prev:null,error:e.message};}}));
+    const ladders={},sleep=ms=>new Promise(res=>setTimeout(res,ms));
+    // Paced, with one wait-and-retry on a 429 (the provider records the venue's backoff).
+    const call=async fn=>{for(let i=0;;i++){try{const out=await fn();await sleep(this.macroPaceMs??150);return out;}catch(e){if(e.code!=='RATE_LIMITED'||i>=2)throw e;await sleep(Math.min(15000,Math.max(1000,(kalshi.health?.backoffUntil||0)-Date.now())));}}};
+    for(const ind of MACRO_INDICATORS.filter(i=>i.kalshi)){
+      if(!kalshi){ladders[ind.id]={error:'Kalshi provider unavailable'};continue;}
+      try{
+        // Events come soonest first; stop at the first one with a future, two-sided ladder.
+        const events=(await call(()=>kalshi.events({series:ind.kalshi}))).slice(0,3);let best=null;
+        for(const e of events){if(best)break;const {markets}=await call(()=>kalshi.markets({eventTicker:e.event_ticker}));for(const m of markets)this.store.put(m);const l=impliedLadder(markets,ind.kalshiScale||1);if(l.closeAt&&l.closeAt>now&&(!best||l.closeAt<best.closeAt))best={...l,eventTicker:e.event_ticker,title:e.title,subTitle:e.sub_title||null,source:e.settlement_sources?.[0]||null};}
+        ladders[ind.id]=best||{error:'No open Kalshi event with a two-sided ladder'};
+      }catch(e){ladders[ind.id]={error:e.message};}
+    }
+    const byId=Object.fromEntries(fred.map(f=>[f.id,f]));
+    const data={at:now,fred:this.fred.status(),vintageMode:this.fred.keyed(),indicators:MACRO_INDICATORS.map(ind=>({...ind,...byId[ind.id],ladder:ind.kalshi?ladders[ind.id]:null})),
+      calendar:MACRO_INDICATORS.filter(i=>ladders[i.id]?.closeAt).map(i=>({id:i.id,label:i.label,closeAt:ladders[i.id].closeAt,eventTicker:ladders[i.id].eventTicker,title:ladders[i.id].title,impliedMedian:ladders[i.id].impliedMedian})).sort((a,b)=>a.closeAt-b.closeAt),
+      note:this.fred.keyed()?'FRED values are ALFRED vintages; as-of queries return only what was published by then.':'FRED values are the latest revised figures (public CSV). They are context only; as-of history for backtests needs FRED_API_KEY.'};
+    this.macroCache={at:now,data};return data;
+  }
+  async macroAsOf({id,asOf}){const ind=macroIndicator(id);if(!ind)throw new Error('Unknown indicator');const t=Number(asOf);if(!Number.isFinite(t))throw new Error('asOf required');
+    return {id,asOf:t,rows:macroTransform(macroAsOf(await this.fred.vintages(ind.fred),t),ind.transform).slice(-60),rule:'Each value is visible only after the end (US/Eastern) of the day FRED first published it.'};}
   close(){this.store.close();}
 }
 let platform;

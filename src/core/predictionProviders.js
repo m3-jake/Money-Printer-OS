@@ -13,7 +13,7 @@ export function normalizeKalshi(raw,observedAt=Date.now(),series=null) {
     outcomeDefinition:raw.yes_sub_title||raw.subtitle||null,expiresAt:timestamp(raw.expiration_time),closeAt:timestamp(raw.close_time),settlementRules:raw.rules_primary||null,secondaryRules:raw.rules_secondary||null,
     status:String(raw.status||'UNKNOWN').toUpperCase(),category:raw.category||null,yesBid:dollars(raw.yes_bid_dollars,raw.yes_bid),yesAsk:dollars(raw.yes_ask_dollars,raw.yes_ask),noBid:dollars(raw.no_bid_dollars,raw.no_bid),noAsk:dollars(raw.no_ask_dollars,raw.no_ask),
     volume:finite(raw.volume_fp??raw.volume),liquidityUsd:finite(raw.liquidity_dollars),feeSchedule:null,quoteSource:'market-metadata',quoteExecutable:false,
-    seriesTicker:kalshiSeriesOf(raw),resolutionSource:series?.settlement_sources?.[0]?.url||null,feeModel:kalshiFeeModel(series).model,feeModelReason:kalshiFeeModel(series).reason},
+    seriesTicker:kalshiSeriesOf(raw),strike:finite(raw.floor_strike??raw.cap_strike),strikeType:raw.strike_type||null,resolutionSource:series?.settlement_sources?.[0]?.url||null,feeModel:kalshiFeeModel(series).model,feeModelReason:kalshiFeeModel(series).reason},
     {observedAt,sourceUrl:`https://kalshi.com/markets/${encodeURIComponent((raw.event_ticker||raw.ticker).toLowerCase())}`});
 }
 function levels(rows,scale=1){if(!Array.isArray(rows))throw new ProviderError('MALFORMED_DATA','Order book levels missing');return rows.map(row=>{const price=probability(Number(row[0])*scale),quantity=finite(row[1]);if(price===null||quantity===null||quantity<0)throw new ProviderError('MALFORMED_DATA','Invalid book level');return {price,quantity};}).filter(l=>l.quantity>0);}
@@ -41,6 +41,7 @@ export class KalshiProvider extends JsonProvider {
   }
   async market(id){const raw=await this.get(`${this.base}/markets/${encodeURIComponent(id)}`);const at=this.observedAt(raw);return normalizeKalshi(raw.market,at,await this.series(kalshiSeriesOf(raw.market)));}
   async book(id){const raw=await this.get(`${this.base}/markets/${encodeURIComponent(id)}/orderbook`,{ttlMs:1000});return normalizeKalshiBook(raw,this.observedAt(raw));}
+  async events({series,status='open',limit=20}={}){const u=new URL(`${this.base}/events`);u.searchParams.set('status',status);u.searchParams.set('limit',String(limit));if(series)u.searchParams.set('series_ticker',series);const raw=await this.get(u,{ttlMs:600000});if(!Array.isArray(raw.events))throw new ProviderError('MALFORMED_DATA','Kalshi events array missing');return raw.events;}
   async event(id){const raw=await this.get(`${this.base}/events/${encodeURIComponent(id)}`);const e=raw.event;if(!e?.event_ticker)throw new ProviderError('MALFORMED_DATA','Kalshi event missing');return entity('Event',this.id,e.event_ticker,{title:e.title,category:e.category||null,seriesTicker:e.series_ticker||null});}
 }
 export function normalizePolymarket(raw,observedAt=Date.now()) {

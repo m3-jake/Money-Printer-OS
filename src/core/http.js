@@ -22,6 +22,8 @@ export async function handlePlatformRequest(req,res,url,{json,body,platform=mark
       if(route==='/stocks/bars')return json(res,{ok:true,...platform.stocksBars(url.searchParams.get('symbol'))});
       if(route==='/lab/sources')return json(res,{ok:true,...platform.labSources()});
       if(route==='/lab/runs')return json(res,{ok:true,runs:platform.labRuns(50)});
+      if(route==='/macro')return json(res,{ok:true,...await platform.macroSnapshot({force:url.searchParams.get('force')==='1'})});
+      if(route==='/macro/asof')return json(res,{ok:true,...await platform.macroAsOf({id:url.searchParams.get('id'),asOf:url.searchParams.get('asOf')})});
       if(route==='/relationships')return json(res,{ok:true,relationships:platform.store.relationships(url.searchParams.get('id'))});
     }
     if(req.method==='POST'){

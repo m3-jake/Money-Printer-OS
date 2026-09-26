@@ -961,3 +961,16 @@ Kalshi and Robinhood event contracts are already covered by the MPOS core platfo
 - **Engine bug caught by the new test:** fills searched only not-yet-revealed records, so a decision never filled. Fixed (binary search over revealed records per key).
 - **Charts:** `MPOViz` lines take `zero:false` for price series. Before, a $0 baseline flattened every price chart (Stocks and Market Lab).
 - **Isolated live check:** BTC-USD tape (1151 records, 99% candle-derived in this scratch dir), momentum run 0 look-ahead violations, replay playing. Tests: 3 new (`market-core` 39).
+
+## Batch W (2026-09-26): Macro window: FRED indicators plus Kalshi release ladders (Phase 4)
+
+- **New `src/core/macro.js`:** 17 indicators: CPI/core/YoY, PCE, unemployment, payrolls, claims, GDP, Fed funds upper bound, 2y/10y/curve, retail sales, industrial production, housing starts, Michigan sentiment, M2.
+  - **Observation date vs publication time:** with `FRED_API_KEY`, `FredSource.vintages` reads ALFRED vintages (`realtime_start`). A value counts as available only at the **end of its publication day, US/Eastern** (FRED gives dates, not times, so this is late, never early), and `asOf()` returns what was published by a moment. A revision replaces the first print only after it was published (tested).
+  - **Without a key:** the public `fredgraph.csv` gives the latest revised values, labelled "context only". As-of queries are **refused**, so revisions can't leak into backtests.
+  - **Kalshi ladders:** `impliedLadder()` turns an event's "above strike" markets into a market-implied distribution and median. One-sided and non-"greater" rungs are dropped, and the result is labelled as prices, not a model. Kalshi trading closes minutes before each release, so the earliest close is the release calendar (labelled "Kalshi close").
+  - **Units:** payroll strikes are in jobs, FRED in thousands (`kalshiScale`).
+- **Kalshi provider:** contracts carry `strike` / `strikeType`; new `events({series,status})`. The Macro loader paces calls (150 ms) and waits once for the venue's backoff on a 429. The first version was rate-limited by Kalshi, caught in the live check.
+- **API/UI:** `GET /api/platform/macro` (10-minute cache), `GET /macro/asof?id=&asOf=` (key only). **Macro window** (MAC icon): upcoming-release table, one card per indicator (last value, change, 3-year sparkline, Kalshi ladder bars and implied median), as-of explorer when keyed.
+- **Live (2026-09-26, keyless):** jobs report Oct 2 (unemployment 4.07%, payrolls +95.9k implied), CPI Oct 14 (MoM 0.506%, core 0.176%, YoY 3.574%), Fed Oct 28 (upper bound 4.05%), GDP Oct 30 (3.67%). Claims and retail had no two-sided ladder open.
+- Tests: 3 new (vintage as-of, ET end-of-day across DST, transforms, CSV, ladder, per-indicator failure isolation). `market-core` 42.
+- **Polish noted:** with 12 desktop icons the column runs past the bottom at 720 px (System is cut off). Phase 7.
