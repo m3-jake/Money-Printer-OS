@@ -364,7 +364,8 @@ export function usCandidatesFromEvents(events=[],now=Date.now(),settings=usCombo
  for(const c of board.sort(order))if(!boardBest.has(c.eventSlug))boardBest.set(c.eventSlug,c);
  for(const m of eventMeta.values())if(m.comboEnabled&&!boardBest.has(m.eventSlug))
   boardBest.set(m.eventSlug,{key:null,...m,eligible:false,addable:false,outsideWindow:false,reason:m.reason||'no-priceable-market'});
- return {candidates,board:[...boardBest.values()],rejections};
+ // singles: every eligible row (all markets per event), read-only evidence; not used by any builder.
+ return {candidates,board:[...boardBest.values()],rejections,singles:rows};
 }
 
 export function chooseUSCombo(candidates,maxLegs=2,journal={open:[],cooldowns:{}},now=Date.now()){

@@ -12,6 +12,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { appendNdjson, atomicJson, RESEARCH_RAW_DIR } from './researchCollector.js';
 import { usLiveEvents, usCandidatesFromEvents, chooseUSCombo, comboFeePerContract, STRATEGY_WINDOWS, usComboSettings } from './polymarketUSCombos.js';
+import { crossVenueTick } from './polymarketCrossVenue.js';
 import { championState, championPaperAllowed } from './championState.js';
 
 const GATEWAY=process.env.POLYMARKET_US_GATEWAY||'https://gateway.polymarket.us';
@@ -39,7 +40,7 @@ export function priceBucket(p){
 }
 
 export function defaultEvidenceState(){
- return {schema:'mpo.polymarket-us-evidence.v1',legHashes:{},tracked:{},calibration:{},resolvedRecent:[],
+ return {schema:'mpo.polymarket-us-evidence.v1',legHashes:{},tracked:{},calibration:{},calibrationSingles:{},outcomeMap:{},outcomeMapSeeded:false,resolvedRecent:[],
   shadow:Object.fromEntries(STRATEGY_WINDOWS.map(w=>[w,{open:[],history:[],cooldowns:{},decisions:[]}])),
   markup:{samples:[],median:null},lastResolveAt:0,stats:{legRows:0,resolved:0,unknown:0,scans:0},updatedAt:0};
 }
@@ -104,10 +105,15 @@ export function comboEstimateRows(byWindow,now=Date.now(),legs=2){
 // first qualifying price. It resolves from the public markets list.
 export function trackLegs(state,byWindow,now=Date.now()){
  for(const [w,built] of Object.entries(byWindow)){
-  for(const c of built.candidates||[]){
+  // Singles calibration: every eligible market (not only the best leg per event).
+  // The best-per-event leg is flagged so the combo-shaped table stays unchanged.
+  const bestKeys=new Set((built.candidates||[]).map(c=>c.key));
+  const all=[...(built.candidates||[]),...(built.singles||[]).filter(c=>!bestKeys.has(c.key))];
+  for(const c0 of all){
+   const c={...c0,bestOfEvent:bestKeys.has(c0.key)};
    const id=`${c.key}|${w}`;
    if(state.tracked[id])continue;
-   state.tracked[id]={id,key:c.key,symbol:c.symbol,side:c.side,eventSlug:c.eventSlug,sport:c.sport,league:c.league,window:w,
+   state.tracked[id]={id,key:c.key,best:!!c.bestOfEvent,symbol:c.symbol,side:c.side,eventSlug:c.eventSlug,sport:c.sport,league:c.league,window:w,
     price:c.price,feePerContract:c.feePerContract,rank:c.rank??null,parts:c.rankParts||null,etaMinutes:c.etaMinutes??null,firstSeenAt:now,lastSeenAt:now};
   }
  }
@@ -136,12 +142,17 @@ export async function fetchMarketsBySlug(slugs,fetchImpl=globalThis.fetch){
 export function calibrationKey(t){return `${priceBucket(t.price)}|${t.sport||'other'}|${t.window}`}
 function addCalibration(state,t,won){
  const k=calibrationKey(t);
- const c=state.calibration[k]||(state.calibration[k]={bucket:priceBucket(t.price),sport:t.sport||'other',window:t.window,n:0,wins:0,sumPrice:0,sumFee:0});
+ // Rows tracked before singles existed have no 'best' flag; they were all best-per-event.
+ if(t.best!==false)addCalibrationTo(state.calibration,k,t,won);
+ addCalibrationTo(state.calibrationSingles||(state.calibrationSingles={}),k,t,won);
+}
+function addCalibrationTo(table,k,t,won){
+ const c=table[k]||(table[k]={bucket:priceBucket(t.price),sport:t.sport||'other',window:t.window,n:0,wins:0,sumPrice:0,sumFee:0});
  c.n++;if(won)c.wins++;c.sumPrice=r4(c.sumPrice+num(t.price));c.sumFee=r4(c.sumFee+num(t.feePerContract));
 }
 // A settled table row: winRate vs implied price and the single-leg edge after the modelled fee.
-export function calibrationTable(state){
- return Object.values(state.calibration).map(c=>{
+export function calibrationTable(state,table=state.calibration){
+ return Object.values(table||{}).map(c=>{
   const implied=c.n?c.sumPrice/c.n:null,fee=c.n?c.sumFee/c.n:null,winRate=c.n?c.wins/c.n:null;
   return {...c,implied:implied==null?null:r4(implied),winRate:winRate==null?null:r4(winRate),
    edgeAfterFee:winRate==null?null:r4(winRate-implied-fee)};
@@ -165,15 +176,44 @@ export async function resolveTracked(state,{now=Date.now(),fetchImpl=globalThis.
    const voided=m&&m.status==='MARKET_STATUS_RESOLVED';
    if(!voided&&now-num(t.firstSeenAt)<RESOLVE_GIVE_UP_MS)continue;
    state.stats.unknown++;
-   outcomes.push({...t,outcome:'UNKNOWN',resolvedAt:now});
+   outcomes.push({...t,outcome:'UNKNOWN',resolvedAt:now});recordOutcome(state,t.id,'UNKNOWN',now);
    delete state.tracked[t.id];continue;
   }
   addCalibration(state,t,won);state.stats.resolved++;
-  outcomes.push({...t,outcome:won?'WON':'LOST',resolvedAt:now});
+  outcomes.push({...t,outcome:won?'WON':'LOST',resolvedAt:now});recordOutcome(state,t.id,won?'WON':'LOST',now);
   delete state.tracked[t.id];
  }
- state.resolvedRecent=[...outcomes,...state.resolvedRecent].slice(0,300);
+ state.resolvedRecent=[...outcomes,...state.resolvedRecent].slice(0,300); // display only
+ pruneOutcomeMap(state,now);
  return {outcomes,rateLimited};
+}
+// Durable leg-outcome store for shadow settlement, keyed `${legKey}|${window}`.
+// resolvedRecent is a 300-row display window; settlement must not depend on it.
+export const OUTCOME_MAP_TTL_MS=14*86400e3,OUTCOME_MAP_MAX=50_000;
+export function recordOutcome(state,id,outcome,at=Date.now()){
+ (state.outcomeMap||(state.outcomeMap={}))[id]={o:outcome,at};
+}
+export function pruneOutcomeMap(state,now=Date.now()){
+ const m=state.outcomeMap||{};
+ for(const [k,v] of Object.entries(m))if(now-num(v.at)>OUTCOME_MAP_TTL_MS)delete m[k];
+ const ks=Object.keys(m);
+ if(ks.length>OUTCOME_MAP_MAX){ks.sort((a,b)=>num(m[a].at)-num(m[b].at));for(const k of ks.slice(0,ks.length-OUTCOME_MAP_MAX))delete m[k]}
+}
+// One-time backfill from the raw outcomes tape (covers state written before the map existed).
+export function seedOutcomeMap(state,dir=RESEARCH_RAW_DIR,now=Date.now(),days=14){
+ const m=state.outcomeMap||(state.outcomeMap={});
+ for(const r of state.resolvedRecent||[])if(r?.id&&!m[r.id])m[r.id]={o:r.outcome,at:num(r.resolvedAt)||now};
+ let files=[];try{files=fs.readdirSync(dir).filter(n=>/^polymarket-us-outcomes-.*\.ndjson$/.test(n))}catch{}
+ for(const n of files){
+  let text='';try{text=fs.readFileSync(path.join(dir,n),'utf8')}catch{continue}
+  for(const line of text.split('\n')){
+   if(!line.trim())continue;
+   try{const r=JSON.parse(line);const id=r.id||(r.key&&r.window?`${r.key}|${r.window}`:null);
+    if(id&&['WON','LOST','UNKNOWN'].includes(r.outcome)&&!m[id])m[id]={o:r.outcome,at:num(r.resolvedAt)||now}}catch{}
+  }
+ }
+ state.outcomeMapSeeded=true;pruneOutcomeMap(state,now);
+ return Object.keys(m).length;
 }
 
 // --------------------------------------------------------- RFQ markup log
@@ -258,15 +298,18 @@ export function shadowRecord(state){
 }
 
 // ------------------------------------------------------------- one tick
-// Leg outcomes for the shadow come from the tracker's resolved list.
-function outcomeLookup(state){
- const m=new Map();for(const r of state.resolvedRecent)m.set(`${r.key}|${r.window}`,r.outcome);
- return (leg,w)=>m.get(`${leg.key}|${w}`)||null;
+// Leg outcomes for the shadow come from the durable outcome map (plus the
+// display list as a fallback), never from the capped resolvedRecent alone.
+export function outcomeLookup(state){
+ const m=new Map();for(const r of state.resolvedRecent||[])m.set(`${r.key}|${r.window}`,r.outcome);
+ const d=state.outcomeMap||{};
+ return (leg,w)=>d[`${leg.key}|${w}`]?.o||m.get(`${leg.key}|${w}`)||null;
 }
-export async function evidenceTick({now=Date.now(),state=loadEvidenceState(),fetchImpl=globalThis.fetch,events=null,settings=null,rawDir=RESEARCH_RAW_DIR,stateFile=EVIDENCE_STATE_FILE}={}){
+export async function evidenceTick({now=Date.now(),state=loadEvidenceState(),fetchImpl=globalThis.fetch,events=null,settings=null,rawDir=RESEARCH_RAW_DIR,stateFile=EVIDENCE_STATE_FILE,crossFetchImpl=null}={}){
  let evs=events;
  if(!evs){const f=await usLiveEvents({force:true});if(!f.ok)throw new Error(f.error||'feed down');evs=f.events}
  const st=settings||usComboSettings();
+ if(!state.outcomeMapSeeded)seedOutcomeMap(state,rawDir,now);
  const byWindow=scanWindows(evs,now,st);
  const tape=legTapeRows(byWindow,now,state);state.legHashes=tape.legHashes;
  const est=comboEstimateRows(byWindow,now,Math.max(2,Math.min(4,num(st.maxLegs)||2)));
@@ -281,10 +324,12 @@ export async function evidenceTick({now=Date.now(),state=loadEvidenceState(),fet
   if(resolved.outcomes.length)appendNdjson('polymarket-us-outcomes',resolved.outcomes.map(o=>({schema:'mpo.polymarket-us-outcome.v1',...o})),{dir:rawDir,now});
   const samples=readRfqMarkups(rawDir,14,now);state.markup={samples:samples.slice(-200),median:medianMarkup(samples),count:samples.length};
  }
+ let crossVenue=null;
+ try{crossVenue=await crossVenueTick({byWindow,now,rawDir,fetchImpl:crossFetchImpl||fetchImpl})}catch(e){crossVenue={error:String(e?.message||e)}}
  const decisions=shadowStep(state,byWindow,{now,legs:Math.max(2,Math.min(4,num(st.maxLegs)||2)),legOutcome:outcomeLookup(state)});
  state.updatedAt=now;
  atomicJson(stateFile,state);
- return {legRows:tape.rows.length,estimates:est.length,resolved:resolved.outcomes.length,rateLimited:resolved.rateLimited,decisions};
+ return {legRows:tape.rows.length,estimates:est.length,resolved:resolved.outcomes.length,rateLimited:resolved.rateLimited,decisions,crossVenue};
 }
 
 // HUD summary (read-only).
@@ -302,7 +347,7 @@ export function polymarketFitness(state=loadEvidenceState()){
 export function evidenceSummary(state=loadEvidenceState()){
  return {updatedAt:state.updatedAt||null,stats:state.stats,tracked:Object.keys(state.tracked).length,
   markup:{median:state.markup?.median??null,samples:state.markup?.count??0,used:effectiveMarkup(state),conservative:state.markup?.median==null},
-  shadow:shadowRecord(state),calibration:calibrationTable(state),fitness:polymarketFitness(state)};
+  shadow:shadowRecord(state),calibration:calibrationTable(state),calibrationSingles:calibrationTable(state,state.calibrationSingles),fitness:polymarketFitness(state)};
 }
 
 // ------------------------------------------------------------ Lab proposal
