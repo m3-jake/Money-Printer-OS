@@ -23,6 +23,8 @@ import { createHash } from 'node:crypto';
 import { MACRO_INDICATORS,FredSource,transform as macroTransform,impliedLadder,asOf as macroAsOf,indicator as macroIndicator } from './macro.js';
 import { EdgarSource,analyseFiling } from './edgar.js';
 import { WEATHER_CITIES,WeatherSource,bucketLadder,weatherLinks } from './weather.js';
+import { buildSportsEvents,mlbLive,nhlLive,attachLive } from './sports.js';
+export const SPORTS_SERIES=['KXMLBGAME','KXNFLGAME','KXNCAAFGAME','KXNHLGAME','KXNBAGAME','KXWNBAGAME','KXATPMATCH','KXWTAMATCH','KXTTSTARMATCH','KXTTELITEMATCH','KXUEFANLGAME','KXMLSGAME','KXEPLGAME'];
 import { ReplaySession,runReplay,readTape,tapeSymbols,bookRecords,fetchAlpacaMinutes,REPLAY_STRATEGIES,strategyParams } from './replay.js';
 const CODE_VERSION=(()=>{try{const pkg=JSON.parse(fs.readFileSync(new URL('../../package.json',import.meta.url),'utf8'));const h=createHash('sha256').update(fs.readFileSync(new URL('./replay.js',import.meta.url))).digest('hex').slice(0,12);return `${pkg.version}+replay.${h}`;}catch{return 'unknown';}})();
 
@@ -31,7 +33,7 @@ const swapSides=book=>({...book,yes:book.no,no:book.yes});
 
 export class MarketPlatform {
   constructor({file=':memory:',dataDir=null,providers=null,stockQuotes=undefined,stockClock=undefined,stockSession=undefined}={}){
-    this.store=new CoreDatabase(file);this.ledger=new UnifiedLedger(this.store);this.bus=new MarketEventBus();this.risk=new RiskGovernor(this.store,this.ledger,this.bus);this.strategies=new StrategyRegistry(this.store);this.legacyReaders={};this.replays=new Map();this.fred=new FredSource();this.macroCache=null;this.edgar=new EdgarSource();this.weather=new WeatherSource();this.weatherCache=null;
+    this.store=new CoreDatabase(file);this.ledger=new UnifiedLedger(this.store);this.bus=new MarketEventBus();this.risk=new RiskGovernor(this.store,this.ledger,this.bus);this.strategies=new StrategyRegistry(this.store);this.legacyReaders={};this.replays=new Map();this.fred=new FredSource();this.macroCache=null;this.edgar=new EdgarSource();this.weather=new WeatherSource();this.weatherCache=null;this.sportsCache=null;this.sportsLive=new Map();this.sportsFetch=(url,opt)=>globalThis.fetch(url,opt);
     this.store.db.exec(`CREATE TABLE IF NOT EXISTS lab_runs(id TEXT PRIMARY KEY, at INTEGER NOT NULL, source TEXT NOT NULL, key TEXT NOT NULL, start_ms INTEGER NOT NULL, end_ms INTEGER NOT NULL,
       strategy TEXT NOT NULL, params TEXT NOT NULL, dataset_fp TEXT NOT NULL, records INTEGER NOT NULL, code_version TEXT NOT NULL, machine TEXT NOT NULL, seed TEXT, result TEXT NOT NULL);
       CREATE TRIGGER IF NOT EXISTS lab_runs_no_update BEFORE UPDATE ON lab_runs BEGIN SELECT RAISE(ABORT,'Experiment records are append-only'); END;
@@ -273,6 +275,33 @@ export class MarketPlatform {
     const data={at:now,nws:this.weather.status(),cities,alerts:alerts.map(a=>({...a,analysis:weatherLinks(`${a.event} ${a.area}`,contracts)})),alertsError,storms:storms.map(s=>({...s,analysis:weatherLinks(`hurricane tropical storm ${s.name}`,contracts)})),stormsError,
       note:'Kalshi settles daily highs on The Weather Company reading; the NWS forecast here is an input, not the settlement value. Sector and market links are speculative.'};
     this.weatherCache={at:now,data};return data;
+  }
+  // Sports: one canonical SportsEvent per game across venues, with live state from official feeds.
+  async sportsSnapshot({force=false}={}){
+    if(!force&&this.sportsCache&&Date.now()-this.sportsCache.at<60000)return this.sportsCache.data;
+    const kalshi=this.providers.providers.get('kalshi')||null,poly=this.providers.providers.get('polymarket')||null,now=Date.now(),sleep=ms=>new Promise(r=>setTimeout(r,ms)),errors=[];
+    const call=async(label,fn)=>{for(let i=0;;i++){try{const out=await fn();await sleep(this.macroPaceMs??150);return out;}catch(e){if(e.code==='RATE_LIMITED'&&i<2){await sleep(Math.min(15000,Math.max(1000,((label.startsWith('kalshi')?kalshi:poly)?.health?.backoffUntil||0)-Date.now())));continue;}errors.push(`${label}: ${e.message}`);return null;}}};
+    const loaded=[];
+    if(kalshi)for(const series of SPORTS_SERIES){const r=await call(`kalshi ${series}`,()=>kalshi.markets({series,limit:200}));if(r)loaded.push(...r.markets);}
+    if(poly)for(let offset=0;offset<500;offset+=100){const r=await call(`polymarket ${offset}`,()=>poly.markets({offset,limit:100}));if(r)loaded.push(...r.markets);else break;}
+    for(const c of loaded)this.store.put(c);
+    const today=new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York'}).format(new Date(now));
+    let events=buildSportsEvents(loaded).filter(e=>e.day>=today);
+    const feeds=[];
+    for(const [sport,url,parse] of [['MLB',`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${today}&hydrate=linescore`,mlbLive],['NHL',`https://api-web.nhle.com/v1/score/${today}`,nhlLive]]){
+      try{const r=await this.sportsFetch(url,{signal:AbortSignal.timeout?.(10000)});if(!r.ok)throw new Error(`HTTP ${r.status}`);const games=parse(await r.json());attachLive(events,games,today);feeds.push({sport,status:'CONNECTED',games:games.length});}
+      catch(e){feeds.push({sport,status:'DISCONNECTED',error:e.message});}
+    }
+    for(const ev of events){
+      try{const ent=this.store.put({kind:'SportsEvent',provider:'mpos',sourceId:ev.id,data:{sport:ev.sport,family:ev.family,day:ev.day,participants:ev.participants,live:ev.live||null},observedAt:now,availableAt:now,fact:false});
+        for(const k of ev.contracts)this.store.relate({sourceId:k.id,targetId:ent.id,relation:'PRICES',evidence:'Matched by sport, game day and participant names (heuristic)',fact:false,at:now});
+        const sig=JSON.stringify(ev.live?[ev.live.state,ev.live.score,ev.live.period]:null),prev=this.sportsLive.get(ev.id);
+        if(ev.live&&prev!==sig){this.sportsLive.set(ev.id,sig);this.bus.publish('SPORT_EVENT_UPDATED',{id:ent.id,sport:ev.sport,participants:ev.participants,state:ev.live.state,score:ev.live.score,period:ev.live.period});}
+      }catch(e){errors.push(`store ${ev.id}: ${e.message}`);}
+    }
+    const data={at:now,today,events,feeds,errors:errors.slice(0,20),loaded:loaded.length,
+      note:'Events are clustered from venue contracts by sport, game day and names (heuristic). Live state only from official MLB/NHL feeds; other sports show prices only. Prices are listing mids, not executable quotes.'};
+    this.sportsCache={at:now,data};return data;
   }
   async edgarLatest(form='8-K'){return {status:this.edgar.status(),form,filings:this.recordFilings(await this.edgar.latest(form))};}
   async edgarCompany(ticker){const {filingsFromSubmissions}=await import('./edgar.js');const sub=await this.edgar.company(ticker);return {status:this.edgar.status(),company:sub.name,cik:sub.cik,tickers:sub.tickers,sic:sub.sicDescription||null,filings:this.recordFilings(filingsFromSubmissions(sub,{limit:60}))};}

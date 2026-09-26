@@ -25,6 +25,7 @@ import { ReplaySession,runReplay,tapeRecords,alpacaMinuteRecords,fetchAlpacaMinu
 import { endOfDayEt,transform as macroTransform,parseFredCsv,vintagesFrom,asOf as macroAsOfFn,impliedLadder,FredSource } from '../src/core/macro.js';
 import { filingsFromSubmissions,filingsFromAtom,parseForm4,analyseFiling,userAgent,EdgarSource } from '../src/core/edgar.js';
 import { bucketLadder,dailyHighs,parseAlerts,parseStorms,weatherLinks,WeatherSource } from '../src/core/weather.js';
+import { sportOf,familyOf,buildSportsEvents,mlbLive,nhlLive,attachLive } from '../src/core/sports.js';
 import { StrategyRegistry,promotionCheck,labChampionLifecycle } from '../src/core/strategies.js';
 import { assertGlobalTradingNotHalted } from '../src/core/executionBoundary.js';
 import { localMutationAllowed } from '../src/core/http.js';
@@ -536,5 +537,48 @@ test('weather snapshot: NWS forecast compared with the Kalshi ladder for the sam
   assert.equal(ny.markets[0].date,'2026-09-26');assert.equal(ny.markets[0].nwsHigh,65);assert.equal(ny.markets[0].medianBucket,'62–63');assert.ok(ny.markets[0].gap>0);assert.equal(ny.markets[0].settlement,'The Weather Company');
   assert.match(chi.marketError,/down/);assert.match(w.stormsError,/503/);assert.equal(w.alerts[0].analysis.kind,'SPECULATIVE_ANALYSIS');
   assert.equal(w.alertsError,null);assert.equal(p.store.list({kind:'WeatherAlert'}).length,1);
+  p.close();
+});
+
+const kWin=(side,opp,bid,ask,series='KXMLBGAME')=>normalizeKalshi({ticker:`${series}-26SEP26X-${side}`,event_ticker:`${series}-26SEP26X`,title:`${side} wins`,yes_bid_dollars:bid,yes_ask_dollars:ask,
+  rules_primary:`If ${side} wins the ${side} vs ${opp} professional baseball game originally scheduled for Sep 26, 2026, then the market resolves to Yes.`},1000,{ticker:series,fee_type:'quadratic',fee_multiplier:.5});
+const pWin=(a,b,pa)=>normalizePolymarket({id:'p-'+a,question:`${a} vs. ${b}`,outcomes:JSON.stringify([a,b]),clobTokenIds:'["x","y"]',outcomePrices:`["${pa}","${1-pa}"]`,bestBid:pa-.005,bestAsk:pa+.005,endDate:'2026-09-26T23:00:00Z',active:true,resolutionSource:'https://www.mlb.com/',
+  description:`In the upcoming MLB game between the ${a} and ${b}, scheduled for September 26 at 7:10PM ET: This market will resolve to "${a}" if the ${a} win the game.`,events:[{id:'e',title:`${a} vs. ${b}`}]},1000);
+test('sports: venue contracts cluster into one canonical event with per-venue winner prices',()=>{
+  const k1=kWin('Atlanta','Miami','0.91','0.92'),k2=kWin('Miami','Atlanta','0.08','0.09'),p1=pWin('Atlanta Braves','Miami Marlins',.895);
+  assert.equal(sportOf(k1),'MLB');assert.equal(sportOf(p1),'MLB');assert.equal(familyOf('NCAAF'),'NCAA');
+  const ev=buildSportsEvents([k1,k2,p1,kWin('Boston','Chicago C','0.5','0.52')]);
+  const atl=ev.find(e=>e.participants.some(x=>/Atlanta/.test(x)));
+  assert.equal(ev.length,2);assert.deepEqual(atl.participants,['Atlanta Braves','Miami Marlins']);assert.deepEqual(atl.venues.sort(),['kalshi','polymarket']);
+  assert.equal(atl.winner[0].venues.kalshi,0.915);assert.equal(atl.winner[0].venues.polymarket,0.895);assert.equal(atl.winner[1].venues.polymarketComplement,0.105);
+  assert.equal(sportOf({data:{venue:'kalshi',seriesTicker:'KXTTSTARMATCH'}}),'TABLE_TENNIS');assert.equal(buildSportsEvents([kWin('A','B','0.5','0.6','KXTTSTARMATCH')])[0].fastSettling,true);
+  assert.equal(sportOf({data:{venue:'kalshi',seriesTicker:'KXFED'}}),null);
+});
+test('sports live feeds: MLB/NHL parsing and attachment by names and day',()=>{
+  const mlb=mlbLive({dates:[{games:[{gamePk:1,gameDate:'2026-09-26T23:10:00Z',status:{detailedState:'In Progress',abstractGameState:'Live'},teams:{away:{team:{name:'Atlanta Braves'},score:6},home:{team:{name:'Miami Marlins'},score:2}},linescore:{currentInning:4,inningHalf:'Bottom'}}]}]});
+  assert.deepEqual(mlb[0].score,[6,2]);assert.equal(mlb[0].period,'Bottom 4');assert.equal(mlb[0].final,false);
+  const nhl=nhlLive({games:[{id:9,startTimeUTC:'2026-09-26T23:00:00Z',gameState:'FINAL',awayTeam:{placeName:{default:'Carolina'},name:{default:'Hurricanes'},score:3},homeTeam:{placeName:{default:'Boston'},name:{default:'Bruins'},score:1}}]});
+  assert.deepEqual(nhl[0].participants,['Carolina Hurricanes','Boston Bruins']);assert.equal(nhl[0].final,true);
+  const ev=buildSportsEvents([kWin('Miami','Atlanta','0.08','0.09')]);attachLive(ev,mlb,'2026-09-26');
+  assert.equal(ev[0].live.state,'In Progress');assert.equal(ev[0].live.orientation,'SWAPPED');
+  const other=buildSportsEvents([kWin('Miami','Atlanta','0.08','0.09')]);attachLive(other,mlb,'2026-09-27');assert.equal(other[0].live,undefined);
+});
+test('sports snapshot stores canonical events, links contracts, announces live changes once',async()=>{
+  const registry=new ProviderRegistry();
+  registry.register({id:'kalshi',status:()=>({}),markets:async({series})=>({markets:series==='KXMLBGAME'?[kWin('Atlanta','Miami','0.91','0.92')]:[]})});
+  registry.register({id:'polymarket',status:()=>({}),markets:async({offset})=>({markets:offset===0?[pWin('Atlanta Braves','Miami Marlins',.895)]:[]})});
+  const p=new MarketPlatform({providers:registry});p.macroPaceMs=0;
+  const today=new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York'}).format(new Date());
+  // Re-date fixtures to "today" so the snapshot keeps them.
+  const fix=today.split('-');const mon=['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'][Number(fix[1])-1];
+  registry.get('kalshi').markets=async({series})=>({markets:series==='KXMLBGAME'?[normalizeKalshi({ticker:'KXMLBGAME-X-ATL',event_ticker:'KXMLBGAME-X',title:'Atlanta wins',yes_bid_dollars:'0.91',yes_ask_dollars:'0.92',rules_primary:`If Atlanta wins the Atlanta vs Miami professional baseball game originally scheduled for ${mon[0]+mon.slice(1).toLowerCase()} ${Number(fix[2])}, ${fix[0]}, then the market resolves to Yes.`},Date.now())]:[]});
+  registry.get('polymarket').markets=async()=>({markets:[]});
+  let n=0;p.sportsFetch=async url=>{n++;return String(url).includes('mlb')?{ok:true,json:async()=>({dates:[{games:[{gamePk:1,gameDate:new Date().toISOString(),status:{detailedState:'In Progress'},teams:{away:{team:{name:'Atlanta Braves'},score:1},home:{team:{name:'Miami Marlins'},score:0}},linescore:{currentInning:2,inningHalf:'Top'}}]}]})}:{ok:false,status:503};};
+  const seen=[];p.bus.on('SPORT_EVENT_UPDATED',e=>seen.push(e.data));
+  const s=await p.sportsSnapshot({force:true});await p.sportsSnapshot({force:true});await nextTurn();await nextTurn();
+  assert.equal(s.events.length,1);assert.equal(s.events[0].live.score[0],1);assert.equal(s.feeds.find(f=>f.sport==='NHL').status,'DISCONNECTED');
+  assert.equal(seen.length,1);// unchanged live state is not re-announced
+  const stored=p.store.list({kind:'SportsEvent'});assert.equal(stored.length,1);assert.equal(stored[0].fact,false);
+  assert.equal(p.store.relationships(stored[0].id).length,1);
   p.close();
 });
