@@ -59,6 +59,7 @@
     "sync:robinhood-panel": "node scripts/sync-robinhood-panel.mjs",
     "robinhood:keygen": "node scripts/robinhood-keygen.mjs",
     "collector": "node scripts/run-collector.mjs",
-    "test:robinhood": "node scripts/sync-robinhood-panel.mjs --check && node --test tests/robinhood-paper-feed.test.mjs tests/robinhood-signer.test.mjs tests/robinhood-journal.test.mjs tests/robinhood-strategy.test.mjs tests/robinhood-safety.test.mjs tests/robinhood-auto-trader.test.mjs tests/robinhood-auto.test.mjs tests/robinhood-tape.test.mjs tests/robinhood-backtest.test.mjs tests/robinhood-evolve.test.mjs tests/robinhood-hud.test.mjs tests/robinhood-http.test.mjs"
+    "rh-tape-stats": "node scripts/rh-tape-stats.mjs",
+    "test:robinhood": "node scripts/sync-robinhood-panel.mjs --check && node --test tests/robinhood-paper-feed.test.mjs tests/robinhood-signer.test.mjs tests/robinhood-journal.test.mjs tests/robinhood-strategy.test.mjs tests/robinhood-safety.test.mjs tests/robinhood-auto-trader.test.mjs tests/robinhood-auto.test.mjs tests/robinhood-tape.test.mjs tests/rh-tape-stats.test.mjs tests/robinhood-backtest.test.mjs tests/robinhood-evolve.test.mjs tests/robinhood-hud.test.mjs tests/robinhood-http.test.mjs"
   }
 }

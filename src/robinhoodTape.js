@@ -1,5 +1,6 @@
 // Robinhood Auto Trader — durable price tape (docs/ROBINHOOD-AUTO-TRADER.md §22).
-// One NDJSON file per symbol under <DATA_DIR>/robinhood-tape/<SYMBOL>.ndjson, rows {t,bid,ask}. Appends are buffered in
+// One NDJSON file per symbol under <DATA_DIR>/robinhood-tape/<SYMBOL>.ndjson, rows {t,bid,ask,src}. `src` names the quote
+// source ('robinhood' or 'coinbase-public-paper'); rows written before batch 12 have none and read back as src:null. Appends are buffered in
 // memory and flushed at most every TAPE_FLUSH_MS (or on demand); files are compacted to the newest TAPE_KEEP_DAYS.
 // The in-memory 720-sample tape in robinhood-paper.json stays the source for live signals; this file feeds the
 // paper-only evolution replay. No network, no imports from the trader; fs errors are reported, never thrown, by flush.
@@ -15,7 +16,8 @@ export const TAPE_FLUSH_MS=30000, TAPE_KEEP_DAYS=45, COMPACT_EVERY_MS=6*3600e3;
 const DAY_MS=864e5;
 const SYMBOL_RE=/^[A-Z0-9]{2,10}-USD$/;
 const num=v=>{const n=Number(v);return Number.isFinite(n)?n:0};
-const buffers=new Map();          // symbol -> [{t,bid,ask}]
+const cleanSrc=v=>typeof v==='string'&&/^[a-z0-9-]{1,32}$/.test(v)?v:null;
+const buffers=new Map();          // symbol -> [{t,bid,ask,src?}]
 const lastRow=new Map();          // symbol -> last t written or buffered (dedupe)
 let lastFlushAt=0, lastCompactAt=0, lastError=null, flushedRows=0;
 
@@ -23,13 +25,14 @@ export function tapeFile(symbol){return path.join(TAPE_DIR,`${String(symbol||'')
 export function validTapeSymbol(symbol){return SYMBOL_RE.test(String(symbol||'').toUpperCase())}
 
 // Buffer one sample. Rejects malformed or crossed quotes and repeats of the same timestamp. Never touches disk.
-export function bufferTape(symbol,{t,bid,ask}={}){
+export function bufferTape(symbol,{t,bid,ask,src}={}){
  const sym=String(symbol||'').toUpperCase(),b=num(bid),a=num(ask),ts=num(t);
  if(!SYMBOL_RE.test(sym)||!(b>0)||!(a>=b)||!(ts>0))return false;
  if(num(lastRow.get(sym))>=ts)return false;
  lastRow.set(sym,ts);
  if(!buffers.has(sym))buffers.set(sym,[]);
- buffers.get(sym).push({t:ts,bid:b,ask:a});
+ const row={t:ts,bid:b,ask:a},s=cleanSrc(src);if(s)row.src=s;
+ buffers.get(sym).push(row);
  return true;
 }
 export function pendingTapeRows(){let n=0;for(const rows of buffers.values())n+=rows.length;return n}
@@ -42,7 +45,7 @@ function parseLines(text){
  const out=[];
  for(const line of String(text).split('\n')){
   if(!line)continue;
-  try{const r=JSON.parse(line);const t=num(r?.t),bid=num(r?.bid),ask=num(r?.ask);if(t>0&&bid>0&&ask>=bid)out.push({t,bid,ask})}catch{}
+  try{const r=JSON.parse(line);const t=num(r?.t),bid=num(r?.bid),ask=num(r?.ask);if(t>0&&bid>0&&ask>=bid){const row={t,bid,ask},s=cleanSrc(r.src);if(s)row.src=s;out.push(row)}}catch{}
  }
  out.sort((a,b)=>a.t-b.t);
  const dedup=[];for(const r of out){if(dedup.length&&dedup[dedup.length-1].t===r.t)dedup[dedup.length-1]=r;else dedup.push(r)}
@@ -79,16 +82,23 @@ export function loadTape(symbol,sinceMs=0){
  const pending=buffers.get(sym)||[];
  if(pending.length){rows=parseLines(rows.concat(pending).map(r=>JSON.stringify(r)).join('\n'))}
  const since=num(sinceMs);
- return rows.filter(r=>r.t>=since).map(r=>({t:r.t,bid:r.bid,ask:r.ask,mid:(r.bid+r.ask)/2}));
+ return rows.filter(r=>r.t>=since).map(r=>({t:r.t,bid:r.bid,ask:r.ask,mid:(r.bid+r.ask)/2,src:r.src||null}));
 }
+const coverageCache=new Map(); // symbol -> {key, value}; the HUD asks every snapshot, the file changes every 30 s at most
 export function tapeCoverage(symbol,now=Date.now()){
+ const sym=String(symbol||'').toUpperCase();let size=-1;try{size=fs.statSync(tapeFile(sym)).size}catch{}
+ const key=size+':'+(buffers.get(sym)?.length||0)+':'+num(lastRow.get(sym)),hit=coverageCache.get(sym);if(hit&&hit.key===key)return {...hit.value,sources:{...hit.value.sources}};
+ const value=coverage(symbol);coverageCache.set(sym,{key,value});return {...value,sources:{...value.sources}};
+}
+function coverage(symbol){
  const rows=loadTape(symbol,0);
- if(!rows.length)return {symbol:String(symbol||'').toUpperCase(),rows:0,firstAt:null,lastAt:null,days:0};
+ if(!rows.length)return {symbol:String(symbol||'').toUpperCase(),rows:0,firstAt:null,lastAt:null,days:0,sources:{}};
  const first=rows[0].t,last=rows[rows.length-1].t;
- return {symbol:String(symbol||'').toUpperCase(),rows:rows.length,firstAt:first,lastAt:last,days:Math.max(0,(last-first)/DAY_MS)};
+ const sources={};for(const r of rows){const k=r.src||'unknown';sources[k]=(sources[k]||0)+1}
+ return {symbol:String(symbol||'').toUpperCase(),rows:rows.length,firstAt:first,lastAt:last,days:Math.max(0,(last-first)/DAY_MS),sources};
 }
 export function tapeStatus(){return {dir:TAPE_DIR,pending:pendingTapeRows(),flushedRows,lastFlushAt,lastCompactAt,lastError}}
 export const __testing={
- reset(){buffers.clear();lastRow.clear();lastFlushAt=0;lastCompactAt=0;lastError=null;flushedRows=0},
+ reset(){buffers.clear();lastRow.clear();coverageCache.clear();lastFlushAt=0;lastCompactAt=0;lastError=null;flushedRows=0},
  buffers,parseLines,
 };

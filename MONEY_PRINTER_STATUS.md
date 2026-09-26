@@ -249,6 +249,18 @@ Last updated: 2026-09-26, batch 10 + Solana/Robinhood/Lab review (read-only). Br
   - A fresh `state.json` is 506 KB.
 - **Tests:** `store-recovery` 19/0 (+1 cap test), `robinhood-*` 13 files all green, `lab-link` 8/0, `action-queue-rails` 7/0, `alpha-queue-rails` 5/0, SELFTEST PASS.
 
+## Batch 12 (2026-09-26): Robinhood tape source and stats
+
+- **Tape source:** each tape row now carries `src` (`robinhood` or `coinbase-public-paper`).
+  - `tapeCoverage()` returns `sources` and is memoized on file size, so the HUD no longer re-parses a 45-day tape on every snapshot.
+  - The HUD shows the quote split beside tape coverage.
+  - Files: `src/robinhoodTape.js`, `src/robinhoodAutoTrader.js`, `public/assets/robinhood-panel.js` (synced into `public/dashboard.html`).
+- **New CLI:** `npm run rh-tape-stats -- --data <dir>` (`scripts/rh-tape-stats.mjs`), read-only.
+- **Live run (09-26):** BTC and ETH have 21 rows each, all `unknown` (written before this batch).
+  - The BTC spread is 0 bps p50. That is the Coinbase book, which confirms the paper tape understates Robinhood's spread.
+- **Tests:** `test:robinhood` 161/0, including the new `rh-tape-stats` test (4) and a tape source test. `visual-contract` 17/0.
+- **Still open:** items 1 and 4 (bing's credentialed tape run, then the 7-day verdict).
+
 ## Next recommended batch (priority order)
 
 0. **bing:**

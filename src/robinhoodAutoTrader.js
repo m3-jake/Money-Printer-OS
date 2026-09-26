@@ -515,7 +515,7 @@ async function paperPass(initial){
  return withPaperLock(async()=>{
   const wanted=[...new Set([...initial.autopilot.symbols,...initial.positions.map(p=>p.symbol),...(J.loadJournal().autopilot.enabled?J.loadJournal().autopilot.symbols:[])])];
   await refreshFeed(wanted,true);const p=clone(paper());assertPaper(p);p.autopilot.skipped=[];let changed=false;
-  for(const symbol of primaryFirst([...new Set([robinhoodPrimary().symbol,...wanted,...openSymbolsReal()])])){const q=quotes.get(symbol);if(fresh(q)){J.appendTape(p,symbol,{...q,quoteSource:q.source});T.bufferTape(symbol,{t:q.at,bid:q.bid,ask:q.ask})}}
+  for(const symbol of primaryFirst([...new Set([robinhoodPrimary().symbol,...wanted,...openSymbolsReal()])])){const q=quotes.get(symbol);if(fresh(q)){J.appendTape(p,symbol,{...q,quoteSource:q.source});T.bufferTape(symbol,{t:q.at,bid:q.bid,ask:q.ask,src:q.source})}}
   for(const position of [...p.positions]){
    const q=quotes.get(position.symbol);if(!fresh(q))continue;const params=position.params||p.params;
    const features=S.computeFeatures(J.tapeFor(p,position.symbol),params,now());
@@ -560,10 +560,10 @@ function evolveDue(){
  const l=E.loadEvolveLedger();return now()-l.lastRunAt>=cfg.intervalMin*60000;
 }
 export function robinhoodEvolveView(p=paper()){
- const cfg=E.evolveConfig(),l=E.loadEvolveLedger(),tapeDays={};
- for(const s of evolveSymbols(p)){try{tapeDays[s]=Math.round(T.tapeCoverage(s,now()).days*100)/100}catch{tapeDays[s]=0}}
+ const cfg=E.evolveConfig(),l=E.loadEvolveLedger(),tapeDays={},tapeSources={};
+ for(const s of evolveSymbols(p)){try{const c=T.tapeCoverage(s,now());tapeDays[s]=Math.round(c.days*100)/100;tapeSources[s]=c.sources}catch{tapeDays[s]=0;tapeSources[s]={}}}
  const champion=compactCandidate(l.champion),proposed=champion&&champion.paramsHash!==p.paramsHash?champion:null;
- return {enabled:cfg.enabled,running:evolveBusy,generation:l.generation,champion,proposed,incumbent:compactCandidate(l.incumbent),applied:l.applied,currentParamsHash:p.paramsHash,tapeDays,minTapeDays:cfg.minTapeDays,lastRunAt:l.lastRunAt,nextRunAt:l.lastRunAt?l.lastRunAt+cfg.intervalMin*60000:null,intervalMin:cfg.intervalMin,candidates:cfg.candidates,minGainPct:Math.round(cfg.minGain*1000)/10,autopromote:cfg.autopromote,history:l.history.slice(0,10),events:l.events.slice(0,10),lastError:l.lastError,tape:T.tapeStatus()};
+ return {enabled:cfg.enabled,running:evolveBusy,generation:l.generation,champion,proposed,incumbent:compactCandidate(l.incumbent),applied:l.applied,currentParamsHash:p.paramsHash,tapeDays,tapeSources,minTapeDays:cfg.minTapeDays,lastRunAt:l.lastRunAt,nextRunAt:l.lastRunAt?l.lastRunAt+cfg.intervalMin*60000:null,intervalMin:cfg.intervalMin,candidates:cfg.candidates,minGainPct:Math.round(cfg.minGain*1000)/10,autopromote:cfg.autopromote,history:l.history.slice(0,10),events:l.events.slice(0,10),lastError:l.lastError,tape:T.tapeStatus()};
 }
 export async function runRobinhoodEvolveOnce({manual=false}={}){
  const cfg=E.evolveConfig();

@@ -46,7 +46,7 @@ test('loadTape sorts, dedupes, filters by sinceMs and adds mid; coverage reports
  const all=T.loadTape('ETH-USD');assert.deepEqual(all.map(r=>r.t),[t0,t0+15000,t0+30000]);assert.equal(all[0].bid,100.5,'last duplicate wins');assert.equal(all[1].mid,101.05);
  assert.deepEqual(T.loadTape('ETH-USD',t0+15000).map(r=>r.t),[t0+15000,t0+30000]);assert.deepEqual(T.loadTape('SOL-USD'),[]);
  const c=T.tapeCoverage('ETH-USD');assert.equal(c.rows,3);assert.equal(c.firstAt,t0);assert.equal(c.lastAt,t0+30000);assert.ok(c.days>0&&c.days<0.001);
- assert.deepEqual(T.tapeCoverage('SOL-USD'),{symbol:'SOL-USD',rows:0,firstAt:null,lastAt:null,days:0});assert.deepEqual(T.listTapeSymbols(),['ETH-USD']);
+ assert.deepEqual(T.tapeCoverage('SOL-USD'),{symbol:'SOL-USD',rows:0,firstAt:null,lastAt:null,days:0,sources:{}});assert.deepEqual(T.listTapeSymbols(),['ETH-USD']);
 });
 test('compaction keeps only the newest 45 days and runs from flush at most every 6 hours',()=>{
  reset();fs.mkdirSync(T.TAPE_DIR,{recursive:true});
@@ -63,4 +63,14 @@ test('compaction keeps only the newest 45 days and runs from flush at most every
  assert.equal(T.loadTape('BTC-USD').length,47,'no compaction inside the 6 h window');
  T.bufferTape('ETH-USD',{t:now+120000,bid:10,ask:10.1});T.flushTape({now:now+7*3600e3,force:true});
  assert.equal(T.loadTape('BTC-USD').length,45,'compacted again 7 h later; the 45-day-old row aged out');assert.equal(T.tapeStatus().lastCompactAt,now+7*3600e3);
+});
+test('rows carry their quote source; unknown or malformed sources read back as null and are counted',()=>{
+ T.__testing.reset();fs.rmSync(T.TAPE_DIR,{recursive:true,force:true});const t0=1_800_000_000_000;
+ assert.equal(T.bufferTape('BTC-USD',{t:t0,bid:100,ask:101,src:'robinhood'}),true);
+ assert.equal(T.bufferTape('BTC-USD',{t:t0+15000,bid:100,ask:101,src:'coinbase-public-paper'}),true);
+ assert.equal(T.bufferTape('BTC-USD',{t:t0+30000,bid:100,ask:101,src:'<script>'}),true);
+ T.flushTape({force:true,now:t0+30000});
+ fs.appendFileSync(T.tapeFile('BTC-USD'),JSON.stringify({t:t0+45000,bid:100,ask:101})+'\n');
+ assert.deepEqual(T.loadTape('BTC-USD').map(r=>r.src),['robinhood','coinbase-public-paper',null,null]);
+ assert.deepEqual(T.tapeCoverage('BTC-USD').sources,{robinhood:1,'coinbase-public-paper':1,unknown:2});
 });
