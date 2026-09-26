@@ -663,3 +663,8 @@ What was finished and committed before parking (all tested; nothing can place wi
 - Build/install the Lab and MPO (signing is bing-only) and check the tray/login-item behavior in the packaged app.
 - Fix Batch B: robinhood-evidence tests (MPO) and the RH-LAB-G9-win fixture (Lab).
 - GPU box: run `research/gpu-furnace` pytest to confirm Torch/Python parity for exitFill.
+
+## Robinhood search: batch 1 in progress (2026-09-26)
+
+- Done: Lab `src/robinhoodHistory.js` (Coinbase 1m candles -> four 15 s samples, src coinbase-history, per-day cache, bounded backfill) + test. MPO `7280714`: PAUSED/KILL SWITCH badge + Resume on Pump.fun.
+- **Next (not done):** wire into `runRobinhoodResearch` in Lab `moduleResearch.js`: syncHistory each pass; search = history (before the first live row) + live search split; holdout = live-tape holdoutSplit only (keeps the 90% Robinhood-quote gate); enoughTape from search span; status fields historyDays/historyRows. Then batch 2 (longer-hold strategy families) and batch 3 (worker pool, no 15 s cap).
