@@ -65,7 +65,12 @@ test('Robinhood confirmation phrases remain exact in UI, HTTP surface and backen
   assert.match(rhHttp, /placedBy:'manual'/, 'HTTP never places as autopilot');
   assert.match(rhHttp, /'evolve\/apply'/);
   assert.match(dashJs, /handleRobinhoodRequest\(req,res,u,\{json,body\}\)/);
-  for (const route of ['/api/robinhood', '/api/robinhood/readiness', '/api/robinhood/evolve']) assert.match(rhHttp, rx(`u.pathname==='${route}'`));
+  for (const route of ['/api/robinhood', '/api/robinhood/readiness', '/api/robinhood/evolve', '/api/robinhood/practice']) assert.match(rhHttp, rx(`u.pathname==='${route}'`));
+  // Multi-asset suite: practice mutations go through the same guarded POST surface; stocks & ETFs are GET-only.
+  for (const a of ['practice/config', 'practice/run', 'practice/order', 'practice/close', 'practice/reset']) { assert.ok(rhHttp.includes(`'${a}':()=>RP.`), a); assert.ok(panel.includes(`rhAction('${a}'`), a); }
+  assert.match(dashJs, /handleRobinhoodEquitiesRequest\(req,res,u,\{json\}\)/);
+  assert.match(panel, /fetch\('\/api\/robinhood-equities'\)/);
+  assert.match(panel, /official Agentic Trading MCP, which is NOT wired in this app/);
   assert.doesNotMatch(rh, /automaticLivePromotionAllowed\s*[:=]\s*true|liveActivationAllowed\s*[:=]\s*true/);
 });
 
@@ -366,6 +371,8 @@ test('glance design: every window opens as one calm card, full detail is an opti
   assert.match(html, /id="setFullDetail"/);assert.match(html, /id="setRestoreAll"/);assert.match(html, /data-textsize=/);
   assert.match(html, /if\(!w\|\|w\.classList\.contains\('hidden'\)\|\|w\.classList\.contains\('glance'\)\)return false;/, 'detail renderers skip glance windows');
   for (const id of ['sportsbook', 'journal', 'robinhood']) assert.match(html, new RegExp(`windowShown\\('${id}'\\)\\)refresh`), `${id} data keeps flowing for its glance`);
+  assert.match(html, /gRow\('Stocks & ETFs',[^\n]*gRow\('Practice',/, 'Robinhood glance carries the stocks & ETFs and practice lines');
+  assert.match(html, /setGlance\('robinhood',glance\(\{title:'Robinhood · paper suite'/);
   assert.match(glanceCss, /\.window\.glance > \.body,\s*\.window\.glance > \.win-tabs \{ display: none; \}/);
   assert.match(glanceCss, /\.glancepane \{[^}]*container-type: inline-size/);
   assert.doesNotMatch(html.slice(html.indexOf('function glance('), html.indexOf('function renderGlances')), /mpo-brand-title/);

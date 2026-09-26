@@ -5,14 +5,107 @@ let rhState=null,rhSubmitting=false,rhRefreshBusy=false,rhMessage='',rhDraft={},
 const rhPref=(k,d)=>{try{const v=JSON.parse(localStorage.getItem(k));return v??d}catch{return d}};
 const rhSave=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}};
 let rhView=rhPref('mpo-rh-view','paper');
-const RH_VIEWS={paper:['head','live','order','autopilot','qual','positions','closes'],why:['head','live','signals','gauges'],charts:['head','charts'],explore:['head','explore'],more:['head','connection','evolution','real','reset']};
+const RH_VIEWS={paper:['head','cryptohead','live','order','autopilot','qual','positions','closes'],why:['head','cryptohead','live','signals','gauges'],charts:['head','cryptohead','charts'],explore:['head','cryptohead','explore'],stocks:['head','stocks'],practice:['head','practice'],more:['head','cryptohead','connection','evolution','real','reset']};
 if(!RH_VIEWS[rhView])rhView='paper';
 // Each view fits the window without scrolling; nothing is deleted, other views' parts are just not shown.
-function rhViewTabs(){return `<div class="rh-tabs">${Object.keys(RH_VIEWS).map(v=>`<button class="btn ${v===rhView?'on':''}" data-rh-view="${v}">${{paper:'Paper',why:'Why not trading',charts:'Charts',explore:'Exploration',more:'More'}[v]}</button>`).join('')}</div>`}
+// Multi-asset suite: crypto (strict book + its views), stocks & ETFs (§25 paper lane), and the isolated practice sandbox.
+const RH_VIEW_LABELS={paper:'Crypto paper',why:'Why not trading',charts:'Charts',explore:'Exploration',stocks:'Stocks & ETFs',practice:'Practice',more:'More'};
+const RH_VIEW_SUB={stocks:'STOCKS & ETFS · PAPER · ALPACA DATA',practice:'CRYPTO PRACTICE SANDBOX · NEVER COUNTS'};
+function rhViewTabs(){return `<div class="rh-tabs">${Object.keys(RH_VIEWS).map(v=>`<button class="btn ${v===rhView?'on':''}" data-rh-view="${v}">${RH_VIEW_LABELS[v]}</button>`).join('')}</div>`}
+// Stocks & ETFs lane: read-only GET /api/robinhood-equities (§25), at most once a minute unless forced.
+let rhEq=null,rhEqAt=0,rhEqBusy=false,rhEqError=null;
+async function rhLoadEquities(force=false){
+ if(rhEqBusy||(!force&&Date.now()-rhEqAt<60000))return;rhEqBusy=true;
+ try{const r=await fetch('/api/robinhood-equities');const d=await r.json();if(!r.ok||d.ok===false)throw Error(d.error||'stocks & ETFs request failed');rhEq=d;rhEqError=null}
+ catch(e){rhEqError=e.message}
+ finally{rhEqAt=Date.now();rhEqBusy=false;if(windowVisible('robinhood')&&rhView==='stocks')renderRobinhood()}
+}
+// Honest one-line readiness for the whole suite. Fee: the account's tier when authenticated, else the 0.95%/side fallback.
+function rhReadinessText(st){
+ const f=Number(st?.account?.feeRatio),fee=Number.isFinite(f)&&f>=0?f:0.0095;
+ return `Crypto: Robinhood Crypto API, paper only; fee ${fmt(fee*100,2)}%/side${st?.account?'':' (fallback until keys authenticate)'}, so about ${fmt(fee*200,1)}% round trip before spread. Stocks & ETFs: paper only on Alpaca public end-of-day bars, not Robinhood quotes; real orders would go only through Robinhood's official Agentic Trading MCP, which is NOT wired in this app. Practice: an isolated sandbox that never counts.`;
+}
+const RH_EQ_TONE={FRESH:'green',STALE:'amber',ERROR:'red',NO_DATA:'red'};
+function rhEqStatusHtml(e){
+ const d=e?.data||{},s=d.status||'NO_DATA',needKey=s==='NO_DATA'&&!d.configured;
+ return `<span class="mpo-badge" id="rhEqStatus"><b class="${RH_EQ_TONE[s]||''}">${needKey?'NO DATA · ADD A FREE ALPACA KEY':polyEscape(s.replace('_',' '))}</b></span>`;
+}
+function rhEqCurveSvg(daily){
+ const pts=(daily||[]).filter(p=>Number.isFinite(p.equityUsd));
+ if(pts.length<2)return `<div class="mpo-empty" id="rhEqCurve">The equity curve starts at the first marked session close${pts.length?' (1 so far)':''}; it is drawn next to buy-and-hold SPY and cash from that day.</div>`;
+ const W=460,H=190,pl=6,pr=62,pt=10,pb=18,vals=pts.flatMap(p=>[p.equityUsd,p.benchUsd,p.cashUsd]).filter(Number.isFinite);
+ let lo=Math.min(...vals),hi=Math.max(...vals);const pad=Math.max(0.5,(hi-lo)*0.1);lo-=pad;hi+=pad;
+ const x=i=>pl+i/Math.max(1,pts.length-1)*(W-pl-pr),y=v=>pt+(hi-v)/(hi-lo)*(H-pt-pb);
+ const line=k=>pts.map((p,i)=>Number.isFinite(p[k])?(i?'L':'M')+x(i).toFixed(1)+' '+y(p[k]).toFixed(1):'').join('');
+ const tag=(k,c)=>{const v=pts.at(-1)[k];return Number.isFinite(v)?`<text x="${W-pr+4}" y="${(y(v)+4).toFixed(1)}" fill="${c}" font-size="11">${rhMoney(v)}</text>`:''};
+ return `<svg id="rhEqCurve" viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Stocks and ETFs paper equity vs buy-and-hold SPY and cash" style="display:block;background:#0d1419;border:1px solid ${RH_C.grid}">
+ <path class="rh-eq-cash" d="${line('cashUsd')}" fill="none" stroke="${RH_C.text}" stroke-width="1" stroke-dasharray="4 3"/>
+ <path class="rh-eq-spy" d="${line('benchUsd')}" fill="none" stroke="#00c8ff" stroke-width="1.4"/>
+ <path class="rh-eq-strategy" d="${line('equityUsd')}" fill="none" stroke="${RH_C.ef}" stroke-width="2"/>
+ ${tag('equityUsd',RH_C.ef)}${tag('benchUsd','#00c8ff')}
+ <text x="${pl+2}" y="${H-5}" fill="${RH_C.text}" font-size="11">${polyEscape(pts[0].d)}</text><text x="${W-pr}" y="${H-5}" fill="${RH_C.text}" font-size="11" text-anchor="end">${polyEscape(pts.at(-1).d)}</text></svg>`;
+}
+function rhStocksSection(e){
+ if(!e)return `<fieldset class="mpo-fieldset" id="rhStocks"><legend>Stocks &amp; ETFs · paper</legend><p>${polyEscape(rhEqError||'Loading the stocks & ETFs lane...')}</p></fieldset>`;
+ const d=e.data||{},b=e.book||{},s=e.strategy||{},m=e.market||{},bl=e.benchmark?.live,rp=e.benchmark?.replay,dec=s.lastDecision,pend=b.pending;
+ const pos=Object.entries(b.positions||{}),metric=(label,value,cls='')=>`<div class="mpo-metric"><label>${label}</label><strong class="${cls}">${value}</strong></div>`;
+ const weights=Object.entries(pend?.targets||dec?.weights||{}).sort((a,z)=>z[1]-a[1]);
+ const pctTxt=v=>v==null||!Number.isFinite(Number(v))?'--':(v>0?'+':'')+fmt(v,2)+'%';
+ const stat=(label,x)=>`<tr><td>${label}</td><td>${pctTxt(x?.returnPct)}</td><td>${pctTxt(x?.cagrPct)}</td><td>${pctTxt(x?.maxDrawdownPct)}</td><td>${x?.sharpe==null?'--':fmt(x.sharpe,2)}</td></tr>`;
+ return `<fieldset class="mpo-fieldset" id="rhStocks"><legend>Stocks &amp; ETFs · paper · ${polyEscape(s.title||s.id||'')}</legend>
+ <p>${rhEqStatusHtml(e)} <span class="mpo-badge">MARKET ${polyEscape(String(m.state||'--').replace('_',' '))}</span> <span class="mpo-badge">PAPER ONLY · NO ROBINHOOD ORDERS</span> <small>${polyEscape(d.providerLabel||'no provider')} · latest bar ${polyEscape(d.latestBar||'--')} · last completed session ${polyEscape(m.lastCompletedSession||'--')}</small></p>
+ ${d.status==='NO_DATA'&&!d.configured?`<div class="mpo-empty" id="rhEqNeedKey">Add a free Alpaca key to start this lane: set <code>ALPACA_KEY_ID</code> and <code>ALPACA_SECRET_KEY</code> (Alpaca Basic, market data only) in .env and restart. Without a key the lane never fetches or trades.</div>`:''}
+ ${d.lastError||e.lastError?`<div class="mpo-error">${polyEscape((d.lastError?.message||d.lastError||e.lastError?.message||e.lastError)+'')}</div>`:''}
+ ${b.recoveryRequired?`<div class="mpo-error">STOCKS BOOK RECOVERY REQUIRED: ${polyEscape(b.recoveryReason||'review the book file')}</div>`:''}
+ <div class="metric-grid">${metric('Paper equity',rhMoney(b.equityUsd))}${metric('Return',pctTxt(b.returnPct),(b.returnPct||0)>=0?'green':'red')}${metric('Buy-and-hold SPY',bl?rhMoney(bl.buyHoldSpyUsd)+' ('+pctTxt(bl.buyHoldSpyReturnPct)+')':'--')}${metric('Cash baseline',bl?rhMoney(bl.cashUsd):rhMoney(b.startUsd))}${metric('Cash (settled)',rhMoney(b.cashUsd)+' ('+rhMoney(b.settledCashUsd)+')')}${metric('Next session',polyEscape(m.nextSession||'--'))}</div>
+ <div class="mpo-split"><div>
+ ${rhEqCurveSvg(b.equityDaily)}
+ <div style="font-size:11px;margin:4px 0;color:${RH_C.text}"><span style="color:${RH_C.ef}">— strategy (paper book)</span> · <span style="color:#00c8ff">— buy-and-hold SPY</span> · <span>- - cash (0%)</span> · marked at each session close${bl?.since?' since '+polyEscape(bl.since):''}</div>
+ <table class="mpo-table" id="rhEqReplay"><thead><tr><th>Replay${rp?.from?' from '+polyEscape(rp.from):''}</th><th>Return</th><th>CAGR</th><th>Max DD</th><th>Sharpe</th></tr></thead><tbody>${rp?stat('Strategy',rp.strategy)+stat('Buy-and-hold SPY',rp.buyHoldSpy)+stat('Cash',rp.cash):'<tr><td colspan="5">Replay needs fetched history.</td></tr>'}</tbody></table>
+ <small>${polyEscape(rp?.note||'Expectation: drawdown control, not alpha.')}</small>
+ </div><div>
+ <table class="mpo-table" id="rhEqWeights"><thead><tr><th>${pend?'Pending target':'Target weight'}</th><th>Weight</th><th></th></tr></thead><tbody>${weights.length?weights.map(([sym,w])=>`<tr><td>${polyEscape(sym)}</td><td>${fmt(w*100,1)}%</td><td>${rhBar(w,'#39ff68')}</td></tr>`).join(''):'<tr><td colspan="3">No target yet: the first decision needs FRESH data after a completed session.</td></tr>'}</tbody></table>
+ <table class="mpo-table" id="rhEqPositions"><thead><tr><th>Position</th><th>Shares</th><th>Avg</th><th>Last</th><th>Value</th></tr></thead><tbody>${pos.length?pos.map(([sym,p])=>`<tr><td>${polyEscape(sym)}</td><td>${fmt(p.qty,4)}</td><td>${rhMoney(p.avgPx)}</td><td>${rhMoney(p.lastPx)}</td><td>${rhMoney((p.qty||0)*(p.lastPx||0))}</td></tr>`).join(''):'<tr><td colspan="5">No stock or ETF positions.</td></tr>'}</tbody></table>
+ <p id="rhEqDecision"><b>Last decision:</b> ${dec?polyEscape(dec.session+' · '+(dec.ready?'ready':'not ready')+(dec.reasons?.length?' · '+dec.reasons.join('; '):'')):'none yet'}${pend?` · <b>queued</b> for the ${polyEscape(pend.executeAtOpenOf||'--')} open`:''}${b.lastFill?` · last fill ${polyEscape(b.lastFill.session)}${b.lastFill.late?' (late)':''}`:''} · <b>next session</b> ${polyEscape(m.nextSession||'--')}${b.missedSessions?` · ${polyEscape(String(b.missedSessions))} missed (never decided after the fact)`:''}</p>
+ <small>$0 commission + ${polyEscape(String(b.costs?.slippageBps??'--'))} bps slippage + SEC/FINRA sell fees · ${polyEscape(b.costs?.settlement||'T+1')} · long-only, no margin.</small>
+ </div></div>
+ <p><small>${polyEscape(e.readiness?.text||'')}</small></p></fieldset>`;
+}
+// Isolated practice sandbox (src/robinhoodPractice.js): its own ledger; never counts toward qualification, promotion or real authority.
+function rhPracticeSection(pr){
+ if(!pr)return `<fieldset class="mpo-fieldset" id="rhPractice"><legend>Practice sandbox</legend><p>Practice book not loaded yet.</p></fieldset>`;
+ const s=pr.settings||{},t=pr.telemetry||{},pos=pr.positions||[],hist=pr.history||[],dis=rhSubmitting?'disabled':'',ld=t.lastDecision||{};
+ const metric=(label,value,cls='')=>`<div class="mpo-metric"><label>${label}</label><strong class="${cls}">${value}</strong></div>`;
+ const opt=(list,cur)=>list.map(v=>`<option value="${v}" ${v===cur?'selected':''}>${v.replace(/_/g,' ').toLowerCase()}</option>`).join('');
+ // Realized curve from the retained closes (oldest first): net after both fees, dashed line before fees.
+ let net=0,gross=0,fees=0;const pts=hist.filter(x=>x.status==='CLOSED').slice().reverse().map(x=>{const f=(Number(x.feeUsd)||0)+(Number(x.exit?.feeUsd)||0);net+=Number(x.pnlUsd)||0;fees+=f;gross=net+fees;return {t:x.closedAt||x.at,net:(pr.budgetUsd||0)+net,gross:(pr.budgetUsd||0)+gross}});
+ const curve=rhEquitySvg({points:pts.length?[{t:pts[0].t-1,net:pr.budgetUsd||0,gross:pr.budgetUsd||0},...pts]:[],startUsd:pr.budgetUsd||0,netUsd:net,feesUsd:fees,grossUsd:gross,closes:pts.length},'PRACTICE (REALIZED, LAST '+pts.length+' CLOSES)','rhPrEquity');
+ return `<fieldset class="mpo-fieldset" id="rhPractice" style="border-color:#00c8ff"><legend>Practice sandbox · isolated paper ledger</legend>
+ <p><span class="mpo-badge">LOOP ${polyEscape(t.loopStatus||'--')}</span> <span class="mpo-badge">${s.autopilot?'PRACTICE AUTOPILOT ON':'PRACTICE AUTOPILOT OFF'}</span> <span class="mpo-badge">NEVER COUNTS TOWARD QUALIFICATION, PROMOTION OR REAL AUTHORITY</span> <small>${polyEscape(s.mode||'--')} · ${polyEscape(s.strategyMode||'--')} · fee ${fmt((s.feeBps||0)/100,2)}%/side + ${polyEscape(String(s.slippageBps??'--'))} bps slippage · source ${polyEscape(t.lastSource||'--')} · hash ${polyEscape(pr.settingsHash||'--')}</small></p>
+ ${pr.recoveryRequired?`<div class="mpo-error">PRACTICE RECOVERY REQUIRED: ${polyEscape(pr.recoveryReason||'reset after review')}</div>`:''}${pr.lastError?`<div class="mpo-error">${polyEscape(pr.lastError)}</div>`:''}
+ <div class="metric-grid">${metric('Practice equity',rhMoney(pr.equityUsd))}${metric('Budget',rhMoney(pr.budgetUsd))}${metric('Cash',rhMoney(pr.cashUsd))}${metric('Realized',rhMoney(pr.realizedPnlUsd),(pr.realizedPnlUsd||0)>=0?'green':'red')}${metric('Unrealized',rhMoney(pr.unrealizedPnlUsd),(pr.unrealizedPnlUsd||0)>=0?'green':'red')}${metric('Fills / fees',polyEscape(String(t.fills||0))+' / '+rhMoney(t.feesUsd))}</div>
+ <p id="rhPrDecision"><b>Last decision:</b> ${polyEscape([ld.action,ld.symbol,ld.reason].filter(Boolean).join(' · ')||'--')}${ld.at?' · '+rhAge(Date.now()-ld.at)+' ago':''} · <b>blocking:</b> ${polyEscape(t.blockingReason||'nothing')}${Object.keys(t.rejectionReasons||{}).length?' · skipped: '+polyEscape(Object.entries(t.rejectionReasons).map(([k,n])=>k+' '+n).join(', ')):''}</p>
+ <div class="mpo-split"><div>
+ ${curve}
+ <table class="mpo-table" id="rhPrPositions"><thead><tr><th>Open</th><th>Qty</th><th>Cost</th><th>Open P/L</th><th>Age</th><th></th></tr></thead><tbody>${pos.length?pos.map(x=>`<tr><td>${polyEscape(x.symbol)}</td><td>${fmt(x.qty,6)}</td><td>${rhMoney(x.costUsd)}</td><td class="${(x.unrealizedPnlUsd||0)>=0?'green':'red'}">${rhMoney(x.unrealizedPnlUsd)}</td><td>${rhHold(x.ageMs)}</td><td><button data-rh-pr-close="${polyEscape(x.id)}" ${dis}>Close</button></td></tr>`).join(''):'<tr><td colspan="6">No open practice positions.</td></tr>'}</tbody></table>
+ <small>Recent: ${hist.length?hist.slice(0,6).map(x=>polyEscape(x.symbol+' '+(x.exit?.reason||'')+' ')+rhMoney(x.pnlUsd)).join(' · '):'no practice closes yet'}</small>
+ </div><div>
+ <label>Mode <select id="rhPrMode">${opt(['PRACTICE','BUY_AND_HOLD','OBSERVE_ONLY'],rhVal('rhPrMode',s.mode))}</select></label>
+ <label>Strategy <select id="rhPrStrategy">${opt(['MOMENTUM','MEAN_REVERSION','BUY_AND_HOLD'],rhVal('rhPrStrategy',s.strategyMode))}</select></label>
+ <label>Pairs <input id="rhPrSymbols" value="${polyEscape(rhVal('rhPrSymbols',(s.symbols||[]).join(',')))}" size="22"></label>
+ <label>USD/order <input id="rhPrOrderUsd" type="number" min="1" value="${polyEscape(rhVal('rhPrOrderUsd',s.orderUsd))}" style="width:70px"></label>
+ <label>Max open <input id="rhPrMaxOpen" type="number" min="1" max="100" value="${polyEscape(rhVal('rhPrMaxOpen',s.maxOpenPositions))}" style="width:55px"></label>
+ <label>Daily loss cap <input id="rhPrLossCap" type="number" min="0" value="${polyEscape(rhVal('rhPrLossCap',s.dailyLossCapUsd))}" style="width:70px"></label>
+ <div><button id="rhPrSave" ${dis}>Save practice settings</button><button id="rhPrAuto" ${dis}>${s.autopilot?'Stop practice autopilot':'Start practice autopilot'}</button><button id="rhPrRun" ${dis}>Run one cycle</button></div>
+ <div><label>Pair <input id="rhPrSymbol" value="${polyEscape(rhVal('rhPrSymbol',(s.symbols||['BTC-USD'])[0]))}" maxlength="14" size="10"></label><button id="rhPrBuy" ${dis}>Practice buy ${rhMoney(s.orderUsd)}</button></div>
+ <div><label>Reset budget USD <input id="rhPrBudget" type="number" min="50" value="${polyEscape(rhVal('rhPrBudget',pr.budgetUsd||500))}" style="width:80px"></label><button id="rhPrReset" ${dis}>Reset practice…</button></div>
+ <small>Public quotes only, no signed Robinhood calls. Fills use the observed ask/bid plus modeled slippage and fee. This sandbox exists to exercise the controls; it is not evidence and cannot promote anything.</small>
+ </div></div></fieldset>`;
+}
 let rhChart={symbol:null,range:'6h',data:null,at:0,busy:false,error:null};
 {const c=rhPref('mpo-rh-chart',{});if(c&&typeof c==='object'){if(['1h','6h','24h'].includes(c.range))rhChart.range=c.range;if(typeof c.symbol==='string'&&c.symbol)rhChart.symbol=c.symbol}}
 const rhSaveChart=()=>rhSave('mpo-rh-chart',{range:rhChart.range,symbol:rhChart.symbol});
-const RH_FOCUS_IDS=['rhSymbol','rhUsd','rhSymbols','rhOrderUsd','rhMaxOpen','rhBank','rhParams','rhResetConfirm','rhRealSymbol','rhRealUsd','rhRealType','rhApOrderUsd','rhApMaxOpen','rhApLossCap','rhApSymbols','rhApType'];
+const RH_FOCUS_IDS=['rhSymbol','rhUsd','rhSymbols','rhOrderUsd','rhMaxOpen','rhBank','rhParams','rhResetConfirm','rhRealSymbol','rhRealUsd','rhRealType','rhApOrderUsd','rhApMaxOpen','rhApLossCap','rhApSymbols','rhApType','rhPrMode','rhPrStrategy','rhPrSymbols','rhPrOrderUsd','rhPrMaxOpen','rhPrLossCap','rhPrSymbol','rhPrBudget'];
 const RH_SECRET_IDS=['rhApiKey','rhSecret','rhConfirm','rhAutoConfirm'];
 const RH_PHRASES={place:'PLACE REAL CRYPTO ORDER',cancel:'CANCEL REAL CRYPTO ORDER',cancelAll:'CANCEL REAL CRYPTO ORDERS',autopilot:'ENABLE REAL CRYPTO AUTOPILOT',forget:'FORGET'};
 const rhMoney=n=>typeof n==='number'&&Number.isFinite(n)?money(n):'--';
@@ -23,7 +116,7 @@ function rhCapture(){for(const id of RH_FOCUS_IDS){const el=document.getElementB
 function rhTyping(){const ae=document.activeElement;if(ae&&(RH_FOCUS_IDS.includes(ae.id)||RH_SECRET_IDS.includes(ae.id)))return true;return RH_SECRET_IDS.some(id=>{const el=document.getElementById(id);return el&&el.value})}
 async function refreshRobinhood(){
  if(rhRefreshBusy)return;rhRefreshBusy=true;
- try{const r=await fetch('/api/robinhood');if(!r.ok)throw Error('Robinhood status request failed');rhState=await r.json();trackRobinhoodProfitBurst(rhState);if(windowVisible('robinhood')){renderRobinhood();rhLoadChart()}}
+ try{const r=await fetch('/api/robinhood');if(!r.ok)throw Error('Robinhood status request failed');rhState=await r.json();trackRobinhoodProfitBurst(rhState);rhLoadEquities();if(windowVisible('robinhood')){renderRobinhood();rhLoadChart()}}
  catch(e){rhMessage=e.message;if(windowVisible('robinhood'))renderRobinhood()}finally{rhRefreshBusy=false}
 }
 async function rhAction(action,body,label){
@@ -154,16 +247,17 @@ function renderRobinhood(force=false){
  const ev=rhState.evolve||{},evLab=ev.source==='evolution-lab',evReady=!evLab||ev.paperPromotionAllowed===true,evNum=(v,d)=>typeof v==='number'&&Number.isFinite(v)?fmt(v,d):v==='infinity'?'inf':'--';
  const evRow=(label,c)=>{const m=(c&&c.metrics)||{};return `<tr><td>${label}</td><td>${polyEscape(c?c.paramsHash:'--')}</td><td>${evNum(c?c.score:null,3)}</td><td>${polyEscape(String(m.closes??'--'))}</td><td>${rhPct(m.hitRate)}</td><td>${evNum(m.profitFactor,2)}</td><td>${rhMoney(m.pnlUsd)}</td><td>${rhMoney(m.maxDrawdownUsd)}</td><td>${evNum(m.tradesPerDay,2)}</td></tr>`};
  setBody('robinhood',`<div class="mpo-surface-dark rh-v-${rhView}" style="padding:10px">
-<div data-rh-part="head"> <h2>ROBINHOOD <small> / CRYPTO · BITCOIN PRIMARY</small></h2>
- <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><span class="mpo-badge">${r.credentialsReady?'RH KEYS PRESENT':'RH KEYS OPTIONAL FOR PAPER'}</span><span class="mpo-badge">${paperLocked?'PAPER ONLY · LIVE LOCKED':(r.realEnabled?'REAL ENABLED':'REAL DISABLED')}</span><span class="mpo-badge">PAPER FEED · ${polyEscape(r.paperQuoteSource||'CONNECTING')}</span><span class="mpo-badge">${a.enabled?'PAPER AUTOPILOT ON':'PAPER AUTOPILOT OFF'}</span>${r.recoveryRequired?'<span class="mpo-badge">RECOVERY</span>':''}<button id="rhRefresh" ${disabled}>Refresh</button></div>
+<div data-rh-part="head"> <h2>ROBINHOOD <small> / ${RH_VIEW_SUB[rhView]||'CRYPTO · BITCOIN PRIMARY'}</small> <button id="rhRefresh" ${disabled}>Refresh</button></h2>
+ <small id="rhReadiness">${polyEscape(rhReadinessText(rhState))}</small>
+ <div data-rh-part="cryptohead"><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><span class="mpo-badge">${r.credentialsReady?'RH KEYS PRESENT':'RH KEYS OPTIONAL FOR PAPER'}</span><span class="mpo-badge">${paperLocked?'PAPER ONLY · LIVE LOCKED':(r.realEnabled?'REAL ENABLED':'REAL DISABLED')}</span><span class="mpo-badge">PAPER FEED · ${polyEscape(r.paperQuoteSource||'CONNECTING')}</span><span class="mpo-badge">${a.enabled?'PAPER AUTOPILOT ON':'PAPER AUTOPILOT OFF'}</span>${r.recoveryRequired?'<span class="mpo-badge">RECOVERY</span>':''}</div>
  <div class="metric-grid">${metric('Buying power',rhMoney(rhState.account?.buyingPowerUsd))}${metric('Fee tier',rhPct(rhState.account?.feeRatio))}${metric('Paper equity',rhMoney(p.equityUsd))}${metric('Paper P/L',rhMoney(p.stats?.pnlUsd))}${metric('Real open / unverified',(openReal.length)+' / '+(j.stats?.unverified||0))}${metric('Realized today / cap',rhMoney(j.realizedTodayUsd)+' / '+rhMoney(lim.dailyLossCapUsd))}</div>
- <p role="status" id="rhMessage">${polyEscape(rhMessage)}</p>
  ${p.recoveryRequired?`<div class="mpo-error">PAPER RECOVERY REQUIRED: ${polyEscape(p.recoveryError||'Review the book before resetting.')}</div>`:''}
  ${j.recoveryRequired?`<div class="mpo-error">REAL JOURNAL RECOVERY REQUIRED: ${polyEscape(j.recoveryError||'Review data/robinhood-auto-trader.json before any real action.')}</div>`:''}
  ${rhState.lastError?`<div class="mpo-error">${polyEscape(rhState.lastError.stage+': '+rhState.lastError.message)}</div>`:''}
- ${r.paperFallbackReason?`<div class="mpo-empty">Robinhood authenticated quotes unavailable (${polyEscape(r.paperFallbackReason.code||'unknown')}); simulation is using public Coinbase market data until Robinhood credentials work.</div>`:''}${rhViewTabs()}</div>
+ ${r.paperFallbackReason?`<div class="mpo-empty">Robinhood authenticated quotes unavailable (${polyEscape(r.paperFallbackReason.code||'unknown')}); simulation is using public Coinbase market data until Robinhood credentials work.</div>`:''}</div>
+ <p role="status" id="rhMessage">${polyEscape(rhMessage)}</p>${rhViewTabs()}</div>
 <div data-rh-part="live">${rhLiveViz(rhState)}</div>
-<div data-rh-part="connection"> <details><summary>Connection and safety</summary><p>Paper mode can use a public read-only market feed when Robinhood authentication is unavailable. For Robinhood-authenticated quotes later, generate a key pair locally with <code>node -e "import('./src/robinhoodSigner.js').then(m=>console.log(JSON.stringify(m.generateRobinhoodKeyPair(),null,2)))"</code>, paste the public key into the Robinhood portal, then connect the API key and matching private seed below.</p><p>Account: ${polyEscape(rhState.account?.accountNumber||'not authenticated')} | Robinhood API: ${polyEscape(r.authCode||'not checked')} | Paper quote source: ${polyEscape(r.paperQuoteSource||'connecting')} | Public key: ${polyEscape(r.publicKey||'--')}</p><p>Stocks and options are not automated here; Robinhood's Agentic Trading MCP is the only sanctioned route and this app never uses mobile-app impersonation.</p></details></div>
+<div data-rh-part="connection"> <details><summary>Connection and safety</summary><p>Paper mode can use a public read-only market feed when Robinhood authentication is unavailable. For Robinhood-authenticated quotes later, generate a key pair locally with <code>node -e "import('./src/robinhoodSigner.js').then(m=>console.log(JSON.stringify(m.generateRobinhoodKeyPair(),null,2)))"</code>, paste the public key into the Robinhood portal, then connect the API key and matching private seed below.</p><p>Account: ${polyEscape(rhState.account?.accountNumber||'not authenticated')} | Robinhood API: ${polyEscape(r.authCode||'not checked')} | Paper quote source: ${polyEscape(r.paperQuoteSource||'connecting')} | Public key: ${polyEscape(r.publicKey||'--')}</p><p>Stocks and ETFs run only as a paper lane on Alpaca public end-of-day bars (Stocks &amp; ETFs tab). Real stock, ETF or option orders would go only through Robinhood's official Agentic Trading MCP, which is NOT wired in this app, and this app never uses mobile-app impersonation.</p></details></div>
 <div data-rh-part="order"> <fieldset class="mpo-fieldset"><legend>Paper order</legend>
  <label>Pair <input id="rhSymbol" value="${polyEscape(symbol)}" maxlength="14"></label>
  <label>USD <input id="rhUsd" type="number" min="1" max="${lim.maxOrderUsd}" step="1" value="${polyEscape(usd)}"></label>
@@ -183,6 +277,8 @@ function renderRobinhood(force=false){
 <div data-rh-part="charts"> ${rhChartSection(rhState)}</div>
 <div data-rh-part="gauges"> ${rhGaugeSection(rhState)}</div>
 <div data-rh-part="explore"> ${rhExploreSection(rhState)}</div>
+<div data-rh-part="stocks" style="grid-column:1/-1"> ${rhView==='stocks'?rhStocksSection(rhEq):''}</div>
+<div data-rh-part="practice" style="grid-column:1/-1"> ${rhView==='practice'?rhPracticeSection(rhState.practice):''}</div>
 <div data-rh-part="qual"> <fieldset class="mpo-fieldset"><legend>Paper research qualification</legend>
  <b>${q.qualified?'QUALIFIED under params '+polyEscape(p.paramsHash||'--'):'NOT QUALIFIED'}</b><p>${q.closes||0} eligible strategy closes / ${rhState.qualificationThresholds.minCloses} required | Hit rate ${rhPct(q.hitRate)} vs required ${rhPct(q.requiredHitRate)} | PF ${polyEscape(String(q.profitFactor??'--'))} | Net sample P/L ${rhMoney(q.pnlUsd)} | Max drawdown ${rhMoney(q.maxDrawdownUsd)}</p>
  <p>${polyEscape((q.reasons||[]).join('; ')||'Paper evidence only. This does not establish future profitability; live trading remains locked in this build.')}</p>
@@ -236,9 +332,17 @@ function renderRobinhood(force=false){
 <div data-rh-part="reset"><details class="rh-more"><summary>Reset simulated book</summary> <fieldset class="mpo-fieldset"><legend>Reset simulated book</legend><label>Starting USD <input id="rhBank" type="number" min="50" max="100000" value="${polyEscape(rhVal('rhBank',p.startUsd||1000))}"></label><label>Type RESET PAPER <input id="rhResetConfirm" value="${polyEscape(rhVal('rhResetConfirm',''))}" autocomplete="off"></label><button id="rhReset" ${disabled}>Reset paper only</button><p>Clears simulated positions, history and qualification; stops paper autopilot. Real balances and the real journal are untouched.</p></fieldset></details></div>
  </div>`);
  const keep=RH_VIEWS[rhView]||RH_VIEWS.paper;root.querySelectorAll('[data-rh-part]').forEach(n=>{if(!keep.includes(n.dataset.rhPart))n.remove()});
- root.querySelectorAll('[data-rh-view]').forEach(b=>b.onclick=()=>{rhView=b.dataset.rhView;rhSave('mpo-rh-view',rhView);renderRobinhood(true);if(rhView==='charts')rhLoadChart(true)});
+ root.querySelectorAll('[data-rh-view]').forEach(b=>b.onclick=()=>{rhView=b.dataset.rhView;rhSave('mpo-rh-view',rhView);renderRobinhood(true);if(rhView==='charts')rhLoadChart(true);if(rhView==='stocks')rhLoadEquities(true)});
  const el=id=>root.querySelector('#'+id)||{};
- el('rhRefresh').onclick=()=>refreshRobinhood();
+ el('rhRefresh').onclick=()=>{refreshRobinhood();rhLoadEquities(true)};
+ // Practice sandbox: POST /api/robinhood/practice/{config,run,order,close,reset}; all isolated from the strict book.
+ const prPatch=()=>({mode:el('rhPrMode').value,strategyMode:el('rhPrStrategy').value,symbols:el('rhPrSymbols').value,orderUsd:Number(el('rhPrOrderUsd').value),maxOpenPositions:Number(el('rhPrMaxOpen').value),dailyLossCapUsd:Number(el('rhPrLossCap').value)});
+ el('rhPrSave').onclick=()=>rhAction('practice/config',prPatch(),'Practice settings saved.');
+ el('rhPrAuto').onclick=()=>{const on=!rhState.practice?.settings?.autopilot;rhAction('practice/config',{...prPatch(),autopilot:on},on?'Practice autopilot on (sandbox only).':'Practice autopilot off.')};
+ el('rhPrRun').onclick=()=>rhAction('practice/run',{},'Practice cycle ran.');
+ el('rhPrBuy').onclick=()=>rhAction('practice/order',{symbol:el('rhPrSymbol').value},'Practice buy filled in the sandbox.');
+ root.querySelectorAll('[data-rh-pr-close]').forEach(b=>b.onclick=()=>rhAction('practice/close',{id:b.dataset.rhPrClose},'Practice position closed.'));
+ el('rhPrReset').onclick=()=>{const confirmation=rhPrompt('RESET PRACTICE','Reset the practice sandbox? Its positions and history are cleared and its autopilot stops. The strict book is untouched.');if(confirmation===null)return;if(confirmation==='RESET PRACTICE')rhAction('practice/reset',{budgetUsd:Number(el('rhPrBudget').value)},'Practice sandbox reset.');else{rhMessage='Type RESET PRACTICE to confirm.';renderRobinhood(true)}};
  root.querySelectorAll('[data-rh-chart-symbol]').forEach(b=>b.onclick=()=>{rhChart.symbol=b.dataset.rhChartSymbol;rhChart.data=null;rhSaveChart();rhLoadChart(true);renderRobinhood(true)});
  root.querySelectorAll('[data-rh-chart-range]').forEach(b=>b.onclick=()=>{rhChart.range=b.dataset.rhChartRange;rhSaveChart();rhLoadChart(true);renderRobinhood(true)});
  el('rhBuy').onclick=()=>rhAction('paper-order',{symbol:el('rhSymbol').value,usd:Number(el('rhUsd').value)});
