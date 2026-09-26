@@ -611,6 +611,10 @@ export async function runRobinhoodPaperOnce(){if(tickBusy||paperBusy)return {ran
 export function startRobinhoodLoops(){if(timer)return timer;const setting=process.env.ROBINHOOD_AUTOSTART??'true'; /* §23: no longer falls back to POLYMARKET_AUTOSTART */if(String(setting).toLowerCase()==='false')return null;timer=setInterval(()=>{tick().catch(()=>{})},TICK_MS);timer.unref?.();if(collectAlways()&&String(process.env.ROBINHOOD_WARM_START??'true').toLowerCase()!=='false')warmStartRobinhood().then(()=>tick()).catch(()=>{});return timer}
 export function stopRobinhoodLoops(){if(timer)clearInterval(timer);timer=null;if(paperDirty){try{J.savePaper(paper(),{force:true});paperDirty=false}catch(e){note('paper-save',e)}}T.flushTape({force:true,now:now()})}
 // ------------------------------------------------------------------ evolution (§22, paper-only)
+const LAB_RH_STATUS_FILE=path.join(DATA_DIR,'lab-link','modules','robinhood.json');
+const LAB_RH_CHAMPION_FILE=path.join(DATA_DIR,'lab-link','robinhood-champion.json');
+function readLabRobinhoodStatus(){try{const v=JSON.parse(fs.readFileSync(LAB_RH_STATUS_FILE,'utf8'));return v?.module==='robinhood'?v:null}catch{return null}}
+function readLabRobinhoodChampion(){try{const v=JSON.parse(fs.readFileSync(LAB_RH_CHAMPION_FILE,'utf8'));return v?.schema==='mpo.lab-module-champion.v1'&&v?.module==='robinhood'?v:null}catch{return null}}
 const num=v=>{const n=Number(v);return Number.isFinite(n)?n:0};
 function evolveSymbols(p=paper()){return primaryFirst([...new Set([robinhoodPrimary().symbol,...robinhoodSymbols(),...p.autopilot.symbols])])}
 function compactCandidate(c){return c?{params:c.params,paramsHash:c.paramsHash,score:Math.round(num(c.score)*1000)/1000,metrics:c.metrics,bySymbol:Object.fromEntries(Object.entries(c.bySymbol||{}).map(([s,r])=>[s,{score:Math.round(num(r.score)*1000)/1000,notes:r.notes,test:r.test,train:r.train}])),at:c.at,generation:c.generation}:null}
@@ -620,6 +624,8 @@ function evolveDue(){
  const l=E.loadEvolveLedger();return now()-l.lastRunAt>=cfg.intervalMin*60000;
 }
 export function robinhoodEvolveView(p=paper()){
+ const lab=readLabRobinhoodStatus(),labDoc=readLabRobinhoodChampion();
+ if(lab||labDoc){const c=labDoc?.candidate||null,champion=c?compactCandidate({params:c.params,paramsHash:c.paramsHash,score:c.score,metrics:c.metrics,bySymbol:c.bySymbol,at:labDoc.publishedAt,generation:lab?.generation||0}):null,proposed=champion&&champion.paramsHash!==p.paramsHash?champion:null;return {source:'evolution-lab',enabled:true,running:lab?.status==='RUNNING',phase:lab?.phase||lab?.status||'STARTING',generation:lab?.generation||0,champion,proposed,incumbent:lab?.incumbent||null,applied:null,currentParamsHash:p.paramsHash,tapeDays:lab?.tapeDays||{},tapeSources:lab?.tapeSources||{},minTapeDays:lab?.minTapeDays||7,lastRunAt:lab?.lastRunAt||null,nextRunAt:null,intervalMin:5,candidates:null,minGainPct:lab?.gainPct??null,autopromote:false,history:[],events:[],lastError:lab?.lastError?{stage:'lab',message:String(lab.lastError)}:null,tape:T.tapeStatus(),paperPromotionAllowed:labDoc?.paperPromotionAllowed===true,note:lab?.note||null};}
  const cfg=E.evolveConfig(),l=E.loadEvolveLedger(),tapeDays={},tapeSources={};
  for(const s of evolveSymbols(p)){try{const c=T.tapeCoverage(s,now());tapeDays[s]=Math.round(c.days*100)/100;tapeSources[s]=c.sources}catch{tapeDays[s]=0;tapeSources[s]={}}}
  const champion=compactCandidate(l.champion),proposed=champion&&champion.paramsHash!==p.paramsHash?champion:null;
@@ -663,7 +669,9 @@ export async function runRobinhoodEvolveOnce({manual=false}={}){
 // Apply the ledger champion to the PAPER params only. Real autopilot is never touched here except through the
 // paramsChanged disable inside setRobinhoodPaperAutopilot. Qualification resets because the paramsHash changes.
 export function applyRobinhoodEvolution({paramsHash,by='operator'}={}){
- const l=E.loadEvolveLedger(),hash=String(paramsHash||'').trim();
+ const hash=String(paramsHash||'').trim(),labDoc=readLabRobinhoodChampion(),labCandidate=labDoc?.candidate;
+ if(labCandidate&&labCandidate.paramsHash===hash){if(labDoc.paperPromotionAllowed!==true)fail('notQualified','Evolution Lab candidate has not cleared the paper-review gates');if(!E.withinEvolveBounds(labCandidate.params))fail('validation','Lab candidate parameters fall outside the evolution bounds');const p=paper();if(hash===p.paramsHash)return {ok:true,applied:false,paramsHash:p.paramsHash,autopilot:clone(p.autopilot),realAutopilot:robinhoodAutopilot()};const autopilot=setRobinhoodPaperAutopilot({params:labCandidate.params});if(autopilot.paramsHash!==hash)fail('validation',`Applied params hash ${autopilot.paramsHash} does not match Lab candidate ${hash}`);return {ok:true,applied:true,paramsHash:hash,autopilot,realAutopilot:robinhoodAutopilot(),source:'evolution-lab'};}
+ const l=E.loadEvolveLedger();
  if(!l.champion)fail('notFound','No evolution champion has been proposed yet');
  if(!hash||l.champion.paramsHash!==hash)fail('validation',`paramsHash must match the proposed champion ${l.champion.paramsHash}`);
  if(!E.withinEvolveBounds(l.champion.params))fail('validation','Champion parameters fall outside the evolution bounds');

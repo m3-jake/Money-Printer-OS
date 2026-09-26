@@ -188,6 +188,8 @@ test('integrated FX is profit-only money rain/pile with no fire', () => {
   assert.doesNotMatch(css, /\.fire-sprite|\.horizon-fire|\.bottom-fire/);
   assert.match(css, /url\('\/assets\/money-bill\.webp'\)/);
   assert.match(css, /\.money-pile/);
+  assert.match(css, /\.money-event-feed\s*\{[\s\S]*?right:\s*18px/);
+  assert.match(html, /id="moneyEventFeed"/);
   assert.match(css, /prefers-reduced-motion/);
 });
 

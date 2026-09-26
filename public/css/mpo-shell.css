@@ -249,7 +249,7 @@ button, input, select, textarea { font: inherit; }
 
 .money-event-feed {
   position: absolute;
-  left: 104px;
+  right: 18px;
   bottom: calc(var(--task) + 10px);
   z-index: 7;
   width: min(520px, calc(100vw - 128px));
