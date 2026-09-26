@@ -76,3 +76,68 @@ export function comboCapacity(paper={}) {
  return {comboLimit:tier,openCombos:(paper.positions||[]).filter(p=>p.kind!=='single').length,
   settledProfitUsd:Math.round(profit*100)/100,settledWins:wins,nextComboEquityUsd:tier===1?start+1:tier===2?start+5:null};
 }
+
+// ------------------------------------------------------ strategy windows
+// NEAR_END: lateGameEstimate (final ~15 min). LATE: the last phase of the game
+// (second half, 7th inning+, 3rd quarter+, 3rd period, a potential closing set).
+// ANY_LIVE: any live game. ETAs are rough playing-time estimates, not promises.
+export const STRATEGY_WINDOWS=['NEAR_END','LATE','ANY_LIVE'];
+export const WINDOW_RULES={
+ NEAR_END:'final ~15 minutes (per-sport rules in lateGameEstimate)',
+ LATE:'soccer 2H · baseball 7th inning+ · basketball/football Q3+ or 2H · hockey P3/OT · tennis a potential closing set',
+ ANY_LIVE:'any live game; no timing requirement',
+};
+const TIMED=new Set(['soccer','baseball','tennis','table-tennis','football','basketball','hockey']);
+function lateWindow(sport,live){
+ const period=String(live.period||'').trim().toUpperCase();
+ const elapsed=clockMinutes(live.elapsed);
+ const pass=(eta,reason)=>({ok:true,etaMinutes:eta,reason});
+ const no=reason=>({ok:false,etaMinutes:null,reason});
+ if(live.ended||/^(FT|END\b(?!\s+\d)|SUS)/.test(period))return no('not actively playing');
+ const n=Number(period.match(/\d+/)?.[0]);
+ switch(sport){
+  case 'soccer':
+   if(/^(2H|H2|SECOND HALF|2ND HALF)$/.test(period)||(elapsed!=null&&elapsed>45))return pass(clamp(95-(elapsed??60),3,50),'second half');
+   return no('soccer before the second half');
+  case 'baseball':
+   if(n>=7)return pass(Math.max(10,(10-n)*20),`inning ${n}`);
+   return no('baseball before the 7th inning');
+  case 'basketball':
+   if(/^(Q4|4Q|OT|2H|H2)/.test(period)||/OVERTIME/.test(period))return pass(elapsed!=null?Math.max(5,elapsed*3+3):25,'final quarter/half');
+   if(/^(Q3|3Q)/.test(period))return pass(45,'third quarter');
+   return no('basketball before the third quarter');
+  case 'football':
+   if(/^(Q4|4Q|OT)/.test(period))return pass(elapsed!=null?Math.max(5,elapsed*3+3):35,'fourth quarter');
+   if(/^(Q3|3Q)/.test(period))return pass(70,'third quarter');
+   return no('football before the third quarter');
+  case 'hockey':
+   if(/^(P3|3P|OT|SO)/.test(period)||/3RD PERIOD|PERIOD 3|OVERTIME/.test(period))return pass(elapsed!=null?Math.max(3,elapsed*2+3):30,'third period or overtime');
+   return no('hockey before the third period');
+  default:return no('late rule not defined');
+ }
+}
+export function windowEstimate(window='NEAR_END',m={},live={},{maxMinutesLeft=TURNOVER_TARGET_MINUTES,nearEndMin=65,sport=live.sport}={}){
+ const near=lateGameEstimate(m,live);
+ const nearOk=near.nearEndScore>=nearEndMin&&near.etaMinutes!=null;
+ const base={nearEndScore:near.nearEndScore,priorityBonus:near.priorityBonus||0};
+ if(window==='ANY_LIVE'){
+  if(live.ended)return {...base,ok:false,etaMinutes:null,reason:'not live'};
+  const late=TIMED.has(sport)&&sport!=='tennis'&&sport!=='table-tennis'?lateWindow(sport,live):{ok:false};
+  return {...base,ok:true,etaMinutes:nearOk?near.etaMinutes:late.ok?late.etaMinutes:null,reason:'any live'};
+ }
+ if(!TIMED.has(sport))return {...base,ok:false,etaMinutes:null,reason:`manual only: no timing rule for ${sport||'other'}`};
+ if(window==='LATE'){
+  if(nearOk)return {...base,ok:true,etaMinutes:near.etaMinutes,reason:near.reason};
+  if(sport==='tennis'||sport==='table-tennis'){
+   // lateGameEstimate only says "closing set still too early" once a closing set is confirmed.
+   if(/closing set still too early|closing-set score unavailable/.test(near.reason||''))return {...base,ok:true,etaMinutes:sport==='table-tennis'?10:35,reason:'potential closing set'};
+   return {...base,ok:false,etaMinutes:null,reason:near.reason||'tennis before a potential closing set'};
+  }
+  const l=lateWindow(sport,live);
+  return {...base,ok:l.ok,etaMinutes:l.etaMinutes,reason:l.reason};
+ }
+ // NEAR_END (default)
+ if(!nearOk)return {...base,ok:false,etaMinutes:null,reason:near.reason||'not-near-settlement'};
+ if(near.etaMinutes>maxMinutesLeft)return {...base,ok:false,etaMinutes:near.etaMinutes,reason:'turnover-window'};
+ return {...base,ok:true,etaMinutes:near.etaMinutes,reason:near.reason};
+}

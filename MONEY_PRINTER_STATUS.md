@@ -4,7 +4,7 @@
 (`CURRENT_TASKS.md`, `KNOWN_BUGS.md`, `PROJECT_STATE.md`, `RELEASE_STATUS.md`) and in `reports/NEXT-STEPS-2026-09-25.md`.
 Don't re-inventory the repo. Update this file at the end of every batch.
 
-Last updated: 2026-09-26, batch 21 (Polymarket combo plan, batch 2 of 6: every live game). Branch `feature/polymarket-combo-only`, version `0.5.0-alpha.57`.
+Last updated: 2026-09-26, batch 22 (Polymarket combo plan, batch 3 of 6: strategy windows as settings). Branch `feature/polymarket-combo-only`, version `0.5.0-alpha.57`.
 
 ## Architecture (inventoried once)
 
@@ -426,3 +426,14 @@ Plan (from bing): 1 connection truth, 2 page every live game, 3 strategy windows
 - Panel: board grouped by sport (live/eligible counts per sport) with clock/score, side price, spread, left, and status (eligible, or "outside strategy window · reason", or the reason). Feed totals line, a `suggested` combo with "Use these legs", an OUTSIDE STRATEGY WINDOW flag on the build line. The key box is now also shown (collapsed) while the key is unverified (the old build hid it).
 - Tests: polymarket-us-combos 46/0 (+5: paging, cap, board reasons, manual add, labels), visual-contract 19/0 (+1), safety 5/0, sports-turnover 5/0.
 - Queued (bing, mid-batch): richer animated visuals for Polymarket, Robinhood and pump.fun panels.
+
+## Batch 22 (2026-09-26): Polymarket combo plan, batch 3 of 6 (strategy windows as settings)
+
+- `src/sportsTiming.js`: `windowEstimate(window, market, live, {maxMinutesLeft, nearEndMin})` plus `STRATEGY_WINDOWS` / `WINDOW_RULES`. **NEAR_END** is today's rules (default). **LATE** is soccer 2H, baseball 7th inning+, basketball Q3+/2H/OT, football Q3+, hockey P3/OT, or tennis/table tennis in a potential closing set, plus anything NEAR_END admits. **ANY_LIVE** is any live game, including esports. Esports/other are "manual only" in NEAR_END and LATE. ETAs are rough estimates.
+- Settings now carry `window` and `rankWeights`, and `maxLegs` is 2-4 (the price band is unchanged). Invalid window/weights are refused, and garbage stored values fall back to defaults.
+- Rank is `rankBreakdown()`: the sum of weight × named components (`RANK_COMPONENTS`: nearEnd, priceFit, liquidity, eta, priority, spread; weights 0-3, default 1 reproduces the old formula exactly, as tested). Candidates carry `rankParts` and `window`.
+- Journal entries record `window` and `outsideWindow`. `stats.byWindow` holds open/won/lost/pnl/staked/hit rate/ROI per window, and hand-built outside-window combos count as MANUAL.
+- Panel: Window selector (with a rule tooltip), legs 2/3/4, the window rule line and "Record by window".
+- Live 2026-09-26: 54 combo-enabled live games. Eligible: NEAR_END 0, LATE 6, ANY_LIVE 19 (the rest fail price band/spread).
+- Tests: polymarket-us-combos 50/0 (+4; 3 settings asserts updated for the new window/weights/4-leg contract), visual-contract 20/0 (+1), safety 5/0, sports-turnover 5/0.
+- Next per plan: batch 4 (evidence capture, shadow auto, Lab module). Queued: visuals batch (Polymarket, Robinhood, pump.fun).

@@ -750,10 +750,10 @@ function pricedGame(slug,ask){
 
 test('settings default to floor 0.80, 15 minutes, 3 legs and persist in journal.settings',async()=>{
  reset();
- assert.deepEqual(combos.usComboSettings(),{priceMin:0.8,maxMinutesLeft:15,maxLegs:3});
- assert.deepEqual(combos.setUSComboSettings({priceMin:0.6}),{priceMin:0.6,maxMinutesLeft:15,maxLegs:3});
+ assert.deepEqual(combos.usComboSettings(),{priceMin:0.8,maxMinutesLeft:15,maxLegs:3,window:'NEAR_END',rankWeights:combos.DEFAULT_RANK_WEIGHTS});
+ assert.deepEqual(combos.setUSComboSettings({priceMin:0.6}),{priceMin:0.6,maxMinutesLeft:15,maxLegs:3,window:'NEAR_END',rankWeights:combos.DEFAULT_RANK_WEIGHTS});
  const saved=JSON.parse(fs.readFileSync(combos.__testing.stateFile,'utf8'));
- assert.deepEqual(saved.settings,{priceMin:0.6,maxMinutesLeft:15,maxLegs:3});
+ assert.deepEqual(saved.settings,{priceMin:0.6,maxMinutesLeft:15,maxLegs:3,window:'NEAR_END',rankWeights:combos.DEFAULT_RANK_WEIGHTS});
  installFetch(u=>u.pathname==='/v1/events'?jsonRes(eventsResponse([])):null);
  const snap=await combos.usComboSnapshot({force:true});
  assert.equal(snap.settings.priceMin,0.6);assert.equal(snap.settingsBounds.priceMin.min,0.6);
@@ -762,14 +762,14 @@ test('settings default to floor 0.80, 15 minutes, 3 legs and persist in journal.
 
 test('settings reject anything outside the fixed bounds and never widen them',()=>{
  reset();
- for(const bad of [{priceMin:0.59},{priceMin:0.99},{priceMin:'x'},{maxLegs:4},{maxLegs:1},{maxMinutesLeft:0},{maxMinutesLeft:31}]){
+ for(const bad of [{priceMin:0.59},{priceMin:0.99},{priceMin:'x'},{maxLegs:5},{maxLegs:1},{window:'SOON'},{rankWeights:{nearEnd:4}},{rankWeights:{bogus:1}},{maxMinutesLeft:0},{maxMinutesLeft:31}]){
   assert.throws(()=>combos.setUSComboSettings(bad),e=>e.code==='settingsInvalid',JSON.stringify(bad));
  }
- assert.deepEqual(combos.usComboSettings(),{priceMin:0.8,maxMinutesLeft:15,maxLegs:3});
+ assert.deepEqual(combos.usComboSettings(),{priceMin:0.8,maxMinutesLeft:15,maxLegs:3,window:'NEAR_END',rankWeights:combos.DEFAULT_RANK_WEIGHTS});
  // A hand-edited journal with out-of-range values falls back to the defaults, not the stored value.
  fs.writeFileSync(combos.__testing.stateFile,JSON.stringify({open:[],history:[],settings:{priceMin:0.1,maxLegs:9,maxMinutesLeft:15}}));
  combos.__testing.resetJournal();
- assert.deepEqual(combos.usComboSettings(),{priceMin:0.8,maxMinutesLeft:15,maxLegs:3});
+ assert.deepEqual(combos.usComboSettings(),{priceMin:0.8,maxMinutesLeft:15,maxLegs:3,window:'NEAR_END',rankWeights:combos.DEFAULT_RANK_WEIGHTS});
 });
 
 test('a 0.65 leg passes at floor 0.60 and fails at 0.80, in the feed filter and in build',()=>{
@@ -947,4 +947,61 @@ test('sport labels: league comes from tags, not a blanket MLB/NBA/NHL',()=>{
  assert.equal(combos.normalizeUSLiveState({period:'Q2',tags:[{slug:'basketball'}]}).leagueAbbreviation,'basketball');
  assert.equal(combos.normalizeUSLiveState({tags:[{slug:'valorant'}]}).sport,'esports');
  assert.equal(combos.normalizeUSLiveState({tags:[{slug:'darts'}]}).sport,'other');
+});
+
+// ------------------------------------------------------- batch 3: windows + rank
+test('strategy windows: per-sport rules for NEAR_END, LATE and ANY_LIVE',async()=>{
+ const {windowEstimate}=await import('../src/sportsTiming.js');
+ const soc=(min)=>({period:min>45?'2H':'1H',elapsed:String(min),leagueAbbreviation:'soccer',sport:'soccer'});
+ assert.equal(windowEstimate('NEAR_END',{},soc(60)).ok,false);
+ assert.equal(windowEstimate('LATE',{},soc(60)).ok,true);
+ assert.equal(windowEstimate('LATE',{},soc(30)).ok,false);
+ assert.equal(windowEstimate('NEAR_END',{},soc(88)).ok,true);
+ const bb=inn=>({period:`Top ${inn}`,leagueAbbreviation:'kbo baseball',sport:'baseball'});
+ assert.equal(windowEstimate('LATE',{},bb(7)).ok,true);
+ assert.equal(windowEstimate('LATE',{},bb(6)).ok,false);
+ assert.equal(windowEstimate('NEAR_END',{},bb(7)).ok,false);
+ assert.equal(windowEstimate('LATE',{},{period:'Q3',elapsed:'8:00',leagueAbbreviation:'basketball',sport:'basketball'}).ok,true);
+ assert.equal(windowEstimate('LATE',{},{period:'P2',leagueAbbreviation:'khl hockey',sport:'hockey'}).ok,false);
+ assert.equal(windowEstimate('LATE',{},{period:'P3',elapsed:'12:00',leagueAbbreviation:'khl hockey',sport:'hockey'}).ok,true);
+ // tennis BO3, one set each, third set just started: a potential closing set
+ const ten={period:'SET 3',score:'6-4, 3-6, 1-0',leagueAbbreviation:'tennis atp BO3',sport:'tennis'};
+ assert.equal(windowEstimate('LATE',{},ten).ok,true);
+ assert.equal(windowEstimate('NEAR_END',{},ten).ok,false);
+ assert.equal(windowEstimate('LATE',{},{period:'SET 1',score:'2-1',leagueAbbreviation:'tennis atp BO3',sport:'tennis'}).ok,false);
+ const es={period:'Map 1',sport:'esports'};
+ assert.match(windowEstimate('LATE',{},es).reason,/manual only/);
+ assert.equal(windowEstimate('ANY_LIVE',{},es).ok,true);
+ assert.equal(windowEstimate('ANY_LIVE',{},soc(5)).ok,true);
+});
+
+test('window setting changes which games qualify and is stored with each entry',()=>{
+ const now=Date.now();
+ const ev=[soccerEvent('near-2026',88),soccerEvent('mid-2026',60),soccerEvent('early-2026',7)];
+ const base={priceMin:0.8,maxMinutesLeft:15,maxLegs:3};
+ const n=w=>combos.usCandidatesFromEvents(ev,now,{...base,window:w}).candidates.map(c=>c.eventSlug).sort();
+ assert.deepEqual(n('NEAR_END'),['near-2026']);
+ assert.deepEqual(n('LATE'),['mid-2026','near-2026']);
+ assert.deepEqual(n('ANY_LIVE'),['early-2026','mid-2026','near-2026']);
+ const {candidates}=combos.usCandidatesFromEvents(ev,now,{...base,window:'LATE'});
+ const c=combos.buildUSCombo({legKeys:candidates.map(x=>x.key),stakeUsd:5,candidates,at:now,settings:{...base,window:'LATE'}});
+ assert.equal(c.window,'LATE');
+});
+
+test('rank: default weights reproduce the original formula; weights are tunable and bounded',()=>{
+ const row={nearEndScore:94,price:.92,liquidity:5000,liquidityKnown:true,etaMinutes:6,priorityBonus:35,spread:.01};
+ const old=Math.round(94*4+(100-Math.abs(.92-.90)*260)+Math.min(35,Math.log10(5000)*8)-6*8+35-.01*500);
+ assert.equal(combos.rankBreakdown(row).rank,old);
+ assert.deepEqual(Object.keys(combos.rankBreakdown(row).parts),['nearEnd','priceFit','liquidity','eta','priority','spread']);
+ const noEta=combos.rankBreakdown(row,{...combos.DEFAULT_RANK_WEIGHTS,eta:0}).rank;
+ assert.equal(noEta,old+48);
+ const s=combos.setUSComboSettings({rankWeights:{eta:0.5},window:'LATE'});
+ assert.equal(s.rankWeights.eta,0.5);assert.equal(s.rankWeights.nearEnd,1);assert.equal(s.window,'LATE');
+ combos.setUSComboSettings({rankWeights:combos.DEFAULT_RANK_WEIGHTS,window:'NEAR_END'});
+});
+
+test('stats are recorded per window; outside-window manual combos count as MANUAL',()=>{
+ assert.equal(combos.entryWindow({}),'NEAR_END');
+ assert.equal(combos.entryWindow({window:'LATE'}),'LATE');
+ assert.equal(combos.entryWindow({window:'LATE',outsideWindow:true}),'MANUAL');
 });

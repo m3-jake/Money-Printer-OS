@@ -290,3 +290,9 @@ test('Polymarket panel lists the whole live board grouped by sport, renders the 
   assert.match(html, /Replace key \(not verified yet\)/);
   assert.match(html, /combo-enabled live/);
 });
+
+test('Polymarket panel exposes the strategy window, 2-4 legs, and per-window record', () => {
+  assert.match(html, /id="usSetWindow"/);
+  assert.match(html, /\[2,3,4\]\.map\(/);
+  assert.match(html, /Record by window/);
+});

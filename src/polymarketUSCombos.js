@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as ed25519 from '@noble/ed25519';
-import { lateGameEstimate, TURNOVER_TARGET_MINUTES } from './sportsTiming.js';
+import { lateGameEstimate, windowEstimate, STRATEGY_WINDOWS, WINDOW_RULES, TURNOVER_TARGET_MINUTES } from './sportsTiming.js';
 import { usReadiness, noteUSAuthResult } from './polymarketUS.js';
 import { mapLimit } from './utils.js';
 import { renameSyncWithRetry } from './atomicRename.js';
@@ -34,7 +34,30 @@ const TICK=0.001;                // combo tick size
 const MIN_QTY=0.01;
 const PRICE_MAX=0.985,NEAR_END_MIN=65;
 // Owner-adjustable, stored in journal.settings. The bounds are fixed; nothing here can widen them.
-export const SETTINGS_BOUNDS={priceMin:{min:0.60,max:PRICE_MAX,default:0.80},maxMinutesLeft:{min:1,max:30,default:TURNOVER_TARGET_MINUTES},maxLegs:{min:2,max:3,default:3}};
+export const SETTINGS_BOUNDS={priceMin:{min:0.60,max:PRICE_MAX,default:0.80},maxMinutesLeft:{min:1,max:30,default:TURNOVER_TARGET_MINUTES},maxLegs:{min:2,max:4,default:3}};
+export {STRATEGY_WINDOWS,WINDOW_RULES};
+// Rank = sum(weight * component). Components are named so the Lab can tune weights;
+// default weights of 1 reproduce the original hand formula exactly.
+export const RANK_COMPONENTS={
+ nearEnd:c=>c.nearEndScore*4,
+ priceFit:c=>100-Math.abs(c.price-.90)*260,
+ liquidity:c=>c.liquidityKnown?Math.min(35,Math.log10(Math.max(1,c.liquidity))*8):20,
+ eta:c=>-(c.etaMinutes??60)*8,
+ priority:c=>c.priorityBonus||0,
+ spread:c=>-(c.spread??.02)*500,
+};
+export const RANK_WEIGHT_BOUNDS={min:0,max:3};
+export const DEFAULT_RANK_WEIGHTS=Object.fromEntries(Object.keys(RANK_COMPONENTS).map(k=>[k,1]));
+export function rankBreakdown(c,weights=DEFAULT_RANK_WEIGHTS){
+ const parts={};let total=0;
+ for(const [k,f] of Object.entries(RANK_COMPONENTS)){const w=Number(weights?.[k]??1);const v=f(c);parts[k]=Math.round(v*100)/100;total+=w*v}
+ return {rank:Math.round(total),parts};
+}
+function normalizeWeights(w={}){
+ const out={...DEFAULT_RANK_WEIGHTS};
+ for(const k of Object.keys(out)){const v=Number(w?.[k]);if(Number.isFinite(v)&&v>=RANK_WEIGHT_BOUNDS.min&&v<=RANK_WEIGHT_BOUNDS.max)out[k]=Math.round(v*1000)/1000}
+ return out;
+}
 // 11:59 PM ET Wed Sep 16 2026 == 03:59 UTC Thu Sep 17 2026 (EDT, UTC-4).
 const COMBO_CURVE_FROM=Date.parse('2026-09-17T03:59:00Z');
 const CONFIRM_PLACE='PLACE REAL COMBO';
@@ -298,11 +321,9 @@ export function usCandidatesFromEvents(events=[],now=Date.now(),settings=usCombo
    const type=String(market.sportsMarketType||'').toLowerCase();
    // Window rejections keep the row on the board (manual add allowed, tagged
    // "outside strategy window"); price and spread rejections are not addable.
-   const timed=TIMED_SPORTS.has(live.sport);
-   const late=timed?lateGameEstimate({event:title,slug:String(market.slug||''),type},live):{nearEndScore:0,etaMinutes:null,reason:`manual only: no timing rule for ${live.sport}`,priorityBonus:0};
-   let reason=null,addable=true;
-   if(late.nearEndScore<NEAR_END_MIN)reason=late.reason||'not-near-settlement';
-   else if(late.etaMinutes==null||late.etaMinutes>settings.maxMinutesLeft)reason='turnover-window';
+   const win=settings.window||'NEAR_END';
+   const late=windowEstimate(win,{event:title,slug:String(market.slug||''),type},live,{maxMinutesLeft:settings.maxMinutesLeft,nearEndMin:NEAR_END_MIN});
+   let reason=late.ok?null:(late.reason||'outside-window'),addable=true;
    const spread=bid>0?Math.max(0,r4(ask-bid)):null;
    const liquidity=num(market.__openInterest??market.openInterest);
    const liquidityKnown=liquidity>0;
@@ -312,16 +333,14 @@ export function usCandidatesFromEvents(events=[],now=Date.now(),settings=usCombo
    const feeCoefficient=num(market.feeCoefficient)||0.06;
    const feePerContract=r4(standardFeePerContract(price,feeCoefficient));
    const eta=late.etaMinutes;
-   const etaForRank=eta??60;
-   const liqScore=liquidityKnown?Math.min(35,Math.log10(Math.max(1,liquidity))*8):20; // neutral until BBO supplies open interest
-   const rank=Math.round(late.nearEndScore*4+(100-Math.abs(price-.90)*260)+liqScore-etaForRank*8+(late.priorityBonus||0)-(spread??.02)*500);
+   const {rank,parts:rankParts}=rankBreakdown({nearEndScore:late.nearEndScore,price,liquidity,liquidityKnown,etaMinutes:eta,priorityBonus:late.priorityBonus,spread},settings.rankWeights);
    const row={key:`${market.slug}|${side}`,symbol:String(market.slug||''),side,
     eventSlug,event:title,league:lg,sport:live.sport,marketType:type,
     question:String(market.question||''),outcome:outcomeLabel(market,side==='SIDE_BUY'),
     price:r4(price),bid:r4(bid),ask:r4(ask),spread,spreadLimit,liquidity,liquidityKnown,
     liveState:{period:live.rawPeriod,elapsed:live.rawElapsed,score:live.rawScore},
     normalized:{period:live.period,elapsed:live.elapsed,score:live.score},
-    etaMinutes:eta,nearEndScore:late.nearEndScore,lateReason:late.reason,
+    etaMinutes:eta,nearEndScore:late.nearEndScore,lateReason:late.reason,window:win,rankParts,
     feeCoefficient,feePerContract,netPrice:r4(clamp(price+feePerContract,0,1)),rank,
     comboEnabled:true,minimumTradeQty:num(market.minimumTradeQty)||MIN_QTY,tickSize:num(market.orderPriceMinTickSize)||0.01,
     freshnessSec:Math.round(freshnessSec),at:now,
@@ -414,17 +433,19 @@ export function buildUSCombo({legKeys,stakeUsd,candidates=null,at=Date.now(),set
  const payoutUsd=r2(quantity);
  return {legs:legs.map(l=>({symbol:l.symbol,side:l.side,event:l.event,eventSlug:l.eventSlug,outcome:l.outcome,price:l.price,
    period:l.liveState.period,score:l.liveState.score,etaMinutes:l.etaMinutes,nearEndScore:l.nearEndScore,freshnessSec:l.freshnessSec,outsideWindow:!!l.outsideWindow,reason:l.reason??null})),
-  outsideWindow:legs.some(l=>l.outsideWindow),
+  outsideWindow:legs.some(l=>l.outsideWindow),window:settings.window||'NEAR_END',
   price,rawPrice:r4(rawPrice),decimalOdds:r3(1/price),quantity,feePerContract:r4(feePerContract),feeUsd,payoutUsd,costUsd,
   profitUsd:r2(payoutUsd-costUsd),stakeUsd:r2(stake),notionalUsd};
 }
 
 // ---------------------------------------------------------------- journal
-function defaultSettings(){return Object.fromEntries(Object.entries(SETTINGS_BOUNDS).map(([k,b])=>[k,b.default]))}
+function defaultSettings(){return {...Object.fromEntries(Object.entries(SETTINGS_BOUNDS).map(([k,b])=>[k,b.default])),window:'NEAR_END',rankWeights:{...DEFAULT_RANK_WEIGHTS}}}
 // Out-of-range or garbage stored values fall back to the default, never to a wider band.
 function normalizeSettings(s={}){
  const out=defaultSettings();
  for(const [k,b] of Object.entries(SETTINGS_BOUNDS)){const v=Number(s?.[k]);if(Number.isFinite(v)&&v>=b.min-1e-9&&v<=b.max+1e-9)out[k]=k==='priceMin'?r3(v):Math.round(v)}
+ out.window=STRATEGY_WINDOWS.includes(s?.window)?s.window:'NEAR_END';
+ out.rankWeights=normalizeWeights(s?.rankWeights);
  return out;
 }
 function defaultJournal(){return {version:1,combos:{},open:[],history:[],
@@ -462,8 +483,25 @@ function recomputeStats(j){
  const decided=j.history.filter(x=>x.status==='WON'||x.status==='LOST');
  const won=decided.filter(x=>x.status==='WON').length;
  j.stats={placed:num(j.stats?.placed),won,lost:decided.length-won,
-  pnlUsd:r2(j.history.reduce((a,x)=>a+num(x.pnlUsd),0)),hitRate:decided.length?won/decided.length:null};
+  pnlUsd:r2(j.history.reduce((a,x)=>a+num(x.pnlUsd),0)),hitRate:decided.length?won/decided.length:null,
+  byWindow:statsByWindow(j)};
  return j;
+}
+// Each strategy window keeps its own record. Legacy entries predate windows and ran NEAR_END rules;
+// hand-built combos with an outside-window leg count under MANUAL.
+export function entryWindow(x){return x?.outsideWindow?'MANUAL':(x?.window||'NEAR_END')}
+function statsByWindow(j){
+ const out={};
+ const row=w=>out[w]||(out[w]={open:0,won:0,lost:0,pnlUsd:0,stakedUsd:0,hitRate:null,roi:null});
+ for(const x of j.open)row(entryWindow(x)).open++;
+ for(const x of j.history){
+  if(x.status!=='WON'&&x.status!=='LOST')continue;
+  const r=row(entryWindow(x));
+  if(x.status==='WON')r.won++;else r.lost++;
+  r.pnlUsd=r2(r.pnlUsd+num(x.pnlUsd));r.stakedUsd=r2(r.stakedUsd+num(x.stakeUsd));
+ }
+ for(const r of Object.values(out)){const n=r.won+r.lost;r.hitRate=n?r.won/n:null;r.roi=r.stakedUsd>0?r2(r.pnlUsd/r.stakedUsd):null}
+ return out;
 }
 function startOfDay(now=Date.now()){const d=new Date(now);d.setHours(0,0,0,0);return d.getTime()}
 function realizedTodayUsd(j=loadJournal(),now=Date.now()){
@@ -482,6 +520,18 @@ export function setUSComboSettings(patch={}){
   const v=Number(patch[k]);
   if(!Number.isFinite(v)||v<b.min-1e-9||v>b.max+1e-9)fail('settingsInvalid',`${k} must be between ${b.min} and ${b.max}`);
   next[k]=k==='priceMin'?r3(v):Math.round(v);
+ }
+ if(patch?.window!==undefined){
+  if(!STRATEGY_WINDOWS.includes(patch.window))fail('settingsInvalid',`window must be one of ${STRATEGY_WINDOWS.join(', ')}`);
+  next.window=patch.window;
+ }
+ if(patch?.rankWeights!==undefined){
+  const w=patch.rankWeights||{};
+  for(const [k,v] of Object.entries(w)){
+   if(!(k in RANK_COMPONENTS))fail('settingsInvalid',`unknown rank component: ${k}`);
+   const n=Number(v);if(!Number.isFinite(n)||n<RANK_WEIGHT_BOUNDS.min||n>RANK_WEIGHT_BOUNDS.max)fail('settingsInvalid',`rank weight ${k} must be between ${RANK_WEIGHT_BOUNDS.min} and ${RANK_WEIGHT_BOUNDS.max}`);
+  }
+  next.rankWeights=normalizeWeights({...next.rankWeights,...w});
  }
  j.settings=next;
  saveJournal(j);
@@ -679,7 +729,7 @@ function journalEntry({combo,symbol,mode,price,quantity=null,rfqId=null,quoteId=
  return {id:`uc-${Date.now().toString(36)}${Math.random().toString(36).slice(2,6)}`,at:Date.now(),symbol,
   legs:combo.legs,estPrice:combo.price,fillPrice:price,quantity:qty,requestedQuantity:combo.quantity,stakeUsd:combo.stakeUsd,
   mode,rfqId,quoteId,orderId,status:'SUBMITTED',fillVerified:false,payoutUsd:null,pnlUsd:null,settledAt:null,
-  costUsd:r2(qty*price+qty*comboFeePerContract(price)),placedBy};
+  costUsd:r2(qty*price+qty*comboFeePerContract(price)),placedBy,window:combo.window||'NEAR_END',outsideWindow:!!combo.outsideWindow};
 }
 
 // Operator escape hatch: drop an open entry from the local book without touching the exchange.
@@ -909,7 +959,7 @@ export async function usComboSnapshot({force=false}={}){
    journal:{open:j.open,history:j.history.slice(0,8),stats:{...j.stats,unverified:j.open.filter(x=>x.fillVerified!==true).length}},
    limits:usComboLimits(),
    settings:{...j.settings},
-   settingsBounds:SETTINGS_BOUNDS,
+   settingsBounds:SETTINGS_BOUNDS,windows:STRATEGY_WINDOWS,windowRules:WINDOW_RULES,rankWeightBounds:RANK_WEIGHT_BOUNDS,
    betaAccess,
    lastError};
   snapCache={at:now,data};
