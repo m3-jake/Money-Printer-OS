@@ -807,7 +807,7 @@ bing pasted the full MPOS unification brief (35 sections, phases 0–7). Phase 0
 
 ### Next recommended
 1. ~~Lab champion sync~~ done in batch P.
-2. Polymarket consolidation (Markets / Live / Sports / Positions / History / Combo Engine), and decide on `polymarketPaperCombos.js`.
+2. ~~Polymarket consolidation~~ first pass done in batch Q.
 3. Contract-term extraction for Kalshi and Polymarket, so ARBITRAGE.EXE can rate real pairs above RELATED.
 
 ## Batch P (2026-09-26): no more ".EXE" names; Lab champions in the strategy registry
@@ -878,3 +878,14 @@ Tests: trader `test:all` green, Lab `test:all` 65/69/75 green. Nothing built or 
 5. Build and install both apps.
 
 Kalshi and Robinhood event contracts are already covered by the MPOS core platform (Batch L), so they weren't rebuilt.
+
+## Batch Q (2026-09-26): one Polymarket window with Positions / History / Performance tabs
+
+- **Polymarket is now one tabbed window:** Live combos (the old host tab, relabelled), Markets, **Positions**, **History** and **Performance**. The three new tabs live in `public/js/mpo-polymarket.js` and redraw only when their data changes.
+  - **Positions:** open US combos (real venue orders, unreconciled; unverified fills are shown in bold) and core paper positions on Polymarket, labelled separately and never summed.
+  - **History:** settled US combos (up to 500) and core ledger entries for Polymarket.
+  - **Performance:** net P/L, ROI on cost, won/lost, win rate with its **Wilson 95% interval**, average implied probability (fill price), realized minus implied, open cost; a cumulative P/L chart and a won-vs-implied chart; a calibration table by fill-price bucket. With fewer than 30 settled combos it shows a "not yet meaningful" note. An empty journal reads as unknown, never 0%.
+- **Server:** new `src/core/comboPerformance.js` (pure; `comboPerformance`, `wilson`), and `GET /api/polymarket-us/combos/journal` returns `usComboJournalView({historyLimit:500})` plus `performance`.
+- **Deleted `src/polymarketPaperCombos.js`:** nothing imported it, and it had no route, UI or test. It overlapped the shadow auto-combo lane. It's still in git history.
+- **Tests:** 1 new test (`market-core`, 23 pass). `npm run test:all`: **747 pass, 0 fail**. Browser check on the isolated engine with a **fake** 13-combo journal seeded in the scratch data dir (deleted afterwards): all five tabs render, and the numbers match the API.
+- **Not done yet (brief §6):** a Sports tab (needs the canonical SportsEvent engine, Phase 4) and a Strategy Lab tab. For now the Lab's combo proposal stays in the Live combos evidence section.

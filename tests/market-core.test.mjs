@@ -16,6 +16,7 @@ import { ProviderRegistry,JsonProvider } from '../src/core/provider.js';
 import { MarketPlatform } from '../src/core/platform.js';
 import { legacyCoverage,solanaLegacy,usCombosLegacy,legacyTotals } from '../src/core/legacyBooks.js';
 import { syncLabChampions,labEvidence,LAB_CHAMPION_SOURCES } from '../src/core/labSync.js';
+import { comboPerformance,wilson } from '../src/core/comboPerformance.js';
 import { StrategyRegistry,promotionCheck,labChampionLifecycle } from '../src/core/strategies.js';
 import { assertGlobalTradingNotHalted } from '../src/core/executionBoundary.js';
 import { localMutationAllowed } from '../src/core/http.js';
@@ -219,4 +220,18 @@ test('Lab champions mirror into the registry through the common gate, never past
   assert.equal(res['lab-robinhood'].state,'PAUSED');assert.equal(r.history('lab-robinhood').length,n);
   assert.equal(LAB_CHAMPION_SOURCES.every(x=>r.get(x.id)?.state!=='LIVE'),true);
   s.close();fs.rmSync(dir,{recursive:true,force:true});
+});
+
+test('combo performance: empty is unknown, not zero; rates, interval, edge and calibration are exact',()=>{
+  const empty=comboPerformance([],[]);
+  assert.equal(empty.winRate,null);assert.equal(empty.netPnlUsd,null);assert.equal(empty.edge,null);assert.equal(empty.winRateCi95,null);assert.deepEqual(empty.curve,[]);
+  const h=[{status:'WON',fillPrice:.8,costUsd:8,pnlUsd:2,settledAt:3},{status:'LOST',fillPrice:.82,costUsd:8.2,pnlUsd:-8.2,settledAt:1},{status:'WON',fillPrice:.9,costUsd:9,pnlUsd:1,settledAt:2},{status:'CANCELLED',fillPrice:.7,pnlUsd:null}];
+  const p=comboPerformance(h,[{costUsd:5,fillVerified:false},{stakeUsd:3,fillVerified:true}]);
+  assert.equal(p.settled,3);assert.equal(p.won,2);assert.equal(p.placed,6);assert.equal(p.netPnlUsd,-5.2);assert.equal(p.costUsd,25.2);
+  assert.deepEqual(p.curve,[-8.2,-7.2,-5.2]);            // ordered by settlement time
+  assert.equal(p.winRate,.6667);assert.equal(p.avgImplied,.84);assert.equal(p.edge,-.1733);
+  assert.equal(p.openCostUsd,8);assert.equal(p.unverifiedOpen,1);assert.match(p.sampleNote,/Only 3/);
+  assert.deepEqual(p.calibration.map(c=>[c.lo,c.n,c.winRate]),[[.8,2,.5],[.9,1,1]]);
+  const ci=wilson(2,3);assert.ok(ci.low<.6667&&ci.high>.6667&&ci.low>=0&&ci.high<=1);
+  assert.equal(comboPerformance([{status:'WON',pnlUsd:1,costUsd:1}]).edge,null); // no fill price -> no edge claim
 });
