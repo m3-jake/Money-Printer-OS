@@ -711,7 +711,73 @@ function fxFloor(){const r=$('#moneyRain');return r?r.clientHeight:innerHeight-3
 function fxBill(o){const tiny=o.tiny,pick=tiny&&Math.random()<.7?FX_BILLS[5]:FX_BILLS[Math.floor(Math.random()*(tiny?6:5))],stack=o.stack,w=Math.round((stack?120:64+Math.random()*40)*(pick[1]<1.3&&!stack?.8:1)),ar=stack?1:pick[1],h=Math.round(w/ar),left=4+Math.random()*88,rot=(Math.random()*50-25).toFixed(0),drift=(40+Math.random()*100).toFixed(0),src=stack?'/assets/money-printer-logo.png':'/assets/money-fx/'+pick[0]+'.webp';
  return `<img class="bill ${o.cls}${stack?' stack':''}" data-market="${o.src||'profit'}" src="${src}" alt="" style="left:${left}%;width:${w}px;--floor:${fxFloor()-h}px;--drift:${drift}px;--rot:${rot}deg;--spin:${(Math.random()*720-360).toFixed(0)}deg;animation-duration:${o.d}s,${o.d}s;animation-delay:${o.delay}s,${o.delay}s">`}
 function makeBurstBills(n,intensity,source='profit'){const tiny=intensity<.25;let h=Array.from({length:n},()=>fxBill({cls:'burst',src:source,tiny,d:(8.5+Math.random()*3).toFixed(2),delay:(Math.random()*2.2).toFixed(2)})).join('');if(intensity>=.7)h+=Array.from({length:Math.round(2+intensity*3)},()=>fxBill({cls:'burst',src:source,stack:1,d:(7+Math.random()*1.5).toFixed(2),delay:(Math.random()*.8).toFixed(2)})).join('');return h}
-function fxRainHost(rain){if(rain.dataset.fx)return;rain.dataset.fx='1';rain.addEventListener('animationend',e=>{if(e.animationName==='billDrop'&&e.target.classList.contains('burst'))e.target.remove()})}
+// Falling-paper physics: each bill is simulated per frame instead of a fixed keyframe path. Real paper
+// falls in regimes - pendulum "flutter" (glides side to side, tilts into the swing, stalls and even lifts
+// at the ends), "tumble" (autorotates end over end while sliding one way, falling faster), and a lazy
+// "drift". Bills switch regimes mid-fall, ride shared wind gusts and catch light as they turn.
+// On the ground it becomes a little sandbox: bills slide, bounce and settle; a landing stack kicks up the
+// paper beside it; stacks and big bills can be grabbed and thrown to plow through the pile. Kicked paper
+// flies ballistically, then catches the air and flutters back down. Landed bills linger and fade slowly.
+const FX_PHYS={bills:new Set(),raf:0,last:0,t:0};
+function fxRand(a,b){return a+Math.random()*(b-a)}
+function fxWind(t){return Math.sin(t*.31)*18+Math.sin(t*.73+1.7)*11+Math.sin(t*1.9+.4)*5*Math.max(0,Math.sin(t*.17))}
+function fxPickMode(b){const r=Math.random();return b.heavy?(r<.7?"drift":"flutter"):r<.5?"flutter":r<.8?"tumble":"drift"}
+function fxResetBill(b,host,first){const el=b.el,H=host.clientHeight||innerHeight||720;b.w=el.offsetWidth||80;b.h=el.offsetHeight||40;b.bx=el.offsetLeft;b.y=-(H+b.h+fxRand(20,120));b.x=0;b.vx=0;b.vy=0;b.phase=fxRand(0,6.283);b.omega=fxRand(2.1,3.6)*(b.heavy?.7:1);b.amp=fxRand(.7,1.25);b.pitch=fxRand(-40,40);b.yaw=fxRand(-30,30);b.roll=fxRand(-20,20);b.spin=(Math.random()<.5?-1:1)*fxRand(380,720);b.mode=fxPickMode(b);b.modeT=fxRand(1.2,3.5);b.state="fall";b.rest=0;b.restSet=0;b.alpha=1;b.hitT=0;b.vt=(H+b.h)/Math.max(3,b.dur*.58)*(b.heavy?1.9:1);if(first&&b.delay<0){const skip=-b.delay;if(skip<b.dur*.58){b.y+=b.vt*skip*.85;b.delay=0}else b.delay=fxRand(0,b.dur*.4)}}
+function fxCx(b){return b.bx+b.x+b.w/2}
+function fxWalls(b){const W=b.host.clientWidth||innerWidth,L=-b.bx,R=W-b.w-b.bx;if(b.x<L){b.x=L;b.vx=Math.abs(b.vx)*.35;b.spinR=-(b.spinR||0)}else if(b.x>R){b.x=R;b.vx=-Math.abs(b.vx)*.35;b.spinR=-(b.spinR||0)}}
+function fxLinger(b,min){b.rest=Math.max(b.rest||0,min);b.alpha=1}
+function fxLaunch(o,vx,vy){if(o.state==="drag")return;o.state="air";o.delay=0;o.vx=vx;o.vy=vy;if(o.y>-1)o.y=-1;o.spinP=fxRand(-900,900)*(o.heavy?.25:1);o.spinR=vx*.35+fxRand(-140,140)*(o.heavy?.3:1);o.restRot=fxRand(-25,25);o.hitT=.35;fxLinger(o,8)}
+// A landing stack punches the ground: paper within reach is flung up and away, harder the closer it lies.
+function fxKick(src,impact){const s0=Math.min(1,impact/450),R=src.w*1.9,sx=fxCx(src);
+ for(const o of FX_PHYS.bills){if(o===src||o.delay>0||o.state==="drag"||o.y<-src.h*1.5)continue;const dx=fxCx(o)-sx,d=Math.abs(dx);if(d>R)continue;const f=s0*(1-d/R);if(f<.06)continue;const m=o.heavy?.35:1;fxLaunch(o,(dx===0?(Math.random()<.5?-1:1):Math.sign(dx))*(140+460*f)*m,-(320+760*f)*m)}}
+// A grabbed or fast-moving bill shoves whatever it overlaps, passing on its own velocity plus a push outward.
+function fxShove(d){const sp=Math.hypot(d.vx,d.vy),mass=d.heavy?1:.55,dcx=fxCx(d),dcy=d.y-d.h/2;
+ for(const o of FX_PHYS.bills){if(o===d||o.delay>0||o.state==="drag"||o.hitT>0)continue;const dx=fxCx(o)-dcx,dy=(o.y-o.h/2)-dcy,nx=dx/((d.w+o.w)*.45),ny=dy/((d.h+o.h)*.5);if(nx*nx+ny*ny>=1)continue;
+  const len=Math.hypot(dx,dy)||1,push=Math.max(240,sp*1.05)*mass*(o.heavy?.45:1),carry=o.heavy?.4:.85;fxLaunch(o,d.vx*carry*mass+dx/len*push*.6,Math.min(d.vy*carry*mass+dy/len*push*.6,-160*mass))}}
+function fxTouchDown(b){const impact=b.vy,punch=b.state==="fall"&&!b.restSet||b.thrown;if(Math.abs(b.vx)<300)b.thrown=0;b.y=0;b.state="ground";b.vy=-Math.min(b.heavy?110:55,impact*(b.heavy?.2:.08));b.vx*=b.heavy?.5:.35;if(b.heavy&&punch&&impact>200)fxKick(b,impact);if(!b.restSet){b.restSet=1;b.rest=b.rain?fxRand(10,14):fxRand(16,24)}else fxLinger(b,5)}
+function fxGrab(b,e){if(e.button>0)return;e.preventDefault();e.stopPropagation();const el=b.el,hb=b.host.getBoundingClientRect();try{el.setPointerCapture(e.pointerId)}catch{}b.state="drag";b.delay=0;b.alpha=1;b.grabX=e.clientX-(hb.left+b.bx+b.x);b.grabY=e.clientY-(hb.bottom+b.y);b.pts=[{t:performance.now(),x:e.clientX,y:e.clientY}];el.classList.add("grabbing");fxStart()}
+function fxDragMove(b,e){if(b.state!=="drag")return;const hb=b.host.getBoundingClientRect(),now=performance.now();b.x=e.clientX-hb.left-b.grabX-b.bx;b.y=Math.min(0,e.clientY-hb.bottom-b.grabY);fxWalls(b);
+ b.pts.push({t:now,x:e.clientX,y:e.clientY});while(b.pts.length>2&&now-b.pts[0].t>90)b.pts.shift();const p=b.pts[0],span=Math.max(.016,(now-p.t)/1000);b.vx=(e.clientX-p.x)/span;b.vy=(e.clientY-p.y)/span}
+function fxRelease(b,e){if(b.state!=="drag")return;try{b.el.releasePointerCapture(e.pointerId)}catch{}b.el.classList.remove("grabbing");const now=performance.now();if(!b.pts.length||now-b.pts.at(-1).t>120){b.vx=0;b.vy=0}
+ const c=v=>Math.max(-2600,Math.min(2600,v));b.state="air";b.vx=c(b.vx);b.vy=c(b.vy);b.spinP=b.vx*(b.heavy?.15:.6);b.spinR=b.vx*.3;b.restSet=1;b.thrown=1;fxLinger(b,10)}
+function fxAdopt(el,host){if(el.dataset.phys||el.tagName!=="IMG"||!el.classList.contains("bill"))return;el.dataset.phys="1";el.classList.add("phys");const cs=el.style,dur=parseFloat(cs.animationDuration)||10,delay=parseFloat(cs.animationDelay)||0;const b={el,host,dur,delay,rain:el.classList.contains("rain"),heavy:el.classList.contains("stack"),restRot:parseFloat(cs.getPropertyValue("--rot"))||0};el.style.animation="none";el.style.opacity="0";
+ const init=()=>{fxResetBill(b,host,true);FX_PHYS.bills.add(b);if(b.heavy||b.w>=80){el.classList.add("grab");el.addEventListener("pointerdown",e=>fxGrab(b,e));el.addEventListener("pointermove",e=>fxDragMove(b,e));el.addEventListener("pointerup",e=>fxRelease(b,e));el.addEventListener("pointercancel",e=>fxRelease(b,e));el.addEventListener("dragstart",e=>e.preventDefault())}fxStart()};el.complete?init():el.addEventListener("load",init,{once:true})}
+function fxStart(){if(FX_PHYS.raf)return;FX_PHYS.last=performance.now();FX_PHYS.raf=requestAnimationFrame(fxStep)}
+function fxSettle(b,dt,rate){const k=Math.min(1,dt*rate),pr=((b.pitch%360)+540)%360-180;b.pitch=pr+((Math.abs(pr)>90?(pr>0?180:-180):0)-pr)*k;b.yaw-=b.yaw*k;const rr=((b.roll-b.restRot)%360+540)%360-180;b.roll=b.restRot+rr*(1-k)}
+function fxStep(now){const dt=Math.min(.05,(now-FX_PHYS.last)/1000);FX_PHYS.last=now;FX_PHYS.t+=dt;const T=FX_PHYS.t,wind=fxWind(T);
+ for(const b of FX_PHYS.bills){const el=b.el;if(!el.isConnected){FX_PHYS.bills.delete(b);continue}
+  if(b.delay>0){b.delay-=dt;continue}
+  if(b.hitT>0)b.hitT-=dt;
+  if(b.state==="fall"){
+   b.modeT-=dt;if(b.modeT<=0){b.mode=fxPickMode(b);b.modeT=fxRand(1.2,3.5);if(b.mode==="tumble")b.spin=(b.vx>=0?1:-1)*fxRand(420,760)}
+   const heavy=b.heavy?.45:1;let ax=wind*.9*heavy,targetVy=b.vt;
+   if(b.mode==="flutter"){b.phase+=b.omega*dt;const s=Math.sin(b.phase),c=Math.cos(b.phase);
+    // glide velocity follows the swing; vertical speed peaks mid-swing, stalls (slight lift) at the ends
+    ax+=(c*140*b.amp*heavy-b.vx)*3;targetVy=b.vt*(.25+1.25*c*c)-(s*s>.85?b.vt*.35:0);
+    b.roll+=((c*38*b.amp*heavy)-b.roll)*Math.min(1,dt*9);b.pitch+=((s*55*b.amp*heavy*heavy)-b.pitch)*Math.min(1,dt*6);b.yaw+=((s*18)-b.yaw)*dt*2}
+   else if(b.mode==="tumble"){b.pitch+=b.spin*dt;ax+=((b.spin>0?1:-1)*70*heavy-b.vx)*1.5;targetVy=b.vt*1.35;b.roll+=((b.spin>0?-12:12)-b.roll)*dt*3;b.yaw+=Math.sin(T*2+b.phase)*40*dt}
+   else{b.phase+=b.omega*.45*dt;ax+=(Math.sin(b.phase)*45-b.vx)*1.2;targetVy=b.vt*.75;b.pitch+=((Math.sin(b.phase*1.3)*25)-b.pitch)*dt*2;b.roll+=((Math.cos(b.phase)*15)-b.roll)*dt*2;b.yaw+=Math.cos(b.phase*.7)*25*dt}
+   b.vx+=ax*dt;b.vy+=(targetVy-b.vy)*Math.min(1,dt*4);b.x+=b.vx*dt;b.y+=b.vy*dt;
+   if(b.y>=0)fxTouchDown(b)}
+  else if(b.state==="air"){
+   // ballistic flight: stacks keep their momentum, paper bleeds speed fast and hands back to the flutter model
+   b.vy+=(b.heavy?1700:1100)*dt;b.vx*=Math.pow(b.heavy?.75:.3,dt);b.x+=b.vx*dt;b.y+=b.vy*dt;fxWalls(b);
+   b.pitch+=b.spinP*dt;b.roll+=b.spinR*dt;b.yaw+=b.spinR*.2*dt;b.spinP*=Math.pow(b.heavy?.4:.6,dt);b.spinR*=Math.pow(.5,dt);
+   if(b.y>=0)fxTouchDown(b);else if(!b.heavy&&b.vy>b.vt*.6){b.state="fall";b.mode=Math.random()<.7?"flutter":"tumble";b.modeT=fxRand(1,2.5);b.spin=(b.vx>=0?1:-1)*fxRand(420,760)}}
+  else if(b.state==="ground"){
+   b.vy+=1800*dt;b.y+=b.vy*dt;if(b.y>=0){b.y=0;b.vy=b.vy>90?-b.vy*.3:0}
+   b.x+=b.vx*dt;if(b.y===0){b.vx*=Math.pow(b.heavy?.03:.03,dt);if(Math.abs(b.vx)<250)b.thrown=0}fxWalls(b);fxSettle(b,dt,7);
+   if(b.y===0&&Math.abs(b.vx)<20){b.rest-=dt;b.alpha=Math.max(0,Math.min(1,b.rest/4));if(b.rest<=0){if(b.rain){fxResetBill(b,b.host,false);b.delay=fxRand(0,1.5)}else{el.remove();FX_PHYS.bills.delete(b);continue}}}}
+  else if(b.state==="drag"){b.alpha=1;const k=Math.min(1,dt*10);b.roll+=(Math.max(-35,Math.min(35,b.vx*.03))-b.roll)*k;b.pitch+=(Math.max(-40,Math.min(40,-b.vy*.02))-b.pitch)*k;b.yaw-=b.yaw*k;b.vx*=Math.pow(.05,dt);b.vy*=Math.pow(.05,dt)}
+  if(b.state==="drag"||(b.thrown&&Math.hypot(b.vx,b.vy)>(b.heavy?250:500)))fxShove(b);
+  // light catch: brighter when the face turns toward the viewer, darker edge-on or flipped
+  const face=Math.cos(b.pitch*Math.PI/180)*Math.cos(b.yaw*Math.PI/180),lit=(.72+.38*Math.abs(face)+(face<0?-.08:0)).toFixed(2),lift=b.state==="drag"?14:3+Math.abs(face)*3;
+  el.style.opacity=(b.state==="fall"&&b.y<-(b.host.clientHeight||innerHeight||720)-b.h*.2?0:b.alpha).toFixed(2);
+  el.style.transform=`translate3d(${b.x.toFixed(1)}px,${b.y.toFixed(1)}px,0) rotateZ(${b.roll.toFixed(1)}deg) rotateY(${b.yaw.toFixed(1)}deg) rotateX(${b.pitch.toFixed(1)}deg)`;
+  el.style.filter=`brightness(${lit}) drop-shadow(0 ${lift.toFixed(1)}px ${b.state==="drag"?8:3}px #0005)`}
+ FX_PHYS.raf=FX_PHYS.bills.size?requestAnimationFrame(fxStep):0}
+function fxRainHost(rain){if(rain.dataset.fx)return;rain.dataset.fx="1";const adopt=el=>{if(el.nodeType===1)fxAdopt(el,rain)};
+ new MutationObserver(ms=>ms.forEach(m=>m.addedNodes.forEach(adopt))).observe(rain,{childList:true});rain.querySelectorAll("img.bill").forEach(adopt)}
 function makeRainBills(n,intensity){return Array.from({length:n},()=>{const d=12+Math.random()*5;return fxBill({cls:'rain',src:'paper-equity',tiny:intensity<.2,d:d.toFixed(2),delay:(-Math.random()*d).toFixed(2)})}).join('')}
 function makePileBills(n,intensity){return Array.from({length:n},(_,i)=>{const left=Math.max(2,Math.min(94,(i+.25)*100/Math.max(1,n)+Math.random()*8-4)),bottom=Math.max(0,Math.round(Math.random()*20+intensity*12)),rot=(Math.random()*30-15).toFixed(1),scale=(.62+Math.random()*.42).toFixed(2);return `<div class="bill pile" data-market="paper-equity" style="left:${left}%;bottom:${bottom}px;--rot:${rot}deg;--scale:${scale};animation-delay:${(-Math.random()*2).toFixed(2)}s"></div>`}).join('')}
 function renderMoneyEvents(){const el=$('#moneyEventFeed');if(!el)return;el.innerHTML=moneyEvents.slice(-7).map(x=>`<div class="money-event ${x.kind||'profit'}"><span>${new Date(x.at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</span> ${polyEscape(x.text)}</div>`).join('')}

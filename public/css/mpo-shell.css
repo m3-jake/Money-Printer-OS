@@ -213,7 +213,7 @@ button, input, select, textarea { font: inherit; }
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 10px;
+  gap: 0;
   text-align: right;
   font-family: var(--mpo-font-brand);
   font-style: italic;
@@ -237,7 +237,7 @@ button, input, select, textarea { font: inherit; }
 }
 .brand #runningVersion {
   letter-spacing: 0;
-  margin-top: 9px;
+  margin-top: 2px;
 }
 .brand-mark { filter: drop-shadow(1px 2px 2px #0004); }
 /* Persistent corner product mark: the spiked-cash render sits beside the text
@@ -862,3 +862,8 @@ img.bill.stack { filter: drop-shadow(0 6px 6px #0007); }
   55% { transform: rotateX(0) rotateY(0); rotate: var(--spin); }
   65%, 100% { transform: none; rotate: var(--rot); }
 }
+/* Money FX v3: physics-driven flutter/tumble (dashboard.html fxStep) owns transform, opacity and filter. */
+#moneyRain { perspective: 900px; perspective-origin: 50% 30%; }
+img.bill.phys { animation: none !important; transform-origin: 50% 50%; will-change: transform, opacity, filter; backface-visibility: visible; }
+img.bill.phys.grab { pointer-events: auto; cursor: grab; touch-action: none; user-select: none; -webkit-user-drag: none; }
+img.bill.phys.grabbing { cursor: grabbing; z-index: 5; }
