@@ -465,3 +465,21 @@ Plan (from bing): 1 connection truth, 2 page every live game, 3 strategy windows
 - Verified in the isolated preview engine at 1440×900: all three panels render and animate, with no console errors.
 - Tests: full trader sweep `node --test tests/*.mjs tests/*.cjs` **595 pass / 0 fail**.
 - Next per plan: batch 5 (opt-in real AUTO COMBO; also fix the signed settlement shape bug from batch 23).
+
+## Side batch (2026-09-26, parallel session): Evolution Lab stuck window + module audit
+
+- **Stuck `Starting lab…` window, fixed in Lab `893b6b7`, NOT installed.**
+  - Cause: the Lab outlives its window. On relaunch, `second-instance` opened a new splash window, but `showing` was still true from the first window, so nothing navigated it.
+  - Fix: the flag resets on create and close, a reopened window checks health immediately, a renderer crash clears the flag, and loads have an in-flight guard.
+  - Test: `tests/lab-window.test.cjs` (added to `test:lab`) fails without the fix.
+  - Workaround until installed: press Alt, then Evolution Lab > Exit, and relaunch. Or open http://127.0.0.1:8793.
+  - Version not bumped (still alpha.4), and Lab HEAD now also carries `c65b06a` (polymarket-combo). Bump before packaging.
+- **Audit: `reports/EVOLUTION-LAB-AUDIT-2026-09-26.md`.** Serves all three modules: yes. Improves: no.
+  - Solana is PARTIAL (display-only): RESEARCH_ONLY is hard-coded, and the scorer never simulates exits, so the champion sits at stop 1.5 / take 100 / hold 2.
+  - Robinhood is NO: every candidate scores 0, the holdout needs 90 % Robinhood quotes but has 0 % (key 401), and the champion is overwritten every 5 min.
+  - Polymarket is NO: the lane researches the international CLOB, nothing reads its champion, and its gates can't pass.
+  - **Hazard:** the MacBook alpha.53 trader applies any bridge champion to paper with no gate. It has been silent 23 h.
+- **Correction to batch 14:** `MPO_LAB_LINK` defaults to **true** again since `99faef0` (`src/index.js:33`).
+- **Env gotcha:** Claude-desktop processes see a stale MSIX overlay of the Lab data dir (Sep 20, gen 53549). Read the Lab through its API or the trader-side `lab-link/` mirror, and never launch the Lab from a Claude session.
+- **Installed MPO:** its `BUILD-INFO.json` still says alpha.56, but the asar is alpha.57 = `a244ffb`.
+- Tests: Lab `lab-window` 1/1 and `lab-supervision` 3/3. No MPO code changed.
