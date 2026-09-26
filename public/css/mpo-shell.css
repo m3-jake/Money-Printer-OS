@@ -106,7 +106,20 @@ button, input, select, textarea { font: inherit; }
   height: 100%;
   overflow: hidden;
   background: #3A91E8;
+  -webkit-user-select: none;
+  user-select: none;
 }
+/* Keep copy/paste available inside apps while the desktop behaves like a canvas. */
+.window,
+.dialog {
+  -webkit-user-select: text;
+  user-select: text;
+}
+.sky-clouds img,
+img.sky-cloud,
+.brand-logo,
+.icon img,
+.money-layer img { -webkit-user-drag: none; }
 .wallpaper {
   position: absolute;
   inset: 0;
@@ -243,7 +256,7 @@ button, input, select, textarea { font: inherit; }
 /* Persistent corner product mark: the spiked-cash render sits beside the text
    logo at all times (same asset as the boot mark, Money and Updater panels). */
 .mpo-logo{position:relative;animation:mpoFloat 6s ease-in-out infinite}
-.brand-logo{display:block;width:160px;height:auto;animation:mpoBreathe 4.5s ease-in-out infinite}
+.brand-logo{display:block;width:240px;height:auto;animation:mpoBreathe 4.5s ease-in-out infinite}
 .shine{position:absolute;inset:0;overflow:hidden;mask:url('/assets/mpo-logo-3d.webp') center/100% 100% no-repeat;-webkit-mask:url('/assets/mpo-logo-3d.webp') center/100% 100% no-repeat}
 .shine::before{content:'';position:absolute;inset:0 auto 0 0;width:28%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.55),transparent);mix-blend-mode:screen;animation:mpoShine 9s linear infinite}
 @keyframes mpoFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
@@ -289,19 +302,21 @@ button, input, select, textarea { font: inherit; }
   z-index: 5;
   display: grid;
   grid-auto-flow: column;
-  grid-template-rows: repeat(auto-fill, 72px);
-  grid-auto-columns: 84px;
+  grid-template-rows: repeat(auto-fill, 100px);
+  grid-auto-columns: 104px;
   align-content: start;
   gap: 4px 6px;
   padding-top: 4px;
 }
 .icon {
-  width: 78px;
+  width: 100px;
   text-align: center;
   color: #fff;
   text-shadow: 1px 1px #000,0 0 3px #000,0 0 1px #000;
   user-select: none;
   padding: 2px;
+  font-size: 13px;
+  line-height: 16px;
 }
 .icon:hover { background: #00008044; }
 .icon.sel { background: #00008088; outline: 1px dotted #fff; }
@@ -337,6 +352,8 @@ button, input, select, textarea { font: inherit; }
   display: block;
 }
 .ico.png { background: none; box-shadow: none; border: 0; }
+.icon .ico { width: 56px; height: 56px; font-size: 28px; }
+.icon .pixel-glyph { font-size: 14px; }
 .pixel-glyph {
   font: 700 10px/1 Tahoma, Arial, sans-serif;
   letter-spacing: -.4px;
@@ -797,7 +814,7 @@ textarea:focus-visible,
 
 @media (max-width: 1000px) {
   .brand { font-size: 22px; }
-  .brand-logo { width: 120px; }
+  .brand-logo { width: 180px; }
   .icons { gap: 5px; }
   .window { max-width: calc(100vw - 100px); }
 }
