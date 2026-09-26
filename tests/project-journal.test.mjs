@@ -37,9 +37,9 @@ test("a packaged build catches the journal up from its shipped history, once per
   fs.writeFileSync(path.join(app,"BUILD.json"),JSON.stringify({releaseId:"0.5.0-alpha.60+windows.test",sourceCommit:"f".repeat(40),builtOn:"windows"}));
   // An older research event that stopped on the 22nd.
   appendProjectJournal(file,{kind:"champion-publication",category:"research",title:"Champion X published",at:Date.UTC(2026,8,22,19)});
-  const first=seedProjectJournal({journalFile:file,appRoot:app,now:Date.UTC(2026,8,26,19)});
+  const first=seedProjectJournal({journalFile:file,appRoot:app,now:Date.now()+60000});
   assert.equal(first.source,"build");assert.equal(first.error,null);assert.equal(first.appended,n+1);assert.equal(first.release,"0.5.0-alpha.60+windows.test");
-  const again=seedProjectJournal({journalFile:file,appRoot:app,now:Date.UTC(2026,8,27)});
+  const again=seedProjectJournal({journalFile:file,appRoot:app,now:Date.now()+120000});
   assert.equal(again.appended,0,"nothing is duplicated on the next start");
   const snap=projectJournalSnapshot(file,{limit:500});
   assert.equal(snap.rows[0].kind,"release-start","newest by time comes first");
