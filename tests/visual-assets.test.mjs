@@ -46,7 +46,7 @@ function py(script) {
 }
 
 test('required visual assets ship with usable geometry', () => {
-  const icons = ['money', 'network', 'settings', 'sportsbook', 'trade'];
+  const icons = ['money', 'network', 'robinhood', 'settings', 'sportsbook', 'trade'];
   for (const name of icons) {
     const info = pngInfo(path.join(ASSETS, 'icons', `${name}.png`));
     assert.equal(info.width, 96, `${name} width`);
@@ -73,7 +73,7 @@ test('required visual assets ship with usable geometry', () => {
 });
 
 test('desktop icons are shaded artwork, not 10-color placeholders', () => {
-  const floors = { money: 4000, network: 2000, settings: 4000, sportsbook: 2000, trade: 2000 };
+  const floors = { money: 4000, network: 2000, robinhood: 2000, settings: 4000, sportsbook: 2000, trade: 2000 };
   for (const [name, minBytes] of Object.entries(floors)) {
     const file = path.join(ASSETS, 'icons', `${name}.png`);
     const info = pngInfo(file);

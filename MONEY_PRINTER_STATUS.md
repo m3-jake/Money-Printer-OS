@@ -684,3 +684,10 @@ What was finished and committed before parking (all tested; nothing can place wi
 - **Do not set `HELIUS_API_KEY` yet:** `HELIUS_REQUESTS_PER_MINUTE` defaults to 0 = unlimited, and the enhanced path costs 100 credits a call and also fires per-wallet funding lookups. That is step 2 work.
 - Tests: `tests/holder-rpc.test.mjs` (4, local mock JSON-RPC: 429 visible and key not leaked, OK path with owners, cap stops calls, no-URL fallback), in `test:solana`. `test:all` **639 pass / 0 fail**. Isolated engine (8813, no holder URL) showed RATE_LIMITED from the public RPC and the badge rendered.
 - Build: `Desktop\Money Printer OS\Windows-140e923-holder-rpc\app.asar`, release `0.5.0-alpha.60+windows.140e923`, sha256 `d02b72147e7affcd2a13c3e4985ba013ef51ab065145be4ed2689d32a1549e42`; `smoke:windows` on 18792 passed. **Not installed yet**: waiting for bing to add `HOLDER_RPC_URL=<Helius mainnet RPC URL>` to `%APPDATA%\Money Printer OS\.env`, then swap + relaunch + check `walletIntel.holderRpc.status == OK` and wallets filling.
+
+## Icon refresh (2026-09-26)
+
+- The user supplied new art. Pump.fun (`icons/trade.png`) is the pill, Polymarket US (`icons/sportsbook.png`) is the Polymarket mark, and Robinhood has a new feather icon (`icons/robinhood.png`, now in `ICON_PNG`; it used to fall back to the `RH` glyph). The Money Printer OS cash stack replaces `icons/money.png` (desktop icon and Start button), `money-printer-logo.png` (1024), `app-icon.png` (256, window/tray) and `build/icon.icns` (11 PNG reps, 16-1024).
+- The logo source had a flat white background, so it was cut out with a border flood fill plus color-to-alpha on a 3 px edge band. There's no numpy here, so this used Pillow only. The script is in the session scratchpad, not the repo.
+- `tests/visual-assets.test.mjs` now also checks `robinhood.png`. Visual tests: 26/0. Checked in the isolated engine: every icon loads at 96 px.
+- **Pending:** new Journal and Settings icons, and the "MONEY PRINTER OS" wordmark image for the top-right corner `.brand` (currently CSS text). They were sent mid-turn and never reached disk, so they need to be re-attached.
