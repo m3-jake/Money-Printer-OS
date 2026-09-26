@@ -744,3 +744,79 @@ test('settlement responsiveness leaves the real-money safety limits and confirma
  assert.equal(combos.__testing.CONFIRM_AUTOPILOT,'ENABLE REAL AUTOPILOT');
  assert.throws(()=>combos.setUSComboAutopilot({enabled:true,confirmation:'anything else'}),e=>e.code==='confirmation');
 });
+
+// ------------------------------------------------------ owner settings (renovation step 3)
+function pricedGame(slug,ask){
+ const bid=(Number(ask)-0.01).toFixed(4);
+ return soccerEvent(slug,88,{markets:[market({slug:`atc-${slug}-home`,bestAskQuote:{value:String(ask)},bestBidQuote:{value:bid}})]});
+}
+
+test('settings default to floor 0.80, 15 minutes, 3 legs and persist in journal.settings',async()=>{
+ reset();
+ assert.deepEqual(combos.usComboSettings(),{priceMin:0.8,maxMinutesLeft:15,maxLegs:3});
+ assert.deepEqual(combos.setUSComboSettings({priceMin:0.6}),{priceMin:0.6,maxMinutesLeft:15,maxLegs:3});
+ const saved=JSON.parse(fs.readFileSync(combos.__testing.stateFile,'utf8'));
+ assert.deepEqual(saved.settings,{priceMin:0.6,maxMinutesLeft:15,maxLegs:3});
+ installFetch(u=>u.pathname==='/v1/events'?jsonRes(eventsResponse([])):null);
+ const snap=await combos.usComboSnapshot({force:true});
+ assert.equal(snap.settings.priceMin,0.6);assert.equal(snap.settingsBounds.priceMin.min,0.6);
+ assert.ok('suggested' in snap);
+});
+
+test('settings reject anything outside the fixed bounds and never widen them',()=>{
+ reset();
+ for(const bad of [{priceMin:0.59},{priceMin:0.99},{priceMin:'x'},{maxLegs:4},{maxLegs:1},{maxMinutesLeft:0},{maxMinutesLeft:31}]){
+  assert.throws(()=>combos.setUSComboSettings(bad),e=>e.code==='settingsInvalid',JSON.stringify(bad));
+ }
+ assert.deepEqual(combos.usComboSettings(),{priceMin:0.8,maxMinutesLeft:15,maxLegs:3});
+ // A hand-edited journal with out-of-range values falls back to the defaults, not the stored value.
+ fs.writeFileSync(combos.__testing.stateFile,JSON.stringify({open:[],history:[],settings:{priceMin:0.1,maxLegs:9,maxMinutesLeft:15}}));
+ combos.__testing.resetJournal();
+ assert.deepEqual(combos.usComboSettings(),{priceMin:0.8,maxMinutesLeft:15,maxLegs:3});
+});
+
+test('a 0.65 leg passes at floor 0.60 and fails at 0.80, in the feed filter and in build',()=>{
+ reset();
+ const events=[pricedGame('sa-aaa-bbb-2026-09-25',0.65),pricedGame('sb-ccc-ddd-2026-09-25',0.9)];
+ const at80=combos.usCandidatesFromEvents(events,Date.now(),{priceMin:0.8,maxMinutesLeft:15,maxLegs:3});
+ assert.equal(at80.candidates.length,1);assert.equal(at80.rejections['price-band'],1);
+ const at60=combos.usCandidatesFromEvents(events,Date.now(),{priceMin:0.6,maxMinutesLeft:15,maxLegs:3});
+ assert.equal(at60.candidates.length,2);
+ const legKeys=at60.candidates.map(c=>c.key);
+ combos.setUSComboSettings({priceMin:0.6});
+ const built=combos.buildUSCombo({legKeys,stakeUsd:5,candidates:at60.candidates});
+ assert.equal(built.legs.length,2);assert.ok(built.price<0.6);
+ // Raising the floor back re-rejects the same pool at build time (quote and place go through build too).
+ combos.setUSComboSettings({priceMin:0.8});
+ assert.throws(()=>combos.buildUSCombo({legKeys,stakeUsd:5,candidates:at60.candidates}),e=>e.code==='priceBand');
+});
+
+test('the minutes-left setting gates the feed',()=>{
+ reset();
+ const events=[pricedGame('sa-aaa-bbb-2026-09-25',0.9)];
+ const eta=combos.usCandidatesFromEvents(events,Date.now(),{priceMin:0.8,maxMinutesLeft:30,maxLegs:3}).candidates[0].etaMinutes;
+ assert.ok(eta>=1,'fixture must be at least a minute from the end');
+ const tight=combos.usCandidatesFromEvents(events,Date.now(),{priceMin:0.8,maxMinutesLeft:Math.floor(eta)-0.5,maxLegs:3});
+ assert.equal(tight.candidates.length,0);assert.equal(tight.rejections['turnover-window'],1);
+});
+
+test('a fourth leg is rejected at maxLegs 3, and a third at maxLegs 2',()=>{
+ reset();
+ const events=['sa','sb','sc','sd'].map(p=>pricedGame(`${p}-aaa-bbb-2026-09-25`,0.95));
+ const {candidates}=combos.usCandidatesFromEvents(events,Date.now(),combos.usComboSettings());
+ assert.equal(candidates.length,4);
+ const keys=candidates.map(c=>c.key);
+ assert.equal(combos.buildUSCombo({legKeys:keys.slice(0,3),stakeUsd:5,candidates}).legs.length,3);
+ assert.throws(()=>combos.buildUSCombo({legKeys:keys,stakeUsd:5,candidates}),e=>e.code==='invalidLegs'&&/at most 3/.test(e.message));
+ combos.setUSComboSettings({maxLegs:2});
+ assert.throws(()=>combos.buildUSCombo({legKeys:keys.slice(0,3),stakeUsd:5,candidates}),e=>e.code==='invalidLegs');
+ assert.equal(combos.chooseUSCombo(candidates,combos.usComboSettings().maxLegs).length,2);
+});
+
+test('settings refuse to overwrite a corrupt journal',()=>{
+ reset();
+ fs.writeFileSync(combos.__testing.stateFile,'{not json');
+ combos.__testing.resetJournal();
+ assert.throws(()=>combos.setUSComboSettings({priceMin:0.6}),e=>e.code==='stateRecovery');
+ assert.equal(fs.readFileSync(combos.__testing.stateFile,'utf8'),'{not json');
+});

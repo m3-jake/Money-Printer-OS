@@ -32,7 +32,9 @@ const FRESH_LIMIT_SEC=90;        // leg freshness gate
 const COOLDOWN_MS=180000;        // 3 min per event after settlement
 const TICK=0.001;                // combo tick size
 const MIN_QTY=0.01;
-const PRICE_MIN=0.80,PRICE_MAX=0.985,NEAR_END_MIN=65;
+const PRICE_MAX=0.985,NEAR_END_MIN=65;
+// Owner-adjustable, stored in journal.settings. The bounds are fixed; nothing here can widen them.
+export const SETTINGS_BOUNDS={priceMin:{min:0.60,max:PRICE_MAX,default:0.80},maxMinutesLeft:{min:1,max:30,default:TURNOVER_TARGET_MINUTES},maxLegs:{min:2,max:3,default:3}};
 // 11:59 PM ET Wed Sep 16 2026 == 03:59 UTC Thu Sep 17 2026 (EDT, UTC-4).
 const COMBO_CURVE_FROM=Date.parse('2026-09-17T03:59:00Z');
 const CONFIRM_PLACE='PLACE REAL COMBO';
@@ -236,7 +238,7 @@ function outcomeLabel(market,long){
 }
 
 // Item 3: candidate filter + ranking at parity with the paper lab.
-export function usCandidatesFromEvents(events=[],now=Date.now()){
+export function usCandidatesFromEvents(events=[],now=Date.now(),settings=usComboSettings()){
  const rejections={};
  const reject=r=>{rejections[r]=(rejections[r]||0)+1;return null};
  const rows=[];
@@ -265,8 +267,8 @@ export function usCandidatesFromEvents(events=[],now=Date.now()){
    const type=String(market.sportsMarketType||'').toLowerCase();
    const late=lateGameEstimate({event:title,slug:String(market.slug||''),type},live);
    if(late.nearEndScore<NEAR_END_MIN){reject(late.reason||'not-near-settlement');continue}
-   if(late.etaMinutes==null||late.etaMinutes>TURNOVER_TARGET_MINUTES){reject('turnover-window');continue}
-   if(price<PRICE_MIN||price>PRICE_MAX){reject('price-band');continue}
+   if(late.etaMinutes==null||late.etaMinutes>settings.maxMinutesLeft){reject('turnover-window');continue}
+   if(price<settings.priceMin||price>PRICE_MAX){reject('price-band');continue}
    const spread=bid>0?Math.max(0,r4(ask-bid)):null;
    const liquidity=num(market.__openInterest??market.openInterest);
    const liquidityKnown=liquidity>0;
@@ -333,10 +335,10 @@ export function comboBudget(price,stakeUsd,at=Date.now(),coefficient=0.06){
   notionalUsd:Math.floor((quantity*price+1e-9)*100)/100};
 }
 
-function resolveLegs(legKeys,candidates,now=Date.now()){
+function resolveLegs(legKeys,candidates,now=Date.now(),settings=usComboSettings()){
  const keys=(Array.isArray(legKeys)?legKeys:[]).map(k=>String(k||'').trim()).filter(Boolean);
  if(keys.length<2)fail('invalidLegs','A combo needs at least 2 legs');
- if(keys.length>10)fail('invalidLegs','A combo accepts at most 10 legs');
+ if(keys.length>settings.maxLegs)fail('invalidLegs',`A combo accepts at most ${settings.maxLegs} legs (current setting)`);
  const index=new Map((candidates||[]).map(c=>[c.key,c]));
  const legs=[],symbols=new Set(),events=new Set();
  for(const key of keys){
@@ -346,7 +348,7 @@ function resolveLegs(legKeys,candidates,now=Date.now()){
   if(events.has(c.eventSlug))fail('duplicateEvent',`Two legs share the same event: ${c.eventSlug}`);
   const age=num(c.freshnessSec)+Math.max(0,(now-num(c.at||now))/1000);
   if(age>FRESH_LIMIT_SEC)fail('staleLeg',`Leg data is ${Math.round(age)}s old (limit ${FRESH_LIMIT_SEC}s): ${c.symbol}`);
-  if(c.price<PRICE_MIN||c.price>PRICE_MAX)fail('priceBand',`Leg price ${c.price} is outside the ${PRICE_MIN}-${PRICE_MAX} band: ${c.symbol}`);
+  if(c.price<settings.priceMin||c.price>PRICE_MAX)fail('priceBand',`Leg price ${c.price} is outside the ${settings.priceMin}-${PRICE_MAX} band: ${c.symbol}`);
   symbols.add(c.symbol);events.add(c.eventSlug);
   legs.push({...c,freshnessSec:age});
  }
@@ -354,9 +356,9 @@ function resolveLegs(legKeys,candidates,now=Date.now()){
 }
 
 // Item 4: pure math, no network.
-export function buildUSCombo({legKeys,stakeUsd,candidates=null,at=Date.now()}={}){
+export function buildUSCombo({legKeys,stakeUsd,candidates=null,at=Date.now(),settings=usComboSettings()}={}){
  const pool=candidates||lastCandidates;
- const legs=resolveLegs(legKeys,pool,at);
+ const legs=resolveLegs(legKeys,pool,at,settings);
  const stake=num(stakeUsd);
  if(!(stake>0))fail('stakeInvalid','stakeUsd must be greater than 0');
  const rawPrice=legs.reduce((a,l)=>a*l.price,1);
@@ -372,14 +374,22 @@ export function buildUSCombo({legKeys,stakeUsd,candidates=null,at=Date.now()}={}
 
 // ---------------------------------------------------------------- journal
 function defaultAutopilot(){return {enabled:false,stakeUsd:5,maxLegs:2,maxOpen:3,dailyLossCapUsd:50,lastRunAt:0,lastAction:null,skipped:[]}}
+function defaultSettings(){return Object.fromEntries(Object.entries(SETTINGS_BOUNDS).map(([k,b])=>[k,b.default]))}
+// Out-of-range or garbage stored values fall back to the default, never to a wider band.
+function normalizeSettings(s={}){
+ const out=defaultSettings();
+ for(const [k,b] of Object.entries(SETTINGS_BOUNDS)){const v=Number(s?.[k]);if(Number.isFinite(v)&&v>=b.min-1e-9&&v<=b.max+1e-9)out[k]=k==='priceMin'?r3(v):Math.round(v)}
+ return out;
+}
 function defaultJournal(){return {version:1,combos:{},open:[],history:[],
- stats:{placed:0,won:0,lost:0,pnlUsd:0,hitRate:null},autopilot:defaultAutopilot(),cooldowns:{}}}
+ stats:{placed:0,won:0,lost:0,pnlUsd:0,hitRate:null},autopilot:defaultAutopilot(),cooldowns:{},settings:defaultSettings()}}
 function normalizeJournal(s={}){
  const out={...defaultJournal(),...s};
  out.combos=s.combos&&typeof s.combos==='object'?s.combos:{};
  out.open=Array.isArray(s.open)?s.open:[];
  out.history=Array.isArray(s.history)?s.history:[];
  out.cooldowns=s.cooldowns&&typeof s.cooldowns==='object'?s.cooldowns:{};
+ out.settings=normalizeSettings(s.settings);
  out.autopilot={...defaultAutopilot(),...(s.autopilot||{})};
  out.autopilot.skipped=Array.isArray(out.autopilot.skipped)?out.autopilot.skipped.slice(-8):[];
  return out;
@@ -414,6 +424,24 @@ function startOfDay(now=Date.now()){const d=new Date(now);d.setHours(0,0,0,0);re
 function realizedTodayUsd(j=loadJournal(),now=Date.now()){
  const from=startOfDay(now);
  return r2(j.history.filter(x=>num(x.settledAt)>=from).reduce((a,x)=>a+num(x.pnlUsd),0));
+}
+
+// ---------------------------------------------------------------- settings
+export function usComboSettings(){return {...loadJournal().settings}}
+export function setUSComboSettings(patch={}){
+ const j=loadJournal();
+ if(j.recoveryRequired)fail('stateRecovery','Local combo journal is corrupt; refusing to overwrite it until recovered');
+ const next={...j.settings};
+ for(const [k,b] of Object.entries(SETTINGS_BOUNDS)){
+  if(patch?.[k]===undefined)continue;
+  const v=Number(patch[k]);
+  if(!Number.isFinite(v)||v<b.min-1e-9||v>b.max+1e-9)fail('settingsInvalid',`${k} must be between ${b.min} and ${b.max}`);
+  next[k]=k==='priceMin'?r3(v):Math.round(v);
+ }
+ j.settings=next;
+ saveJournal(j);
+ snapCache={at:0,data:null};
+ return {...next};
 }
 
 // ------------------------------------------------------------------- gates
@@ -758,7 +786,7 @@ async function runUSComboAutopilotPass(j,ap){
  if(realizedTodayUsd(j)<=-Math.abs(ap.dailyLossCapUsd)){noteAutopilot(null,'daily loss cap');return {ran:false,reason:'dailyLossCap'}}
  try{
   const pool=await refreshCandidates();
-  const legs=chooseUSCombo(pool,clamp(ap.maxLegs,2,3),j);
+  const legs=chooseUSCombo(pool,Math.min(clamp(ap.maxLegs,2,3),j.settings.maxLegs),j);
   if(legs.length<2){noteAutopilot(null,'not enough live candidates');return {ran:false,reason:'noCandidates'}}
   const legKeys=legs.map(l=>l.key);
   const quote=await quoteUSCombo({legKeys,stakeUsd:ap.stakeUsd,candidates:pool});
@@ -792,6 +820,7 @@ export function stopUSComboLoops(){if(loopTimer)clearInterval(loopTimer);loopTim
 
 // --------------------------------------------------------------- snapshot
 async function enrichBBO(candidates){
+ const settings=usComboSettings();
  const out=await mapLimit(candidates.slice(0,12),4,async c=>{
   try{
    const cached=bboCache.get(c.symbol);
@@ -803,7 +832,7 @@ async function enrichBBO(candidates){
    const price=c.side==='SIDE_SELL'?r4(1-bid):r4(ask);
    const spread=bid>0?Math.max(0,r4(ask-bid)):null;
    const spreadLimit=spreadLimitFor(liquidity);
-   if(price<PRICE_MIN||price>PRICE_MAX)return null;
+   if(price<settings.priceMin||price>PRICE_MAX)return null;
    if(spread!=null&&spread>spreadLimit+1e-9)return null;
    const feePerContract=r4(standardFeePerContract(price,c.feeCoefficient));
    const rank=c.nearEndScore*4+(100-Math.abs(price-.90)*260)+Math.min(35,Math.log10(Math.max(1,liquidity))*8)-c.etaMinutes*8-spread*500;
@@ -841,7 +870,7 @@ export async function usComboSnapshot({force=false}={}){
   const ap=j.autopilot;
   if(lastQuote&&num(lastQuote.expiresAt)<now)lastQuote=null;
   let suggested=null;
-  const picked=chooseUSCombo(candidates,clamp(num(ap.maxLegs)||2,2,3),j);
+  const picked=chooseUSCombo(candidates,j.settings.maxLegs,j);
   if(picked.length>=2){
    try{
     const c=buildUSCombo({legKeys:picked.map(l=>l.key),stakeUsd:ap.stakeUsd,candidates,at:now});
@@ -860,6 +889,8 @@ export async function usComboSnapshot({force=false}={}){
    journal:{open:j.open,history:j.history.slice(0,8),stats:{...j.stats,unverified:j.open.filter(x=>x.fillVerified!==true).length}},
    autopilot:{...ap},
    limits:usComboLimits(),
+   settings:{...j.settings},
+   settingsBounds:SETTINGS_BOUNDS,
    betaAccess,
    lastError};
   snapCache={at:now,data};

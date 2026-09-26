@@ -4,7 +4,7 @@
 (`CURRENT_TASKS.md`, `KNOWN_BUGS.md`, `PROJECT_STATE.md`, `RELEASE_STATUS.md`) and in `reports/NEXT-STEPS-2026-09-25.md`.
 Don't re-inventory the repo. Update this file at the end of every batch.
 
-Last updated: 2026-09-25, batch 5. Branch `feature/polymarket-combo-only`, version `0.5.0-alpha.56`.
+Last updated: 2026-09-25, batch 6. Branch `feature/polymarket-combo-only`, version `0.5.0-alpha.56`.
 
 ## Architecture (inventoried once)
 
@@ -115,9 +115,34 @@ Last updated: 2026-09-25, batch 5. Branch `feature/polymarket-combo-only`, versi
 - Tests: `npm run test:all` **533 pass / 0 fail**. Not smoke-tested in the running app yet; step 7 replaces this window anyway.
 - Next: step 3 (settings plumbing: `priceMin` / `maxMinutesLeft` / `maxLegs`).
 
+## Batch 6 (2026-09-25): combo renovation step 3, owner settings
+
+- **Desktop check:** the installed app (`%LOCALAPPDATA%\Programs\money-printer-os`, asar written 09-25 14:56) is alpha.56 from *before* this branch and still shows the 3-module suite. The renovation reaches the desktop only when bing builds and installs, ideally not before step 7.
+- `journal.settings` = `{priceMin, maxMinutesLeft, maxLegs}` with fixed `SETTINGS_BOUNDS`:
+
+  | Setting | Range | Default |
+  | --- | --- | --- |
+  | `priceMin` | 0.60 to 0.985 | 0.80 |
+  | `maxMinutesLeft` | 1 to 30 | 15 |
+  | `maxLegs` | 2 to 3 | 3 |
+
+  - `maxLegs` 3 tightens the old hard limit of 10.
+  - `setUSComboSettings` rejects out-of-range values (`settingsInvalid`) and refuses to write while `recoveryRequired`.
+  - `normalizeJournal` resets bad stored values to defaults, never to a wider band.
+- New route: `POST /api/polymarket-us/combos/settings`.
+- Enforcement now reads the settings instead of `PRICE_MIN` and `TURNOVER_TARGET_MINUTES`:
+  - the feed filter
+  - `resolveLegs`, and through it build, quote and place
+  - BBO enrichment
+  - the snapshot suggestion
+  - the autopilot picker, capped by `maxLegs`
+- The snapshot adds `settings` and `settingsBounds`. `suggested` is kept.
+- Tests: `test:combos` 37/0 (+6: defaults and persistence, bounds, 0.65 at floor 0.60 vs 0.80, the minutes gate, a 4th leg at `maxLegs` 3, a corrupt journal not overwritten). `test:all` **539 / 0**.
+- Next: step 4 (write the journal entry before the RFQ accept).
+
 ## Next recommended batch (priority order)
 
-0. Combo renovation step 3: settings plumbing (see batch 5).
+0. Combo renovation step 4: journal-before-accept (see batch 6).
 
 1. **bing:** run the two merge commands (batch 2), then say whether to push. Schedule `npm run collector -- --data "%APPDATA%\Money Printer OS\data"` at logon, and disable `MoneyPrinterReplayWorkhorse`.
 2. Re-run the Lab's three Polymarket sandbox searches with the committed fee model (report section 2.3: `node scripts/polymarket-research.mjs --mode search ...` in the Lab repo, read-only against `W:/mpo-polymarket-research`). Record the verdict here.
