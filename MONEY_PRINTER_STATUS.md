@@ -4,7 +4,7 @@
 (`CURRENT_TASKS.md`, `KNOWN_BUGS.md`, `PROJECT_STATE.md`, `RELEASE_STATUS.md`) and in `reports/NEXT-STEPS-2026-09-25.md`.
 Don't re-inventory the repo. Update this file at the end of every batch.
 
-Last updated: 2026-09-26, batch 19 (Evolution Lab owns Robinhood research). Branch `feature/polymarket-combo-only`, version `0.5.0-alpha.57`.
+Last updated: 2026-09-26, batch 20 (Polymarket combo plan, batch 1 of 6: connection truth). Branch `feature/polymarket-combo-only`, version `0.5.0-alpha.57`.
 
 ## Architecture (inventoried once)
 
@@ -406,3 +406,13 @@ Batches 11–14 are built. The Evolution Lab is retired, so nothing waits on it.
 - Lab: central module whitelist `src/researchModules.js` (solana, robinhood, polymarket) replaces the "any safe string" check in lifecycle, evidence store and experiment registry. Fixed a `__proto__`/`constructor` lookup hole in the module registry. Adapter dispatch table `MODULE_RUNNERS`. New fixture tests for both workers, supervisor args, `/api/state.modules`, lab.html lanes. Lab suite 153/153.
 - Trader: `evolveDue()` stands down while the Lab Robinhood lane reported within 30 min and is not ERROR (`labRobinhoodResearchActive`). Manual evolve/run and operator apply-to-paper (Lab or local champion) still work. Money feed is lower-right (`right:18px`, covered by visual-contract). MPO suite 579/579.
 - Robinhood-native validation is blocked by 401 `keyNotFound`: tape is `coinbase-public-paper`, so the `>=90%` Robinhood-quote holdout gate cannot pass until bing regenerates the key.
+
+## Batch 20 (2026-09-26): Polymarket combo plan, batch 1 of 6 (connection truth)
+
+Plan (from bing): 1 connection truth, 2 page every live game, 3 strategy windows as settings, 4 evidence capture + shadow auto + Lab module, 5 opt-in real AUTO COMBO (reverses the old no-autopilot rule; guarded, bankroll-capped), 6 ship.
+
+- Preflight `node scripts/polymarket-us-preflight.mjs` (signed read-only GET /v1/orders/open): **FAIL, 401 keyNotFound**. The combo-beta probe was not run (it needs a 2xx first). betaAccess is still unknown. The report file `reports/polymarket-preflight-2026-09-26.md` is left untracked.
+- The KEY tile is now CONNECTED only when a signed call has succeeded (`authCode==='ok'`). Otherwise it shows KEY NOT VERIFIED, or KEY REJECTED (regenerate at polymarket.us/developer). Saving a new key resets verification.
+- New `GET /api/polymarket-us/account` (`polymarketUSAccount` in `src/polymarketUS.js`): SDK `account.balances()` + `orders.list()`, read-only, cached 15 s. It returns currentBalance/buyingPower/currency, the open-order count and the names of unknown balance fields. The shapes come from the polymarket-us SDK typings. The panel shows a BALANCE tile.
+- Tests: polymarket-us-safety 5/0 (+2), visual-contract 18/0 (+1), polymarket-us-combos 41/0.
+- Commit 57334d9 (code); ledger in the following commit.
