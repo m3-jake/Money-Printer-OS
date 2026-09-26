@@ -211,6 +211,30 @@ Last updated: 2026-09-26, batch 10. Branch `feature/polymarket-combo-only`, vers
   - The accidental report was deleted.
 - bing asked to build and launch on this Windows machine. The build and install record follows below.
 
+### Build and install (2026-09-26, 00:45 local)
+
+- **Packer fix (`cd667a0`):** `scripts/build-windows-asar.mjs` passed unquoted paths to `npx` with `shell:true`. The default output folder `Desktop\Money Printer OS` split at the space, the archive landed in a stray `Desktop\Money` file, and the pack step still exited 0. The paths are quoted now, and the stray file was deleted.
+- **Build:** `npm run release:windows-asar`
+  - Output: `Desktop\Money Printer OS\Windows-cd667a0-20260926\app.asar`
+  - Release `0.5.0-alpha.56+windows.cd667a0`
+  - sha256 `a524f7b88f8235c5839095394373f48a37fee745625ed978831bf05a7fb5f11b`, 30,288,942 bytes
+  - Unsigned: a local build, not a published release.
+- **Boot test:** `npm run smoke:windows` passed (dashboard 200, health 200, isolated data dir).
+- **Install:**
+  - Previous `resources\app.asar` (sha `879e8d1f…`) backed up as `app.asar.alpha56-pre-combo-backup-20260926-0045`.
+  - The new archive was copied in, and the hash was verified.
+  - Launched from `%LOCALAPPDATA%\Programs\money-printer-os`.
+- **Verified in the running app (port 8792):**
+  - Window "Polymarket US", `POLY_MODS=['combos']`, `#polyConfirm` present.
+  - `/api/polymarket` returns 404.
+  - Snapshot: 15 live games, settings at the defaults.
+  - Live journal `open: []`. It still has the old `autopilot` key on disk, which is dropped on its next save.
+- **Rollback:** quit the app, then copy the backup over `resources\app.asar`.
+- **Found live:** the session showed `sessionArmed:true` seconds after launch.
+  - Nothing server-side arms it; only the window's Arm button (`POST /arm`) does. It was left as found.
+  - **Gap:** until a signed call happens, `authCode` is null, so a stored-but-rejected key shows "CONNECTED" and can be armed. Placing still fails closed on the 401 at the first signed call (quote).
+  - A cheap signed readiness probe on connect or arm would surface "KEY REJECTED" earlier. Not built; it is a candidate follow-up.
+
 ## Next recommended batch (priority order)
 
 0. **bing:**
