@@ -518,6 +518,8 @@ function realizedTodayUsd(j=loadJournal(),now=Date.now()){
 }
 
 // ---------------------------------------------------------------- settings
+// Read-only journal view for the core's legacy coverage (no feed or signed calls).
+export function usComboJournalView(){const j=loadJournal();return {open:j.open.map(x=>({...x})),stats:{...j.stats},recoveryRequired:!!j.recoveryRequired,recoveryError:j.recoveryError||null}}
 export function usComboSettings(){return {...loadJournal().settings}}
 export function setUSComboSettings(patch={}){
  const j=loadJournal();

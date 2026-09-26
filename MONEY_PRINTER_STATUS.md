@@ -794,6 +794,18 @@ bing pasted the full MPOS unification brief (35 sections, phases 0–7). Phase 0
 - **Tests:** 2 new tests in `market-core` (20 pass). `npm run test:all`: **703 pass, 0 fail**. Browser check on an isolated engine (`engine-core`, :8851): register → BACKTESTING worked; PAPER without evidence was refused with all five blockers named; the table rendered.
 
 ### Next recommended
-1. Legacy books into the core ledger as read-only LEGACY coverage (Solana, Robinhood practice, US combos).
+1. ~~Legacy books~~ done in batch O (as a read-only view, not ledger rows).
 2. Sync Lab champions (`lab-link/modules/*-champion.json`) into the strategy registry, using `labChampionLifecycle` and the champions' walk-forward evidence.
 3. POLYMARKET.EXE consolidation; contract-term extraction for ARBITRAGE.EXE.
+
+## Batch O (2026-09-26): legacy books visible in Command Center (read-only)
+
+- **Decision:** the Solana, Robinhood practice and US combo books are shown **next to** the core ledger, not imported into it. None of them has a reconciled import, and copying them in would double-count them once one exists. Currencies are never converted: SOL stays SOL, and no SOL price is invented.
+- **New `src/core/legacyBooks.js`:** pure views (`solanaLegacy`, `robinhoodPracticeLegacy`, `usCombosLegacy`, `legacyTotals`, `legacyCoverage`). A missing value stays null ("unavailable"). A failing reader shows UNAVAILABLE with the reason instead of breaking the snapshot. US combos are labelled `LIVE_UNRECONCILED` and count unverified fills. Solana realized P/L covers only the retained history (last 1500 closes), and the table says so.
+- **Wiring:** `MarketPlatform.setLegacyReaders()`; the dashboard passes `loadStateCached`, `practiceSnapshot` and the new `usComboJournalView()` (a read-only journal copy with no feed or signed calls). `/api/platform/status` has `legacy`. Command Center has a Legacy books table.
+- **Tests:** 1 new test in `market-core` (21 pass). `npm run test:all`: **714 pass, 0 fail**. Browser check on the isolated engine (:8851): Solana 0.83 SOL cash / 3 open / -0.0146 SOL realized; Robinhood practice 500 USD; US combos cash "unavailable".
+
+### Next recommended
+1. Sync Lab champions (`lab-link/modules/*-champion.json`) into the strategy registry using `labChampionLifecycle` and their walk-forward evidence.
+2. POLYMARKET.EXE consolidation (Markets / Live / Sports / Positions / History / Combo Engine), and decide on `polymarketPaperCombos.js`.
+3. Contract-term extraction for Kalshi and Polymarket, so ARBITRAGE.EXE can rate real pairs above RELATED.

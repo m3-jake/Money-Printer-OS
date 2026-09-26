@@ -7,6 +7,7 @@ import { solanaBookView } from './solanaEconomics.js';
 import { traderSwitches } from './killSwitches.js';
 import { robinhoodReadiness } from './robinhoodAutoTrader.js';
 import { holderRpcHealth } from './rpc.js';
+import { walletScorecardView } from './walletScorecard.js';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -18,12 +19,14 @@ import { readResearchControlPlane, attachControlPlaneToMonitor, leaderboardRows,
 import { saveResourcePolicy, resourceSnapshot, systemTelemetry } from './resourcePolicy.js';
 // polymarketUS.js is parked except for credentials and the session arm: its scanner and single-order routes are not served.
 import { usReadiness, configurePolymarketUS, armPolymarketUS, polymarketUSAccount } from './polymarketUS.js';
-import { usComboSnapshot, buildUSCombo, quoteUSCombo, placeUSCombo, cancelUSRfq, setUSComboSettings, settleUSCombos, forgetUSCombo, startUSComboLoops, setUSComboAutopilot } from './polymarketUSCombos.js';
+import { usComboJournalView, usComboSnapshot, buildUSCombo, quoteUSCombo, placeUSCombo, cancelUSRfq, setUSComboSettings, settleUSCombos, forgetUSCombo, startUSComboLoops, setUSComboAutopilot } from './polymarketUSCombos.js';
 import { readApiUnitEconomics } from './apiUnitEconomics.js';
 import { productEconomics, productIngestionAuthorized, productReadAuthorized } from './productEconomics.js';
 import updateChannel from '../desktop/update-channel.cjs';
 import { handlePlatformRequest } from './core/http.js';
 import { marketPlatform, closeMarketPlatform } from './core/platform.js';
+import { practiceSnapshot } from './robinhoodPractice.js';
+import { JOURNAL_FILE as RH_JOURNAL_FILE } from './robinhoodJournal.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const html = fs.readFileSync(path.join(ROOT, 'public', 'dashboard.html'), 'utf8');
@@ -348,6 +351,7 @@ function snapshot() {
     walletIntel: {
       wallets: Object.values(s.research?.walletProfiles || {}).sort((a,b)=>(b.recurrenceScore||0)-(a.recurrenceScore||0)).slice(0,24),
       holderRpc: holderRpcHealth(),
+      scorecard: walletScorecardView(),
     },
     researchSummary: {
       universeCount: Object.keys(s.research?.universe || {}).length,
@@ -373,7 +377,7 @@ function snapshot() {
 }
 
 export function startDashboard() {
-  marketPlatform();
+  marketPlatform().setLegacyReaders({solana:loadStateCached,robinhoodPractice:()=>practiceSnapshot({dataDir:path.dirname(RH_JOURNAL_FILE)}),usCombos:usComboJournalView});
   const server = http.createServer(async (req, res) => {
     try {
       const u = new URL(req.url, 'http://127.0.0.1');
@@ -454,6 +458,7 @@ export function startDashboard() {
       if (req.method === 'GET' && u.pathname === '/api/evolution') { const st = loadStateCached(); return json(res, { ...(st.evolution || {}), loop: evolutionLoopView(st.evolutionLoop || st.evolution?.loop || {}), labLink: labLinkView(st) }); }
       if (req.method === 'GET' && u.pathname === '/api/network') { const r=await meshRequest('GET','/state'); return json(res,r.body,r.status); }
       if (req.method === 'GET' && u.pathname === '/api/resources') return json(res, resourceSnapshot());
+      if (req.method === 'GET' && u.pathname === '/api/scoreboard') { const sb=await import('./scoreboard.js'); return json(res, await sb.readScoreboard()); }
       if (req.method === 'GET' && u.pathname === '/api/data-coverage') return json(res, dataCoverage(DATA_DIR, { force: u.searchParams.get('force') === '1' }));
       if (req.method === 'GET' && u.pathname === '/api/desktop-prefs') return json(res, readDesktopPrefs());
       if (req.method === 'GET' && u.pathname === '/api/unit-economics') return json(res, readApiUnitEconomics());

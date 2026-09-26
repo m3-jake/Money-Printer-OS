@@ -14,6 +14,7 @@ import { compareContracts,arbitrageQuote } from '../src/core/contracts.js';
 import { normalizeKalshi,normalizeKalshiBook,normalizePolymarket,KalshiProvider } from '../src/core/predictionProviders.js';
 import { ProviderRegistry,JsonProvider } from '../src/core/provider.js';
 import { MarketPlatform } from '../src/core/platform.js';
+import { legacyCoverage,solanaLegacy,usCombosLegacy,legacyTotals } from '../src/core/legacyBooks.js';
 import { StrategyRegistry,promotionCheck,labChampionLifecycle } from '../src/core/strategies.js';
 import { assertGlobalTradingNotHalted } from '../src/core/executionBoundary.js';
 import { localMutationAllowed } from '../src/core/http.js';
@@ -175,4 +176,20 @@ test('strategy lifecycle follows allowed edges, never reaches LIVE, and keeps ap
   assert.throws(()=>s.db.exec('DELETE FROM strategy_transitions'),/append-only/);
   assert.throws(()=>s.db.exec("UPDATE strategy_transitions SET reason='x'"),/append-only/);
   s.close();
+});
+
+test('legacy books are read-only, never converted, and unknowns stay unknown',()=>{
+  const sol=solanaLegacy({cashSol:1.5,paperStartSol:2,positions:[{sizeSol:.2,remainingSol:.1},{sizeSol:.3}],history:[{pnlSol:.05},{pnlSol:-.02}]});
+  assert.equal(sol.currency,'SOL');assert.equal(sol.openPositions,2);assert.ok(Math.abs(sol.openCost-.4)<1e-12);assert.ok(Math.abs(sol.realized-.03)<1e-12);
+  assert.equal(solanaLegacy({positions:[],history:[{pnlSol:null}]}).realized,null);
+  const us=usCombosLegacy({open:[{costUsd:5,fillVerified:true},{stakeUsd:3}],stats:{pnlUsd:-2}});
+  assert.equal(us.mode,'LIVE_UNRECONCILED');assert.equal(us.unverifiedFills,1);assert.equal(us.openCost,8);assert.equal(us.cash,null);
+  const cov=legacyCoverage({solana:()=>({cashSol:1,positions:[],history:[]}),robinhoodPractice:()=>{throw new Error('disk')},usCombos:()=>({open:[],stats:{pnlUsd:4}})});
+  assert.equal(cov.books[1].status,'UNAVAILABLE');assert.match(cov.books[1].reason,/disk/);
+  assert.deepEqual(cov.totals.map(t=>t.currency).sort(),['SOL','USD']);
+  assert.equal(legacyTotals([{currency:'USD',status:'LEGACY_READ_ONLY',openCost:null,realized:1}])[0].openCost,null);
+  const p=new MarketPlatform({providers:new ProviderRegistry()});
+  assert.equal(p.snapshot().legacy.books.every(b=>b.status==='UNAVAILABLE'),true);
+  p.setLegacyReaders({usCombos:()=>({open:[],stats:{pnlUsd:1}})});
+  const snap=p.snapshot();assert.equal(snap.legacy.books[2].realized,1);assert.equal(snap.ledger.length,0);p.close();
 });
