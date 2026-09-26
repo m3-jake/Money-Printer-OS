@@ -563,8 +563,9 @@ const FX_BILLS=[['b100-wave',2.4],['b100-curl',2.7],['b100-bow',1.14],['b100-scu
 function fxFloor(){const r=$('#moneyRain');return r?r.clientHeight:innerHeight-36}
 function fxBill(o){const tiny=o.tiny,pick=tiny&&Math.random()<.7?FX_BILLS[5]:FX_BILLS[Math.floor(Math.random()*(tiny?6:5))],stack=o.stack,w=Math.round((stack?120:64+Math.random()*40)*(pick[1]<1.3&&!stack?.8:1)),ar=stack?1:pick[1],h=Math.round(w/ar),left=4+Math.random()*88,rot=(Math.random()*50-25).toFixed(0),drift=(Math.random()*160-80).toFixed(0),src=stack?'/assets/money-printer-logo.png':'/assets/money-fx/'+pick[0]+'.webp';
  return `<img class="bill ${o.cls}${stack?' stack':''}" data-market="${o.src||'profit'}" src="${src}" alt="" style="left:${left}%;width:${w}px;--floor:${fxFloor()-h}px;--drift:${drift}px;--rot:${rot}deg;--spin:${(Math.random()*720-360).toFixed(0)}deg;animation-duration:${o.d}s,${o.d}s;animation-delay:${o.delay}s,${o.delay}s">`}
-function makeBurstBills(n,intensity,source='profit'){const tiny=intensity<.25;let h=Array.from({length:n},()=>fxBill({cls:'burst',src:source,tiny,d:(5.5+Math.random()*2.5).toFixed(2),delay:(Math.random()*1.4).toFixed(2)})).join('');if(intensity>=.7)h+=Array.from({length:Math.round(2+intensity*3)},()=>fxBill({cls:'burst',src:source,stack:1,d:(4.6+Math.random()*1.2).toFixed(2),delay:(Math.random()*.8).toFixed(2)})).join('');return h}
-function makeRainBills(n,intensity){return Array.from({length:n},()=>{const d=7+Math.random()*4;return fxBill({cls:'rain',src:'paper-equity',tiny:intensity<.2,d:d.toFixed(2),delay:(-Math.random()*d).toFixed(2)})}).join('')}
+function makeBurstBills(n,intensity,source='profit'){const tiny=intensity<.25;let h=Array.from({length:n},()=>fxBill({cls:'burst',src:source,tiny,d:(8.5+Math.random()*3).toFixed(2),delay:(Math.random()*2.2).toFixed(2)})).join('');if(intensity>=.7)h+=Array.from({length:Math.round(2+intensity*3)},()=>fxBill({cls:'burst',src:source,stack:1,d:(7+Math.random()*1.5).toFixed(2),delay:(Math.random()*.8).toFixed(2)})).join('');return h}
+function fxRainHost(rain){if(rain.dataset.fx)return;rain.dataset.fx='1';rain.addEventListener('animationend',e=>{if(e.animationName==='billDrop'&&e.target.classList.contains('burst'))e.target.remove()})}
+function makeRainBills(n,intensity){return Array.from({length:n},()=>{const d=12+Math.random()*5;return fxBill({cls:'rain',src:'paper-equity',tiny:intensity<.2,d:d.toFixed(2),delay:(-Math.random()*d).toFixed(2)})}).join('')}
 function makePileBills(n,intensity){return Array.from({length:n},(_,i)=>{const left=Math.max(2,Math.min(94,(i+.25)*100/Math.max(1,n)+Math.random()*8-4)),bottom=Math.max(0,Math.round(Math.random()*20+intensity*12)),rot=(Math.random()*30-15).toFixed(1),scale=(.62+Math.random()*.42).toFixed(2);return `<div class="bill pile" data-market="paper-equity" style="left:${left}%;bottom:${bottom}px;--rot:${rot}deg;--scale:${scale};animation-delay:${(-Math.random()*2).toFixed(2)}s"></div>`}).join('')}
 function renderMoneyEvents(){const el=$('#moneyEventFeed');if(!el)return;el.innerHTML=moneyEvents.slice(-7).map(x=>`<div class="money-event ${x.kind||'profit'}"><span>${new Date(x.at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</span> ${polyEscape(x.text)}</div>`).join('')}
 function noteMoneyEvent(text,kind='profit'){const t=String(text||'').trim();if(!t)return;const last=moneyEvents.at(-1);if(last?.text===t&&Date.now()-last.at<2500)return;moneyEvents.push({at:Date.now(),text:t,kind});if(moneyEvents.length>40)moneyEvents.splice(0,moneyEvents.length-40);renderMoneyEvents()}
@@ -573,8 +574,8 @@ function triggerMoneyBurst(amountUsd=1,source='profit',reason='Profit realized')
  const amount=Math.max(0,Number(amountUsd)||0);if(!(amount>0))return;
  noteMoneyEvent(reason+' · +$'+amount.toFixed(amount<10?2:0)+' effect');
  const rain=$('#moneyRain'),pile=$('#moneyPile');if(!rain||!pile||matchMedia('(prefers-reduced-motion: reduce)').matches)return;
- const intensity=clamp01(Math.log10(1+amount)/2.2),n=Math.max(7,Math.min(72,Math.round(8+amount*2.4+intensity*18))),stacks=Math.max(8,Math.min(28,Math.round(10+intensity*18)));
- rain.innerHTML=makeBurstBills(n,intensity,source);rain.style.opacity='1';
+ const intensity=clamp01(Math.log10(1+amount)/2.2),n=Math.max(5,Math.min(34,Math.round(5+amount*1.2+intensity*10))),stacks=Math.max(8,Math.min(28,Math.round(10+intensity*18)));
+ fxRainHost(rain);rain.insertAdjacentHTML('beforeend',makeBurstBills(n,intensity,source));rain.style.opacity='1';
  fxBurstUntil=Date.now()+10500;if(fxBurstTimer)clearTimeout(fxBurstTimer);fxBurstTimer=setTimeout(()=>{if(Date.now()>=fxBurstUntil){fxSig='';updateDesktopEffects(true)}},10700);
 }
 function trackRealizedProfitBurst(){const v=Number(state?.portfolio?.realizedDayPnlSol);if(!Number.isFinite(v))return;if(fxLastRealizedSol!=null&&v>fxLastRealizedSol+1e-9){const gain=v-fxLastRealizedSol,solUsd=Number(state?.market?.solUsd)||0;triggerMoneyBurst(Math.max(.25,gain*(solUsd||100)),'solana-win',`Pump.fun realized +${gain.toFixed(4)} SOL`)}fxLastRealizedSol=v}
@@ -590,11 +591,10 @@ function updateDesktopEffects(force=false){
  if(!state)return;const m=sessionFxMetrics(),bursting=Date.now()<fxBurstUntil,key=[m.known?1:0,m.ahead?1:0,Math.round((m.pnlPct||0)*2),Math.round(m.velocity||0),Math.round(m.intensity*10),bursting?1:0].join(':');if(!force&&key===fxSig)return;fxSig=key;
  const rain=$('#moneyRain'),pile=$('#moneyPile');if(!rain||!pile)return;
  if(matchMedia('(prefers-reduced-motion: reduce)').matches){rain.innerHTML='';pile.innerHTML='';rain.style.opacity='0';pile.style.opacity='0';return}
- if(!m.ahead){fxAheadAnnounced=false;if(!bursting){rain.innerHTML='';rain.style.opacity='0';pile.innerHTML='';pile.style.opacity='0'}return}
+ if(!m.ahead){fxAheadAnnounced=false;rain.querySelectorAll('.rain').forEach(b=>b.remove());pile.innerHTML='';pile.style.opacity='0';return}
  if(!fxAheadAnnounced){noteMoneyEvent('Paper equity above start by +'+Number(m.pnlSol||0).toFixed(4)+' SOL · ambient single-bill rain enabled','ambient');fxAheadAnnounced=true}
- if(bursting)return;
  pile.innerHTML='';pile.style.opacity='0';
- const rn=Math.max(6,Math.round(8+m.intensity*22));rain.innerHTML=makeRainBills(rn,m.intensity);rain.style.opacity='1';
+ fxRainHost(rain);const rn=Math.max(3,Math.round(4+m.intensity*10)),have=[...rain.querySelectorAll('.rain')];if(have.length<rn)rain.insertAdjacentHTML('beforeend',makeRainBills(rn-have.length,m.intensity));else have.slice(rn).forEach(b=>b.remove());rain.style.opacity='1';
 }
 function showDialog(title,head,text){$('#dialogTitle').textContent=title;$('#dialogHead').textContent=head;$('#dialogText').textContent=text;$('#dialog').classList.remove('hidden')}
 $('#dialogOk').onclick=$('#dialogX').onclick=()=>$('#dialog').classList.add('hidden');
