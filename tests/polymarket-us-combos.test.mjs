@@ -887,3 +887,64 @@ test('a confirm failure after a good accept keeps the entry unverified',async()=
  assert.equal(j.stats.placed,1);
  us.armPolymarketUS(false);
 });
+
+// ------------------------------------------------------- batch 2: every live game
+test('feed pages /v1/events by offset until a short page and reports real totals',async()=>{
+ const offsets=[];
+ const mk=(i,live)=>({id:'e'+i,slug:'ev-'+i,title:'ev '+i,live,closed:false,ended:false,tags:[{slug:'soccer'}],markets:[market({slug:'m'+i,comboEnabled:i%2===0})]});
+ globalThis.fetch=async url=>{const u=new URL(String(url));const off=Number(u.searchParams.get('offset'));offsets.push(off);
+  const n=off<600?300:120;return jsonRes({events:Array.from({length:n},(_,k)=>mk(off+k,(off+k)%10===0))})};
+ const f=await combos.usLiveEvents({force:true});
+ assert.deepEqual(offsets,[0,300,600]);
+ assert.equal(f.total,720);assert.equal(f.pages,3);assert.equal(f.capped,false);
+ assert.equal(f.live,72);assert.equal(f.comboLive,72);
+});
+
+test('feed paging stops at the hard cap',async()=>{
+ let calls=0;
+ globalThis.fetch=async url=>{calls++;const off=Number(new URL(String(url)).searchParams.get('offset'));
+  return jsonRes({events:Array.from({length:300},(_,k)=>({id:'c'+(off+k),live:false}))})};
+ const f=await combos.usLiveEvents({force:true});
+ assert.equal(calls,10);assert.equal(f.total,3000);assert.equal(f.capped,true);
+});
+
+test('board lists every live combo game with its exact rejection reason; window rejects are manually addable',()=>{
+ const now=Date.now();
+ const {candidates,board,rejections}=combos.usCandidatesFromEvents([
+  soccerEvent('near-2026',88),soccerEvent('early-2026',7),
+  soccerEvent('cheap-2026',88,{markets:[market({slug:'atc-cheap',bestAskQuote:{value:'0.40'},bestBidQuote:{value:'0.39'}})]}),
+  {slug:'cs-2026',title:'Vexar vs Bushido',live:true,period:'Map 1',score:'5-3',tags:[{slug:'esports'},{slug:'cs2'}],markets:[market({slug:'cs-m'})],__fetchedAt:now},
+ ],now);
+ assert.deepEqual(candidates.map(c=>c.eventSlug),['near-2026']);
+ const by=Object.fromEntries(board.map(b=>[b.eventSlug,b]));
+ assert.equal(board.length,4);
+ assert.equal(by['near-2026'].eligible,true);
+ assert.equal(by['early-2026'].outsideWindow,true);assert.match(by['early-2026'].reason,/./);
+ assert.equal(by['cheap-2026'].addable,false);
+ assert.ok(['price-band'].includes(by['cheap-2026'].reason),by['cheap-2026'].reason);
+ assert.equal(by['cs-2026'].sport,'esports');assert.match(by['cs-2026'].reason,/manual only: no timing rule for esports/);
+ assert.ok(rejections['price-band']>=1);
+});
+
+test('an outside-window leg can be added by hand and the combo is tagged',()=>{
+ const now=Date.now();
+ const {candidates,board}=combos.usCandidatesFromEvents([soccerEvent('near-2026',88),soccerEvent('early-2026',7)],now);
+ const early=board.find(b=>b.eventSlug==='early-2026');
+ const pool=[...candidates,early];
+ const c=combos.buildUSCombo({legKeys:[candidates[0].key,early.key],stakeUsd:5,candidates:pool,at:now});
+ assert.equal(c.outsideWindow,true);
+ assert.equal(c.legs.find(l=>l.eventSlug==='early-2026').outsideWindow,true);
+ assert.throws(()=>combos.buildUSCombo({legKeys:[candidates[0].key,early.key],stakeUsd:5,candidates,at:now}),/no longer a live candidate/);
+});
+
+test('sport labels: league comes from tags, not a blanket MLB/NBA/NHL',()=>{
+ const n=tags=>combos.normalizeUSLiveState({period:'Top 3',tags:tags.map(slug=>({slug}))});
+ assert.equal(n(['baseball','kbo']).leagueAbbreviation,'kbo baseball');
+ assert.equal(n(['baseball','npb']).leagueAbbreviation,'npb baseball');
+ assert.equal(n(['mlb']).leagueAbbreviation,'mlb baseball');
+ assert.equal(combos.normalizeUSLiveState({period:'P2',tags:[{slug:'hockey'},{slug:'khl'}]}).leagueAbbreviation,'khl hockey');
+ assert.equal(combos.normalizeUSLiveState({period:'Q4',tags:[{slug:'basketball'},{slug:'wnba'}]}).leagueAbbreviation,'wnba basketball');
+ assert.equal(combos.normalizeUSLiveState({period:'Q2',tags:[{slug:'basketball'}]}).leagueAbbreviation,'basketball');
+ assert.equal(combos.normalizeUSLiveState({tags:[{slug:'valorant'}]}).sport,'esports');
+ assert.equal(combos.normalizeUSLiveState({tags:[{slug:'darts'}]}).sport,'other');
+});

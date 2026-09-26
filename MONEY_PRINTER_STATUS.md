@@ -4,7 +4,7 @@
 (`CURRENT_TASKS.md`, `KNOWN_BUGS.md`, `PROJECT_STATE.md`, `RELEASE_STATUS.md`) and in `reports/NEXT-STEPS-2026-09-25.md`.
 Don't re-inventory the repo. Update this file at the end of every batch.
 
-Last updated: 2026-09-26, batch 20 (Polymarket combo plan, batch 1 of 6: connection truth). Branch `feature/polymarket-combo-only`, version `0.5.0-alpha.57`.
+Last updated: 2026-09-26, batch 21 (Polymarket combo plan, batch 2 of 6: every live game). Branch `feature/polymarket-combo-only`, version `0.5.0-alpha.57`.
 
 ## Architecture (inventoried once)
 
@@ -416,3 +416,13 @@ Plan (from bing): 1 connection truth, 2 page every live game, 3 strategy windows
 - New `GET /api/polymarket-us/account` (`polymarketUSAccount` in `src/polymarketUS.js`): SDK `account.balances()` + `orders.list()`, read-only, cached 15 s. It returns currentBalance/buyingPower/currency, the open-order count and the names of unknown balance fields. The shapes come from the polymarket-us SDK typings. The panel shows a BALANCE tile.
 - Tests: polymarket-us-safety 5/0 (+2), visual-contract 18/0 (+1), polymarket-us-combos 41/0.
 - Commit 57334d9 (code); ledger in the following commit.
+
+## Batch 21 (2026-09-26): Polymarket combo plan, batch 2 of 6 (every live game)
+
+- **Key status (after bing replaced the key):** preflight signed GET /v1/orders/open **passes**. Combo-beta probe `POST /v1/combos` (creates an instrument, not an order) returned **403 betaNotEnabled**. Real combo quote/place stays blocked until Polymarket allow-lists the account. Discovery and shadow work are unaffected.
+- `usLiveEvents` pages `/v1/events` by `offset` (300 per page) until a short page, hard cap 3000, dedupes by id. The feed reports `total`, `live`, `comboLive`, `pages` and `capped`. Live on 2026-09-26: 901 events over 4 pages, 49 live, 47 combo-enabled live.
+- `usCandidatesFromEvents` also returns `board`: every live combo-enabled game (best market per event) with `eligible` / `reason` / `addable` / `outsideWindow`. Window rejections are addable by hand; price-band and spread rejections are not. Games with no priceable market show their structural reason. The snapshot serves `board` (cap 400). Manual legs enter the build pool via `withManualRows`. `buildUSCombo` tags `outsideWindow` per leg and combo.
+- Sports: esports gets its own bucket (tags cs2/lol/dota/valorant/...), and it and `other` are **manual only** (explicit reason, `TIMED_SPORTS`). The league comes from tags (kbo/npb/mlb baseball, khl/nhl hockey, wnba/ncaab basketball...) instead of a blanket mlb/nba/nhl. Tennis keeps its tour (tennis atp/wta/itf) and table tennis is `table-tennis`.
+- Panel: board grouped by sport (live/eligible counts per sport) with clock/score, side price, spread, left, and status (eligible, or "outside strategy window · reason", or the reason). Feed totals line, a `suggested` combo with "Use these legs", an OUTSIDE STRATEGY WINDOW flag on the build line. The key box is now also shown (collapsed) while the key is unverified (the old build hid it).
+- Tests: polymarket-us-combos 46/0 (+5: paging, cap, board reasons, manual add, labels), visual-contract 19/0 (+1), safety 5/0, sports-turnover 5/0.
+- Queued (bing, mid-batch): richer animated visuals for Polymarket, Robinhood and pump.fun panels.

@@ -128,7 +128,9 @@ async function publicFetch(pathname,query=null,timeoutMs=FETCH_TIMEOUT_MS){
 }
 
 // ------------------------------------------------------------- live US feed
-let feed={at:0,fetchedAt:0,ok:false,error:null,events:[],inPlay:0,live:0};
+let feed={at:0,fetchedAt:0,ok:false,error:null,events:[],inPlay:0,live:0,total:0,comboLive:0,pages:0,capped:false};
+const EVENTS_PAGE=300,EVENTS_CAP=3000;
+const comboLiveEvent=e=>(e.markets||[]).some(m=>m&&m.comboEnabled===true);
 let feedBusy=null;
 const bboCache=new Map();
 
@@ -140,12 +142,21 @@ export async function usLiveEvents({force=false}={}){
  if(feedBusy)return feedBusy;
  feedBusy=(async()=>{
   try{
-   const j=await publicFetch('/v1/events',{active:true,closed:false,categories:['sports'],
-    startDateMin:new Date(now-36*3600e3).toISOString(),startDateMax:new Date(now+12*3600e3).toISOString(),limit:300});
-   const all=Array.isArray(j?.events)?j.events:[];
+   // Page with offset until a short page (the single 300-row call truncated ~900 events).
+   const query={active:true,closed:false,categories:['sports'],
+    startDateMin:new Date(now-36*3600e3).toISOString(),startDateMax:new Date(now+12*3600e3).toISOString(),limit:EVENTS_PAGE};
+   const all=[],seen=new Set();let pages=0,capped=false;
+   for(let offset=0;;offset+=EVENTS_PAGE){
+    if(offset>=EVENTS_CAP){capped=true;break}
+    const j=await publicFetch('/v1/events',{...query,offset});pages++;
+    const page=Array.isArray(j?.events)?j.events:[];
+    for(const e of page){const id=String(e?.id??e?.slug??'');if(id&&seen.has(id))continue;if(id)seen.add(id);all.push(e)}
+    if(page.length<EVENTS_PAGE)break;
+   }
    const at=Date.now();
    const live=all.filter(e=>e&&e.live===true&&!e.closed&&!e.ended).map(e=>({...e,__fetchedAt:at}));
-   feed={at,fetchedAt:at,ok:true,error:null,events:live,inPlay:all.length,live:live.length};
+   feed={at,fetchedAt:at,ok:true,error:null,events:live,inPlay:all.length,live:live.length,
+    total:all.length,comboLive:live.filter(comboLiveEvent).length,pages,capped};
   }catch(e){
    feed={...feed,fetchedAt:Date.now(),ok:false,error:String(e?.message||e)};
   }
@@ -169,8 +180,22 @@ function sportOf(tags,slug=''){
  if(has('football')||has('nfl')||has('ncaaf'))return 'football';
  if(has('basketball')||has('nba')||has('wnba')||has('ncaab'))return 'basketball';
  if(has('hockey')||has('nhl'))return 'hockey';
+ if(ESPORT_TAGS.some(has))return 'esports';
  return 'other';
 }
+const ESPORT_TAGS=['esports','esport','cs2','csgo','counter-strike','league-of-legends','lol','dota','valorant','overwatch','rainbow-six','call-of-duty','rocket-league','starcraft'];
+const LEAGUE_TAGS={
+ baseball:['mlb','npb','kbo','cpbl','ncaa-baseball','college-baseball','lmb','mlb-spring-training'],
+ basketball:['nba','wnba','ncaab','cbb','euroleague','nbl','acb','bsl','cba'],
+ football:['nfl','ncaaf','cfb','cfl','ufl'],
+ hockey:['nhl','khl','ahl','shl','liiga','del','ncaah'],
+};
+function leagueOf(tags,sport){
+ for(const lg of LEAGUE_TAGS[sport]||[])if(tags.has(lg))return lg.replace(/^college-/,'ncaa-');
+ return sport;
+}
+// Sports without a verified timing rule never auto-qualify; they are manual only.
+export const TIMED_SPORTS=new Set(['soccer','baseball','tennis','table-tennis','football','basketball','hockey']);
 
 // Item 2: map US strings into the exact shapes lateGameEstimate already parses.
 export function normalizeUSLiveState(event={}){
@@ -193,7 +218,7 @@ export function normalizeUSLiveState(event={}){
   else if(/^(1H|H1|FIRST HALF)/.test(up))period='1H';
   else if(/^(2H|H2|SECOND HALF)/.test(up))period='2H';
  }else if(sport==='baseball'){
-  league='mlb baseball';
+  {const lg=leagueOf(tags,'baseball');league=lg==='baseball'?'baseball':lg+' baseball'}
   period=rawPeriod;           // Top/Bot/Mid/End Nth pass through untouched
   elapsed=null;
  }else if(sport==='tennis'||sport==='table-tennis'){
@@ -208,7 +233,7 @@ export function normalizeUSLiveState(event={}){
   score=rawScore.split(':')[0].trim();
   elapsed=null;
  }else if(sport==='football'||sport==='basketball'||sport==='hockey'){
-  league=sport==='football'?'nfl football':sport==='basketball'?'nba basketball':'nhl hockey';
+  {const lg=leagueOf(tags,sport);league=lg===sport?sport:lg+' '+sport}
   period=rawPeriod;           // "Q4" + countdown clock "02:30" pass straight through
   elapsed=event.elapsed==null?null:String(event.elapsed);
  }
@@ -241,7 +266,7 @@ function outcomeLabel(market,long){
 export function usCandidatesFromEvents(events=[],now=Date.now(),settings=usComboSettings()){
  const rejections={};
  const reject=r=>{rejections[r]=(rejections[r]||0)+1;return null};
- const rows=[];
+ const rows=[],board=[],eventMeta=new Map();
  for(const event of events||[]){
   if(!event||event.live!==true||event.closed||event.ended){reject('not-live');continue}
   const live=normalizeUSLiveState(event);
@@ -249,13 +274,19 @@ export function usCandidatesFromEvents(events=[],now=Date.now(),settings=usCombo
   if(freshnessSec>FRESH_LIMIT_SEC){reject('stale-live');continue}
   const eventSlug=String(event.slug||event.id||'');
   const title=String(event.title||eventSlug);
+  const la=String(live.leagueAbbreviation||'');
+  const lg=(live.sport==='tennis'||live.sport==='table-tennis'?la.replace(/^table tennis/,'table-tennis').replace(/\s*BO\d$/,'').replace(/\s+/g,' ').trim():la.split(' ')[0])||live.sport;
+  const meta={eventSlug,event:title,sport:live.sport,league:lg,liveState:{period:live.rawPeriod,elapsed:live.rawElapsed,score:live.rawScore},comboEnabled:false,reason:null};
+  eventMeta.set(eventSlug,meta);
+  const skip=r=>{if(!meta.reason)meta.reason=r;return reject(r)};
   for(const market of event.markets||[]){
    if(!market)continue;
-   if(!typeAllowed(market)){reject('market-type');continue}
+   if(market.comboEnabled===true)meta.comboEnabled=true;
+   if(!typeAllowed(market)){skip('market-type');continue}
    if(market.comboEnabled!==true){reject('combo-disabled');continue}
-   if(market.closed||(market.status&&market.status!=='MARKET_STATUS_OPEN')){reject('market-closed');continue}
+   if(market.closed||(market.status&&market.status!=='MARKET_STATUS_OPEN')){skip('market-closed');continue}
    const ask=val(market.bestAskQuote??market.bestAsk),bid=val(market.bestBidQuote??market.bestBid);
-   if(!(ask>0&&ask<1)){reject('no-quote');continue}
+   if(!(ask>0&&ask<1)){skip('no-quote');continue}
    const sides=market.marketSides||[];
    const longSide=sides.find(s=>s?.long===true),shortSide=sides.find(s=>s?.long===false);
    const longOk=!sides.length||longSide?.tradable!==false,shortOk=(!sides.length||shortSide?.tradable!==false)&&bid>0;
@@ -263,24 +294,29 @@ export function usCandidatesFromEvents(events=[],now=Date.now(),settings=usCombo
    let side=null,price=null;
    if(longOk&&(!shortOk||longAsk>=shortAsk)){side='SIDE_BUY';price=longAsk}
    else if(shortOk){side='SIDE_SELL';price=shortAsk}
-   if(!side){reject('side-not-tradable');continue}
+   if(!side){skip('side-not-tradable');continue}
    const type=String(market.sportsMarketType||'').toLowerCase();
-   const late=lateGameEstimate({event:title,slug:String(market.slug||''),type},live);
-   if(late.nearEndScore<NEAR_END_MIN){reject(late.reason||'not-near-settlement');continue}
-   if(late.etaMinutes==null||late.etaMinutes>settings.maxMinutesLeft){reject('turnover-window');continue}
-   if(price<settings.priceMin||price>PRICE_MAX){reject('price-band');continue}
+   // Window rejections keep the row on the board (manual add allowed, tagged
+   // "outside strategy window"); price and spread rejections are not addable.
+   const timed=TIMED_SPORTS.has(live.sport);
+   const late=timed?lateGameEstimate({event:title,slug:String(market.slug||''),type},live):{nearEndScore:0,etaMinutes:null,reason:`manual only: no timing rule for ${live.sport}`,priorityBonus:0};
+   let reason=null,addable=true;
+   if(late.nearEndScore<NEAR_END_MIN)reason=late.reason||'not-near-settlement';
+   else if(late.etaMinutes==null||late.etaMinutes>settings.maxMinutesLeft)reason='turnover-window';
    const spread=bid>0?Math.max(0,r4(ask-bid)):null;
    const liquidity=num(market.__openInterest??market.openInterest);
    const liquidityKnown=liquidity>0;
    const spreadLimit=liquidityKnown?spreadLimitFor(liquidity):spreadLimitFor(10000); // unknown OI: lenient pre-filter, BBO pass tightens
-   if(spread!=null&&spread>spreadLimit+1e-9){reject('spread');continue}
+   if(price<settings.priceMin||price>PRICE_MAX){reason='price-band';addable=false}
+   else if(spread!=null&&spread>spreadLimit+1e-9){reason='spread';addable=false}
    const feeCoefficient=num(market.feeCoefficient)||0.06;
    const feePerContract=r4(standardFeePerContract(price,feeCoefficient));
    const eta=late.etaMinutes;
+   const etaForRank=eta??60;
    const liqScore=liquidityKnown?Math.min(35,Math.log10(Math.max(1,liquidity))*8):20; // neutral until BBO supplies open interest
-   const rank=Math.round(late.nearEndScore*4+(100-Math.abs(price-.90)*260)+liqScore-eta*8+(late.priorityBonus||0)-(spread??.02)*500);
-   rows.push({key:`${market.slug}|${side}`,symbol:String(market.slug||''),side,
-    eventSlug,event:title,league:String(live.leagueAbbreviation||'').split(' ')[0]||live.sport,marketType:type,
+   const rank=Math.round(late.nearEndScore*4+(100-Math.abs(price-.90)*260)+liqScore-etaForRank*8+(late.priorityBonus||0)-(spread??.02)*500);
+   const row={key:`${market.slug}|${side}`,symbol:String(market.slug||''),side,
+    eventSlug,event:title,league:lg,sport:live.sport,marketType:type,
     question:String(market.question||''),outcome:outcomeLabel(market,side==='SIDE_BUY'),
     price:r4(price),bid:r4(bid),ask:r4(ask),spread,spreadLimit,liquidity,liquidityKnown,
     liveState:{period:live.rawPeriod,elapsed:live.rawElapsed,score:live.rawScore},
@@ -288,13 +324,23 @@ export function usCandidatesFromEvents(events=[],now=Date.now(),settings=usCombo
     etaMinutes:eta,nearEndScore:late.nearEndScore,lateReason:late.reason,
     feeCoefficient,feePerContract,netPrice:r4(clamp(price+feePerContract,0,1)),rank,
     comboEnabled:true,minimumTradeQty:num(market.minimumTradeQty)||MIN_QTY,tickSize:num(market.orderPriceMinTickSize)||0.01,
-    freshnessSec:Math.round(freshnessSec),at:now});
+    freshnessSec:Math.round(freshnessSec),at:now,
+    eligible:!reason,reason,addable,outsideWindow:!!reason&&addable};
+   if(reason){reject(reason);board.push(row)}else rows.push(row);
   }
  }
  // One leg per event (ledger item 3): keep the best-ranked market for each game.
  const best=new Map();
  for(const c of rows.sort((a,b)=>b.rank-a.rank))if(!best.has(c.eventSlug))best.set(c.eventSlug,c);
- return {candidates:[...best.values()].sort((a,b)=>b.rank-a.rank),rejections};
+ const candidates=[...best.values()].sort((a,b)=>b.rank-a.rank);
+ // Board: every live combo-enabled game, eligible first, else its best addable
+ // row, else its best row, else a stub carrying the first structural reason.
+ const boardBest=new Map(candidates.map(c=>[c.eventSlug,c]));
+ const order=(a,b)=>(b.addable-a.addable)||(b.rank-a.rank);
+ for(const c of board.sort(order))if(!boardBest.has(c.eventSlug))boardBest.set(c.eventSlug,c);
+ for(const m of eventMeta.values())if(m.comboEnabled&&!boardBest.has(m.eventSlug))
+  boardBest.set(m.eventSlug,{key:null,...m,eligible:false,addable:false,outsideWindow:false,reason:m.reason||'no-priceable-market'});
+ return {candidates,board:[...boardBest.values()],rejections};
 }
 
 export function chooseUSCombo(candidates,maxLegs=2,journal={open:[],cooldowns:{}},now=Date.now()){
@@ -367,7 +413,8 @@ export function buildUSCombo({legKeys,stakeUsd,candidates=null,at=Date.now(),set
  if(!(quantity>=MIN_QTY))fail('stakeInvalid',`Stake $${stake} is too small for a combo priced at ${price}`);
  const payoutUsd=r2(quantity);
  return {legs:legs.map(l=>({symbol:l.symbol,side:l.side,event:l.event,eventSlug:l.eventSlug,outcome:l.outcome,price:l.price,
-   period:l.liveState.period,score:l.liveState.score,etaMinutes:l.etaMinutes,nearEndScore:l.nearEndScore,freshnessSec:l.freshnessSec})),
+   period:l.liveState.period,score:l.liveState.score,etaMinutes:l.etaMinutes,nearEndScore:l.nearEndScore,freshnessSec:l.freshnessSec,outsideWindow:!!l.outsideWindow,reason:l.reason??null})),
+  outsideWindow:legs.some(l=>l.outsideWindow),
   price,rawPrice:r4(rawPrice),decimalOdds:r3(1/price),quantity,feePerContract:r4(feePerContract),feeUsd,payoutUsd,costUsd,
   profitUsd:r2(payoutUsd-costUsd),stakeUsd:r2(stake),notionalUsd};
 }
@@ -806,10 +853,16 @@ async function enrichBBO(candidates){
  return out.filter(c=>c&&!c.__error).sort((a,b)=>b.rank-a.rank);
 }
 
+// Manual picks: board rows rejected only by the strategy window may still be built by hand.
+function withManualRows(candidates,board=[]){
+ const have=new Set(candidates.map(c=>c.key));
+ return [...candidates,...board.filter(b=>b.key&&b.outsideWindow&&!have.has(b.key))];
+}
 async function refreshCandidates(){
  const f=await usLiveEvents();
- const {candidates}=usCandidatesFromEvents(f.ok?f.events:[],Date.now());
- lastCandidates=String(process.env.POLYMARKET_US_COMBO_BBO||'true').toLowerCase()==='false'?candidates:await enrichBBO(candidates);
+ const {candidates,board}=usCandidatesFromEvents(f.ok?f.events:[],Date.now());
+ const enriched=String(process.env.POLYMARKET_US_COMBO_BBO||'true').toLowerCase()==='false'?candidates:await enrichBBO(candidates);
+ lastCandidates=withManualRows(enriched,board);
  return lastCandidates;
 }
 
@@ -820,13 +873,16 @@ export async function usComboSnapshot({force=false}={}){
  snapBusy=(async()=>{
   const now=Date.now();
   const readiness=usReadiness();
-  let candidates=[],rejections={},feedErr=null;
+  let candidates=[],board=[],rejections={},feedErr=null,feedInfo={};
   try{
    const f=await usLiveEvents({force});
    const built=usCandidatesFromEvents(f.ok?f.events:[],Date.now());
    rejections=built.rejections;
    candidates=String(process.env.POLYMARKET_US_COMBO_BBO||'true').toLowerCase()==='false'?built.candidates:await enrichBBO(built.candidates);
-   lastCandidates=candidates;
+   const enrichedByKey=new Map(candidates.map(c=>[c.key,c]));
+   board=built.board.map(b=>enrichedByKey.get(b.key)||(b.eligible?{...b,eligible:false,addable:false,reason:'bbo-filter'}:b));
+   lastCandidates=withManualRows(candidates,built.board);
+   feedInfo={total:f.total??f.inPlay,comboLive:f.comboLive??null,pages:f.pages??null,capped:!!f.capped};
    feedErr=f.ok?null:f.error;
   }catch(e){feedErr=String(e?.message||e);lastError=feedErr}
   const j=loadJournal();
@@ -844,9 +900,10 @@ export async function usComboSnapshot({force=false}={}){
    readiness:{credentialsReady:!!readiness.credentialsReady,sessionArmed:!!readiness.sessionArmed,realEnabled:readiness.realEnabled!==false,
     lastAuthError:readiness.lastAuthError??null,authCode:readiness.authCode??null,developerPortal:'https://polymarket.us/developer'},
    feed:{ok:!feedErr,error:feedErr,ageMs:feed.at?Math.max(0,Date.now()-feed.at):null,eventsInPlay:feed.inPlay,eventsLive:feed.live,
-    candidates:candidates.length,rejections},
+    candidates:candidates.length,rejections,...feedInfo},
    // The panel lists games by time left, soonest first.
    candidates:[...candidates].sort((a,b)=>num(a.etaMinutes)-num(b.etaMinutes)||b.rank-a.rank).slice(0,20),
+   board:board.slice(0,400),
    suggested,
    quote:lastQuote,
    journal:{open:j.open,history:j.history.slice(0,8),stats:{...j.stats,unverified:j.open.filter(x=>x.fillVerified!==true).length}},

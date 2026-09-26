@@ -282,3 +282,11 @@ test('Polymarket key shows CONNECTED only after a verified signed call, and the 
   assert.match(html, /id="usBalance"/);
   assert.match(dashJs, /req\.method === 'GET' && u\.pathname === '\/api\/polymarket-us\/account'/);
 });
+
+test('Polymarket panel lists the whole live board grouped by sport, renders the suggested combo, and always offers key replacement', () => {
+  assert.match(html, /Array\.isArray\(ucs\.board\)/);
+  assert.match(html, /outside strategy window/);
+  assert.match(html, /id="usUseSuggested"/);
+  assert.match(html, /Replace key \(not verified yet\)/);
+  assert.match(html, /combo-enabled live/);
+});
