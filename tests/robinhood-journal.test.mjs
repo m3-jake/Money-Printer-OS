@@ -55,7 +55,7 @@ test('ENOENT -> defaults with autopilot off; default shapes pin the spec keys',(
  assert.deepEqual(j.stats,{placed:0,closed:0,won:0,lost:0,pnlUsd:0,feesUsd:0,hitRate:null,profitFactor:null,unverified:0});
  const p=J.loadPaper();
  assert.equal(p.recoveryRequired,undefined);
- assert.equal(p.cashUsd,1000);assert.equal(p.startUsd,1000);assert.equal(p.feeRatio,0.0085);
+ assert.equal(p.cashUsd,1000);assert.equal(p.startUsd,1000);assert.equal(p.feeRatio,0.0095);
  assert.deepEqual(p.autopilot,{enabled:false,orderUsd:25,maxOpen:3,symbols:['BTC-USD','ETH-USD'],lastRunAt:0,lastAction:null,skipped:[]});
  assert.deepEqual(Object.keys(p.qualification),['qualified','paramsHash','closes','hitRate','profitFactor','pnlUsd','grossPnlUsd','feesUsd','feeDragPct','maxDrawdownUsd','requiredHitRate','lastCloseAt','windowDays','reasons','at']);
  assert.deepEqual(p.qualification.reasons,['closes 0 < 20']);
@@ -79,7 +79,7 @@ test('normalizers survive garbage input and never carry sessionArmed',()=>{
  assert.deepEqual(j.open.map(e=>e.id),['a'],'terminal rows are never kept in open[]');
  assert.deepEqual(j.cooldowns,{'BTC-USD':12});
  const p=J.normalizePaper({cashUsd:'12.5',feeRatio:0,tape:{'BTC-USD':{samples:[[3,1,2],[1,1,2],[2,0,2],[1,5,6],'x']},bad:{samples:[[1,1,1]]}},positions:[{status:'OPEN',id:'p'},{status:'CLOSED',id:'q'}]});
- assert.equal(p.cashUsd,12.5);assert.equal(p.feeRatio,0.0085);
+ assert.equal(p.cashUsd,12.5);assert.equal(p.feeRatio,0.0095);
  assert.deepEqual(p.tape['BTC-USD'].samples,[[1,5,6],[3,1,2]],'sorted, deduped, invalid dropped');
  assert.equal(p.tape.bad,undefined);
  assert.deepEqual(p.positions.map(x=>x.id),['p']);

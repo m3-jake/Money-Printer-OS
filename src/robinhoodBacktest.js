@@ -12,7 +12,7 @@ const r2=v=>Math.round(v*100)/100;
 export function emptyMetrics(){return {closes:0,wins:0,hitRate:null,profitFactor:null,pnlUsd:0,feesUsd:0,maxDrawdownUsd:0,exposureMin:0,tradesPerDay:0,avgHoldMin:0,samples:0,spanDays:0,entries:0}}
 
 // samples: [{t,bid,ask,mid?}] oldest first. Options: params (normalized inside), feeRatio, orderUsd, startUsd, pair.
-export function backtestTape(samples,{params,feeRatio=0.0085,orderUsd=25,startUsd=1000,pair=null,window=REPLAY_WINDOW}={}){
+export function backtestTape(samples,{params,feeRatio=0.0095,orderUsd=25,startUsd=1000,pair=null,window=REPLAY_WINDOW}={}){
  const p=S.normalizeParams(params),fee=Number.isFinite(feeRatio)&&feeRatio>=0?feeRatio:0;
  const rows=(Array.isArray(samples)?samples:[]).filter(s=>s&&Number.isFinite(s.t)&&s.bid>0&&s.ask>=s.bid).map(s=>({t:s.t,bid:s.bid,ask:s.ask,mid:Number.isFinite(s.mid)?s.mid:(s.bid+s.ask)/2}));
  const m=emptyMetrics();m.samples=rows.length;

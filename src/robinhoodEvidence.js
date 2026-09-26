@@ -16,7 +16,7 @@ export const isSyntheticRow = r => r?.src != null && r.src !== 'robinhood';
 // computeFeatures: stdev of 1-sample log returns over volWindow, times sqrt(horizonSamples)), the median spread,
 // the round-trip cost C at that spread, the required move costMultiple*C, and ratio = p95 expected / required.
 // ratio < 1 means even the 95th-percentile move cannot clear the gate: the Donchian family cannot trade.
-export function volGateStats(rows, { params, feeRatio = 0.0085, now = Date.now(), days = 7, maxPoints = 20000 } = {}) {
+export function volGateStats(rows, { params, feeRatio = 0.0095, now = Date.now(), days = 7, maxPoints = 20000 } = {}) {
   const p = S.normalizeParams(params), since = now - days * DAY_MS;
   const rh = (Array.isArray(rows) ? rows : []).filter(r => isVenueRow(r) && r.t >= since && r.bid > 0 && r.ask >= r.bid);
   const out = { rows: rh.length, spanDays: rh.length > 1 ? Math.round((rh[rh.length - 1].t - rh[0].t) / DAY_MS * 100) / 100 : 0, p50ExpectedMovePct: null, p95ExpectedMovePct: null, medianSpreadPct: null, costPct: null, requiredMovePct: null, ratio: null, verdict: 'INSUFFICIENT' };

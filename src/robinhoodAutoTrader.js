@@ -79,7 +79,7 @@ function needCredentials(){if(!creds().apiKey||!keyObject())fail('noCredentials'
 function paper(){const p=J.loadPaper();p.params=S.normalizeParams({...p.params,sampleMs:TICK_MS});p.paramsHash=S.paramsHash(p.params);return p}
 function exploreParams(strictParams){return S.normalizeParams({...strictParams,...EXPLORE_OVERRIDES,sampleMs:TICK_MS})}
 function explore(strict=paper()){const e=J.loadExplore();e.params=exploreParams(strict.params);e.paramsHash=S.paramsHash(e.params);return e}
-function fee(){const f=account?.feeRatio;return Number.isFinite(f)&&f>=0&&f<0.25?f:envNum('ROBINHOOD_FEE_RATIO_FALLBACK',0.0085)}
+function fee(){const f=account?.feeRatio;return Number.isFinite(f)&&f>=0&&f<0.25?f:envNum('ROBINHOOD_FEE_RATIO_FALLBACK',0.0095)}
 function fresh(q){return q&&Number.isFinite(q.bid)&&q.bid>0&&Number.isFinite(q.ask)&&q.ask>=q.bid&&Number.isFinite(q.at)&&q.at<=now()&&now()-q.at<=30000}
 function quote(symbol){const q=quotes.get(symbol);if(!fresh(q))fail('validation','A fresh, valid bid/ask quote is required');return q}
 const openSymbolsReal=(j=J.loadJournal())=>j.open.map(e=>e.symbol);

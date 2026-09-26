@@ -161,7 +161,7 @@ function defaultPaperStats(){return {closes:0,won:0,lost:0,pnlUsd:0,grossWinUsd:
 function defaultQualification(paramsHash=null,windowDays=qualificationThresholds().windowDays){return {qualified:false,paramsHash,closes:0,hitRate:null,profitFactor:null,pnlUsd:0,grossPnlUsd:0,feesUsd:0,feeDragPct:null,maxDrawdownUsd:0,requiredHitRate:null,lastCloseAt:null,windowDays,reasons:[`closes 0 < ${qualificationThresholds().minCloses}`],at:0}}
 export function defaultPaper(){
  const start=envNum('ROBINHOOD_PAPER_START_USD',1000);
- return {version:1,createdAt:Date.now(),cashUsd:start,startUsd:start,feeRatio:envNum('ROBINHOOD_FEE_RATIO_FALLBACK',0.0085),
+ return {version:1,createdAt:Date.now(),cashUsd:start,startUsd:start,feeRatio:envNum('ROBINHOOD_FEE_RATIO_FALLBACK',0.0095),
   positions:[],history:[],autopilot:defaultPaperAutopilot(),params:{},paramsHash:null,cooldowns:{},tape:{},tapeAt:0,
   stats:defaultPaperStats(),qualification:defaultQualification()};
 }

@@ -99,7 +99,7 @@ function aggregate(bySymbol){
  out.pnlUsd=Math.round(out.pnlUsd*100)/100;out.feesUsd=Math.round(out.feesUsd*100)/100;return out;
 }
 // tapes: { [symbol]: samples[] }. Returns { params, paramsHash, score, bySymbol, metrics }.
-export function evaluateCandidate(params,tapes,{feeRatio=0.0085,orderUsd=25,startUsd=1000,weights={},cfg=evolveConfig()}={}){
+export function evaluateCandidate(params,tapes,{feeRatio=0.0095,orderUsd=25,startUsd=1000,weights={},cfg=evolveConfig()}={}){
  const p=S.normalizeParams(params),bySymbol={};
  for(const [symbol,samples] of Object.entries(tapes||{})){
   const split=walkForwardSplit(samples,cfg.trainFrac);
@@ -122,7 +122,7 @@ export function holdoutSplit(tapes,frac=0.2,window=720){
 }
 // Replay one parameter set on the holdout and apply the absolute gates. lookedThrough is the newest holdout row a
 // previous generation already looked at; the holdout must extend holdoutFreshMs beyond it or the look is refused.
-export function holdoutGate(params,holdout,{feeRatio=0.0085,orderUsd=25,startUsd=1000,cfg=evolveConfig(),lookedThrough=0,context={}}={}){
+export function holdoutGate(params,holdout,{feeRatio=0.0095,orderUsd=25,startUsd=1000,cfg=evolveConfig(),lookedThrough=0,context={}}={}){
  const p=S.normalizeParams(params),reasons=[];let closes=0,wins=0,gw=0,gl=0,pnl=0,rows=0,rh=0,through=0;
  for(const [symbol,samples] of Object.entries(holdout||{})){
   if(!samples.length)continue;
