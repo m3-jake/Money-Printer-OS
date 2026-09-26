@@ -643,9 +643,9 @@ function chartSeries(){
 function bindChartControls(){
  $$('.range-btn').forEach(b=>b.onclick=()=>{chartView.range=b.dataset.range;chartView.zoom=1;chartView.pan=0;saveChartView();renderSig.delete('trade');renderTrade()});
  const c=$('#priceChart');if(!c)return;$('#chartZoomIn').onclick=()=>{chartView.zoom=Math.min(32,chartView.zoom*1.5);saveChartView();drawChart()};$('#chartZoomOut').onclick=()=>{chartView.zoom=Math.max(1,chartView.zoom/1.5);chartView.pan=Math.min(chartView.pan,1-1/chartView.zoom);saveChartView();drawChart()};$('#chartFit').onclick=()=>{chartView.range='session';chartView.zoom=1;chartView.pan=0;saveChartView();renderSig.delete('trade');renderTrade()};
- c.onwheel=e=>{e.preventDefault();const old=chartView.zoom;chartView.zoom=Math.max(1,Math.min(32,old*(e.deltaY<0?1.25:.8)));if(chartView.zoom===1)chartView.pan=0;drawChart()};
+ c.onwheel=e=>{e.preventDefault();const old=chartView.zoom;chartView.zoom=Math.max(1,Math.min(32,old*(e.deltaY<0?1.25:.8)));if(chartView.zoom===1)chartView.pan=0;saveChartView();drawChart()};
  c.onpointerdown=e=>{chartView.dragging=true;chartView.lastX=e.clientX;c.setPointerCapture?.(e.pointerId)};c.onpointerup=()=>chartView.dragging=false;c.onpointercancel=()=>chartView.dragging=false;
- c.onpointermove=e=>{const r=c.getBoundingClientRect();chartView.hoverX=(e.clientX-r.left)/r.width;if(chartView.dragging){const dx=(e.clientX-chartView.lastX)/r.width;chartView.lastX=e.clientX;chartView.pan=Math.max(0,Math.min(1-1/chartView.zoom,chartView.pan-dx/chartView.zoom));}drawChart()};c.onpointerleave=()=>{chartView.hoverX=null;drawChart()};c.ondblclick=()=>{chartView.zoom=1;chartView.pan=0;drawChart()};
+ c.onpointermove=e=>{const r=c.getBoundingClientRect();chartView.hoverX=(e.clientX-r.left)/r.width;if(chartView.dragging){const dx=(e.clientX-chartView.lastX)/r.width;chartView.lastX=e.clientX;chartView.pan=Math.max(0,Math.min(1-1/chartView.zoom,chartView.pan-dx/chartView.zoom));}drawChart()};c.onpointerleave=()=>{chartView.hoverX=null;drawChart()};c.ondblclick=()=>{chartView.zoom=1;chartView.pan=0;saveChartView();drawChart()};
 }
 function solanaBookStrip(b){
  if(!b)return '';
