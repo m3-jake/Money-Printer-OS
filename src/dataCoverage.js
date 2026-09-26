@@ -51,6 +51,7 @@ export function dataCoverage(dataDir, { now = Date.now(), days = 7, force = fals
   const sources = [
     sourceCoverage('Solana path ticks', list(raw, /^solana-path-.*\.ndjson$/).filter(recent), { now, days }),
     sourceCoverage('Polymarket depth', list(raw, /^polymarket-depth-.*\.ndjson$/).filter(recent), { now, days }),
+    sourceCoverage('Jupiter quotes (Solana executable prices)', list(raw, /^jupiter-quotes-.*\.ndjson$/).filter(recent), { now, days }),
     ...list(rh, /\.ndjson$/).map(f => sourceCoverage(`Robinhood ${path.basename(f, '.ndjson')}`, [f], { now, days, liveMs: 2 * 60_000 })),
   ];
   const value = { schema: 'mpo.data-coverage.v1', at: now, days, sources };

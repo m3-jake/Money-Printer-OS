@@ -80,11 +80,12 @@ function requestUpdater(action){
 
 function researchCaptureStatus(){try{return JSON.parse(fs.readFileSync(RESEARCH_CAPTURE_STATUS_FILE,'utf8'))}catch{return {schema:'mpo.research-capture-status.v1',updatedAt:null}}}
 function labModuleStatuses(){const out={};for(const id of ['robinhood','polymarket','polymarket-combo']){try{const v=JSON.parse(fs.readFileSync(path.join(DATA_DIR,'lab-link','modules',`${id}.json`),'utf8'));if(v&&v.module===id)out[id]=v}catch{}}return out}
+const readJupiterStatus = () => { try { return JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'research-capture-status.json'), 'utf8')).jupiter || null; } catch { return null; } };
 // One fitness record per module (docs/FITNESS-LEDGER.md). A failing module reports a blocker instead of throwing.
 async function fitnessNow(s = loadStateCached()) {
   const at = Date.now(), part = fn => { try { return fn(); } catch (e) { return { blockers: [`unavailable: ${String(e?.message || e).slice(0, 160)}`] }; } };
   let pm; try { const ev = await import('./polymarketUSEvidence.js'); pm = part(() => polymarketFitnessParts(ev.polymarketFitness(), { now: at })); } catch (e) { pm = { blockers: [`unavailable: ${String(e?.message || e).slice(0, 160)}`] }; }
-  return fitnessSnapshot({ now: at, solana: part(() => solanaFitnessParts(s, cfg, { now: at })), robinhood: part(() => robinhoodFitnessParts({ at })), polymarket: pm });
+  return fitnessSnapshot({ now: at, solana: part(() => solanaFitnessParts(s, cfg, { now: at, jupiter: readJupiterStatus() })), robinhood: part(() => robinhoodFitnessParts({ at })), polymarket: pm });
 }
 function researchPlane(s = loadStateCached(), opts = {}){
   return readResearchControlPlane({dataDir:DATA_DIR,journalLimit:300,state:s,mode:cfg.mode,...opts});

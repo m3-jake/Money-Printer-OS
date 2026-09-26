@@ -69,3 +69,24 @@ test('agent preflight flags a running app whose on-disk status is stale or missi
   assert.equal(compareViews({ name: 'lab', live: true, diskUpdatedAt: undefined, now }).verdict, 'STALE_VIEW');
   assert.equal(compareViews({ name: 'lab', live: true, diskUpdatedAt: now, liveGeneration: 100826, diskGeneration: 53549, now }).verdict, 'STALE_VIEW');
 });
+
+test('Jupiter sampler: positions first, quote-only GETs, round trip from the exact buy output, stops on 429', async () => {
+  const { sampleTargets, sampleJupiterQuotes, SOL_MINT } = await import('../src/jupiterQuoteSampler.js');
+  const A = 'A'.repeat(43), B = 'B'.repeat(43), C = 'C'.repeat(43);
+  const state = { positions: [{ mint: B, symbol: 'BB' }], watchlist: [{ mint: C, symbol: 'CC', score: 10 }, { mint: A, symbol: 'AA', score: 90 }, { mint: 'not-a-mint' }, { mint: SOL_MINT }] };
+  assert.deepEqual(sampleTargets(state, { limit: 3 }).map(t => [t.symbol, t.reason]), [['BB', 'position'], ['AA', 'watchlist'], ['CC', 'watchlist']]);
+  const seen = [];
+  const fetchImpl = async (url, init) => {
+    const u = new URL(url); seen.push({ path: u.pathname, q: Object.fromEntries(u.searchParams), method: init?.method || 'GET' });
+    if (u.searchParams.get('outputMint') === C) return { status: 429, ok: false, json: async () => ({}) };
+    const out = u.searchParams.get('inputMint') === SOL_MINT ? '5000' : String(Math.round(Number(1e8) * 0.97));
+    return { status: 200, ok: true, json: async () => ({ outAmount: out, priceImpactPct: '0.01', routePlan: [{}, {}] }) };
+  };
+  const r = await sampleJupiterQuotes({ state, limit: 3, fetchImpl, notionalSol: 0.1, now: 5 });
+  assert.equal(r.rows.length, 2); assert.equal(r.rateLimited, true); assert.equal(r.calls, 5);
+  assert.ok(seen.every(x => x.method === 'GET' && x.path.endsWith('/quote') && !('taker' in x.q) && !('userPublicKey' in x.q)), 'quotes only, no wallet');
+  const row = r.rows[0];
+  assert.equal(row.buy.inLamports, 1e8); assert.equal(row.sell.inRaw, '5000', 'sells exactly what the buy returned'); assert.equal(row.roundTripPct, 3); assert.equal(row.buy.hops, 2);
+  const capped = await sampleJupiterQuotes({ state, limit: 3, fetchImpl, callsLeft: 3 });
+  assert.equal(capped.rows.length, 1, 'daily call budget respected');
+});
