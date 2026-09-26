@@ -936,3 +936,15 @@ Kalshi and Robinhood event contracts are already covered by the MPOS core platfo
 - **Bug found in the browser and fixed:** the status refresh after an action cleared the action's error, so "Market is closed" never showed. Load and action errors are now separate.
 - **This machine:** no Alpaca key, so quotes are unavailable and orders are refused. Correct, not a bug. Add a free Alpaca market-data key to `%APPDATA%Money Printer OS.env` to enable it.
 - **Tests:** 4 new (fills and ledger, SEC/TAF, oversell, cancel; closed market, no key, one-sided quote, non-marketable limit, LIVE refused; stale quote at fill; Alpaca parsing and auth labels). `market-core` 36; `test:all` green.
+
+### Install record (2026-09-26, 17:11 local): trader 793c736 + Lab build
+- **Trader:**
+  - Built from a clean worktree merge of `feature/hud-declutter` (256c36a) and `origin/main` (69b368d). Only the ledger conflicted (union merge). The merge commit is local only, not pushed.
+  - `test:all` passed (27 groups).
+  - Archive: `Desktop\Money Printer OS\Windows-793c736-20260926\app.asar`, sha256 `9cc6f273…`. `smoke:windows` on 18792 passed.
+- **Installed:**
+  - Backup: `resources\app.asar.pre-793c736-backup-20260926-171110`. A polite close was refused, so the app was force-closed.
+  - Live on 8792: HEALTHY. Bing's Alpaca key works: `/api/robinhood-equities` data **FRESH** (bars through 2026-09-25); the next session is 2026-09-28.
+- **Lab:** `Desktop\Money Printer OS\Lab-2ee5e46.asar` (master 2ee5e46, sha256 `6892935e…`). **Not installed**: bing double-clicks `Install Lab 2ee5e46.cmd` in the same folder (it stops the Lab, backs up, swaps and relaunches).
+- **Mac:** bing runs `bash scripts/mac-install-latest.sh` once on the MacBook (it is on main). alpha.53 predates the GitHub update channel, so this first hop has to be manual.
+- **Auto-update status:** the updater (GitHub Releases, signed manifest, 10 min checks) exists but has never been used. No release or tag has been published, the repo is private (API 404) and no `MONEY_PRINTER_UPDATE_TOKEN` is set.
