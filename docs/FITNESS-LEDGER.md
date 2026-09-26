@@ -67,7 +67,7 @@ the cost gate.
 
 ## Robinhood proposal fields the trader checks (`labProposalPass`)
 
-`robinhood-champion.json` must carry `stage: "PAPER_REVIEW"`, `paperPromotionAllowed: true`,
+`robinhood-champion.json` must carry `qualificationStage: "PAPER_REVIEW"`, `paperPromotionAllowed: true`,
 state ≥ PAPER, `proposalVersion` (integer), `supersedes` (previous proposal id or null) and
 `basis: { incumbentHash, traderSince, holdoutThrough, trials }`. The trader applies it to paper
 only when `ROBINHOOD_LAB_AUTO_APPLY_PAPER=true`, `basis.incumbentHash` equals its current paper

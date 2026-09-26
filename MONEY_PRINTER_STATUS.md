@@ -916,7 +916,32 @@ Worked in a separate worktree, `W:\mpo-claude`, on branch `claude/planned`. Code
   - `unattended-storage` (5), `self-report` (2), `lab-health` (+2)
   - `project-journal` (+3)
 
+### Batch R, Lab side (`W:\lab-claude`, branch `claude/lab-loop-20260926`; Lab `master` fast-forwarded to `2ee5e46`)
+
+- Built by a subagent of the "Money printer OS work" session.
+- The branch contains Codex's tip `6a76b8b` (Robinhood daily bars, robinhood-equities lane).
+- `codex/lab-evidence-20260925` is still at `6a76b8b`: another session has it checked out. Fast-forward it to `master` when that session is idle.
+- **Lab `test:all`: 234 pass / 0 fail** (baseline 191). Re-run and confirmed by the parent session.
+
+| Plan item | Commit | What |
+| --- | --- | --- |
+| Codex leftover | `b7d4d29` | `src/laneRegistry.js` + test |
+| C | `c16c16d` | `src/evidenceFlags.js` (byte-identical to the trader's, test enforces it); `labFeed` reads `lab-link/fitness/*.json` and `runningPolicy`; `publishModuleChampion` refuses paper promotion unless `laneMayPropose` passes on a fresh (≤ 1 h) ledger; module status shows `traderFitness` |
+| D | `47526af` | Solana exits frozen at `runningPolicy` while there are no executable prices (`exitSearch:'FROZEN'`); an MPO-RUNNING incumbent is scored every generation, and the champion is re-scored and demoted below it; held-out t above the 0.05/trials level plus ≥ 200 held-out trades; 1 M trials per sealed window (`BUDGET_SPENT`); throttle to 1 CPU worker, no GPU, 50 % CPU while Solana is not promotable; `lab-run.json` unclean-boot cap; `MPO_LAB_UNTHROTTLE=1` override; module workers honour `paused` |
+| E | `2ee5e46` | sticky versioned proposals (`proposalVersion`, `supersedes`, `basis`); `PAPER_TRIAL n/20` while the trader runs a trial; reverted hashes are never proposed again; new proposals must beat the paper record on data after `lastDecision.at` |
+
+- **Skipped:**
+  - Robinhood 1-minute history (the daily bars from the other session replace it).
+  - Search worker pool (it would fight the D throttle).
+- **Expect after the Lab is next installed:**
+  - It runs much lighter: 1 worker, no GPU, until Solana has executable prices.
+  - The current Solana champion (stop 1.5 / take 100 / hold 2) is likely demoted to MPO-RUNNING.
+  - Two OS restarts in 7 days without closing the Lab also count as unclean boots.
+- **Follow-ups:**
+  - `runningPolicy` carries exits only, so MPO-RUNNING assumes BASE entry weights. Add the entry model to it.
+  - The Lab page doesn't render the new status fields yet.
+
 ### Next recommended
-- bing: the Mac (see below); start the Evolution Lab again (it was not running at 15:30); decide `ROBINHOOD_LAB_AUTO_APPLY_PAPER` after reading the first Lab proposal.
+- bing: the Mac (`bash scripts/mac-install-latest.sh` in a checkout); build and install the Lab from `master` `2ee5e46` and start it (it was not running at 15:30); decide `ROBINHOOD_LAB_AUTO_APPLY_PAPER` after reading the first Lab proposal.
 - An executable-price Solana replay over `raw/jupiter-quotes-*` once a few days of tape exist. It is the only way Solana leaves research-only.
 - Design work: a second Polymarket strategy family (fee-free NFL markets or maker posting with a queue model).
