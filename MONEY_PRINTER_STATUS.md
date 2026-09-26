@@ -626,7 +626,7 @@ What was finished and committed before parking (all tested; nothing can place wi
 1. ~~Walk-forward~~ done in batch F.
 2. ~~Stress replay~~ done in batch G.
 3. ~~Always-on data~~ done in batch H.
-4. Shadow vs backtest: KS test of shadow-logged trade returns vs backtest returns; SHADOW -> PAPER only when p > 0.05 and enough shadow trades.
+4. ~~Shadow vs backtest~~ done in batch I.
 
 ## Batch F (2026-09-26): walk-forward promotion (Lab commit fdc852b)
 
@@ -647,3 +647,19 @@ What was finished and committed before parking (all tested; nothing can place wi
 - `src/dataCoverage.js` + `GET /api/data-coverage`: per source (Solana path, Polymarket depth, each Robinhood symbol) status LIVE/STALE/DOWN/NO_DATA, last-row age, 7-day per-day rows, largest gap. `GET/POST /api/desktop-prefs`. Settings window gets a Background & data panel.
 - Verified in the isolated engine (panel, toggles persist). **Tray/login-item behavior not exercised: needs the packaged Electron app.** Test: `tests/data-coverage.test.mjs`.
 - Still uncommitted with C/D: `dashboard.js` also carries C's apply-lab 409 which depends on the entangled `polymarketUSEvidence.js`.
+
+## Commits (2026-09-26)
+
+- MPO `d4d029f`: batches C, D, H plus the other session's unfinished Batch B (labelled; `robinhood-evidence` test has 2 failures from that work).
+- Lab `695e789`: Robinhood DSR gate + Batch B; `robinhoodEvidence.js` copied from MPO so its import resolves. Known failure: RH-LAB-G9-win fixture in `module-research` (Batch B realisticSpreads).
+
+## Batch I (2026-09-26): shadow vs backtest (Lab commit, see git log)
+
+- `src/shadowValidation.js`: champion picks on outcomes after `promotedAt` = shadow trades; two-sample KS vs its backtest. Solana champion record becomes `state: PAPER` + `paperPromotionAllowed` + `PAPER_REVIEW` only when: crucible-promoted (walk-forward + stress), DSR >= 0.95, >= 30 shadow trades, KS p > 0.05, shadow avg > 0. `champion.stage` stays RESEARCH_ONLY (alpha.53 safety). Republished when qualification flips.
+- **This is the first path by which a Solana Lab champion can reach MPO paper trading.** Verified cross-repo: MPO `championState` reads the record as PAPER/SHADOW correctly.
+- Tests: `tests/shadow-validation.test.mjs` (3). Lab sweep: only the known Batch B fixture failure.
+
+### Next recommended
+- Build/install the Lab and MPO (signing is bing-only) and check the tray/login-item behavior in the packaged app.
+- Fix Batch B: robinhood-evidence tests (MPO) and the RH-LAB-G9-win fixture (Lab).
+- GPU box: run `research/gpu-furnace` pytest to confirm Torch/Python parity for exitFill.
