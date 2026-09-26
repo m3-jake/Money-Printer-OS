@@ -516,3 +516,31 @@ What was finished and committed before parking (all tested; nothing can place wi
   - `/js/mpo-viz.js` 200; a `/js/..%2Fdashboard.html` traversal attempt returns 404.
 - **Rollback:** quit the app, then copy `resources\app.asar.alpha57-a244ffb-backup-20260926` over `resources\app.asar`.
 - **Update (Lab session):** the roster-test fix and the parked default are in Lab `cb3c389` (`codex/lab-evidence-20260925`). Default `MPO_LAB_MODULES` is `robinhood,polymarket` again, and the Lab page shows parked workers as OFF (`MPO_LAB_MODULES_ACTIVE`). Full Lab suite 163/163. The Lab session owns the Lab build and install.
+
+## Side batch 2 (2026-09-26, Lab session): Lab alpha.5 installed; Lab proposals made honest
+
+- **Installed Lab 0.1.0-alpha.5** (`2acc91f`, asar sha256 `8a26a68e…`, built from a clean worktree).
+  - bing did the stop, swap and relaunch. The permission classifier blocks Claude from stopping the running Lab, and Claude-launched processes see the stale MSIX overlay.
+  - Backup: `resources\app.asar.alpha4-backup-20260926`.
+  - Verified live: `/api/health` reports alpha.5 and generation 80,475, continuing from real data.
+- **Window fix** (`893b6b7`): closing and reopening no longer sticks on "Starting lab…".
+- **Solana** (`44f4e0d`):
+  - Every published champion now has stage `RESEARCH_ONLY`; `labStage` keeps the Lab's own stage.
+  - Pre-3d9090d traders (the MacBook alpha.53) therefore fall back to BASE instead of paper-trading stop 1.5 / take 100 / hold 2 champions.
+  - Bridge `champion.json` was rewritten at 09:35Z. The MacBook still reports PAPER_CANARY because it has been silent for 23 h; it drops to BASE once it reads the new file. Upgrading it is the real fix.
+- **Robinhood** (`44f4e0d`):
+  - `robinhood-champion.json` is written only for a paper-review candidate, and it survives later passes that find nothing.
+  - Provisional proposals are withdrawn; the live score-0 tie-break file is gone.
+  - The status lists blockers. Live: "BTC-USD tape spans 0.26 of 7 days; 0% of recent quotes come from Robinhood; the holdout needs 90%; no tested setting makes a trade on this tape".
+- **Polymarket CLOB lane** (`44f4e0d`):
+  - A candidate must beat cash before it can be proposed; the -4.3 % proposal was withdrawn.
+  - Renamed "Polymarket CLOB sandbox"; live phase is NO_EDGE.
+- **Combo lane parked** (`cb3c389`, agreed with the Polymarket session): off by default, and the Lab page shows it as OFF instead of STARTING.
+- **Tests:** Lab 163/163. The three new behaviour tests fail on the old code.
+- **Review:** an adversarial review of `44f4e0d` found nothing high or medium. Confirmed low-severity points, all latent until a Robinhood proposal is ready (not before ~10-02, and only with Robinhood quotes):
+  1. After apply, the champion file keeps `paperPromotionAllowed:true`, so alpha.57/58 panels keep showing PAPER REVIEW READY. Fix: mark the doc applied or retract it, and have MPO require `proposed`.
+  2. A failed retract (Windows EPERM) is silent while the status says "withdrawn". Fix: check the return value and overwrite the file with a withdrawn doc.
+  3. The blocker text reads the incumbent's trade count, not the candidates'. It also misses the time-budget case and shows negative gains as 0 %.
+  4. Early-return passes skip the standing-proposal check.
+  5. A standing proposal is never re-scored or aged out. Add a max age and re-score it each pass.
+- **Next Lab batch:** fix 1–5 above. Then the Solana scorer: freeze stop/take/hold until exits are simulated, and score MPO's real SPRINT policy as the incumbent. See `reports/EVOLUTION-LAB-AUDIT-2026-09-26.md`.
