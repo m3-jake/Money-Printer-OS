@@ -24,6 +24,7 @@ import { MACRO_INDICATORS,FredSource,transform as macroTransform,impliedLadder,a
 import { EdgarSource,analyseFiling } from './edgar.js';
 import { WEATHER_CITIES,WeatherSource,bucketLadder,weatherLinks } from './weather.js';
 import { buildSportsEvents,mlbLive,nhlLive,attachLive } from './sports.js';
+import { WIRE_FEEDS,WIRE_FILTERS,parseRss,extractEntities,relatedMarkets,importance,categoriesOf } from './wire.js';
 export const SPORTS_SERIES=['KXMLBGAME','KXNFLGAME','KXNCAAFGAME','KXNHLGAME','KXNBAGAME','KXWNBAGAME','KXATPMATCH','KXWTAMATCH','KXTTSTARMATCH','KXTTELITEMATCH','KXUEFANLGAME','KXMLSGAME','KXEPLGAME'];
 import { ReplaySession,runReplay,readTape,tapeSymbols,bookRecords,fetchAlpacaMinutes,REPLAY_STRATEGIES,strategyParams } from './replay.js';
 const CODE_VERSION=(()=>{try{const pkg=JSON.parse(fs.readFileSync(new URL('../../package.json',import.meta.url),'utf8'));const h=createHash('sha256').update(fs.readFileSync(new URL('./replay.js',import.meta.url))).digest('hex').slice(0,12);return `${pkg.version}+replay.${h}`;}catch{return 'unknown';}})();
@@ -33,7 +34,7 @@ const swapSides=book=>({...book,yes:book.no,no:book.yes});
 
 export class MarketPlatform {
   constructor({file=':memory:',dataDir=null,providers=null,stockQuotes=undefined,stockClock=undefined,stockSession=undefined}={}){
-    this.store=new CoreDatabase(file);this.ledger=new UnifiedLedger(this.store);this.bus=new MarketEventBus();this.risk=new RiskGovernor(this.store,this.ledger,this.bus);this.strategies=new StrategyRegistry(this.store);this.legacyReaders={};this.replays=new Map();this.fred=new FredSource();this.macroCache=null;this.edgar=new EdgarSource();this.weather=new WeatherSource();this.weatherCache=null;this.sportsCache=null;this.sportsLive=new Map();this.sportsFetch=(url,opt)=>globalThis.fetch(url,opt);
+    this.store=new CoreDatabase(file);this.ledger=new UnifiedLedger(this.store);this.bus=new MarketEventBus();this.risk=new RiskGovernor(this.store,this.ledger,this.bus);this.strategies=new StrategyRegistry(this.store);this.legacyReaders={};this.replays=new Map();this.fred=new FredSource();this.macroCache=null;this.edgar=new EdgarSource();this.weather=new WeatherSource();this.weatherCache=null;this.sportsCache=null;this.sportsLive=new Map();this.sportsFetch=(url,opt)=>globalThis.fetch(url,opt);this.wireFetch=(url,opt)=>globalThis.fetch(url,opt);this.wireFeeds=new Map();
     this.store.db.exec(`CREATE TABLE IF NOT EXISTS lab_runs(id TEXT PRIMARY KEY, at INTEGER NOT NULL, source TEXT NOT NULL, key TEXT NOT NULL, start_ms INTEGER NOT NULL, end_ms INTEGER NOT NULL,
       strategy TEXT NOT NULL, params TEXT NOT NULL, dataset_fp TEXT NOT NULL, records INTEGER NOT NULL, code_version TEXT NOT NULL, machine TEXT NOT NULL, seed TEXT, result TEXT NOT NULL);
       CREATE TRIGGER IF NOT EXISTS lab_runs_no_update BEFORE UPDATE ON lab_runs BEGIN SELECT RAISE(ABORT,'Experiment records are append-only'); END;
@@ -302,6 +303,41 @@ export class MarketPlatform {
     const data={at:now,today,events,feeds,errors:errors.slice(0,20),loaded:loaded.length,
       note:'Events are clustered from venue contracts by sport, game day and names (heuristic). Live state only from official MLB/NHL feeds; other sports show prices only. Prices are listing mids, not executable quotes.'};
     this.sportsCache={at:now,data};return data;
+  }
+  // Wire: one feed over everything MPOS ingests. RSS items are stored as NewsEvent entities available
+  // at min(published, received). Entities, related markets and importance are rule-based analysis.
+  async wireSnapshot({force=false}={}){
+    const now=Date.now(),feeds=[];
+    for(const f of WIRE_FEEDS){
+      const c=this.wireFeeds.get(f.id);if(!force&&c&&now-c.at<300000){feeds.push(c.status);continue;}
+      try{const r=await this.wireFetch(f.url,{headers:{'User-Agent':'MoneyPrinterOS/0.5 (wire)'},signal:AbortSignal.timeout?.(12000)});if(!r.ok)throw new Error(`HTTP ${r.status}`);
+        const items=parseRss(await r.text());
+        for(const it of items){const id=stableId('NewsEvent',f.id,it.guid),fresh=!this.store.get(id);try{this.store.put({kind:'NewsEvent',provider:f.id,sourceId:it.guid,data:{...it,feed:f.id,kindHint:f.kind},observedAt:now,availableAt:Math.min(it.publishedAt,now),sourceUrl:it.link});}catch{continue;}if(fresh)this.bus.publish('NEWS_RECEIVED',{kind:'RSS',id,feed:f.id,title:it.title});}
+        const status={id:f.id,label:f.label,status:'CONNECTED',items:items.length,at:now};this.wireFeeds.set(f.id,{at:now,status});feeds.push(status);}
+      catch(e){const status={id:f.id,label:f.label,status:'DISCONNECTED',error:e.message,at:now};this.wireFeeds.set(f.id,{at:now,status});feeds.push(status);}
+    }
+    const contracts=this.store.list({kind:'Contract',limit:1000});
+    // Held exposure: core paper positions (contract ids), stocks, and legacy crypto books.
+    const held={contracts:new Set(),symbols:new Set()};
+    for(const a of this.ledger.portfolio('PAPER').accounts)for(const p of a.positions){
+      // instrument:<venue>:<encoded "sourceId:OUTCOME"> for prediction contracts; instrument:stocks-paper:<SYMBOL> for stocks.
+      const [,venue,enc]=String(p.instrumentId).split(':'),raw=decodeURIComponent(enc||''),m=raw.match(/^(.+):(YES|NO)$/);
+      if(m)held.contracts.add(stableId('Contract',decodeURIComponent(venue),m[1]));else if(raw)held.symbols.add(raw.toUpperCase());}
+    try{for(const b of legacyCoverage(this.legacyReaders).books)if(b.source==='robinhood-practice')for(const p of (this.legacyReaders.robinhoodPractice?.()?.positions||[]))held.symbols.add(String(p.symbol||'').split('-')[0].toUpperCase());}catch{}
+    const teams=(this.sportsCache?.data?.events||[]).flatMap(e=>e.participants),tickers=new Set(this.store.list({kind:'Filing',limit:500}).map(f=>f.data.ticker).filter(Boolean));
+    const ctx={teams,tickers};
+    const finish=it=>{it.entities=it.entities||extractEntities(`${it.title} ${it.summary||''} ${it.category||''}`,ctx);it.relatedMarkets=[...(it.relatedMarkets||[]),...relatedMarkets(it.entities,contracts)].filter((m,i,a)=>a.findIndex(x=>x.id===m.id)===i).slice(0,8);
+      it.myPositions=it.relatedMarkets.some(m=>held.contracts.has(m.id))||it.entities.some(e=>(e.type==='crypto'||e.type==='ticker')&&held.symbols.has(e.key));it.importance=importance(it);it.categories=categoriesOf(it);it.analysis='RULE_BASED';return it;};
+    const items=[];
+    for(const n of this.store.list({kind:'NewsEvent',limit:300}))items.push(finish({id:n.id,at:n.availableAt,kind:n.data.kindHint||'MACRO',source:n.provider,title:n.data.title,summary:n.data.summary,category:n.data.category,url:n.sourceUrl}));
+    for(const f of this.store.list({kind:'Filing',limit:200})){const an=analyseFiling({facts:f.data},contracts);items.push(finish({id:f.id,at:f.availableAt,kind:'CORPORATE',source:'SEC',title:`${f.data.form} · ${f.data.company}${f.data.ticker?' ('+f.data.ticker+')':''}${f.data.items?.length?' — '+f.data.items.map(i=>i.name).join('; '):''}`,url:f.data.url,catalysts:an.catalysts,relatedMarkets:an.relatedMarkets,entities:f.data.ticker?[{type:'ticker',key:f.data.ticker,label:f.data.ticker}]:undefined}));}
+    for(const w of this.store.list({kind:'WeatherAlert',limit:200}))items.push(finish({id:w.id,at:w.availableAt,kind:'WEATHER',source:'NWS',title:`${w.data.event} — ${String(w.data.area||'').slice(0,120)}`,severity:w.data.severity,url:null}));
+    for(const s of this.store.list({kind:'SportsEvent',limit:500}).filter(s=>s.data.live))items.push(finish({id:s.id,at:s.observedAt,kind:'SPORTS',source:s.data.live.feed,title:`${s.data.participants.join(' vs ')}: ${s.data.live.state}${s.data.live.score?.[0]!=null?' '+s.data.live.score.join('–'):''}${s.data.live.period?' · '+s.data.live.period:''}`,fastSettling:['ATP','WTA','TABLE_TENNIS'].includes(s.data.sport),entities:s.data.participants.map(p=>({type:'team',key:p,label:p}))}));
+    for(const c of (this.macroCache?.data?.calendar||[]).filter(c=>c.closeAt>now&&c.closeAt-now<7*86400000))items.push(finish({id:'macro:'+c.eventTicker,at:c.closeAt,kind:'MACRO',scheduled:true,source:'Kalshi calendar',title:`Upcoming: ${c.label} (${c.title})${c.impliedMedian!==null?' — market-implied '+c.impliedMedian:''}`,entities:[{type:'macro',key:c.id,label:c.label}]}));
+    for(const e of this.store.events(200).filter(e=>['RISK_STATE_CHANGED','ORDER_FILLED','PAIR_VERIFIED','STRATEGY_PROMOTED','STRATEGY_DEMOTED','ORDER_CANCELLED'].includes(e.type)))items.push(finish({id:'core:'+e.seq,at:e.at,kind:e.type==='RISK_STATE_CHANGED'?'RISK':e.type==='ORDER_FILLED'?'FILL':'MARKETS',source:'MPOS core',title:`${e.type.replace(/_/g,' ').toLowerCase()}${e.payload.state?': '+e.payload.state:''}${e.payload.reason?' — '+e.payload.reason:''}${e.payload.id?' ('+String(e.payload.id).slice(0,40)+')':''}`,entities:[]}));
+    items.sort((a,b)=>b.at-a.at);
+    return {at:now,feeds,items:items.slice(0,400),filters:WIRE_FILTERS,counts:Object.fromEntries(WIRE_FILTERS.map(f=>[f,f==='ALL'?items.length:items.filter(i=>i.categories.includes(f)).length])),
+      note:'Items are source facts (title, time, link). Entities, related markets, "my positions" and importance are rule-based analysis. Scheduled macro items are dated by the Kalshi close.'};
   }
   async edgarLatest(form='8-K'){return {status:this.edgar.status(),form,filings:this.recordFilings(await this.edgar.latest(form))};}
   async edgarCompany(ticker){const {filingsFromSubmissions}=await import('./edgar.js');const sub=await this.edgar.company(ticker);return {status:this.edgar.status(),company:sub.name,cik:sub.cik,tickers:sub.tickers,sic:sub.sicDescription||null,filings:this.recordFilings(filingsFromSubmissions(sub,{limit:60}))};}

@@ -1016,3 +1016,22 @@ Kalshi and Robinhood event contracts are already covered by the MPOS core platfo
 - **UI:** Sports window (SPT icon): sport filters, both-venues / live / fast-settling toggles, event table (live score/period, winner prices K/P, venue gap, contract count). Tennis and table tennis are flagged FAST (the brief's fast-settlement focus).
 - Tests: 3 new (sport mapping, cross-venue clustering and complements, MLB/NHL parsing and attach, snapshot storage/relationships, live change announced once). `market-core` 50.
 - **Next in Phase 4:** Wire (the event feed consuming SEC/weather/sports/macro/market events); Whale Watch on top of the existing wallet intelligence.
+
+## Batch AA (2026-09-26): Wire, the global event terminal (Phase 4)
+
+- **New `src/core/wire.js`**, plus `wireSnapshot()` in the platform. One feed over:
+  - official RSS: **Federal Reserve** press releases, **BEA** releases, **CFTC** press releases (BLS returns 403 to automated clients and is left out; SEC press needs SEC_USER_AGENT);
+  - stored SEC `Filing`s, NWS `WeatherAlert`s, live `SportsEvent` changes;
+  - the Kalshi macro calendar (upcoming releases within 7 days);
+  - core events: risk state changes, paper fills, pair attestations, strategy promotions/demotions, cancels.
+  - RSS items are stored as `NewsEvent` entities available at **min(published, received)** and publish `NEWS_RECEIVED` once.
+- **Rule-based analysis per item** (labelled `RULE_BASED`):
+  - **entities:** crypto (BTC/ETH/SOL/crypto), macro indicators from keywords (FOMC → Fed funds, GDP, CPI, payrolls…), tickers (from filings, `$TSLA` / `(TSLA)`), team names from loaded sports events;
+  - **related markets:** macro → that indicator's Kalshi series; crypto, teams and tickers → contract titles;
+  - **my positions:** related contract held in the core ledger, or a crypto/stock symbol held in core stocks or the Robinhood practice book;
+  - **importance 0–100:** e.g. FOMC 90, GDP/PCE/CPI 75, earnings/M&A 8-K 70, Extreme weather 70, fast-settling sports +10, held exposure +25, related markets +10.
+- **Filters:** ALL / MARKETS / CRYPTO / MACRO / CORPORATE / SPORTS / WEATHER / MY POSITIONS (with counts), search, newest or importance sort.
+- **Bug found by the new test:** held-position matching never matched, because instrument IDs URL-encode the `:YES` suffix. The ID is now decoded and rebuilt through `stableId`.
+- **Live:** fed 20, BEA 48, CFTC 10 items; 173 total with weather/sports/macro calendar. Top items: FOMC statement/minutes (100, linked to 8 Fed-rate ladders) and GDP estimates (85).
+- **UI:** Wire window (WIR icon; next to Command Center on the desktop).
+- Tests: 2 new (RSS variants incl. CDATA/attributes, entities, related markets, importance, categories; snapshot stores NewsEvents at publish time, 5-min feed cache, my-positions flag via a real paper fill). `market-core` 52.

@@ -26,6 +26,7 @@ import { endOfDayEt,transform as macroTransform,parseFredCsv,vintagesFrom,asOf a
 import { filingsFromSubmissions,filingsFromAtom,parseForm4,analyseFiling,userAgent,EdgarSource } from '../src/core/edgar.js';
 import { bucketLadder,dailyHighs,parseAlerts,parseStorms,weatherLinks,WeatherSource } from '../src/core/weather.js';
 import { sportOf,familyOf,buildSportsEvents,mlbLive,nhlLive,attachLive } from '../src/core/sports.js';
+import { parseRss,extractEntities,relatedMarkets,importance,categoriesOf } from '../src/core/wire.js';
 import { StrategyRegistry,promotionCheck,labChampionLifecycle } from '../src/core/strategies.js';
 import { assertGlobalTradingNotHalted } from '../src/core/executionBoundary.js';
 import { localMutationAllowed } from '../src/core/http.js';
@@ -580,5 +581,34 @@ test('sports snapshot stores canonical events, links contracts, announces live c
   assert.equal(seen.length,1);// unchanged live state is not re-announced
   const stored=p.store.list({kind:'SportsEvent'});assert.equal(stored.length,1);assert.equal(stored[0].fact,false);
   assert.equal(p.store.relationships(stored[0].id).length,1);
+  p.close();
+});
+
+const RSS='<rss><channel><item name="GDP"><title>Gross Domestic Product, 2nd Quarter 2026 (Third Estimate)</title><link>https://bea.gov/news/gdp</link><pubDate>Thu, 24 Sep 2026 08:30:00 EDT</pubDate><description><![CDATA[Real GDP <b>increased</b> 3.1 percent]]></description></item>'+
+  '<item><title>Federal Reserve issues FOMC statement</title><link><![CDATA[https://www.federalreserve.gov/x.htm]]></link><category>Monetary Policy</category><pubDate><![CDATA[Wed, 16 Sep 2026 18:00:00 GMT]]></pubDate></item><item><title>no date</title></item></channel></rss>';
+test('wire parsing and rule-based extraction: RSS variants, entities, related markets, importance',()=>{
+  const items=parseRss(RSS);assert.equal(items.length,2);assert.equal(items[0].publishedAt,Date.parse('2026-09-24T12:30:00Z'));assert.equal(items[0].summary,'Real GDP increased 3.1 percent');assert.equal(items[1].link,'https://www.federalreserve.gov/x.htm');
+  const ents=extractEntities('Fed statement: federal funds rate held; bitcoin reacts; Atlanta Braves win; ($AAPL)',{teams:['Atlanta Braves'],tickers:new Set(['AAPL'])});
+  assert.deepEqual(ents.map(e=>e.type+':'+e.key).sort(),['crypto:BTC','macro:FEDFUNDS','team:Atlanta Braves','ticker:AAPL']);
+  const contracts=[{id:'k1',provider:'kalshi',data:{title:'Fed funds rate after Oct meeting?',seriesTicker:'KXFED'}},{id:'k2',provider:'polymarket',data:{title:'Will Bitcoin hit 100k?'}},{id:'k3',provider:'kalshi',data:{title:'Unrelated'}}];
+  assert.deepEqual(relatedMarkets(ents,contracts).map(m=>m.id).sort(),['k1','k2']);
+  assert.equal(importance({kind:'MACRO',title:'FOMC statement',category:'Monetary Policy'}),90);
+  assert.equal(importance({kind:'CORPORATE',title:'8-K',catalysts:['EARNINGS'],myPositions:true}),95);
+  assert.equal(importance({kind:'SPORTS',title:'x',fastSettling:true}),30);
+  assert.ok(categoriesOf({kind:'CORPORATE',entities:[{type:'crypto',key:'BTC'}],relatedMarkets:[{}],myPositions:true}).includes('MY POSITIONS'));
+});
+test('wire snapshot: stores RSS as NewsEvents at min(published, received), flags items touching held positions',async()=>{
+  const registry=new ProviderRegistry();
+  registry.register({id:'kalshi',status:()=>({}),market:async()=>normalizeKalshi({ticker:'KXFED-26OCT-T4.00',event_ticker:'KXFED-26OCT',title:'Fed funds rate after Oct meeting above 4%?',status:'active'},Date.now(),{ticker:'KXFED',fee_type:'quadratic',fee_multiplier:1}),
+    book:async()=>normalizeKalshiBook({orderbook_fp:{yes_dollars:[['0.4','100']],no_dollars:[['0.5','100']]}},Date.now()),markets:async()=>({markets:[],cursor:null})});
+  const p=new MarketPlatform({providers:registry});p.deposit({venue:'kalshi',amount:'100',id:'w'});
+  const pr=await p.propose({id:'w1',venue:'kalshi',sourceId:'KXFED-26OCT-T4.00',mode:'PAPER',outcome:'YES',side:'BUY',quantity:5});p.executePaper(pr.id,'EXECUTE PAPER ORDER');
+  let calls=0;p.wireFetch=async url=>{calls++;return String(url).includes('federalreserve')?{ok:true,text:async()=>RSS}:{ok:false,status:403};};
+  const w=await p.wireSnapshot({force:true});await p.wireSnapshot();
+  assert.equal(calls,3);// cached for 5 minutes after the first pass
+  assert.equal(w.feeds.find(f=>f.id==='fed').status,'CONNECTED');assert.equal(w.feeds.find(f=>f.id==='bea').status,'DISCONNECTED');
+  const fomc=w.items.find(i=>/FOMC/.test(i.title));assert.equal(fomc.importance,100);assert.equal(fomc.myPositions,true);assert.ok(fomc.categories.includes('MY POSITIONS'));
+  assert.ok(w.items.some(i=>i.kind==='FILL'));
+  const stored=p.store.list({kind:'NewsEvent'});assert.equal(stored.length,2);assert.equal(stored.find(n=>/FOMC/.test(n.data.title)).availableAt,Date.parse('2026-09-16T18:00:00Z'));
   p.close();
 });
