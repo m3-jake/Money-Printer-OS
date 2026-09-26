@@ -10,6 +10,9 @@ import crypto from 'node:crypto';
 import { fetchPublicPaperMarket } from './robinhoodPaperFeed.js';
 import { writeJsonAtomic } from './robinhoodEquitiesData.js';
 
+// The public feed takes a clock function; practice works in timestamps. Pair metadata is unused here.
+const publicMarket = (symbols, { now } = {}) => fetchPublicPaperMarket(symbols, { now: () => Number(now ?? Date.now()), needPairs: false });
+
 export const PRACTICE_SCHEMA = 'mpo.robinhood-paper-practice.v1';
 export const PRACTICE_MODES = Object.freeze(['STRICT', 'PRACTICE', 'BUY_AND_HOLD', 'OBSERVE_ONLY']);
 export const PRACTICE_STRATEGIES = Object.freeze(['MOMENTUM', 'MEAN_REVERSION', 'BUY_AND_HOLD']);
@@ -177,17 +180,18 @@ function enterPosition(book, quote, now, placedBy = 'practice-autopilot') {
   return { ok: true, position, fill };
 }
 
-export async function runPracticeCycle({ dataDir, now = Date.now(), settings = null, fetchMarket = fetchPublicPaperMarket } = {}) {
+export async function runPracticeCycle({ dataDir, now = Date.now(), settings = null, fetchMarket = publicMarket } = {}) {
   if (!dataDir) throw new Error('dataDir required');
   let book = loadPracticeBook(dataDir, { now });
   if (settings) { book.settings = normalizePracticeSettings(settings, book.settings); book.settingsHash = practiceSettingsHash(book.settings); }
   if (book.recoveryRequired) return practiceSnapshot({ dataDir, book, now });
-  const s = book.settings, t = book.telemetry = { ...emptyTelemetry(now), ...(book.telemetry || {}), at: now, loopStatus: 'RUNNING', rejectionReasons: {}, candidatesChecked: [] };
+  const s = book.settings, t = book.telemetry = { ...emptyTelemetry(now), ...(book.telemetry || {}), at: now, loopStatus: 'RUNNING', blockingReason: null, rejectionReasons: {}, candidatesChecked: [] };
   let market;
   try { market = await fetchMarket(s.symbols, { now }); }
   catch (e) {
     t.loopStatus = 'BLOCKED'; t.blockingReason = `public quote source unavailable: ${String(e?.message || e).slice(0, 180)}`; book.lastError = t.blockingReason; savePracticeBook(dataDir, book); return practiceSnapshot({ dataDir, book, now });
   }
+  book.lastError = null;
   const quotes = new Map();
   for (const raw of market?.quotes || []) { const q = quoteRecord(raw, now); if (s.symbols.includes(q.symbol)) quotes.set(q.symbol, q); }
   t.lastSource = market?.source || 'public-observed'; t.lastQuotes = Object.fromEntries(quotes);
@@ -237,7 +241,7 @@ async function withQuote(dataDir, symbol, now, fetchMarket) {
   return { book, quote: q };
 }
 
-export async function placePracticeOrder({ dataDir, symbol, now = Date.now(), fetchMarket = fetchPublicPaperMarket } = {}) {
+export async function placePracticeOrder({ dataDir, symbol, now = Date.now(), fetchMarket = publicMarket } = {}) {
   const sym = String(symbol || '').trim().toUpperCase(); if (!SYMBOL_RE.test(sym)) throw new Error('invalid practice symbol');
   const { book, quote } = await withQuote(dataDir, sym, now, fetchMarket);
   if (book.recoveryRequired) throw new Error('practice ledger requires recovery');
@@ -249,7 +253,7 @@ export async function placePracticeOrder({ dataDir, symbol, now = Date.now(), fe
   book.reservedUsd = r2(book.positions.reduce((n, p) => n + p.costUsd, 0)); savePracticeBook(dataDir, book); return r.position;
 }
 
-export async function closePracticeOrder({ dataDir, id, now = Date.now(), fetchMarket = fetchPublicPaperMarket } = {}) {
+export async function closePracticeOrder({ dataDir, id, now = Date.now(), fetchMarket = publicMarket } = {}) {
   const book = loadPracticeBook(dataDir, { now }), index = book.positions.findIndex(p => p.id === id); if (index < 0) throw new Error('practice position not found');
   const { quote } = await withQuote(dataDir, book.positions[index].symbol, now, fetchMarket);
   const closed = closePosition(book, index, quote, 'manual', now);
@@ -282,7 +286,7 @@ export function practiceSnapshot({ dataDir, book = loadPracticeBook(dataDir), no
 }
 
 let timer = null;
-export function startPracticeLoop({ dataDir, tickMs = 15_000, fetchMarket = fetchPublicPaperMarket } = {}) {
+export function startPracticeLoop({ dataDir, tickMs = 15_000, fetchMarket = publicMarket } = {}) {
   if (timer || String(process.env.ROBINHOOD_PRACTICE_AUTOSTART ?? 'true').toLowerCase() === 'false') return timer;
   timer = setInterval(() => runPracticeCycle({ dataDir, fetchMarket }).catch(() => {}), Math.max(5_000, tickMs)); timer.unref?.();
   runPracticeCycle({ dataDir, fetchMarket }).catch(() => {}); return timer;

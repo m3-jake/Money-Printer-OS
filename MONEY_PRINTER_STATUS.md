@@ -4,7 +4,7 @@
 (`CURRENT_TASKS.md`, `KNOWN_BUGS.md`, `PROJECT_STATE.md`, `RELEASE_STATUS.md`) and in `reports/NEXT-STEPS-2026-09-25.md`.
 Don't re-inventory the repo. Update this file at the end of every batch.
 
-Last updated: 2026-09-26, batch 26 (alpha.58 built, installed and verified). Branch `feature/polymarket-combo-only`, version `0.5.0-alpha.57`.
+Last updated: 2026-09-26, batch L (Codex platform + sunny desktop finished, merged to `main`). Version `0.5.0-alpha.60`.
 
 ## Architecture (inventoried once)
 
@@ -738,3 +738,31 @@ bing asked how hard a Kalshi module would be and what it adds. Findings were web
 - bing's feedback on the installed glances (tune per window).
 - Push `fix/holder-rpc-helius` and `feature/hud-declutter` and open PRs to main (not done; ask first).
 - Copy-trading step 2 once holder data has flowed for a day (SOL per swap, capped Helius indexer). Check the day's holder `calls` / `budgetSkips` against the 25k cap.
+
+## Batch L (2026-09-26): Codex's unfinished work finished and merged to main
+
+bing: "Codex got halfway through some work… finish it, push everything to main, get it started on Windows and Mac."
+- **Found two pieces of Codex work.**
+  1. Uncommitted here: the MPOS core platform (`src/core/`, `docs/MPOS-UNIFICATION.md`). It has a common SQLite ledger `<data>/mpos-core.sqlite`, a Risk Governor with a persistent STOP, Kalshi + global Polymarket public providers, paper proposals/fills against observed depth, and HUD windows Command Center, KALSHI.EXE, ARBITRAGE.EXE and Polymarket Markets (`public/js/mpo-platform.js`). Also the Robinhood practice book, the lane registry and the money-physics module.
+  2. Committed on `feature/sunny-desktop` (Codex worktree `~/.codex/worktrees/sunny-release`): sunny sky, cloud sprites, 3D corner logo, window layouts restored across restarts (`desktop/window-state.cjs`).
+- **Policy change carried by (1):** `src/core/executionBoundary.js` makes every live transport refuse while accounts are unreconciled: Jupiter/Jito sends, Polymarket US orders and RFQ accept/confirm, Robinhood order POSTs. Cancels and reads still work. There is no switch to bypass it. This matches the standing "no real-money execution" decision.
+- **Bugs fixed in Codex's code:**
+  - The platform's SQLite handle stayed open after the dashboard closed, so Windows couldn't delete the data dir (EPERM in product-economics-http, which stopped `test:all` at suite 7). `closeMarketPlatform()` now runs on server close.
+  - Robinhood practice never got a quote in the real app. It passed `now` as a number to `fetchPublicPaperMarket`, which calls `now()` ("now is not a function", loop BLOCKED). An adapter fixes it; pair metadata is no longer fetched.
+  - The practice entry signal compared each quote with the tape point it had just appended: momentum could never fire, and mean reversion fired on the spread every tick. It now compares mid with the previous tick's mid.
+  - A practice error stuck in `blockingReason`/`lastError` forever after one failure. It clears on the next good fetch.
+  - Kalshi's first page was all multivariate (MVE) parlays with empty books. `mve_filter=exclude` added (checked live).
+  - Platform tables broke "Inspect"/"Watch" mid-word.
+- **Tests:** new `tests/robinhood-practice.test.mjs` (7). `test:lane-contracts` now also runs `market-core` plus orphaned files no script ran (`champion-state`, `data-coverage`, `runtime-controls`); `window-state` joined `test:visual`. **`npm run test:all`: 695 pass, 0 fail.** SELFTEST PASS.
+- **Browser check (isolated engine, no keys):**
+  - Command Center, Kalshi (100 live markets with depth), Polymarket Markets (100), Arbitrage (correctly NOT EQUIVALENT for unrelated contracts).
+  - Paper flow: a $100 simulated deposit, then 5 YES at 14¢ filled at $0.70 plus the 1% modeled fee, recorded in the ledger.
+  - STOP ALL LIVE TRADING → HALTED → resume → GREEN.
+  - Practice loop IDLE with live Coinbase quotes.
+- **Merge:** `feature/sunny-desktop` merged (its other 3 commits were rebased copies of ones already here). Conflicts: package.json scripts, dashboard.js wiring, brand subtitle colour (kept white/outlined; readable on the new sky). `artifacts/sky-refs/` committed as design references.
+- **Left as-is (parked):** `src/polymarketPaperCombos.js` has no route, UI or test, and overlaps the shadow auto-combo lane. `src/moneyPhysics.js` and `src/researchLaneRegistry.js` are tested but not wired. The Robinhood practice book has API routes but no HUD panel yet.
+
+### Next recommended
+- A Robinhood practice panel in the Robinhood window (the routes exist: `/api/robinhood/practice`, `practice/config|run|order|close|reset`).
+- Decide whether to wire or delete `polymarketPaperCombos.js`.
+- MacBook: still alpha.53 until it's updated (see the Batch L install record).

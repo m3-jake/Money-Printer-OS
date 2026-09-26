@@ -22,7 +22,7 @@ export function normalizeKalshiBook(raw,observedAt=Date.now()) {
 export class KalshiProvider extends JsonProvider {
   constructor(options={}){super('kalshi',options);this.base='https://external-api.kalshi.com/trade-api/v2';}
   async markets({cursor='',series='',eventTicker='',limit=100}={}){
-    const u=new URL(`${this.base}/markets`);u.searchParams.set('status','open');u.searchParams.set('limit',String(Math.min(200,Math.max(1,limit))));
+    const u=new URL(`${this.base}/markets`);u.searchParams.set('status','open');u.searchParams.set('limit',String(Math.min(200,Math.max(1,limit))));u.searchParams.set('mve_filter','exclude');
     if(cursor)u.searchParams.set('cursor',cursor);if(series)u.searchParams.set('series_ticker',series);if(eventTicker)u.searchParams.set('event_ticker',eventTicker);
     const raw=await this.get(u,{ttlMs:10000});if(!Array.isArray(raw.markets))throw new ProviderError('MALFORMED_DATA','Kalshi markets array missing');
     return {markets:raw.markets.map(m=>normalizeKalshi(m,this.observedAt(raw))),cursor:raw.cursor||null};

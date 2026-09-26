@@ -81,7 +81,25 @@ test('stale quotes, observe-only mode and a dead feed block fills', async () => 
     await assert.rejects(RP.placePracticeOrder({ dataDir: dir, symbol: 'BTC-USD', now, fetchMarket: feed({ 'BTC-USD': 100 }).fetchMarket }), /OBSERVE_ONLY/);
     const snap = await RP.runPracticeCycle({ dataDir: dir, now, fetchMarket: async () => { throw new Error('offline'); } });
     assert.equal(snap.telemetry.loopStatus, 'BLOCKED'); assert.match(snap.telemetry.blockingReason, /offline/);
+    const back = await RP.runPracticeCycle({ dataDir: dir, now: now + 15000, fetchMarket: feed({ 'BTC-USD': 100, 'ETH-USD': 10 }).fetchMarket });
+    assert.equal(back.lastError, null, 'a good fetch clears the old error'); assert.doesNotMatch(String(back.telemetry.blockingReason), /offline/);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('the default public feed path works (the feed takes a clock function, not a timestamp)', async () => {
+  const dir = tmp(), realFetch = globalThis.fetch, urls = [];
+  globalThis.fetch = async url => {
+    urls.push(String(url));
+    if (!/api\.exchange\.coinbase\.com\/products\/[A-Z]+-USD\/book\?level=1$/.test(String(url))) throw new Error('unexpected ' + url);
+    const body = { bids: [['100000.00', '1']], asks: [['100010.00', '1']], time: new Date(Date.now() - 1000).toISOString() };
+    return { ok: true, status: 200, json: async () => body };
+  };
+  try {
+    const snap = await RP.runPracticeCycle({ dataDir: dir });
+    assert.equal(snap.telemetry.loopStatus, 'IDLE'); assert.equal(snap.lastError, null);
+    assert.equal(snap.telemetry.lastCycle.freshQuotes, 2); assert.equal(snap.telemetry.lastSource, 'coinbase-public-paper');
+    assert.equal(urls.length, 2, 'one book request per symbol, no pair metadata');
+  } finally { globalThis.fetch = realFetch; fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('a corrupt ledger is never overwritten; reset keeps a backup', async () => {
