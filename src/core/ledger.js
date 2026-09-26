@@ -26,7 +26,7 @@ export class UnifiedLedger {
     const accounts=new Map();
     for(const r of this.store.db.prepare('SELECT * FROM ledger WHERE mode=? ORDER BY seq').iterate(mode)) {
       const key=JSON.stringify([r.venue,r.account,r.currency]);
-      const a=accounts.get(key)||{venue:r.venue,account:r.account,currency:r.currency,cash:0n,realized:0n,fees:0n,netDeposits:0n,positions:new Map(),daily:new Map()};
+      const a=accounts.get(key)||{venue:r.venue,account:r.account,currency:r.currency,cash:0n,realized:0n,fees:0n,netDeposits:0n,positions:new Map(),daily:new Map(),closes:{n:0,wins:0,grossWin:0n,grossLoss:0n,best:null,bestAt:null,lastAt:null}};
       const gross=BigInt(r.gross_units),fee=BigInt(r.fee_units),qty=BigInt(r.quantity_units); let pnl=0n;
       if(['DEPOSIT','TRANSFER_IN'].includes(r.kind)){a.cash+=gross;a.netDeposits+=gross;}
       else if(['WITHDRAWAL','TRANSFER_OUT'].includes(r.kind)){a.cash-=gross;a.netDeposits-=gross;}
@@ -39,6 +39,8 @@ export class UnifiedLedger {
           if(qty>p.qty)throw new Error(`Ledger oversell at ${r.source_key}`);
           const basis=qty===p.qty?p.basis:p.basis*qty/p.qty;
           p.qty-=qty;p.basis-=basis;a.cash+=gross;pnl+=gross-basis-fee;
+          // Per-close tally for the scoreboard (same pnl as realized, nothing recomputed elsewhere).
+          const c=gross-basis-fee,k=a.closes;k.n++;if(c>0n){k.wins++;k.grossWin+=c;}else k.grossLoss-=c;if(k.best===null||c>k.best){k.best=c;k.bestAt=r.at;}k.lastAt=r.at;
         }
         a.positions.set(pk,p);
       }
@@ -49,6 +51,7 @@ export class UnifiedLedger {
       accounts.set(key,a);
     }
     return {mode,coverage:'CORE_LEDGER_ONLY',accounts:[...accounts.values()].map(a=>({venue:a.venue,account:a.account,currency:a.currency,cash:decimal(a.cash),realized:decimal(a.realized),fees:decimal(a.fees),netDeposits:decimal(a.netDeposits),daily:Object.fromEntries([...a.daily].map(([k,v])=>[k,decimal(v)])),
+      closeStats:{closes:a.closes.n,wins:a.closes.wins,grossWin:decimal(a.closes.grossWin),grossLoss:decimal(a.closes.grossLoss),best:a.closes.best===null?null:decimal(a.closes.best),bestAt:a.closes.bestAt,lastCloseAt:a.closes.lastAt},
       positions:[...a.positions.values()].filter(p=>p.qty>0n).map(p=>({instrumentId:p.instrumentId,strategyId:p.strategyId,eventId:p.eventId,quantity:decimal(p.qty,8),costBasis:decimal(p.basis)}))}))};
   }
 }
