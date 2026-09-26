@@ -37,6 +37,7 @@ import * as RP from './robinhoodPractice.js';
 import { paperRecordFrom } from './fitnessLedger.js';
 import { laneMayPropose } from './evidenceFlags.js';
 import { appendProjectJournal } from './projectJournal.js';
+import { writeFileAtomicSync } from './atomicRename.js';
 export const CONFIRM_PLACE='PLACE REAL CRYPTO ORDER', CONFIRM_CANCEL='CANCEL REAL CRYPTO ORDER', CONFIRM_CANCEL_ALL='CANCEL REAL CRYPTO ORDERS', CONFIRM_AUTOPILOT='ENABLE REAL CRYPTO AUTOPILOT', CONFIRM_FORGET='FORGET';
 const clone=x=>structuredClone(x), envNum=(k,d)=>{const n=Number(process.env[k]);return Number.isFinite(n)&&n>0?n:d};
 const TICK_MS=Math.max(5000,envNum('ROBINHOOD_TICK_MS',15000)), PREVIEW_TTL_MS=30000, PREVIEW_CACHE_MS=10000, SNAPSHOT_TTL_MS=5000, ENTRY_TTL_MS=90000, RECONCILE_THROTTLE_MS=5000, NEVER_RECEIVED_MS=600000, NEVER_RECEIVED_LISTINGS=3;
@@ -751,8 +752,7 @@ const LAB_TRIAL_FILE=path.join(DATA_DIR,'robinhood-lab-trial.json'), LAB_TRIAL_S
 let labPassAt=0;
 export const labAutoApplyEnabled=()=>String(process.env.ROBINHOOD_LAB_AUTO_APPLY_PAPER||'').toLowerCase()==='true';
 function loadLabTrial(){try{const v=JSON.parse(fs.readFileSync(LAB_TRIAL_FILE,'utf8'));if(v?.schema===LAB_TRIAL_SCHEMA)return {active:v.active||null,rejected:Array.isArray(v.rejected)?v.rejected.slice(-200):[],lastDecision:v.lastDecision||null,lastCheck:v.lastCheck||null,history:Array.isArray(v.history)?v.history.slice(0,50):[]}}catch{}return {active:null,rejected:[],lastDecision:null,lastCheck:null,history:[]}}
-function saveLabTrial(t){atomicWrite(LAB_TRIAL_FILE,{schema:LAB_TRIAL_SCHEMA,...t})}
-function atomicWrite(file,doc){fs.mkdirSync(path.dirname(file),{recursive:true});const tmp=`${file}.${process.pid}.tmp`,fd=fs.openSync(tmp,'w');try{fs.writeSync(fd,JSON.stringify(doc,null,1));fs.fsyncSync(fd)}finally{fs.closeSync(fd)}fs.renameSync(tmp,file)}
+function saveLabTrial(t){writeFileAtomicSync(LAB_TRIAL_FILE,JSON.stringify({schema:LAB_TRIAL_SCHEMA,...t},null,1))}
 function trialCloses(p,hash,since){return p.history.filter(x=>x.status==='CLOSED'&&x.paramsHash===hash&&Number.isFinite(Number(x.pnlUsd))&&num(x.closedAt)>=since).map(x=>({pnl:Number(x.pnlUsd),closedAt:x.closedAt}))}
 function labTrialView(t){const a=t.active;if(!a)return t.lastDecision&&['kept','reverted'].includes(t.lastDecision.action)?{status:t.lastDecision.action==='kept'?'KEPT':'REVERTED',hash:t.lastDecision.hash,incumbentHash:t.lastDecision.incumbentHash||null,startedAt:t.lastDecision.startedAt||null,endedAt:t.lastDecision.at,closes:t.lastDecision.closes??null,needed:TRIAL_CLOSES,incumbent:t.lastDecision.incumbent||null,candidate:t.lastDecision.candidate||null}:null;
  const p=paper(),rec=paperRecordFrom(trialCloses(p,a.hash,a.startedAt),{unit:'USD',startBalance:p.startUsd});

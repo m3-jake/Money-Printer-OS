@@ -130,17 +130,19 @@ test('saves are atomic: tmp file pattern, and no tmp survives a write or rename 
  assert.equal(j.version,1);
  assert.deepEqual(tmpFiles(),[]);
  assert.deepEqual(JSON.parse(fs.readFileSync(J.JOURNAL_FILE,'utf8')).open,[]);
- const origWrite=fs.writeFileSync,origRename=fs.renameSync;
+ const origWrite=fs.writeSync,origOpen=fs.openSync,origRename=fs.renameSync;
  const seen=[];
  try{
-  fs.writeFileSync=(f,...a)=>{seen.push(path.basename(String(f)));throw new Error('EIO write')};
+  // Saves go through writeFileSynced (open, write, fsync): fail the write after the tmp is opened.
+  fs.openSync=(f,...a)=>{seen.push(path.basename(String(f)));return origOpen(f,...a)};
+  fs.writeSync=()=>{throw new Error('EIO write')};
   assert.throws(()=>J.saveJournal(J.defaultJournal()),/EIO write/);
   assert.throws(()=>J.savePaper(J.defaultPaper(),{force:true}),/EIO write/);
-  fs.writeFileSync=origWrite;
+  fs.writeSync=origWrite;fs.openSync=origOpen;
   fs.renameSync=()=>{throw new Error('EPERM rename')};
   assert.throws(()=>J.saveJournal(J.defaultJournal()),/EPERM rename/);
   assert.throws(()=>J.savePaper(J.defaultPaper(),{force:true}),/EPERM rename/);
- }finally{fs.writeFileSync=origWrite;fs.renameSync=origRename}
+ }finally{fs.writeSync=origWrite;fs.openSync=origOpen;fs.renameSync=origRename}
  assert.deepEqual(tmpFiles(),[]);
  assert.match(seen[0],/^\.robinhood-auto-trader\.\d+\.[0-9a-z]+\.tmp$/);
  assert.match(seen[1],/^\.robinhood-paper\.\d+\.[0-9a-z]+\.tmp$/);

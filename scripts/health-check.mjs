@@ -11,7 +11,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { loopPersistenceCheck, collectorCaptureCheck } from '../src/labHealth.js';
+import { loopPersistenceCheck, collectorCaptureCheck, generationAdvanceCheck, diskFreeCheck, orderPostsCheck, switchesCheck, rawRetentionCheck } from '../src/labHealth.js';
 
 const JSON_OUT = process.argv.includes('--json');
 const TRADER_URL = process.env.MPO_TRADER_URL || 'http://127.0.0.1:8792';
@@ -31,6 +31,10 @@ const LINK_STALE_MIN = 30;
 
 const checks = [];
 const add = (level, name, detail) => checks.push({ level, name, detail });
+// Structured sections for --json (a scheduler or the daily self-report reads these).
+const sections = { lab: {}, switches: {}, robinhood: {}, disk: {}, researchRaw: {}, fitness: {} };
+const HEALTH_STATE = process.env.MPO_HEALTH_STATE_FILE || path.join(TRADER_DATA, 'health-check-state.json');
+const readState = () => { try { return JSON.parse(fs.readFileSync(HEALTH_STATE, 'utf8')); } catch { return {}; } };
 
 async function getJson(url, ms = 8000) {
   const ac = new AbortController();
@@ -58,6 +62,16 @@ try {
     add('RED', 'lab link', `not connected${link.error ? ': ' + link.error : ''} - the trader is not receiving champions`);
   }
   if (trader.system?.lastError) add('WARN', 'trader.lastError', String(trader.system.lastError).slice(0, 160));
+  try {
+    const h = await getJson(`${TRADER_URL}/api/health`);
+    sections.switches.trader = h.switches || null;
+    const sw = switchesCheck(h.switches); add(sw.level, 'switches', sw.detail);
+  } catch (e) { add('WARN', 'switches', `trader /api/health unavailable (${e.message})`); }
+  try {
+    const fit = await getJson(`${TRADER_URL}/api/fitness`);
+    for (const [id, m] of Object.entries(fit.modules || {})) sections.fitness[id] = { verdict: m.verdict, closes: m.paperRecord?.closes ?? null, blockers: (m.blockers || []).slice(0, 5), trial: m.trial?.status || null };
+    add('OK', 'fitness', Object.entries(sections.fitness).map(([id, m]) => `${id} ${m.verdict}${m.trial ? ' trial ' + m.trial : ''}`).join(', ') || 'no modules');
+  } catch (e) { add('WARN', 'fitness', `/api/fitness unavailable (${e.message}) - older build?`); }
 } catch (e) {
   add('RED', 'trader', `unreachable at ${TRADER_URL} (${e.message})`);
 }
@@ -74,6 +88,8 @@ try {
   const open = (rh.journal?.open || []).length, unverified = rh.journal?.stats?.unverified || 0;
   if (open) add(unverified ? 'WARN' : 'OK', 'robinhood exposure', `${open} open real row(s), ${unverified} unverified - the updater holds until flat`);
   const tape = Object.entries(ev.tapeDays || {}).map(([s, d]) => `${s} ${d}d`).join(', ');
+  sections.robinhood.outbound = rh.outbound || null;
+  const posts = orderPostsCheck(rh.outbound); add(posts.level, 'robinhood.orderPosts', posts.detail);
   add(ev.enabled === false ? 'WARN' : 'OK', 'robinhood evolve', `${ev.enabled === false ? 'disabled' : 'gen ' + (ev.generation || 0)}, ${ev.proposed ? 'champion ' + ev.proposed.paramsHash + ' PROPOSED' : 'no proposal'}, autopromote=${!!ev.autopromote}, tape ${tape || 'empty'}`);
 } catch (e) {
   add('WARN', 'robinhood', `readiness unavailable (${e.message}) - older build or trader down`);
@@ -86,6 +102,14 @@ try {
   add(s.status === 'RUNNING' ? 'OK' : 'WARN', 'lab', `${s.status}, gen ${s.generation}, ${Number(s.variantsTested || 0).toLocaleString()} variants, ${s.workerCount} workers`);
   if (s.lastError) add('WARN', 'lab.lastError', String(s.lastError).slice(0, 160));
   if (lab.control?.paused) add('WARN', 'lab.control', `paused${lab.control.reason ? ': ' + lab.control.reason : ''}`);
+  sections.lab.status = s.status || null; sections.lab.generation = Number.isFinite(Number(s.generation)) ? Number(s.generation) : null;
+  const hs = readState(), gen = generationAdvanceCheck(hs.lab || null, s);
+  add(gen.level, 'lab.generation', gen.detail);
+  try { fs.writeFileSync(HEALTH_STATE, JSON.stringify({ ...hs, lab: gen.state, at: Date.now() })); } catch {}
+  sections.lab.modules = Object.fromEntries(Object.entries(lab.modules || {}).map(([id, m]) => [id, { status: m.status || null, phase: m.phase || null, updatedAt: m.updatedAt || null }]));
+  const mods = Object.entries(sections.lab.modules);
+  if (mods.length) add(mods.some(([, m]) => m.status === 'ERROR') ? 'WARN' : 'OK', 'lab.modules', mods.map(([id, m]) => `${id} ${m.phase || m.status}`).join(', '));
+  try { const lh = await getJson(`${LAB_URL}/api/health`); sections.lab.health = lh.health || lh.status || null; sections.switches.lab = lh.switches || null; } catch {}
 
   // A missing research-furnace.json / research-beast.json is read with a silent try/catch and
   // drops the furnace to NORMAL: 513 variants a generation instead of 4097 on 24 workers. It
@@ -128,6 +152,9 @@ try {
   (function walk(d) { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); try { if (e.isDirectory()) walk(p); else bytes += fs.statSync(p).size; } catch {} } })(TRADER_DATA);
   const gb = bytes / 1073741824;
   add(gb > 8 ? 'WARN' : 'OK', 'trader data dir', `${gb.toFixed(2)} GB`);
+  sections.disk.dataDirBytes = bytes;
+  try { const st = fs.statfsSync(TRADER_DATA), free = Number(st.bavail) * Number(st.bsize); sections.disk.freeBytes = free; const d = diskFreeCheck(free); add(d.level, 'disk free', d.detail); }
+  catch (e) { add('WARN', 'disk free', `unknown (${e.message})`); }
 } catch (e) {
   add('WARN', 'disk', `could not inspect ${TRADER_DATA} (${e.message})`);
 }
@@ -138,12 +165,14 @@ try {
   try { status = JSON.parse(fs.readFileSync(path.join(TRADER_DATA, 'research-capture-status.json'), 'utf8')); } catch {}
   const c = collectorCaptureCheck(status || {});
   add(c.level, 'tape collector', c.detail);
+  const rr = rawRetentionCheck(status || {}); add(rr.level, 'research raw', rr.detail);
+  sections.researchRaw = status?.retention || null;
 }
 
 // ---------------------------------------------------------------- report
 const worst = checks.some(c => c.level === 'RED') ? 'RED' : checks.some(c => c.level === 'WARN') ? 'WARN' : 'OK';
 if (JSON_OUT) {
-  console.log(JSON.stringify({ at: new Date().toISOString(), overall: worst, checks }, null, 2));
+  console.log(JSON.stringify({ at: new Date().toISOString(), overall: worst, checks, sections }, null, 2));
 } else {
   const mark = { OK: '  ok  ', WARN: ' warn ', RED: ' RED  ' };
   console.log(`MONEY PRINTER HEALTH // ${new Date().toISOString()} // ${worst}`);
