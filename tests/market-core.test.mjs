@@ -335,3 +335,17 @@ test('Kalshi contracts carry the series fee model and settlement source',async()
   const broken=new KalshiProvider({fetchImpl:async url=>String(url).includes('/series/')?{ok:false,status:500}:{ok:true,json:async()=>({markets:[{ticker:'T-1',event_ticker:'T-1',title:'x'}]})}});
   const b=await broken.markets({});assert.equal(b.markets[0].data.feeModel,null);assert.match(b.markets[0].data.feeModelReason,/not loaded/);
 });
+
+test('paper fills default to the venue fee schedule; no schedule and no typed fee is refused',async()=>{
+  const make=series=>{const registry=new ProviderRegistry();registry.register({id:'kalshi',status:()=>({id:'kalshi',status:'CONNECTED'}),
+    market:async()=>normalizeKalshi({ticker:'TEST',title:'TEST FIXTURE',status:'active',event_ticker:'EVENT'},Date.now(),series),
+    book:async()=>normalizeKalshiBook({orderbook_fp:{yes_dollars:[['0.4','100']],no_dollars:[['0.5','100']]}},Date.now()),markets:async()=>({markets:[],cursor:null})});
+    const p=new MarketPlatform({providers:registry});p.deposit({venue:'kalshi',amount:'100',id:'f'});return p;};
+  const p=make({ticker:'EVENT',fee_type:'quadratic',fee_multiplier:1});
+  const r=await p.propose({id:'v1',venue:'kalshi',sourceId:'TEST',mode:'PAPER',outcome:'YES',side:'BUY',quantity:10});
+  // YES ask = 1 - best NO bid 0.5 = 0.50; fee = ceil_cent(5 + 0.07*10*.25) - 5 = 0.18
+  assert.equal(r.status,'PROPOSED');assert.equal(r.order.fee,'0.180000');assert.equal(r.order.feeModel.kind,'VENUE_SCHEDULE');
+  const typed=await p.propose({id:'v2',venue:'kalshi',sourceId:'TEST',mode:'PAPER',outcome:'YES',side:'BUY',quantity:10,feeBps:100});
+  assert.equal(typed.order.fee,'0.050000');assert.equal(typed.order.feeModel.kind,'USER_MODELED_BPS');p.close();
+  const q=make(null);await assert.rejects(q.propose({id:'v3',venue:'kalshi',sourceId:'TEST',mode:'PAPER',outcome:'YES',side:'BUY',quantity:10}),/Venue fee schedule unavailable/);q.close();
+});

@@ -914,3 +914,10 @@ Kalshi and Robinhood event contracts are already covered by the MPOS core platfo
 - **Live check (isolated engine, 10 contracts):** fees resolve for all 13 STRONG pairs. Kalshi NFL spread 10 @ $0.48 → $0.18; Kalshi MLB multiplier 0.5; that Polymarket market is `zero_fees`. **Every live pair is negative after fees** (−0.8 to −4.8 pts), the expected efficient-market result. It also surfaced a real settlement difference: Kalshi's MLB series settles from **ESPN**, Polymarket's from **mlb.com**.
 - **Tests:** 3 new tests (docs examples for both venues, per-fill pricing, series caching and failure) → `market-core` 31 pass; `npm run test:all` **755 pass, 0 fail**.
 - **Not changed:** core paper proposals in the Markets tabs still take a user-entered fee (bps). Switching them to the venue model is a small follow-up.
+
+## Batch T (2026-09-26): paper fills use venue fees; team aliases dropped
+
+- bing: "continue until we complete everything, you don't have to ask for permission." Batches now run back to back (each is still tested, committed and logged here).
+- Core paper proposals (the Kalshi and Polymarket Markets tabs): the fee field is now optional. Left blank, the fill is charged the venue's published taker fee on the actual fills (`fees.js`), recorded as `feeModel {kind:'VENUE_SCHEDULE', model, rate, source}` and named in the ledger reference. A typed bps still overrides it. No schedule and no typed fee → refused with the reason.
+- **Team-alias table: not built.** On live data Kalshi's NFL/MLB rule text already uses matching names ("KC Chiefs", "Atlanta"), and trailing-letter abbreviations ("Chicago C") are handled, so an alias table would add little. Revisit if NBA/NHL pairs show misses.
+- Tests: +1 (`market-core` 32). `test:all` green (count below).

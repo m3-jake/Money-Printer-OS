@@ -14,7 +14,7 @@ import { StrategyRegistry } from './strategies.js';
 import { legacyCoverage } from './legacyBooks.js';
 import { syncLabChampions } from './labSync.js';
 import { extractTerms,matchTerms,termsFingerprint,candidatePairs } from './contractTerms.js';
-import { describeFeeModel } from './fees.js';
+import { describeFeeModel,takerFee } from './fees.js';
 
 export const VERIFY_PHRASE='I READ BOTH RULE TEXTS AND THEY SETTLE IDENTICALLY';
 const swapSides=book=>({...book,yes:book.no,no:book.yes});
@@ -55,9 +55,10 @@ export class MarketPlatform {
   async propose(input){
     if(!['PAPER','MANUAL_APPROVAL'].includes(input.mode))throw new Error('Live execution is unavailable until account reconciliation and live adapter certification');
     if(!['YES','NO'].includes(input.outcome)||!['BUY','SELL'].includes(input.side))throw new Error('Invalid order side/outcome');
-    const quantity=finite(input.quantity),feeBps=finite(input.feeBps);
+    // feeBps is optional: blank means the venue's published taker-fee schedule (fees.js).
+    const quantity=finite(input.quantity),feeBps=input.feeBps===undefined||input.feeBps===null||input.feeBps===''?null:finite(input.feeBps);
     if(quantity===null||quantity<=0||!Number.isSafeInteger(quantity)||quantity>100000)throw new Error('Quantity must be a positive whole contract count');
-    if(feeBps===null||feeBps<0||feeBps>10000)throw new Error('Explicit modeled fee (0–10000 bps) required');
+    if(feeBps!==null&&(feeBps<0||feeBps>10000))throw new Error('Modeled fee must be 0–10000 bps');
     const {contract,book}=await this.book(input.venue,input.sourceId);
     if(!['OPEN','ACTIVE'].includes(contract.data.status)||contract.data.closeAt!==null&&contract.data.closeAt<=Date.now())throw new Error('Market is not open for paper execution');
     const side=book[input.outcome.toLowerCase()],levels=input.side==='BUY'?side.asks:side.bids;
@@ -66,10 +67,15 @@ export class MarketPlatform {
     if(!quote.complete||quote.averagePrice===null)throw new Error('Insufficient observed order-book depth');
     const price=input.side==='BUY'?quote.averagePrice:1-quote.averagePrice;
     const top=levels[0]?.price;const slippageBps=top>0?Math.abs(price/top-1)*10000:null;
-    const gross=decimal(BigInt(Math.ceil(quantity*price*1e6))),fee=decimal(BigInt(Math.ceil(Number(gross)*feeBps/10000*1e6)));
+    const venueModel=contract.data.feeModel||null;
+    if(feeBps===null&&!venueModel)throw new Error(`Venue fee schedule unavailable (${contract.data.feeModelReason||'no fee model'}); enter a modeled fee in bps`);
+    const fills=input.side==='BUY'?quote.fills:quote.fills.map(f=>({...f,price:1-f.price}));
+    const venueFee=feeBps===null?takerFee(venueModel,fills):null;if(feeBps===null&&venueFee===null)throw new Error('Venue fee could not be computed for these fills; enter a modeled fee in bps');
+    const gross=decimal(BigInt(Math.ceil(quantity*price*1e6))),fee=decimal(BigInt(Math.ceil((feeBps===null?venueFee:Number(gross)*feeBps/10000)*1e6)));
+    const feeModel=feeBps===null?{kind:'VENUE_SCHEDULE',model:venueModel.kind,rate:venueModel.rate,source:venueModel.source,describe:describeFeeModel(venueModel)}:{kind:'USER_MODELED_BPS',bps:feeBps};
     const payload={id:input.id||randomUUID(),mode:input.mode,venue:input.venue,account:'manual',currency:'USD',instrumentId:stableId('Instrument',input.venue,`${input.sourceId}:${input.outcome}`),
       contractId:contract.id,sourceId:input.sourceId,outcome:input.outcome,eventId:contract.data.eventId||contract.id,strategyId:'manual',side:input.side,quantity,price,feeUsd:Number(fee),gross,fee,
-      slippageBps,liquidityUsd:levels.reduce((s,l)=>s+l.price*l.quantity,0),quoteAt:Math.min(book.observedAt,book.providerTimestamp??book.observedAt),bookFingerprint:fingerprint(book),feeModel:{kind:'USER_MODELED_BPS',bps:feeBps},simulated:true};
+      slippageBps,liquidityUsd:levels.reduce((s,l)=>s+l.price*l.quantity,0),quoteAt:Math.min(book.observedAt,book.providerTimestamp??book.observedAt),bookFingerprint:fingerprint(book),feeModel,simulated:true};
     const result=this.risk.propose(payload);this.bus.publish(result.status==='REJECTED'?'ORDER_REJECTED':'ORDER_PROPOSED',{id:result.id,status:result.status});return result;
   }
   executePaper(id,confirmation){
@@ -85,7 +91,7 @@ export class MarketPlatform {
       // The same observed depth cannot be consumed by multiple simulated fills.
       const used=this.store.db.prepare("SELECT payload FROM proposals WHERE status='FILLED'").all().some(r=>{const p=JSON.parse(r.payload);return p.bookFingerprint===order.bookFingerprint&&p.instrumentId===order.instrumentId&&p.side===order.side;});
       if(used)throw new Error('Book snapshot already consumed; request a fresh preview');
-      this.ledger.append({sourceKey:`paper-fill:${id}`,at:Date.now(),mode:'PAPER',venue:order.venue,account:order.account,currency:order.currency,kind:order.side,instrumentId:order.instrumentId,strategyId:order.strategyId,eventId:order.eventId,quantity:String(order.quantity),gross:order.gross,fee:order.fee,reference:`Simulated depth fill; proposal ${id}; modeled fee ${order.feeModel.bps} bps`});
+      this.ledger.append({sourceKey:`paper-fill:${id}`,at:Date.now(),mode:'PAPER',venue:order.venue,account:order.account,currency:order.currency,kind:order.side,instrumentId:order.instrumentId,strategyId:order.strategyId,eventId:order.eventId,quantity:String(order.quantity),gross:order.gross,fee:order.fee,reference:`Simulated depth fill; proposal ${id}; ${order.feeModel.kind==='USER_MODELED_BPS'?`modeled fee ${order.feeModel.bps} bps`:`venue fee schedule (${order.feeModel.model}, rate ${order.feeModel.rate})`}`});
       this.store.db.prepare("UPDATE proposals SET status='FILLED',decision=?,updated_at=? WHERE id=?").run(JSON.stringify(decision),Date.now(),id);this.store.record('ORDER_FILLED',{id,mode:'PAPER',simulated:true});
       return {id,status:'FILLED',simulated:true,order};
     });
