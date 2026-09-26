@@ -31,7 +31,7 @@ const enqueueAlphaEvent = row => { if (cfg.alphaWorkerEnabled) enqueueAlphaRaw(r
 // Evolution Lab is the separate research backend for Money Printer OS. The link is on by default;
 // champions are still re-validated locally and can only affect paper mode. Set MPO_LAB_LINK=false to isolate it.
 const LAB_LINK = String(process.env.MPO_LAB_LINK ?? 'true').toLowerCase() === 'true';
-import { solanaCostGate } from './solanaEconomics.js';
+import { solanaCostGate, paperProfileDemotion } from './solanaEconomics.js';
 import { exitSimulation, paperExitQuote, reviewPositionPrice, entrySizing, paperEntryRejection } from './positionExecution.js';
 import { apiUnitEconomicsSnapshot, persistApiUnitEconomics, attributeScanCycle, strategyNetPnlAfterDataCost } from './apiUnitEconomics.js';
 
@@ -446,6 +446,13 @@ async function cycle() {
   s.system.lastError = null;
   s.stats.cycles++;
   await actions(s);
+  // Paper only: a profile the cost gate refuses at the config-floor round trip is demoted to FAIR
+  // through the same path as the profile action. Nothing promotes back to SPRINT automatically.
+  const demotion = paperProfileDemotion({ mode: cfg.mode, runtime: s.runtime, config: cfg });
+  if (demotion) {
+    Object.assign(s.runtime, operatingProfiles.FAIR); s.runtime.profile = 'FAIR';
+    appendJournal({ type: 'profile-auto-demote', ...demotion, reason: 'costGate' });
+  }
   // The Evolution Lab is a separate app now: pull its latest status/champion over the lab link
   // (local files, or the signed bridge for a lab on another machine). Gates are re-checked below.
   if (LAB_LINK) { try { syncLabLink(s); } catch (e) { s.labLink = { connected: false, source: 'error', error: compactError(e) }; } }

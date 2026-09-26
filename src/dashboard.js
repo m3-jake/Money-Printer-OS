@@ -1,5 +1,7 @@
 import { handleRobinhoodRequest, startRobinhoodLoops, stopRobinhoodLoops } from './robinhoodHttp.js';
 import { solanaBookView } from './solanaEconomics.js';
+import { traderSwitches } from './killSwitches.js';
+import { robinhoodReadiness } from './robinhoodAutoTrader.js';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -423,6 +425,7 @@ export function startDashboard() {
           lastCycle: s.system?.lastCycle || null,
           metrics: { ...(s.system?.metrics || {}), ...systemTelemetry() },
           diagnostics: s.system?.diagnostics || [],
+          switches: traderSwitches({ readiness: (() => { try { return robinhoodReadiness(); } catch { return null; } })(), state: s }),
         });
       }
       if (req.method === 'GET' && u.pathname === '/api/journal') {

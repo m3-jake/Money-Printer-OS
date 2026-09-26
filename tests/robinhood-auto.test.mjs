@@ -95,3 +95,19 @@ test('disk write failure cannot acknowledge a paper fill or leave an optimistic 
  assert.equal(J.loadPaper().cashUsd,1000);assert.equal(J.loadPaper().positions.length,0);
 });
 test('future-dated closes do not qualify a strategy',()=>{reset();const p=J.defaultPaper();p.paramsHash='test-hash';p.history=Array.from({length:25},()=>({status:'CLOSED',placedBy:'paper-autopilot',closedBy:'strategy',paramsHash:'test-hash',pnlUsd:1,closedAt:time+10000,feeUsd:0.1,exit:{feeUsd:0.1},costPct:0.01,stopPct:0.01,takePct:0.04}));assert.equal(J.evaluateQualification(p,time).closes,0)});
+test('a 6 bps cross is outside the uncross tolerance: it stays crossed, fresh() rejects it and nothing is taped as robinhood',async()=>{
+ reset();time+=3600000;bid=100.06;ask=100;
+ const rows=await TX.fetchBestBidAsk(['BTC-USD']);assert.ok(rows[0].bid>rows[0].ask,'left crossed');
+ await assert.rejects(RH.placeRobinhoodPaperOrder({symbol:'BTC-USD',usd:10}));assert.equal(J.loadPaper().positions.length,0);
+ await RH.__testing.tick();T.flushTape({force:true,now:time});assert.equal(T.tapeCoverage('BTC-USD',time).sources.robinhood,undefined);
+});
+test('outbound audit: paper ticks and paper orders make zero Robinhood POSTs; POST is refused off the order endpoints',async()=>{
+ reset();time+=3600000;RH.setRobinhoodPaperAutopilot({enabled:true});
+ for(let i=0;i<3;i++){time+=20000;await RH.__testing.tick()}
+ await RH.placeRobinhoodPaperOrder({symbol:'BTC-USD',usd:10});
+ const st=TX.rhCallStats();assert.ok(st.get>0,JSON.stringify(st));assert.equal(st.post,0);assert.equal(st.postRefused,0);
+ assert.equal((await RH.robinhoodSnapshot()).outbound.post,0);
+ for(const p of ['/api/v2/crypto/trading/accounts/','/api/v2/crypto/marketdata/best_bid_ask/','/api/v2/crypto/trading/orders/../accounts/'])await assert.rejects(TX.rhPost(p,{}),e=>e.code==='validation');
+ assert.equal(TX.rhCallStats().postRefused,3);assert.equal(TX.rhCallStats().post,0);assert.ok(calls.every(c=>c.method==='GET'));
+ assert.ok(TX.RH_POST_ALLOWED.test('/api/v2/crypto/trading/orders/?account_number=1')&&TX.RH_POST_ALLOWED.test('/api/v2/crypto/trading/orders/abc-1/cancel/?account_number=1'));
+});

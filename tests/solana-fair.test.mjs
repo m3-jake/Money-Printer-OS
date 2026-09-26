@@ -104,3 +104,20 @@ test('HUD contract: Solana card, one-click FAIR/SPRINT switch and SPRINT warning
   const start = html.indexOf('<script>') + 8, end = html.lastIndexOf('</script>');
   assert.doesNotThrow(() => new vm.Script(html.slice(start, end)));
 });
+
+test('paper auto-demote: SPRINT fails the cost gate at the floor round trip and drops to FAIR, never back', async () => {
+  const { paperProfileDemotion } = await import('../src/solanaEconomics.js');
+  const sprint = { profile: 'SPRINT', ...operatingProfiles.SPRINT };
+  const d = paperProfileDemotion({ mode: 'paper', runtime: sprint, config });
+  assert.equal(d.from, 'SPRINT'); assert.equal(d.to, 'FAIR');
+  assert.equal(d.tp1, 4); assert.ok(Math.abs(d.requiredTp1Pct - 6.3) < 1e-9);
+  assert.equal(paperProfileDemotion({ mode: 'live', runtime: sprint, config }), null, 'live is never touched');
+  assert.equal(paperProfileDemotion({ mode: 'paper', runtime: { profile: 'FAIR', ...operatingProfiles.FAIR }, config }), null);
+  assert.equal(paperProfileDemotion({ mode: 'paper', runtime: { profile: 'RESEARCH', ...operatingProfiles.RESEARCH }, config }), null, 'runner tp1 15 passes');
+  // If even FAIR would fail the gate, do not churn profiles.
+  assert.equal(paperProfileDemotion({ mode: 'paper', runtime: sprint, config: { simulatedSlippageBps: 400, simulatedFeeBps: 100 } }), null);
+  const src = read('src/index.js');
+  assert.match(src, /paperProfileDemotion\(\{ mode: cfg\.mode, runtime: s\.runtime, config: cfg \}\)/);
+  assert.match(src, /type: 'profile-auto-demote'/);
+  assert.doesNotMatch(src, /profile = 'SPRINT'/, 'nothing promotes to SPRINT automatically');
+});

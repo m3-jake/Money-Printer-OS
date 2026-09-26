@@ -91,7 +91,7 @@ test('trader: no run without 3 days of primary tape; a run proposes a champion b
  const view=RH.robinhoodEvolveView();assert.equal(view.autopromote,false);assert.ok(view.generation>=1);assert.equal(view.proposed.paramsHash,r.bestHash);assert.equal(view.champion.paramsHash,r.bestHash);assert.ok(view.tapeDays['BTC-USD']>=3.9);assert.equal(view.applied,null);
  assert.equal(J.loadPaper().paramsHash,hashBefore,'paper params untouched without APPLY');assert.equal(mock.writes().length,0,'evolution never posts to Robinhood');
  const ledger=JSON.parse(fs.readFileSync(RH.__testing.evolveFile,'utf8'));assert.equal(ledger.champion.paramsHash,r.bestHash);assert.equal(ledger.history[0].beats,true);assert.equal(ledger.events[0].type,'champion');
- const snap=await RH.robinhoodSnapshot({force:true});assert.deepEqual(Object.keys(snap),['at','readiness','account','pairs','quotes','tape','paper','journal','limits','qualificationThresholds','strategy','loop','equities','evolve','explore','gauges','lastError']);assert.equal(snap.evolve.proposed.paramsHash,r.bestHash);
+ const snap=await RH.robinhoodSnapshot({force:true});assert.deepEqual(Object.keys(snap),['at','readiness','outbound','account','pairs','quotes','tape','paper','journal','limits','qualificationThresholds','strategy','loop','equities','evolve','explore','gauges','lastError']);assert.equal(snap.evolve.proposed.paramsHash,r.bestHash);
 });
 test('trader: APPLY changes the paper params only, resets qualification and disables real autopilot with paramsChanged',async()=>{
  reset();writeTape('BTC-USD',4,{drift:0.0006});

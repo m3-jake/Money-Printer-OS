@@ -1,5 +1,5 @@
 import { estimatePaperExecution } from './executionSim.js';
-import { exitPresets } from './runtime.js';
+import { exitPresets, operatingProfiles } from './runtime.js';
 
 // Solana paper economics: the cost gate, the break-even hit rate and the book stats the HUD shows.
 // Pure functions; src/index.js and src/dashboard.js call them.
@@ -32,6 +32,19 @@ export function activeExitPreset(runtime = {}, config = {}) {
 export function baselineRoundTripPct(config = {}) {
   const slip = Number(config.simulatedSlippageBps ?? 80), fee = Number(config.simulatedFeeBps ?? 25);
   return roundTripCostPct({ feeBps: fee, entrySlippageBps: slip, exitSlippageBps: slip });
+}
+
+// Paper-only auto-demote: a profile whose own preset tp1 cannot clear the cost gate even at the
+// config-floor round trip refuses every entry, so it produces no fills and no evidence. Returns the
+// switch to FAIR, or null. Never promotes: FAIR (or any profile that passes) is left alone.
+export function paperProfileDemotion({ mode, runtime = {}, config = {}, multiple = COST_GATE_MULTIPLE } = {}) {
+  if (mode !== 'paper' || runtime.profile === 'FAIR') return null;
+  const tp1 = Number(activeExitPreset(runtime, config).tp1);
+  const requiredTp1Pct = baselineRoundTripPct(config) * multiple;
+  if (tp1 >= requiredTp1Pct) return null;
+  const fairTp1 = Number(exitPresets[operatingProfiles.FAIR.exitPreset].tp1);
+  if (!(fairTp1 >= requiredTp1Pct)) return null;
+  return { from: runtime.profile || null, to: 'FAIR', tp1, requiredTp1Pct, baselineRoundTripPct: baselineRoundTripPct(config), multiple };
 }
 
 // Refuse an entry unless tp1 >= multiple x the modeled round trip for this pick at this size.

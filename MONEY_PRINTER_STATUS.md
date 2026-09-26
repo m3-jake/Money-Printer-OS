@@ -568,3 +568,34 @@ What was finished and committed before parking (all tested; nothing can place wi
 - **Tests:** `npm run test:all` **612 pass / 0 fail** (+3).
 - **Not built or installed.** bing's app is still alpha.58 without these changes.
 - **Pending:** a read-only workflow is inventorying the paper-wallet settings for Robinhood and Pump.fun, to propose a settings batch.
+
+## Planning pass (2026-09-26, read-only): self-improving loop prompt
+
+- New `reports/SELF-IMPROVING-LOOP-PROMPT-2026-09-26.md`: six ordered batches (A stop bleeding + evidence flow, B measure, C fitness ledger, D Lab honesty, E closed Robinhood paper loop with revert, F unattended ops), park rules, owner actions and a definition of done. **Start the next session with its Batch A.**
+- Corrections found while planning: the Solana cost gate does not shrink the Lab feed (the learner samples the top 30 every cycle); the 1 GB lab-link tape quota was reverted in batch 14 and does not exist; Lab alpha.5 publishes every Solana champion as RESEARCH_ONLY, so the MacBook alpha.53 falls back to BASE on its next read.
+- No code changed by this pass. The Robinhood quote fix landed separately in 9ef08a9 (alpha.59); Batch A item 1 is now just confirming it is installed.
+
+## Side batch 3 (2026-09-26, Lab session): Robinhood proposal lifecycle (Lab alpha.6)
+
+- Lab `5f2357f` fixes the five review follow-ups from side batch 2:
+  - An applied proposal is withdrawn, so the MPO panel no longer shows PAPER REVIEW READY forever.
+  - A standing proposal is re-scored every pass and withdrawn when it no longer beats the current settings by minGain, or after 48 h (`MPO_LAB_ROBINHOOD_PROPOSAL_MAX_H`).
+  - Warm-up passes review it too.
+  - A failed delete falls back to a WITHDRAWN record; if that also fails, it shows as a blocker.
+  - The status has `lastWithdrawn`.
+  - The blocker wording is corrected (trades seen on any candidate, search timeout, negative gain).
+- The test uses real scoring on a fee-free trending tape. Lab suite 163/163.
+- Version bump `f67b02e` (0.1.0-alpha.6). Asar built and verified: sha256 `6c181523…`, in the Lab session scratchpad `build6\app.asar`.
+- **Not installed yet:** bing ends the Lab task, copies the asar over `resources\app.asar` (backing up alpha.5 as `app.asar.alpha5-backup-20260926`), and relaunches from the Start menu.
+- **Next Lab work:** the Solana scorer (freeze stop/take/hold until exits are simulated, drop maxHoldMin from velocity, score MPO's real SPRINT policy as the incumbent). This overlaps Batch D of `reports/SELF-IMPROVING-LOOP-PROMPT-2026-09-26.md`, so follow that plan's order.
+
+## Batch A (2026-09-26): stop the bleeding, make evidence flow (self-improving loop plan)
+
+- **Robinhood quote fix is live.** Installed alpha.59 shows `/api/robinhood` `readiness.paperQuoteSource:'robinhood'`, `lastError:null`. New test: a 6 bps cross stays crossed, is rejected by `fresh()` and never reaches the tape as robinhood (the v2 → `src:'robinhood'` test already existed).
+- **Paper SPRINT auto-demote.** `paperProfileDemotion()` in `src/solanaEconomics.js`, called at cycle start in `src/index.js`. In paper mode, a profile whose preset tp1 fails the cost gate at the config-floor round trip (SPRINT: tp1 4 vs required 6.3) switches to FAIR the same way the profile action does. It is journaled as `profile-auto-demote`. It never promotes, never touches live, and does nothing if FAIR would fail too.
+- **Robinhood outbound audit.** `rhCallStats()` in `src/robinhoodTransport.js` counts GET, POST and refused POSTs per process. Snapshot field `outbound`. `rhRequest` refuses any POST outside `/api/v[12]/crypto/trading/orders/[<id>/cancel/]`. Test: paper ticks plus a paper order make 0 POSTs.
+- **Champion gate pins** in `tests/lab-link.test.mjs`: a PAPER_CANARY champion with promotion false, a missing `paperPromotionAllowed`, a foreign labNodeId, and a stale bridge (disconnected) all give a null policy.
+- **Kill switches, read-only.** Trader `/api/health` `switches` (`src/killSwitches.js`: labLink, robinhoodAutostart, paperOnlyBuild, realEnabled, sessionArmed). Lab `/api/health` `switches` (paused, beast, gpu, workers, modulesActive, bridge). Lab commit on `codex/lab-evidence-20260925`.
+- **Tests:** trader **619 / 0** (+7). Lab **158 / 158** (+1). The plan's "163" Lab baseline does not match the three current `test:all` scripts (30 + 53 + 75).
+- **Owner-only:** build and install the trader (for auto-demote, the outbound audit and health switches) and the Lab (for health switches). Until then, clicking FAIR by hand has the same effect as the auto-demote.
+- **Next:** Batch B (measure before searching).

@@ -186,3 +186,24 @@ test('engine wiring: the lab link runs every cycle, the feed is published, and n
 });
 
 test.after(() => { try { fs.rmSync(DIR, { recursive: true, force: true }); } catch {} });
+
+test('champion gate pins: PAPER_CANARY without promotion, a missing field, a foreign labNodeId and a stale bridge all give no policy', () => {
+  const dir = path.join(DIR, 'pins'), now = 2_500_000;
+  const canary = { ...goodChampion('CANARY'), stage: 'PAPER_CANARY' };
+  const run = (champ, st = statusDoc(now)) => { resetLabLinkMemory(); write(path.join(dir, 'lab-link', 'status.json'), st); write(path.join(dir, 'lab-link', 'champion.json'), champ); const s = {}; syncLabLink(s, { dir, bridge: '', now }); return s; };
+  // The same champion with promotion allowed is a policy, so each refusal below is the gate, not the fixture.
+  assert.equal(evolutionChampionPolicy(run(championDoc(canary, now))).id, 'CANARY');
+  assert.equal(evolutionChampionPolicy(run(championDoc(canary, now, { paperPromotionAllowed: false, qualificationStage: 'PAPER_CANARY' }))), null, 'PAPER_CANARY stage alone grants nothing');
+  const missing = championDoc(canary, now); delete missing.paperPromotionAllowed;
+  assert.equal(evolutionChampionPolicy(run(missing)), null, 'a missing paperPromotionAllowed is not true');
+  const foreign = run(championDoc(canary, now, { labNodeId: 'lab-OTHER' }));
+  assert.equal(foreign.labLink.championId, null); assert.equal(evolutionChampionPolicy(foreign), null, 'champion from a different lab node than the status');
+  // Bridge only (no local files): a status older than BRIDGE_FRESH_MS is disconnected and carries no champion.
+  const bdir = path.join(DIR, 'pins-bridge'), empty = path.join(DIR, 'pins-empty');
+  write(path.join(bdir, 'lab-link', 'status.json'), signRecord(statusDoc(now - BRIDGE_FRESH_MS - 1), 'shared-secret'));
+  write(path.join(bdir, 'lab-link', 'champion.json'), signRecord(championDoc(canary, now - BRIDGE_FRESH_MS - 1), 'shared-secret'));
+  const link = readLabLink({ dir: empty, bridge: bdir, key: 'shared-secret', now });
+  assert.equal(link.source, 'bridge'); assert.equal(link.connected, false); assert.equal(link.champion, null);
+  resetLabLinkMemory(); const s = {}; syncLabLink(s, { dir: empty, bridge: bdir, key: 'shared-secret', now });
+  assert.equal(s.labLink.connected, false); assert.equal(s.labLink.paperPromotionAllowed, false); assert.equal(evolutionChampionPolicy(s), null);
+});

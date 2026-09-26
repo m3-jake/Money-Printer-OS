@@ -23,6 +23,11 @@ let clock={skewSec:0,syncedAt:0,lastDateHeaderSec:null};
 let rate={tokens:60,capacity:60,refillPerSec:1,backoffUntil:0,consecutive429:0,lastRefillAt:0};
 let keyCache={hash:'',key:null};
 const requestLog=[];
+// Outbound audit (per process): every signed call is counted by method before it is sent. POST is only
+// ever allowed to the order endpoints; the paper books must never produce one.
+let callStats={get:0,post:0,postRefused:0,other:0,lastPostAt:0,lastPostPath:null};
+export const RH_POST_ALLOWED=/^\/api\/v[12]\/crypto\/trading\/orders\/(?:[A-Za-z0-9%_-]+\/cancel\/)?(?:\?.*)?$/;
+export function rhCallStats(){return {...callStats}}
 
 export function creds(){return {apiKey:String(process.env.ROBINHOOD_API_KEY||'').trim(),privateKeyBase64:String(process.env.ROBINHOOD_PRIVATE_KEY||'').trim()}}
 export function keyObject(){
@@ -85,6 +90,9 @@ function takeToken(){
  rate.tokens-=1;
 }
 export async function rhRequest({method,path,json,timeoutMs=15000,retryOn401=true}){
+ const verb=String(method||'GET').toUpperCase();
+ if(verb==='POST'&&!RH_POST_ALLOWED.test(String(path||''))){callStats.postRefused++;fail('validation','Robinhood POST refused: only the order endpoints may be posted to')}
+ if(verb==='GET')callStats.get++;else if(verb==='POST'){callStats.post++;callStats.lastPostAt=now();callStats.lastPostPath=String(path).split('?')[0]}else callStats.other++;
  const m=String(method||'GET').toUpperCase();
  const {apiKey,privateKeyBase64}=creds();
  if(!apiKey||!privateKeyBase64){noteRobinhoodAuth({code:'noCredentials',message:'Robinhood API credentials are not configured'});fail('noCredentials','Robinhood API credentials are not configured')}
@@ -265,7 +273,7 @@ export function orderBody({clientOrderId,symbol,side,type,qtyStr,limitPriceStr,t
 
 // ------------------------------------------------------------------ testing
 export const __testing={
- resetTransport(){lastAuth={error:null,code:null,at:0};clock={skewSec:0,syncedAt:0,lastDateHeaderSec:null};rate={tokens:rate.capacity,capacity:rate.capacity,refillPerSec:rate.refillPerSec,backoffUntil:0,consecutive429:0,lastRefillAt:0};keyCache={hash:'',key:null};requestLog.length=0},
+ resetTransport(){lastAuth={error:null,code:null,at:0};clock={skewSec:0,syncedAt:0,lastDateHeaderSec:null};rate={tokens:rate.capacity,capacity:rate.capacity,refillPerSec:rate.refillPerSec,backoffUntil:0,consecutive429:0,lastRefillAt:0};keyCache={hash:'',key:null};requestLog.length=0;callStats={get:0,post:0,postRefused:0,other:0,lastPostAt:0,lastPostPath:null}},
  setClock(fn){clockFn=typeof fn==='function'?fn:null},
  setRateLimit(cap,refillPerSec){rate.capacity=Number(cap)||60;rate.refillPerSec=Number.isFinite(Number(refillPerSec))?Number(refillPerSec):1;rate.tokens=rate.capacity;rate.lastRefillAt=0},
  requestLog,
