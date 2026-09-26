@@ -17,7 +17,7 @@ function rhCapture(){for(const id of RH_FOCUS_IDS){const el=document.getElementB
 function rhTyping(){const ae=document.activeElement;if(ae&&(RH_FOCUS_IDS.includes(ae.id)||RH_SECRET_IDS.includes(ae.id)))return true;return RH_SECRET_IDS.some(id=>{const el=document.getElementById(id);return el&&el.value})}
 async function refreshRobinhood(){
  if(rhRefreshBusy)return;rhRefreshBusy=true;
- try{const r=await fetch('/api/robinhood');if(!r.ok)throw Error('Robinhood status request failed');rhState=await r.json();if(windowVisible('robinhood')){renderRobinhood();rhLoadChart()}}
+ try{const r=await fetch('/api/robinhood');if(!r.ok)throw Error('Robinhood status request failed');rhState=await r.json();trackRobinhoodProfitBurst(rhState);if(windowVisible('robinhood')){renderRobinhood();rhLoadChart()}}
  catch(e){rhMessage=e.message;if(windowVisible('robinhood'))renderRobinhood()}finally{rhRefreshBusy=false}
 }
 async function rhAction(action,body,label){
