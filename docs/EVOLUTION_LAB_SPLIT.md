@@ -85,3 +85,26 @@ Evolution panel correctly shows `NOT LINKED` — that is the expected state here
 This does not verify, and should not be read as verifying, Windows connectivity; the
 cross-machine link (lab ↔ trader over the bridge) is exercised only on Windows, per the
 section above.
+
+## Lab tape and family champions (2026-09-26, batch 13)
+
+The review `reports/SOLANA-ROBINHOOD-LAB-REVIEW-2026-09-26.md` §5 extends the link for venue tape. The first venue is
+Robinhood.
+
+| Direction | File | Bounds |
+| --- | --- | --- |
+| trader → lab | `<data>/lab-link/tape/<venue>/<SYMBOL>/<YYYY-MM-DD>.p<N>.ndjson` | sealed complete UTC days, immutable, ≤ 16 MB each, ≤ 8 sealed per call, 1 GB quota |
+| trader → lab | `<data>/lab-link/tape/manifest.json` (`mpo.lab-tape-manifest.v1`) | ≤ 256 KB, rewritten ≤ 1 per 10 min |
+| trader → remote lab | `<bridge>/lab-feed/<node>/tape/...` plus signed `<node>.tape-manifest.json` | 1 segment per call, ≤ 64 MB per UTC day, sha256 re-checked before copy |
+| lab → trader | `<data>/lab-link/tape-ack.json` or signed `<bridge>/lab-link/ack/<node>.json` (`mpo.lab-ack.v1`, `ingested:[sha256]`) | acked segments are deleted a week later; everything goes at 45 days; oldest first over quota |
+| lab → trader | `<data>/lab-link/champion-<family>.json` (or signed bridge copy), `mpo.lab-champion.v1` with `family`, `params`, `paramsHash`, `evidence` | ≤ 64 KB; accepted ≤ 1 per hour |
+
+- **Code:** `src/labTape.js` (`publishTape`) and `readFamilyChampion` in `src/labLink.js`.
+- **Robinhood hook:** the loop tick calls both at most every 5 min (`labSync` in `src/robinhoodAutoTrader.js`). `MPO_LAB_TAPE=false` stops the sealing.
+- **Champion acceptance** (`offerLabChampion`):
+  - It is accepted only with `evidence.quoteSource === 'robinhood'` and `evidence.testCloses >= 100`.
+  - `paramsHash` must hash the Lab's own full set.
+  - Only the 12 search keys are taken, and each must be within bounds.
+  - It is then **proposed** (APPLY, or `ROBINHOOD_EVOLVE_AUTOPROMOTE=true`), paper only.
+- **When the Lab is off:** the trader keeps its params and keeps sealing locally under the quota. Nothing is queued anywhere.
+- **Lab side (not built yet):** it needs to read the manifest, verify each sha256, ingest, write the ack, and publish `champion-robinhood-breakout.json`. That is a Lab-repo session.

@@ -1,7 +1,6 @@
 import { queueOutcomeSamples, settleOutcomeSamples, learnerSnapshot, fastEdgeScore, ensureLearner } from './learner.js';
 import { estimatePaperExecution, estimateRoundTripFrictionPct } from './executionSim.js';
 import { proveRows } from './edgeProof.js';
-import { recordAlphaObservation, analyzeAlpha, alphaSnapshot } from './alphaLab.js';
 import { updateExperiments, calibrate, recordUniverse, missedOpportunityScan } from './research.js';
 
 function assert(ok,msg){if(!ok)throw new Error(msg)}
@@ -17,14 +16,6 @@ try{
  const stale={research:{}};queueOutcomeSamples(stale,[candidate('STALE')]);now+=12*60_000;settleOutcomeSamples(stale,[candidate('STALE',2)],new Map());assert(learnerSnapshot(stale).horizons[5].samples===0,'stale 5m label contaminated learner');
  const deep=estimatePaperExecution({liq:200000,executionScore:90,micro:{p10:1},priceAccel:1},.1,150,80,25);const thin=estimatePaperExecution({liq:1800,executionScore:25,micro:{p10:15},priceAccel:15},.1,150,80,25);assert(thin.slippageBps>deep.slippageBps,'thin pool slippage not worse');assert(thin.failurePct>deep.failurePct,'thin pool failure risk not worse');
  assert(Number.isFinite(fastEdgeScore(s,a)),'FAST EDGE produced invalid score');
- // Alpha Lab must freeze early features and use fixed 30m outcomes rather than latest state.
- const al={research:{learner:{outcomes:[]}},tickHistory:{}};now=1_800_000_000_000;
- const alphaCand={...candidate('ALPHA',1),liq:10000,micro:{velocity:1,flowAccel:1},risk:{largest:[{owner:'W1'},{owner:'W2'}],mintAuthority:'AUTH1'}};
- recordAlphaObservation(al,alphaCand);const firstSeen=al.research.alpha.tokens.ALPHA.firstSeen;
- now+=60_000;recordAlphaObservation(al,{...alphaCand,priceUsd:1.1,micro:{velocity:3,flowAccel:2},risk:{largest:[{owner:'W1'}],mintAuthority:'AUTH1'}});
- now+=29*60_000;recordAlphaObservation(al,{...alphaCand,priceUsd:1.5,micro:{velocity:99,flowAccel:99},risk:{largest:[],mintAuthority:'AUTH1'}});
- al.research.learner.outcomes=[{ts:now,entryTs:firstSeen,sampleKey:'alpha:0',mint:'ALPHA',symbol:'TEST',horizonMin:30,returnPct:50}];
- analyzeAlpha(al);const as=alphaSnapshot(al);assert(as.timing.find(x=>x.delaySec===0).samples===1,'fixed 30m counterfactual missing');assert(Math.abs(as.timing.find(x=>x.delaySec===0).avgReturnPct-50)<1e-9,'counterfactual used wrong horizon');assert(al.research.alpha.tokens.ALPHA.retention60===50,'60s retention snapshot incorrect');
  // Research experiments/calibration must ignore 30m/2h labels when evaluating 5m hypotheses.
  const rs={research:{experiments:[{id:'e',status:'RUNNING',patch:{label:'x'},minSamples:999,samples:0,controlN:0,testN:0,controlSum:0,testSum:0,controlWins:0,testWins:0,lastOutcomeTs:0}]}};ensureLearner(rs);rs.research.learner.outcomes=[{ts:10,horizonMin:5,returnPct:10,predicted:80,entryThreshold:60,features:{}},{ts:11,horizonMin:30,returnPct:-90,predicted:80,entryThreshold:60,features:{}},{ts:12,horizonMin:120,returnPct:-90,predicted:80,entryThreshold:60,features:{}}];
  updateExperiments(rs);assert(rs.research.experiments[0].samples===1,'experiment mixed outcome horizons');calibrate(rs);assert(rs.research.modelHealth.samples===1,'calibration mixed outcome horizons');

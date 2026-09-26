@@ -129,3 +129,19 @@ test('trader: the loop tick buffers the durable tape and the paper params change
  mock.state.time+=RH.__testing.TICK_MS;mock.state.bid=101;mock.state.ask=101.1;await RH.__testing.tick();assert.equal(T.loadTape('BTC-USD').length,2);
  RH.stopRobinhoodLoops();assert.equal(T.pendingTapeRows(),0);assert.equal(T.loadTape('BTC-USD').length,2,'stop flushes the tape');assert.ok(fs.existsSync(T.tapeFile('BTC-USD')));
 });
+test('lab champions: need Robinhood-sourced evidence and 100 test closes, match their hash, stay proposed, and arrive at most hourly',()=>{
+ reset();E.__testing.reset();const base=J.loadPaper().params;
+ const doc=(emaFast,extra={})=>{const params={...base,emaFast};return {schema:'mpo.lab-champion.v1',family:'robinhood-breakout',labNodeId:'lab-1',publishedAt:1,paramsHash:S.paramsHash(S.normalizeParams(params)),params,evidence:{quoteSource:'robinhood',testCloses:120,testPF:1.4},...extra}};
+ assert.equal(RH.offerLabChampion(doc(10,{evidence:{quoteSource:'coinbase-public-paper',testCloses:500}})).reason,'quoteSource');
+ assert.equal(RH.offerLabChampion(doc(10,{evidence:{quoteSource:'robinhood',testCloses:40}})).reason,'testCloses');
+ assert.equal(RH.offerLabChampion(doc(10,{paramsHash:'000000000000'})).reason,'paramsHash');
+ assert.equal(RH.offerLabChampion(doc(2)).reason,'bounds');
+ const hashBefore=J.loadPaper().paramsHash,ok=RH.offerLabChampion(doc(10));
+ assert.equal(ok.accepted,true);assert.equal(ok.promoted,false);
+ const l=E.loadEvolveLedger();assert.equal(l.champion.paramsHash,ok.paramsHash);assert.equal(l.champion.metrics.source,'evolution-lab');assert.equal(l.events[0].source,'evolution-lab');
+ assert.equal(J.loadPaper().paramsHash,hashBefore,'a lab champion is only proposed while autopromote is off');
+ assert.equal(RH.offerLabChampion(doc(10)).reason,'duplicate');
+ assert.equal(RH.offerLabChampion(doc(11)).reason,'rateLimited');
+ mock.state.time+=3601e3;assert.equal(RH.offerLabChampion(doc(11)).accepted,true);
+ assert.equal(RH.applyRobinhoodEvolution({paramsHash:E.loadEvolveLedger().champion.paramsHash}).applied,true,'APPLY still works on a lab champion');
+});

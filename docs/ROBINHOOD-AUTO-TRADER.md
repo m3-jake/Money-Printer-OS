@@ -541,6 +541,7 @@ The trader carries a miniature of the Evolution Lab's evolve -> score -> promote
 - The in-memory 720-sample tape in `robinhood-paper.json` remains the live-signal source; the files feed only the replay below.
 - Since batch 12 each row also carries `src`, the quote source: `robinhood` for authenticated best bid/ask, or `coinbase-public-paper` for the credential-less fallback. Older rows read back as `src:null`. `tapeCoverage()` returns a `sources` count, which the snapshot exposes as `evolve.tapeSources` and the HUD shows beside tape coverage. A Coinbase spread understates Robinhood's, so a backtest on `coinbase-public-paper` rows is cost-optimistic.
 - `npm run rh-tape-stats -- --data <dir>` (`scripts/rh-tape-stats.mjs`, read-only) prints one line per symbol: coverage, sources, spread p50/p90, round-trip cost, expected move, the share of samples where the volatility gate is open, and a default-params replay's trades per day.
+- Complete days of this tape are also sealed for the Evolution Lab (`src/labTape.js`, see `docs/EVOLUTION_LAB_SPLIT.md` "Lab tape"). A Lab champion for family `robinhood-breakout` enters the ledger as a proposed champion through `offerLabChampion`, with the same APPLY and autopromote rules as a local one.
 
 ### 22.2 Replay — `src/robinhoodBacktest.js` (pure)
 

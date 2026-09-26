@@ -4,7 +4,7 @@
 (`CURRENT_TASKS.md`, `KNOWN_BUGS.md`, `PROJECT_STATE.md`, `RELEASE_STATUS.md`) and in `reports/NEXT-STEPS-2026-09-25.md`.
 Don't re-inventory the repo. Update this file at the end of every batch.
 
-Last updated: 2026-09-26, batch 10 + Solana/Robinhood/Lab review (read-only). Branch `feature/polymarket-combo-only`, version `0.5.0-alpha.56`.
+Last updated: 2026-09-26, batch 13. Branch `feature/polymarket-combo-only`, version `0.5.0-alpha.56`.
 
 ## Architecture (inventoried once)
 
@@ -261,6 +261,25 @@ Last updated: 2026-09-26, batch 10 + Solana/Robinhood/Lab review (read-only). Br
 - **Tests:** `test:robinhood` 161/0, including the new `rh-tape-stats` test (4) and a tape source test. `visual-contract` 17/0.
 - **Still open:** items 1 and 4 (bing's credentialed tape run, then the 7-day verdict).
 
+## Batch 13 (2026-09-26): lab-link tape v1 and Lab champions
+
+- **Tape sealing:** new `src/labTape.js` (`publishTape`) seals complete UTC days of Robinhood tape into immutable, sha256-listed segments under `<data>/lab-link/tape/`.
+  - Manifest `mpo.lab-tape-manifest.v1`, at most 256 KB.
+  - Caps: 16 MB per segment, 8 seals per call, 1 GB quota.
+  - Pruning: acked segments go after 7 days, everything goes at 45 days, and the oldest go first over quota.
+  - Bridge copy: 1 segment per call, 64 MB per day, sha256 re-checked before copying.
+  - All writes are tmp + fsync + rename. Documented in `docs/EVOLUTION_LAB_SPLIT.md`.
+- **Lab champions:** `readFamilyChampion()` in `src/labLink.js` reads a champion file per family, capped at 64 KB.
+  - It is ignored if it claims live authority, has a bad signature, or has the wrong family or schema.
+- **Robinhood hook:** `labSync` and `offerLabChampion` in `src/robinhoodAutoTrader.js`, called from the tick at most every 5 min.
+  - A champion needs Robinhood-sourced evidence and at least 100 test closes. It must pass a Lab hash integrity check.
+  - Only the 12 search keys are taken; everything else is inherited locally, so APPLY reproduces the local hash. The keys must be within bounds.
+  - At most one champion per hour. It is proposed only; APPLY or autopromote puts it on paper.
+  - The test caught one bug along the way: merging the Lab's full params made APPLY's hash mismatch.
+- **Deleted:** `src/alphaLab.js`, which only the selftest used, plus its selftest block.
+- **Not done:** moving `replayLab`, `polymarketResearchEval`, `executableReplay*` and the Robinhood evolve to the Lab. It waits for Lab parity, and the Lab repo is off-limits from here.
+- **Tests:** new `lab-link-tape` 5/0, evolve 10/0 (+1 Lab champion test). **`npm run test:all`: 555 pass, 0 fail** (the baseline was 520). SELFTEST PASS.
+
 ## Next recommended batch (priority order)
 
 0. **bing:**
@@ -281,35 +300,16 @@ Verdicts:
 - **Solana SPRINT: park it.** 124 paper closes, profit factor 0.85, −1.15% per trade. A 4% take-profit against about 2.5% round-trip cost needs a hit rate of about 83%.
 - **Robinhood: no evidence yet.** There are 5 minutes of tape and 0 trades, and the paper quotes come from Coinbase, not Robinhood.
 
-**Batch 11: slim the trader (no strategy change)**
+Batches 11–13 are built (see the batch sections above). What remains:
+
 1. **bing:** take the Solana profile off SPRINT and stop it in the HUD. Done when there are no new `history` rows for 24 h.
-2. Default `ROBINHOOD_EVOLVE_ENABLED` to `false`; "Run now" keeps working.
-   - Files: `src/robinhoodEvolve.js`, `docs/ROBINHOOD-AUTO-TRADER.md` §13/§22.
-   - Tests: Robinhood evolve and auto-trader.
-   - Done when the default tick never calls `runRobinhoodEvolveOnce`.
-3. Gate the `alphaWorkerManager` start (`src/index.js:655`) behind `MPO_ALPHA_WORKER`, default off.
-   - Tests: selftest plus a supervision assert.
-   - Done when a default boot has 3 Node children.
-4. Cap `state.research` and split it out to `<data>/learner.json`, written atomically.
-   - Files: `src/learner.js`, `src/store.js`.
-   - Tests: selftest and store.
-   - Done when a copy of the live `state.json` (9.6 MB, 7 MB of it `research`) round-trips to under 2 MB.
-5. Measure the engine's idle CPU/RSS with an isolated data dir, `ROBINHOOD_AUTOSTART=false` and no `.env`. Record the numbers here.
-
-**Batch 12: Robinhood data before search**
-1. **bing:** run the Robinhood paper loop continuously with read-only credentials, so the tape is Robinhood's own quotes. Done when there are at least 7 days of `robinhood-tape/BTC-USD.ndjson`.
-2. Tag each tape row with `src` (`rh` or `cb`) and show the split in the HUD.
-   - Files: `src/robinhoodTape.js`, `src/robinhoodAutoTrader.js`.
-   - Tests: the tape tests.
-3. Add `scripts/rh-tape-stats.mjs`, a read-only CLI that prints coverage, spread p50/p90, the share of time the expected move is ≥ 1.5×C, and projected trades per day.
-   - Tests: a fixture test.
-   - Done when it prints one line per symbol.
-4. After 7 days, record the verdict here: can the strategy trade at all at Robinhood's costs?
-
-**Batch 13: lab-link tape v1 and moving the search out**
-1. `src/labLink.js` `publishTape()`: sealed daily segments, `mpo.lab-tape-manifest.v1`, a 1 GB quota, and pruning on `mpo.lab-ack.v1`.
-   - Tests: new `tests/lab-link-tape.test.mjs` covering caps, atomicity, quota, Lab off and a torn tail.
-2. Route `mpo.lab-champion.v1` by `family` into `applyRobinhoodEvolution`. Refuse a champion unless `quoteSource` is `robinhood` and it has ≥ 100 test closes.
-   - Tests: lab-link and Robinhood HTTP.
-3. **bing:** schedule a Lab-repo session after Codex's branch lands. It will ingest the tape and port the backtest and evolve with a sealed holdout and a deflated score.
-4. Move `replayLab`, `polymarketResearchEval`, `executableReplay*` and the Robinhood evolve to the Lab, and delete `alphaLab`. Done when the trader's `src/` has no search, replay or scoring modules.
+2. **bing:** check the installed `.env` for `ALPHA_WORKER_ENABLED=true` or `ROBINHOOD_EVOLVE_ENABLED=true`. Either one overrides the new defaults.
+3. **bing:** run the Robinhood paper loop continuously with read-only credentials, so the tape is Robinhood's own quotes. Done when `npm run rh-tape-stats` shows at least 7 days of `robinhood` rows.
+4. After 7 days, record the verdict here: can the strategy trade at all at Robinhood's costs (vol gate open %, trades per day)?
+5. **bing:** schedule a Lab-repo session after Codex's branch lands. It needs to:
+   - read `lab-link/tape/manifest.json`;
+   - verify each sha256 and write the ack;
+   - port the backtest and evolve with a sealed holdout and a deflated score;
+   - publish `champion-robinhood-breakout.json`.
+6. After the Lab has parity, move `replayLab`, `polymarketResearchEval`, `executableReplay*` and `robinhoodEvolve`/`robinhoodBacktest` out of the trader. Done when the trader's `src/` has no search, replay or scoring modules.
+7. Deferred from batch 11: split `state.research` into its own file. It touches the accounting, backup and recovery path, so it needs its own batch with store-recovery tests.
