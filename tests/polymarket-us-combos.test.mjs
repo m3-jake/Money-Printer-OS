@@ -820,3 +820,73 @@ test('settings refuse to overwrite a corrupt journal',()=>{
  assert.throws(()=>combos.setUSComboSettings({priceMin:0.6}),e=>e.code==='stateRecovery');
  assert.equal(fs.readFileSync(combos.__testing.stateFile,'utf8'),'{not json');
 });
+
+// ------------------------------------------- journal before accept (renovation step 4)
+function acceptHarness({accept,confirm}){
+ const log=[],seen={onDiskAtAccept:null};
+ installFetch(async(u,init)=>{
+  const m=init.method||'GET';
+  if(u.pathname==='/v1/events')return jsonRes(eventsResponse(liveEvents()));
+  if(m==='POST'&&u.pathname==='/v1/combos')return jsonRes({combo:{id:'caoc-jba',legs:JSON.parse(init.body).legs}});
+  if(m==='GET'&&u.pathname==='/v1/rfqs/quotes')return jsonRes({quotes:[{id:'q1',rfqId:'r1',symbol:'caoc-jba',status:'QUOTE_STATUS_ACTIVE',buyPrice:'0.810',buyQtyDecimal:'6.00'}]});
+  if(m==='PUT'&&/accept$/.test(u.pathname)){
+   seen.onDiskAtAccept=JSON.parse(fs.readFileSync(combos.__testing.stateFile,'utf8')).open;
+   return accept();
+  }
+  if(m==='PUT'&&/confirm$/.test(u.pathname))return confirm();
+  return null;
+ },log);
+ return {log,seen};
+}
+async function placeReq(){
+ const keys=(await combos.usComboSnapshot({force:true})).suggested.legs;
+ return {legKeys:keys,stakeUsd:5,mode:'rfq',rfqId:'r1',quoteId:'q1',confirmation:'PLACE REAL COMBO'};
+}
+const onDisk=()=>JSON.parse(fs.readFileSync(combos.__testing.stateFile,'utf8'));
+
+test('the journal entry is on disk, SUBMITTED and unverified, before the accept call',async()=>{
+ reset();us.armPolymarketUS(true);
+ const {seen}=acceptHarness({accept:()=>jsonRes({}),confirm:()=>jsonRes({})});
+ const placed=await combos.placeUSCombo(await placeReq());
+ assert.equal(seen.onDiskAtAccept.length,1);
+ assert.equal(seen.onDiskAtAccept[0].id,placed.entry.id);
+ assert.equal(seen.onDiskAtAccept[0].status,'SUBMITTED');assert.equal(seen.onDiskAtAccept[0].fillVerified,false);
+ const j=onDisk();assert.equal(j.open.length,1);assert.equal(j.stats.placed,1);
+ us.armPolymarketUS(false);
+});
+
+test('a definite accept rejection (4xx) removes the pre-written entry and counts nothing',async()=>{
+ reset();us.armPolymarketUS(true);
+ const {log,seen}=acceptHarness({accept:()=>jsonRes({message:'quote no longer active'},400),confirm:()=>jsonRes({})});
+ await assert.rejects(combos.placeUSCombo(await placeReq()),e=>e.status===400);
+ assert.equal(seen.onDiskAtAccept.length,1,'entry existed while accept was in flight');
+ const j=onDisk();assert.equal(j.open.length,0);assert.equal(j.stats.placed,0);
+ assert.equal(log.filter(x=>/confirm$/.test(x.path)).length,0,'never confirms after a failed accept');
+ us.armPolymarketUS(false);
+});
+
+test('an ambiguous accept failure (network or 5xx) keeps the entry for reconcile',async()=>{
+ for(const accept of [()=>{throw new Error('socket hang up')},()=>textRes('upstream down',502)]){
+  reset();us.armPolymarketUS(true);
+  acceptHarness({accept,confirm:()=>jsonRes({})});
+  await assert.rejects(combos.placeUSCombo(await placeReq()));
+  const j=onDisk();
+  assert.equal(j.open.length,1);assert.equal(j.open[0].acceptUncertain,true);
+  assert.equal(j.open[0].status,'SUBMITTED');assert.equal(j.open[0].fillVerified,false);
+  assert.equal(j.stats.placed,1);
+  us.armPolymarketUS(false);
+ }
+});
+
+test('a confirm failure after a good accept keeps the entry unverified',async()=>{
+ reset();us.armPolymarketUS(true);
+ acceptHarness({accept:()=>jsonRes({}),confirm:()=>textRes('confirm window closed',500)});
+ let entryId=null;
+ await assert.rejects(combos.placeUSCombo(await placeReq()),e=>{entryId=e.entryId;return e.status===500});
+ const j=onDisk();
+ assert.equal(j.open.length,1);assert.equal(j.open[0].id,entryId);
+ assert.match(j.open[0].confirmError,/confirm window closed/);
+ assert.equal(j.open[0].status,'SUBMITTED');assert.equal(j.open[0].fillVerified,false);assert.equal(j.open[0].pnlUsd,null);
+ assert.equal(j.stats.placed,1);
+ us.armPolymarketUS(false);
+});

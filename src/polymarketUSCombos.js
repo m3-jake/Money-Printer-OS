@@ -585,11 +585,42 @@ async function placeUSComboLocked({legKeys,stakeUsd,mode='rfq',rfqId=null,quoteI
   if(allIn>Math.min(stake,limits.maxStakeUsd)+1e-9)fail('stakeCap',`Quote notional plus fees $${r2(allIn)} exceeds the $${r2(Math.min(stake,limits.maxStakeUsd))} total budget`);
   const expiresAt=Date.parse(quote.confirmationDeadline||quote.executionDeadline||'');
   if(Number.isFinite(expiresAt)&&expiresAt<=Date.now())fail('noQuote','Quote expired before acceptance');
-  await signedFetch('PUT',`/v1/rfqs/${encodeURIComponent(id)}/quotes/${encodeURIComponent(qid)}/accept`,{body:{acceptedSide:'SIDE_BUY'}});
-  await signedFetch('PUT',`/v1/rfqs/${encodeURIComponent(id)}/quotes/${encodeURIComponent(qid)}/confirm`,{body:{}});
+  // Journal before accept: a crash or transport failure after this point can never leave an
+  // untracked position. The entry stays SUBMITTED/unverified until reconcile reads the real order.
   entry=journalEntry({combo,symbol:boundSymbol,mode:'rfq',price:buyPrice,quantity:quoteQty,
    rfqId:id,quoteId:qid,orderId:String(quote.rfqCreatorOrderId||''),placedBy});
+  const pre=loadJournal();
+  pre.open.push(entry);
+  saveJournal(pre);
+  const settle=(patch,count)=>{
+   const s=loadJournal();
+   const idx=s.open.findIndex(x=>x.id===entry.id);
+   if(idx<0)return;
+   if(patch===null)s.open.splice(idx,1);else s.open[idx]={...s.open[idx],...patch};
+   if(count)s.stats.placed=num(s.stats.placed)+1;
+   saveJournal(recomputeStats(s));
+  };
+  try{
+   await signedFetch('PUT',`/v1/rfqs/${encodeURIComponent(id)}/quotes/${encodeURIComponent(qid)}/accept`,{body:{acceptedSide:'SIDE_BUY'}});
+  }catch(e){
+   // Only a definite exchange rejection (4xx) proves nothing was accepted. A timeout, network error or
+   // 5xx may still have accepted, so that entry stays for reconcile (which cancels it if the quote died unaccepted).
+   const status=num(e?.status);
+   if(status>=400&&status<500)settle(null,false);
+   else settle({acceptUncertain:true,acceptError:String(e?.message||e).slice(0,200)},true);
+   throw e;
+  }
+  try{
+   await signedFetch('PUT',`/v1/rfqs/${encodeURIComponent(id)}/quotes/${encodeURIComponent(qid)}/confirm`,{body:{}});
+  }catch(e){
+   // Accepted but not confirmed: the maker may still fill. Keep the entry; reconcile decides.
+   settle({confirmError:String(e?.message||e).slice(0,200)},true);
+   if(e&&typeof e==='object')e.entryId=entry.id;
+   throw e;
+  }
   if(lastQuote?.rfqId===id)lastQuote=null;
+  settle({},true);
+  return {ok:true,entry:loadJournal().open.find(x=>x.id===entry.id)||entry};
  }
  const s=loadJournal();
  s.open.push(entry);

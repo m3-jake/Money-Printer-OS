@@ -4,7 +4,7 @@
 (`CURRENT_TASKS.md`, `KNOWN_BUGS.md`, `PROJECT_STATE.md`, `RELEASE_STATUS.md`) and in `reports/NEXT-STEPS-2026-09-25.md`.
 Don't re-inventory the repo. Update this file at the end of every batch.
 
-Last updated: 2026-09-25, batch 6. Branch `feature/polymarket-combo-only`, version `0.5.0-alpha.56`.
+Last updated: 2026-09-25, batch 7. Branch `feature/polymarket-combo-only`, version `0.5.0-alpha.56`.
 
 ## Architecture (inventoried once)
 
@@ -140,9 +140,23 @@ Last updated: 2026-09-25, batch 6. Branch `feature/polymarket-combo-only`, versi
 - Tests: `test:combos` 37/0 (+6: defaults and persistence, bounds, 0.65 at floor 0.60 vs 0.80, the minutes gate, a 4th leg at `maxLegs` 3, a corrupt journal not overwritten). `test:all` **539 / 0**.
 - Next: step 4 (write the journal entry before the RFQ accept).
 
+## Batch 7 (2026-09-25): combo renovation step 4, journal before accept
+
+- On the RFQ path, `placeUSComboLocked` now writes the entry (`SUBMITTED`, `fillVerified:false`) to disk *before* `PUT …/accept`.
+  - If that write fails, nothing is accepted.
+- **Accept throws:**
+  - A definite 4xx rejection removes the entry, and `placed` is not counted.
+  - A timeout, network error or 5xx keeps the entry with `acceptUncertain:true` and counts it. The accept may have landed. Reconcile then either finds the order or cancels the entry if the quote died unaccepted.
+  - **This is stricter than the spec's "remove if accept throws", on purpose.** A lost leg is the risk the caps exist to bound.
+- **Confirm throws:** the entry is kept with `confirmError`, and the thrown error carries `entryId`.
+- `placed` is counted once, after accept.
+- Limit mode (`POST /v1/orders`) still journals after the call. The spec scoped this to RFQ; revisit if limit mode stays in the new UI.
+- Tests: `test:combos` 41/0 (+4: entry on disk at accept time, 4xx removes, network/502 keeps, confirm 500 keeps). `test:all` **543 / 0**.
+- Next: step 5 (delete autopilot).
+
 ## Next recommended batch (priority order)
 
-0. Combo renovation step 4: journal-before-accept (see batch 6).
+0. Combo renovation step 5: delete autopilot (see batch 7).
 
 1. **bing:** run the two merge commands (batch 2), then say whether to push. Schedule `npm run collector -- --data "%APPDATA%\Money Printer OS\data"` at logon, and disable `MoneyPrinterReplayWorkhorse`.
 2. Re-run the Lab's three Polymarket sandbox searches with the committed fee model (report section 2.3: `node scripts/polymarket-research.mjs --mode search ...` in the Lab repo, read-only against `W:/mpo-polymarket-research`). Record the verdict here.
