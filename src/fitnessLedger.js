@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { laneMayPropose } from './evidenceFlags.js';
+import { writeFileAtomicSync } from './atomicRename.js';
 import { activeExitPreset, baselineRoundTripPct, fairExpectancy } from './solanaEconomics.js';
 
 export const FITNESS_SCHEMA = 'mpo.fitness-ledger.v1';
@@ -95,14 +96,6 @@ export function fitnessSnapshot({ solana = null, robinhood = null, polymarket = 
   return { schema: FITNESS_SCHEMA, at: now, ...SAFETY, modules };
 }
 
-function writeAtomic(file, text) {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
-  const fd = fs.openSync(tmp, 'w');
-  try { fs.writeSync(fd, text); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
-  fs.renameSync(tmp, file);
-}
-
 // <dataDir>/lab-link/fitness/<module>.json, tmp + fsync + rename, capped at FITNESS_MAX_BYTES.
 export function writeFitnessFiles(dataDir, snapshot) {
   const out = { written: [], errors: [] };
@@ -110,7 +103,7 @@ export function writeFitnessFiles(dataDir, snapshot) {
     try {
       const text = JSON.stringify(doc) + '\n';
       if (Buffer.byteLength(text) > FITNESS_MAX_BYTES) throw new Error(`record exceeds ${FITNESS_MAX_BYTES} bytes`);
-      writeAtomic(path.join(dataDir, 'lab-link', 'fitness', `${id}.json`), text); out.written.push(id);
+      writeFileAtomicSync(path.join(dataDir, 'lab-link', 'fitness', `${id}.json`), text); out.written.push(id);
     } catch (e) { out.errors.push(`${id}: ${String(e?.code || e?.message || e)}`); }
   }
   return out;

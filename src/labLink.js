@@ -13,6 +13,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { writeFileAtomicSync } from './atomicRename.js';
 import { fairExpectancy } from './solanaEconomics.js';
 import { solanaRunningPolicy } from './fitnessLedger.js';
 import { championState, championPaperAllowed } from './championState.js';
@@ -39,10 +40,7 @@ export function readJson(file) {
   } catch { return null; }
 }
 export function writeJsonAtomic(file, value) {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = `${file}.${process.pid}.${Date.now().toString(36)}.tmp`;
-  try { fs.writeFileSync(tmp, JSON.stringify(value)); fs.renameSync(tmp, file); return true; }
-  catch (e) { try { fs.rmSync(tmp, { force: true }); } catch {} throw e; }
+  writeFileAtomicSync(file, JSON.stringify(value)); return true;
 }
 export function signRecord(value, key) {
   const payload = JSON.stringify(value);

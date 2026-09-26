@@ -7,7 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {renameSyncWithRetry} from './atomicRename.js';
+import {renameSyncWithRetry,writeFileSynced} from './atomicRename.js';
 
 const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const DATA_DIR=path.resolve(process.env.MONEY_PRINTER_DATA_DIR||path.join(ROOT,'data'));
@@ -65,7 +65,7 @@ export function compactTape(symbol,{now=Date.now(),keepDays=TAPE_KEEP_DAYS}={}){
  if(!fs.existsSync(file))return {rows:0,dropped:0};
  const rows=parseLines(fs.readFileSync(file,'utf8')),since=now-keepDays*DAY_MS,keep=rows.filter(r=>r.t>=since);
  const tmp=file+`.${process.pid}.${Date.now().toString(36)}.tmp`;
- try{fs.writeFileSync(tmp,keep.length?keep.map(r=>JSON.stringify(r)).join('\n')+'\n':'');renameSyncWithRetry(tmp,file)}
+ try{writeFileSynced(tmp,keep.length?keep.map(r=>JSON.stringify(r)).join('\n')+'\n':'');renameSyncWithRetry(tmp,file)}
  catch(e){try{fs.rmSync(tmp,{force:true})}catch{}throw e}
  return {rows:keep.length,dropped:rows.length-keep.length};
 }

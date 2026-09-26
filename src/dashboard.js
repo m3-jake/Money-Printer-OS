@@ -18,6 +18,7 @@ import { readResearchControlPlane, attachControlPlaneToMonitor, leaderboardRows,
 import { seedProjectJournal } from './projectJournal.js';
 import { fitnessSnapshot, writeFitnessFiles, solanaFitnessParts, polymarketFitnessParts } from './fitnessLedger.js';
 import { robinhoodFitnessParts } from './robinhoodAutoTrader.js';
+import { runSelfReport, latestSelfReport } from './selfReport.js';
 import { saveResourcePolicy, resourceSnapshot, systemTelemetry } from './resourcePolicy.js';
 // polymarketUS.js is parked except for credentials and the session arm: its scanner and single-order routes are not served.
 import { usReadiness, configurePolymarketUS, armPolymarketUS, polymarketUSAccount } from './polymarketUS.js';
@@ -481,6 +482,7 @@ export function startDashboard() {
       if (req.method === 'GET' && u.pathname === '/api/research-monitor') return json(res, researchMonitorState());
       if (req.method === 'GET' && u.pathname === '/api/research-control-plane') return json(res, researchPlane());
       if (req.method === 'GET' && u.pathname === '/api/fitness') return json(res, await fitnessNow());
+      if (req.method === 'GET' && u.pathname === '/api/self-report/latest') { const r = latestSelfReport(DATA_DIR); return r ? json(res, r) : json(res, { ok: false, error: 'No self-report yet; the first one is written about a minute after start.' }, 404); }
       if (req.method === 'GET' && u.pathname === '/api/project-journal') return json(res, researchPlane().journal);
 
       if (req.method !== 'POST') {
@@ -569,6 +571,11 @@ export function startDashboard() {
   const fitnessTimer = setInterval(writeFitness, 60000), fitnessFirst = setTimeout(writeFitness, 5000);
   fitnessTimer.unref?.(); fitnessFirst.unref?.();
   server.on('close', () => { clearInterval(fitnessTimer); clearTimeout(fitnessFirst); });
+  // Daily self-report: rewritten hourly; the first run on a new day finalizes yesterday's and journals it.
+  const writeReport = () => fitnessNow().then(fitness => { const r = runSelfReport({ dataDir: DATA_DIR, fitness, state: loadStateCached() }); if (r.error) console.log(`[self-report] ${r.error}`); }).catch(() => {});
+  const reportTimer = setInterval(writeReport, 60 * 60000), reportFirst = setTimeout(writeReport, 60000);
+  reportTimer.unref?.(); reportFirst.unref?.();
+  server.on('close', () => { clearInterval(reportTimer); clearTimeout(reportFirst); });
   server.on('close',()=>stopRobinhoodEquitiesLoop());
   server.listen(cfg.dashboardPort, cfg.dashboardHost, () => console.log(`Dashboard: http://${cfg.dashboardHost}:${cfg.dashboardPort}`));
   return server;
