@@ -4,7 +4,7 @@
 (`CURRENT_TASKS.md`, `KNOWN_BUGS.md`, `PROJECT_STATE.md`, `RELEASE_STATUS.md`) and in `reports/NEXT-STEPS-2026-09-25.md`.
 Don't re-inventory the repo. Update this file at the end of every batch.
 
-Last updated: 2026-09-26, batches 16–18 (Solana fair test, Robinhood visible paper, charts). Branch `feature/polymarket-combo-only`, version `0.5.0-alpha.56`.
+Last updated: 2026-09-26, batch 19 (Evolution Lab owns Robinhood research). Branch `feature/polymarket-combo-only`, version `0.5.0-alpha.57`.
 
 ## Architecture (inventoried once)
 
@@ -14,7 +14,7 @@ Last updated: 2026-09-26, batches 16–18 (Solana fair test, Robinhood visible p
 - **Polymarket:** one live-combo panel over `src/polymarketUSCombos.js` (see `docs/POLYMARKET-COMBOS.md`). `src/polymarketUS.js` serves only credentials and the session arm. `src/polymarket.js` (paper) is detached from the dashboard and kept for the collector and tests. Auth currently fails with `keyNotFound`.
 - **Robinhood (this branch):** `src/robinhood*.js`, paper only. Real execution isn't installed. See `docs/ROBINHOOD-AUTO-TRADER.md` and `docs/ROBINHOOD-RECOVERY-2026-09-25.md`.
 - **Research/evidence:** `src/researchCollector.js` writes the tape to `<data>/research-evidence/raw/*.ndjson`. Around it sit `researchEvidenceGate/Store`, `researchControlPlane` and `polymarketResearchEval`. The gate is intentionally not wired into the live app.
-- **Evolution Lab** (BEAST/GPU furnace) lives in a separate repo, `money-printer-evolution-lab`. Codex was working there as of 2026-09-25. Don't touch it from here.
+- **Evolution Lab** lives in a separate repo, `money-printer-evolution-lab`, and is the shared research brain for every module: Solana (labLoop/BEAST), plus parallel `module-robinhood` and `module-polymarket` workers (`src/moduleResearch.js`). Valid module ids come from its `src/researchModules.js`. It writes `<trader data>/lab-link/modules/<id>.json` and paper-only `<id>-champion.json`. It is NOT the dropped "agent lab" harness.
 - **Tests:** 54 files in `tests/`, run by `npm run test:all`. Everything is mocked and uses temp dirs.
 
 ## Confirmed working (2026-09-25)
@@ -399,3 +399,10 @@ Batches 11–14 are built. The Evolution Lab is retired, so nothing waits on it.
   - `labLink.source: disabled`.
   - Children: `index.js`, `networkMesh.js`, `researchCollector.js`. No alpha worker.
 - **Rollback caveat:** `resources\app.asar.cd667a0-backup-20260926` holds the *new* build (the command ran twice). The real previous build is `Desktop\Money Printer OS\Windows-cd667a0-20260926\app.asar` (`a524f7b8…`).
+
+
+## Batch 19 (2026-09-26): Evolution Lab owns Robinhood research
+
+- Lab: central module whitelist `src/researchModules.js` (solana, robinhood, polymarket) replaces the "any safe string" check in lifecycle, evidence store and experiment registry. Fixed a `__proto__`/`constructor` lookup hole in the module registry. Adapter dispatch table `MODULE_RUNNERS`. New fixture tests for both workers, supervisor args, `/api/state.modules`, lab.html lanes. Lab suite 153/153.
+- Trader: `evolveDue()` stands down while the Lab Robinhood lane reported within 30 min and is not ERROR (`labRobinhoodResearchActive`). Manual evolve/run and operator apply-to-paper (Lab or local champion) still work. Money feed is lower-right (`right:18px`, covered by visual-contract). MPO suite 579/579.
+- Robinhood-native validation is blocked by 401 `keyNotFound`: tape is `coinbase-public-paper`, so the `>=90%` Robinhood-quote holdout gate cannot pass until bing regenerates the key.

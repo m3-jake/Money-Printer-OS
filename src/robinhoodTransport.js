@@ -8,7 +8,7 @@ import { RobinhoodError, RH_CODES, fail } from './robinhoodErrors.js';
 import { RH_BASE_URL, loadRobinhoodPrivateKey, signRequest, buildPath } from './robinhoodSigner.js';
 export { RobinhoodError, RH_CODES, fail } from './robinhoodErrors.js';
 
-const APP_VERSION='0.5.0-alpha.56';
+const APP_VERSION='0.5.0-alpha.57';
 const UA=()=>`MoneyPrinterOS/${APP_VERSION}`;
 const BASE=()=>String(process.env.ROBINHOOD_API||RH_BASE_URL).replace(/\/+$/,'');
 const ORDER_API=()=>String(process.env.ROBINHOOD_ORDER_API||'v2').trim().toLowerCase()==='v1'?'v1':'v2';

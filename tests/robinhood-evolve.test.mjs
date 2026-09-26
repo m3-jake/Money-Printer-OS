@@ -148,3 +148,18 @@ test('sealed holdout: the search never sees the newest 20%, context only warms i
  const s=E.evolveConfig();assert.equal(s.requireRobinhoodQuotes,true);assert.equal(s.holdoutMinCloses,20);assert.equal(s.holdoutMinPF,1.2);assert.equal(s.minTapeDays,7);assert.equal(s.maxTapeDays,30);
  Object.assign(process.env,{ROBINHOOD_EVOLVE_MAX_TAPE_DAYS:'5',ROBINHOOD_EVOLVE_MIN_TAPE_DAYS:'3',ROBINHOOD_EVOLVE_HOLDOUT_MIN_CLOSES:'1',ROBINHOOD_EVOLVE_HOLDOUT_MIN_PF:'0.01',ROBINHOOD_EVOLVE_REQUIRE_RH_QUOTES:'false'});
 });
+
+test('a fresh Evolution Lab Robinhood lane stands the trader\'s own automatic search down', () => {
+ reset();
+ const dir=path.join(process.env.MONEY_PRINTER_DATA_DIR,'lab-link','modules');fs.mkdirSync(dir,{recursive:true});
+ const t=mock.state.time,write=v=>fs.writeFileSync(path.join(dir,'robinhood.json'),JSON.stringify(v));
+ assert.equal(RH.labRobinhoodResearchActive(t),false,'no Lab status file');
+ write({module:'robinhood',status:'RUNNING',updatedAt:t-60000});
+ assert.equal(RH.labRobinhoodResearchActive(t),true);
+ write({module:'robinhood',status:'RUNNING',updatedAt:t-31*60000});
+ assert.equal(RH.labRobinhoodResearchActive(t),false,'a stale Lab lane falls back to local search');
+ write({module:'robinhood',status:'ERROR',updatedAt:t});
+ assert.equal(RH.labRobinhoodResearchActive(t),false,'an erroring Lab lane falls back to local search');
+ write({module:'polymarket',status:'RUNNING',updatedAt:t});
+ assert.equal(RH.labRobinhoodResearchActive(t),false,'another module\'s status is ignored');
+});

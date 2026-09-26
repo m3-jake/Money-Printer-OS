@@ -618,8 +618,13 @@ function readLabRobinhoodChampion(){try{const v=JSON.parse(fs.readFileSync(LAB_R
 const num=v=>{const n=Number(v);return Number.isFinite(n)?n:0};
 function evolveSymbols(p=paper()){return primaryFirst([...new Set([robinhoodPrimary().symbol,...robinhoodSymbols(),...p.autopilot.symbols])])}
 function compactCandidate(c){return c?{params:c.params,paramsHash:c.paramsHash,score:Math.round(num(c.score)*1000)/1000,metrics:c.metrics,bySymbol:Object.fromEntries(Object.entries(c.bySymbol||{}).map(([s,r])=>[s,{score:Math.round(num(r.score)*1000)/1000,notes:r.notes,test:r.test,train:r.train}])),at:c.at,generation:c.generation}:null}
+// The Evolution Lab owns Robinhood search. While its lane has reported within LAB_RH_FRESH_MS the trader never runs its own
+// automatic pass (a manual evolve/run still works); if the Lab goes quiet the local search is the fallback.
+const LAB_RH_FRESH_MS=30*60000;
+export function labRobinhoodResearchActive(t=now()){const l=readLabRobinhoodStatus();return !!l&&l.status!=='ERROR'&&t-num(l.updatedAt)<LAB_RH_FRESH_MS}
 function evolveDue(){
  const cfg=E.evolveConfig();if(!cfg.enabled||evolveBusy||timer===null)return false;
+ if(labRobinhoodResearchActive())return false;
  if(now()-evolveCheckedAt<EVOLVE_CHECK_MS)return false;
  const l=E.loadEvolveLedger();return now()-l.lastRunAt>=cfg.intervalMin*60000;
 }
