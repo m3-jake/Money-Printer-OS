@@ -2,7 +2,7 @@
 // while the backend hard-rejects Robinhood real-order, cancel, reconcile and real-autopilot mutations.
 let rhState=null,rhSubmitting=false,rhRefreshBusy=false,rhMessage='',rhDraft={},rhPreview=null;
 let rhView='paper';
-const RH_VIEWS={paper:['head','order','autopilot','qual','positions','closes'],why:['head','signals','gauges'],charts:['head','charts'],explore:['head','explore'],more:['head','connection','evolution','real','reset']};
+const RH_VIEWS={paper:['head','live','order','autopilot','qual','positions','closes'],why:['head','live','signals','gauges'],charts:['head','charts'],explore:['head','explore'],more:['head','connection','evolution','real','reset']};
 // Each view fits the window without scrolling; nothing is deleted, other views' parts are just not shown.
 function rhViewTabs(){return `<div class="rh-tabs">${Object.keys(RH_VIEWS).map(v=>`<button class="btn ${v===rhView?'on':''}" data-rh-view="${v}">${{paper:'Paper',why:'Why not trading',charts:'Charts',explore:'Exploration',more:'More'}[v]}</button>`).join('')}</div>`}
 let rhChart={symbol:null,range:'6h',data:null,at:0,busy:false,error:null};
@@ -108,6 +108,18 @@ function rhTradeTable(rows){
  return `<div class="mpo-table-wrap" style="max-height:260px;overflow:auto"><table class="mpo-table" id="rhTradeTable"><thead><tr><th>Book</th><th>Pair</th><th>Entry</th><th>Exit</th><th>Reason</th><th>Hold</th><th>Gross</th><th>Fees</th><th>Net</th></tr></thead><tbody>
  ${list.length?list.map(r=>`<tr><td class="${r.book==='explore'?'amber':''}">${r.book==='explore'?'EXPLORE':'STRICT'}</td><td>${polyEscape(r.symbol)}</td><td>${rhMoney(r.entry)}</td><td>${rhMoney(r.exit)}</td><td>${polyEscape(r.reason||'--')}</td><td>${rhHold(r.holdMs)}</td><td>${rhMoney(r.grossUsd)}</td><td>${rhMoney(r.feesUsd)}</td><td class="${(r.netUsd||0)>=0?'green':'red'}">${rhMoney(r.netUsd)}</td></tr>`).join(''):'<tr><td colspan="9">No closed paper trades yet.</td></tr>'}</tbody></table></div>`;
 }
+// Live strip: sampling heartbeat, quote ticker and per-pair edge meter (expected move vs the required move).
+function rhLiveViz(st){
+ if(!window.MPOViz)return '';
+ const tape=st.tape||{},quotes=Object.fromEntries((st.quotes||[]).map(q=>[q.symbol,q]));
+ const rows=Object.entries(tape).map(([sym,t])=>({label:sym.replace('-USD',''),primary:!!t.primary,spark:t.spark||[],move:t.expectedMovePct,required:t.requiredMovePct??(Number(t.costPct)*1.5)}));
+ MPOViz.set('rh-edge','edge',{rows});
+ const sigCol={BUY:'#39ff68',ENTER:'#39ff68',WAIT:'#ffb000',EXIT:'#ff5b70',SELL:'#ff5b70'};
+ MPOViz.set('rh-ticker','ticker',{speed:38,items:Object.entries(tape).flatMap(([sym,t])=>{const q=quotes[sym]||{},sp=(t.spark||[]).map(Number),ch=sp.length>1?(sp.at(-1)/sp[0]-1)*100:null;return [{text:`${sym} ${q.bid!=null?'$'+Number(q.bid).toLocaleString(undefined,{maximumFractionDigits:2}):'—'}${ch==null?'':(ch>=0?' ▲':' ▼')+Math.abs(ch).toFixed(2)+'%'}`,color:ch==null?'#9fbfa8':ch>=0?'#39ff68':'#ff5b70'},{text:`${t.signal||'—'} · ${t.n} samples`,color:sigCol[String(t.signal||'').toUpperCase()]||'#9fbfa8'}]})});
+ const loop=st.loop||{};
+ MPOViz.set('rh-pulse','pulse',{beats:MPOViz.beat('rh-loop',loop.lastTickAt),label:`sampling every ${Math.round(Number(loop.tickMs||0)/1000)}s`,extra:loop.running?'loop running':'loop stopped',color:loop.running?'#39ff68':'#ff5b70'});
+ return `${MPOViz.canvas('rh-ticker',22)}<div class="mpo-viz-grid">${MPOViz.canvas('rh-pulse',30)}</div>${MPOViz.canvas('rh-edge',Math.max(60,rows.length*30),'edge meter · expected move vs required (red line = 1.5× round-trip cost)')}`;
+}
 function rhChartSection(st){
  const d=rhChart.data,syms=Object.keys(st.tape||{}),cur=rhChart.symbol||syms[0]||'BTC-USD',src=d?.sources?Object.entries(d.sources).map(([k,n])=>polyEscape(k)+' '+n).join(' · '):'';
  return `<fieldset class="mpo-fieldset" id="rhCharts"><legend>Charts</legend>
@@ -144,6 +156,7 @@ function renderRobinhood(force=false){
  ${j.recoveryRequired?`<div class="mpo-error">REAL JOURNAL RECOVERY REQUIRED: ${polyEscape(j.recoveryError||'Review data/robinhood-auto-trader.json before any real action.')}</div>`:''}
  ${rhState.lastError?`<div class="mpo-error">${polyEscape(rhState.lastError.stage+': '+rhState.lastError.message)}</div>`:''}
  ${r.paperFallbackReason?`<div class="mpo-empty">Robinhood authenticated quotes unavailable (${polyEscape(r.paperFallbackReason.code||'unknown')}); simulation is using public Coinbase market data until Robinhood credentials work.</div>`:''}${rhViewTabs()}</div>
+<div data-rh-part="live">${rhLiveViz(rhState)}</div>
 <div data-rh-part="connection"> <details><summary>Connection and safety</summary><p>Paper mode can use a public read-only market feed when Robinhood authentication is unavailable. For Robinhood-authenticated quotes later, generate a key pair locally with <code>node -e "import('./src/robinhoodSigner.js').then(m=>console.log(JSON.stringify(m.generateRobinhoodKeyPair(),null,2)))"</code>, paste the public key into the Robinhood portal, then connect the API key and matching private seed below.</p><p>Account: ${polyEscape(rhState.account?.accountNumber||'not authenticated')} | Robinhood API: ${polyEscape(r.authCode||'not checked')} | Paper quote source: ${polyEscape(r.paperQuoteSource||'connecting')} | Public key: ${polyEscape(r.publicKey||'--')}</p><p>Stocks and options are not automated here; Robinhood's Agentic Trading MCP is the only sanctioned route and this app never uses mobile-app impersonation.</p></details></div>
 <div data-rh-part="order"> <fieldset class="mpo-fieldset"><legend>Paper order</legend>
  <label>Pair <input id="rhSymbol" value="${polyEscape(symbol)}" maxlength="14"></label>

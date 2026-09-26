@@ -7,6 +7,7 @@
 <style>html,body{margin:0;background:#008080}</style>
 <link rel="stylesheet" href="/css/mpo-shell.css">
 <link rel="stylesheet" href="/css/mpo-workstation.css">
+<script src="/js/mpo-viz.js"></script>
 </head>
 <body>
 <div class="desktop" id="desktop">
@@ -29,7 +30,7 @@
 // while the backend hard-rejects Robinhood real-order, cancel, reconcile and real-autopilot mutations.
 let rhState=null,rhSubmitting=false,rhRefreshBusy=false,rhMessage='',rhDraft={},rhPreview=null;
 let rhView='paper';
-const RH_VIEWS={paper:['head','order','autopilot','qual','positions','closes'],why:['head','signals','gauges'],charts:['head','charts'],explore:['head','explore'],more:['head','connection','evolution','real','reset']};
+const RH_VIEWS={paper:['head','live','order','autopilot','qual','positions','closes'],why:['head','live','signals','gauges'],charts:['head','charts'],explore:['head','explore'],more:['head','connection','evolution','real','reset']};
 // Each view fits the window without scrolling; nothing is deleted, other views' parts are just not shown.
 function rhViewTabs(){return `<div class="rh-tabs">${Object.keys(RH_VIEWS).map(v=>`<button class="btn ${v===rhView?'on':''}" data-rh-view="${v}">${{paper:'Paper',why:'Why not trading',charts:'Charts',explore:'Exploration',more:'More'}[v]}</button>`).join('')}</div>`}
 let rhChart={symbol:null,range:'6h',data:null,at:0,busy:false,error:null};
@@ -135,6 +136,18 @@ function rhTradeTable(rows){
  return `<div class="mpo-table-wrap" style="max-height:260px;overflow:auto"><table class="mpo-table" id="rhTradeTable"><thead><tr><th>Book</th><th>Pair</th><th>Entry</th><th>Exit</th><th>Reason</th><th>Hold</th><th>Gross</th><th>Fees</th><th>Net</th></tr></thead><tbody>
  ${list.length?list.map(r=>`<tr><td class="${r.book==='explore'?'amber':''}">${r.book==='explore'?'EXPLORE':'STRICT'}</td><td>${polyEscape(r.symbol)}</td><td>${rhMoney(r.entry)}</td><td>${rhMoney(r.exit)}</td><td>${polyEscape(r.reason||'--')}</td><td>${rhHold(r.holdMs)}</td><td>${rhMoney(r.grossUsd)}</td><td>${rhMoney(r.feesUsd)}</td><td class="${(r.netUsd||0)>=0?'green':'red'}">${rhMoney(r.netUsd)}</td></tr>`).join(''):'<tr><td colspan="9">No closed paper trades yet.</td></tr>'}</tbody></table></div>`;
 }
+// Live strip: sampling heartbeat, quote ticker and per-pair edge meter (expected move vs the required move).
+function rhLiveViz(st){
+ if(!window.MPOViz)return '';
+ const tape=st.tape||{},quotes=Object.fromEntries((st.quotes||[]).map(q=>[q.symbol,q]));
+ const rows=Object.entries(tape).map(([sym,t])=>({label:sym.replace('-USD',''),primary:!!t.primary,spark:t.spark||[],move:t.expectedMovePct,required:t.requiredMovePct??(Number(t.costPct)*1.5)}));
+ MPOViz.set('rh-edge','edge',{rows});
+ const sigCol={BUY:'#39ff68',ENTER:'#39ff68',WAIT:'#ffb000',EXIT:'#ff5b70',SELL:'#ff5b70'};
+ MPOViz.set('rh-ticker','ticker',{speed:38,items:Object.entries(tape).flatMap(([sym,t])=>{const q=quotes[sym]||{},sp=(t.spark||[]).map(Number),ch=sp.length>1?(sp.at(-1)/sp[0]-1)*100:null;return [{text:`${sym} ${q.bid!=null?'$'+Number(q.bid).toLocaleString(undefined,{maximumFractionDigits:2}):'—'}${ch==null?'':(ch>=0?' ▲':' ▼')+Math.abs(ch).toFixed(2)+'%'}`,color:ch==null?'#9fbfa8':ch>=0?'#39ff68':'#ff5b70'},{text:`${t.signal||'—'} · ${t.n} samples`,color:sigCol[String(t.signal||'').toUpperCase()]||'#9fbfa8'}]})});
+ const loop=st.loop||{};
+ MPOViz.set('rh-pulse','pulse',{beats:MPOViz.beat('rh-loop',loop.lastTickAt),label:`sampling every ${Math.round(Number(loop.tickMs||0)/1000)}s`,extra:loop.running?'loop running':'loop stopped',color:loop.running?'#39ff68':'#ff5b70'});
+ return `${MPOViz.canvas('rh-ticker',22)}<div class="mpo-viz-grid">${MPOViz.canvas('rh-pulse',30)}</div>${MPOViz.canvas('rh-edge',Math.max(60,rows.length*30),'edge meter · expected move vs required (red line = 1.5× round-trip cost)')}`;
+}
 function rhChartSection(st){
  const d=rhChart.data,syms=Object.keys(st.tape||{}),cur=rhChart.symbol||syms[0]||'BTC-USD',src=d?.sources?Object.entries(d.sources).map(([k,n])=>polyEscape(k)+' '+n).join(' · '):'';
  return `<fieldset class="mpo-fieldset" id="rhCharts"><legend>Charts</legend>
@@ -171,6 +184,7 @@ function renderRobinhood(force=false){
  ${j.recoveryRequired?`<div class="mpo-error">REAL JOURNAL RECOVERY REQUIRED: ${polyEscape(j.recoveryError||'Review data/robinhood-auto-trader.json before any real action.')}</div>`:''}
  ${rhState.lastError?`<div class="mpo-error">${polyEscape(rhState.lastError.stage+': '+rhState.lastError.message)}</div>`:''}
  ${r.paperFallbackReason?`<div class="mpo-empty">Robinhood authenticated quotes unavailable (${polyEscape(r.paperFallbackReason.code||'unknown')}); simulation is using public Coinbase market data until Robinhood credentials work.</div>`:''}${rhViewTabs()}</div>
+<div data-rh-part="live">${rhLiveViz(rhState)}</div>
 <div data-rh-part="connection"> <details><summary>Connection and safety</summary><p>Paper mode can use a public read-only market feed when Robinhood authentication is unavailable. For Robinhood-authenticated quotes later, generate a key pair locally with <code>node -e "import('./src/robinhoodSigner.js').then(m=>console.log(JSON.stringify(m.generateRobinhoodKeyPair(),null,2)))"</code>, paste the public key into the Robinhood portal, then connect the API key and matching private seed below.</p><p>Account: ${polyEscape(rhState.account?.accountNumber||'not authenticated')} | Robinhood API: ${polyEscape(r.authCode||'not checked')} | Paper quote source: ${polyEscape(r.paperQuoteSource||'connecting')} | Public key: ${polyEscape(r.publicKey||'--')}</p><p>Stocks and options are not automated here; Robinhood's Agentic Trading MCP is the only sanctioned route and this app never uses mobile-app impersonation.</p></details></div>
 <div data-rh-part="order"> <fieldset class="mpo-fieldset"><legend>Paper order</legend>
  <label>Pair <input id="rhSymbol" value="${polyEscape(symbol)}" maxlength="14"></label>
@@ -316,12 +330,12 @@ const HOSTS=APPS.filter(a=>!a[4]).map(a=>a[0]);
 const tabsOf=host=>[host,...APPS.filter(a=>a[4]===host).map(a=>a[0])];
 const hasTabs=host=>tabsOf(host).length>1;
 const defaultLayout={
-robinhood:{x:200,y:90,w:880,h:620},
-trade:{x:120,y:70,w:790,h:520},sportsbook:{x:250,y:140,w:880,h:600},
+robinhood:{x:200,y:90,w:880,h:720},
+trade:{x:120,y:70,w:790,h:690},sportsbook:{x:250,y:140,w:880,h:600},
 system:{x:660,y:80,w:520,h:470},journal:{x:90,y:56,w:740,h:540},money:{x:320,y:120,w:620,h:520}
 };
 const DEFAULT_OPEN=['trade','sportsbook','system'];
-const LAYOUT_VERSION='2026-09-26-alpha56-clean-shell';
+const LAYOUT_VERSION='2026-09-26-alpha58-live-visuals';
 let saved=JSON.parse(localStorage.getItem('mpo-layout')||'{}');
 let openSet=new Set(JSON.parse(localStorage.getItem('mpo-open')||JSON.stringify(DEFAULT_OPEN)));
 if(localStorage.getItem('mpo-layout-version')!==LAYOUT_VERSION){localStorage.removeItem('mpo-layout');localStorage.setItem('mpo-open',JSON.stringify(DEFAULT_OPEN));localStorage.setItem('mpo-layout-version',LAYOUT_VERSION);saved={};openSet=new Set(DEFAULT_OPEN)}
@@ -482,10 +496,22 @@ function solanaBookStrip(b){
  const warn=sprint?`<div class="amber" id="solSprintWarn">SPRINT needs a ${pct(b.sprintBreakEvenHitRate)} hit rate to break even after costs; its 4% take-profit is under 3x the ${fmt(b.roundTripPct,2)}% round trip, so the cost gate refuses its entries.</div>`:'';
  return `<div class="mpo-module" id="solanaBook" style="margin:6px 0"><header><span>SOLANA PAPER · ${polyEscape(b.profile||'—')} · tp ${fmt(b.preset?.tp1,0)}% / stop ${fmt(b.preset?.stop,0)}%</span><span><button class="btn sol-profile ${b.profile==='FAIR'?'on':''}" data-profile="FAIR">FAIR</button> <button class="btn sol-profile ${sprint?'on':''}" data-profile="SPRINT">SPRINT</button></span></header><div class="mpo-metrics"><div class="mpo-metric"><label>TRADES</label><b>${b.trades}</b></div><div class="mpo-metric"><label>HIT RATE</label><b>${pct(b.hitRate)}</b></div><div class="mpo-metric"><label>PROFIT FACTOR</label><b class="${pf!=null&&pf>=1?'green':'red'}">${pf==null?'—':fmt(pf,2)}</b></div><div class="mpo-metric"><label>NET P/L AFTER COSTS</label><b class="${b.netPnlSol>=0?'green':'red'}">${b.netPnlSol>=0?'+':''}${fmt(b.netPnlSol,4)} SOL</b></div><div class="mpo-metric" title="(stop + cost) / (tp1 + stop), cost = modeled round trip ${fmt(b.roundTripPct,2)}% (${polyEscape(b.roundTripSource)})"><label>BREAK-EVEN HIT RATE</label><b id="solBreakEven" class="${b.breakEvenHitRate!=null&&b.breakEvenHitRate<.6?'green':'amber'}">${pct(b.breakEvenHitRate)}</b></div><div class="mpo-metric" title="entries refused because tp1 < ${b.costGate?.multiple}x round-trip cost"><label>COSTGATE SKIPS</label><b>${b.costGate?.skips??0}</b></div></div>${warn}</div>`;
 }
+// Pump.fun live visuals: launch ticker, scan heartbeat, meme-market gauge, opportunity map and entry funnel.
+function tradeViz(s){
+ if(!window.MPOViz)return '';
+ const wl=s.watchlist||[],f=s.system?.opportunityFunnel||{},mi=s.memeIndex||{},open=new Set((s.positions||[]).map(p=>p.mint));
+ const stageCol={READY:'#39ff68',WATCH:'#00c8ff',HOT:'#ff6ad5',COOLING:'#ffb000'};
+ MPOViz.set('pf-map','bubbles',{items:wl.slice(0,60).map(w=>({id:w.mint||w.symbol,x:Number(w.rugScore??50),y:Number(w.fastEdgeScore??w.edgeScore??w.score??0),r:Number(w.liq)||0,label:w.symbol,color:open.has(w.mint)?'#ffffff':stageCol[String(w.stage||'').toUpperCase()]||'#00c8ff',hot:open.has(w.mint)||Number(w.explosionScore)>=80}))});
+ MPOViz.set('pf-meme','gauge',{value:Number(mi.score)||0,label:String(mi.state||'meme index'),sub:`${Number(mi.launches||0)} launches · ▲${Number(mi.acceleratingPct||0)}% ▼${Number(mi.collapsePct||0)}%`});
+ MPOViz.set('pf-funnel','funnel',{stages:[['found',f.discovered],['scored',f.scorePassed],['eligible',f.eligible],['executable',f.executionPassed],['approved',f.approved],['opened',f.opened]].map(([label,value])=>({label,value:Number(value)||0}))});
+ MPOViz.set('pf-ticker','ticker',{speed:46,items:wl.slice(0,24).map(w=>({text:`${w.symbol||'?'} ${Number(w.pc5)>=0?'▲':'▼'}${Math.abs(Number(w.pc5)||0).toFixed(1)}% · edge ${Math.round(Number(w.fastEdgeScore??w.edgeScore??0))}`,color:Number(w.pc5)>=0?'#39ff68':'#ff5b70'}))});
+ MPOViz.set('pf-pulse','pulse',{beats:MPOViz.beat('pf-cycle',f.ts),label:'scan cycle',extra:`${Number(s.stats?.cycles||0)} cycles · ${Number(f.discovered||0)} found`,color:'#00c8ff'});
+ return `${MPOViz.canvas('pf-ticker',20)}${MPOViz.canvas('pf-pulse',26)}<div class="pf-viz-row">${MPOViz.canvas('pf-meme',96,'meme market')}${MPOViz.canvas('pf-map',96,'opportunity map')}${MPOViz.canvas('pf-funnel',96,'entry funnel')}</div>`;
+}
 function renderTrade(){
  const s=state||{},p=s.portfolio||{},sol=s.market?.solUsd;
  const health=s.system?.health||'—',healthBad=health==='DEGRADED',watch=(s.watchlist||[]).slice(0,7);
- setBody('trade',`<div class="dark terminal mpo-surface-dark" style="height:100%;padding:7px"><div class="mpo-status"><span class="cyan">SOL/USD</span> <span class="heroPrice">${money(sol)}</span> <span class="${s.dailyPnlSol>=0?'green':'red'}">${s.dailyPnlSol>=0?'+':''}${fmt(s.dailyPnlSol,4)} SOL session</span><b class="mpo-badge ${healthBad?'mpo-badge--degraded':'mpo-badge--live'}">${polyEscape(health)}</b></div><div class="mpo-metrics"><div class="mpo-metric"><label>EQUITY</label><b>${fmt(p.equitySol,4)} SOL</b></div><div class="mpo-metric"><label>CASH</label><b>${fmt(p.cashSol,4)}</b></div><div class="mpo-metric"><label>OPEN</label><b class="${(s.positions||[]).length?'cyan':''}">${(s.positions||[]).length}</b></div><div class="mpo-metric"><label>FEED</label><b class="${healthBad?'amber':'green'}">${polyEscape(health)}</b></div></div>${solanaBookStrip(s.solanaBook)}<div class="chart" title="wheel zoom · drag pan · dbl-click reset"><div class="chart-grid"></div><canvas id="priceChart"></canvas><div class="chart-tip" id="chartTip"></div></div><div class="toolbar" style="margin-top:6px"><button class="btn range-btn ${chartView.range==='m1'?'on':''}" data-range="m1">1m</button><button class="btn range-btn ${chartView.range==='m5'?'on':''}" data-range="m5">5m</button><button class="btn range-btn ${chartView.range==='m15'?'on':''}" data-range="m15">15m</button><button class="btn range-btn ${chartView.range==='h1'?'on':''}" data-range="h1">1h</button><button class="btn range-btn ${chartView.range==='session'?'on':''}" data-range="session">Session</button><button class="btn" id="chartZoomOut">−</button><button class="btn" id="chartZoomIn">+</button><button class="btn" id="chartFit">Fit</button><span class="chart-readout" id="chartReadout">● REAL EQUITY DATA</span></div><div class="mpo-table-wrap"><table class="table mpo-table terminal"><thead><tr><th>Symbol</th><th>Edge</th><th>5m</th><th>Liq</th><th>Stage</th></tr></thead><tbody>${watch.length?watch.map(x=>`<tr><td>${polyEscape(x.symbol||'?')}</td><td>${fmt(x.fastEdgeScore??x.edgeScore,0)}</td><td class="${Number(x.pc5)>=0?'green':'red'}">${fmt(x.pc5,1)}%</td><td>${money(x.liq)}</td><td>${polyEscape(x.stage||'')}</td></tr>`).join(''):'<tr><td colspan="5"><div class="mpo-empty">No watchlist names yet.</div></td></tr>'}</tbody></table></div></div>`);bindChartControls();$$('.sol-profile').forEach(b=>b.onclick=async()=>{await post('/api/profile',{profile:b.dataset.profile});showDialog('Money Printer OS','Solana profile queued',`Profile ${b.dataset.profile} was sent to the trading engine.`)});drawChart();
+ setBody('trade',`<div class="dark terminal mpo-surface-dark" style="height:100%;padding:7px"><div class="mpo-status"><span class="cyan">SOL/USD</span> <span class="heroPrice">${money(sol)}</span> <span class="${s.dailyPnlSol>=0?'green':'red'}">${s.dailyPnlSol>=0?'+':''}${fmt(s.dailyPnlSol,4)} SOL session</span><b class="mpo-badge ${healthBad?'mpo-badge--degraded':'mpo-badge--live'}">${polyEscape(health)}</b></div><div class="mpo-metrics"><div class="mpo-metric"><label>EQUITY</label><b>${fmt(p.equitySol,4)} SOL</b></div><div class="mpo-metric"><label>CASH</label><b>${fmt(p.cashSol,4)}</b></div><div class="mpo-metric"><label>OPEN</label><b class="${(s.positions||[]).length?'cyan':''}">${(s.positions||[]).length}</b></div><div class="mpo-metric"><label>FEED</label><b class="${healthBad?'amber':'green'}">${polyEscape(health)}</b></div></div>${solanaBookStrip(s.solanaBook)}<div class="chart" title="wheel zoom · drag pan · dbl-click reset"><div class="chart-grid"></div><canvas id="priceChart"></canvas><div class="chart-tip" id="chartTip"></div></div><div class="toolbar" style="margin-top:6px"><button class="btn range-btn ${chartView.range==='m1'?'on':''}" data-range="m1">1m</button><button class="btn range-btn ${chartView.range==='m5'?'on':''}" data-range="m5">5m</button><button class="btn range-btn ${chartView.range==='m15'?'on':''}" data-range="m15">15m</button><button class="btn range-btn ${chartView.range==='h1'?'on':''}" data-range="h1">1h</button><button class="btn range-btn ${chartView.range==='session'?'on':''}" data-range="session">Session</button><button class="btn" id="chartZoomOut">−</button><button class="btn" id="chartZoomIn">+</button><button class="btn" id="chartFit">Fit</button><span class="chart-readout" id="chartReadout">● REAL EQUITY DATA</span></div>${tradeViz(s)}<div class="mpo-table-wrap"><table class="table mpo-table terminal"><thead><tr><th>Symbol</th><th>Edge</th><th>5m</th><th>Liq</th><th>Stage</th></tr></thead><tbody>${watch.length?watch.map(x=>`<tr><td>${polyEscape(x.symbol||'?')}</td><td>${fmt(x.fastEdgeScore??x.edgeScore,0)}</td><td class="${Number(x.pc5)>=0?'green':'red'}">${fmt(x.pc5,1)}%</td><td>${money(x.liq)}</td><td>${polyEscape(x.stage||'')}</td></tr>`).join(''):'<tr><td colspan="5"><div class="mpo-empty">No watchlist names yet.</div></td></tr>'}</tbody></table></div></div>`);bindChartControls();$$('.sol-profile').forEach(b=>b.onclick=async()=>{await post('/api/profile',{profile:b.dataset.profile});showDialog('Money Printer OS','Solana profile queued',`Profile ${b.dataset.profile} was sent to the trading engine.`)});drawChart();
 }
 function drawChart(){
  const c=$('#priceChart');if(!c)return;const rect=c.getBoundingClientRect(),dpr=Math.min(2,window.devicePixelRatio||1),W=Math.max(300,Math.round(rect.width*dpr)),H=Math.max(150,Math.round(rect.height*dpr));if(c.width!==W)c.width=W;if(c.height!==H)c.height=H;const x=c.getContext('2d');x.clearRect(0,0,W,H);const raw=chartSeries();if(raw.length<1)return;const frac=1/chartView.zoom,maxStart=Math.max(0,1-frac),start=Math.min(maxStart,chartView.pan),a=Math.floor(start*Math.max(0,raw.length-1)),count=Math.max(2,Math.ceil(raw.length*frac)),pts=raw.slice(a,a+count);if(!pts.length)return;let lo=Math.min(...pts.map(q=>q.equitySol)),hi=Math.max(...pts.map(q=>q.equitySol));const pad=Math.max(.001,(hi-lo)*.12);lo-=pad;hi+=pad;const px=(i)=>pts.length===1?W/2:i*W/(pts.length-1),py=v=>H-((v-lo)/(hi-lo||1))*H;
@@ -738,7 +764,7 @@ function renderPolyCombos(box){
  const openRows=open.map(e=>entryRow(e,true)).join('')||'<tr><td colspan=6>No open combos.</td></tr>';
  const histRows=hist.slice(0,8).map(e=>entryRow(e,false)).join('')||'<tr><td colspan=5>No settled combos yet.</td></tr>';
  box.innerHTML=`<div class="dark terminal" style="padding:8px"><fieldset class="mpo-danger-fieldset" style="margin-top:6px"><legend>LIVE COMBOS · POLYMARKET US · REAL</legend>
-  ${status}${keyForm}${(()=>{const bw=stats.byWindow||{},ks=Object.keys(bw);return `<div class="muted" style="font-size:10px;margin:3px 0">Window rule: ${polyEscape((ucs.windowRules||{})[st.window||'NEAR_END']||'—')}${ks.length?' · Record by window: '+ks.map(k=>{const r=bw[k];return `${polyEscape(k)} ${Number(r.won)}W-${Number(r.lost)}L${r.open?' ('+Number(r.open)+' open)':''}${r.roi==null?'':' ROI '+(Number(r.roi)*100).toFixed(0)+'%'}`}).join(' · '):''}</div>`})()}${err?`<div class="mpo-error"><b>Polymarket US</b> — ${polyEscape(err)}</div>`:''}${settings}
+  ${status}${usBoardViz(ucs,boardRows,st,chosen)}${keyForm}${(()=>{const bw=stats.byWindow||{},ks=Object.keys(bw);return `<div class="muted" style="font-size:10px;margin:3px 0">Window rule: ${polyEscape((ucs.windowRules||{})[st.window||'NEAR_END']||'—')}${ks.length?' · Record by window: '+ks.map(k=>{const r=bw[k];return `${polyEscape(k)} ${Number(r.won)}W-${Number(r.lost)}L${r.open?' ('+Number(r.open)+' open)':''}${r.roi==null?'':' ROI '+(Number(r.roi)*100).toFixed(0)+'%'}`}).join(' · '):''}</div>`})()}${err?`<div class="mpo-error"><b>Polymarket US</b> — ${polyEscape(err)}</div>`:''}${settings}
   <div data-scroll="combo-cands" style="overflow:auto;max-height:240px"><table class="table terminal"><thead><tr><th>Event</th><th>Clock / score</th><th>Side</th><th>Win %</th><th>Spread</th><th>Left</th><th>Status</th><th></th></tr></thead><tbody>${rows||`<tr><td colspan=8>${empty}</td></tr>`}</tbody></table></div>${sgLine}
   <div class="muted" style="font-size:10px;margin:3px 0">Feed: ${Number(fd.total??fd.eventsInPlay??0)} sports events scanned${fd.pages?' over '+Number(fd.pages)+' pages':''}${fd.capped?' (CAPPED)':''} · ${Number(fd.eventsLive||0)} live · ${fd.comboLive==null?'—':Number(fd.comboLive)} combo-enabled live · ${Number(fd.candidates||0)} eligible${rej?' · Filtered: '+rej:''}</div>
   <div class="inset" style="padding:6px;margin-top:6px"><div class="toolbar" style="flex-wrap:wrap;gap:8px"><label>Stake $ <input class="field" id="usComboStake" type="number" min="1" max="${Number(ucs.limits?.maxStakeUsd||25)}" step="0.5" value="${polyEscape(usComboStakeValue||5)}" style="width:70px"></label><span style="font-size:11px">${buildLine}</span></div>
@@ -963,7 +989,30 @@ function scheduleUSComboBuild(){
   renderSig.delete('sportsbook');renderSportsbook();
  },300);
 }
+// Live board visuals: games on a time-to-finish axis by sport, price histogram, feed heartbeat.
+function usBoardViz(ucs,boardRows,st,chosen){
+ if(!window.MPOViz)return '';
+ const sel=new Set(chosen),bySport=new Map();
+ for(const c of boardRows){const sp=String(c.sport||'other');if(!bySport.has(sp))bySport.set(sp,[]);bySport.get(sp).push({id:String(c.key||c.eventSlug),progress:c.progress??null,status:c.eligible?'eligible':c.addable?'outside':'rejected',price:c.price,selected:sel.has(String(c.key))})}
+ const lanes=[...bySport.entries()].sort((a,b)=>b[1].length-a[1].length).slice(0,8).map(([label,items])=>({label,items}));
+ const win=String(st.window||'NEAR_END');
+ MPOViz.set('pm-lanes','lanes',{lanes,zoneFrom:win==='NEAR_END'?0.88:win==='LATE'?0.6:0,windowLabel:win.replace('_',' ').toLowerCase(),empty:'No live combo games right now'});
+ const bins=[];for(let lo=0.5;lo<0.999;lo+=0.05)bins.push({lo:+lo.toFixed(2),hi:+(lo+0.05).toFixed(2),count:0});
+ for(const c of boardRows){const p=Number(c.price);if(!(p>=0.5&&p<=1))continue;const i=Math.min(bins.length-1,Math.floor((p-0.5)/0.05+1e-9));bins[i].count++}
+ MPOViz.set('pm-hist','hist',{bins,threshold:Number(st.priceMin)||0.8});
+ const fd=ucs.feed||{};
+ MPOViz.set('pm-pulse','pulse',{beats:MPOViz.beat('pm-feed',ucs.at),label:'feed scan',extra:`${Number(fd.eventsLive||0)} live · ${Number(fd.candidates||0)} eligible`,color:'#00c8ff'});
+ return `${MPOViz.canvas('pm-pulse',34)}${MPOViz.canvas('pm-lanes',Math.max(110,28+lanes.length*26),'live games · how far along')}<div class="mpo-viz-grid">${MPOViz.canvas('pm-hist',96,'side price vs floor')}</div>`;
+}
 // Research: shadow auto record per window, RFQ markup, calibration and the Lab proposal (all read-only evidence).
+function usResearchViz(ev){
+ if(!window.MPOViz)return '';
+ const col={NEAR_END:'#39ff68',LATE:'#00c8ff',ANY_LIVE:'#b388ff'};
+ MPOViz.set('pm-shadow','lines',{series:Object.entries(ev.shadow||{}).map(([w,r])=>({label:w.replace('_',' '),color:col[w]||'#ffb000',points:r.curve||[]})),unit:'$',empty:'Shadow P/L appears once virtual combos settle'});
+ MPOViz.set('pm-cal','scatter',{lo:0.6,hi:1,points:(ev.calibration||[]).filter(c=>c.implied!=null&&c.winRate!=null).map(c=>({x:c.implied,y:c.winRate,n:c.n})),empty:'Calibration fills in as legs resolve'});
+ MPOViz.set('pm-ev-pulse','pulse',{beats:MPOViz.beat('pm-ev',ev.updatedAt),label:'evidence tick',extra:`${Number(ev.tracked||0)} legs awaiting settlement`,color:'#b388ff'});
+ return `${MPOViz.canvas('pm-ev-pulse',30)}<div class="mpo-viz-grid">${MPOViz.canvas('pm-shadow',120,'shadow P/L by window')}${MPOViz.canvas('pm-cal',120,'won vs implied')}</div>`;
+}
 function usResearchHtml(ev){
  if(!ev)return '<div class="muted" style="font-size:10px;margin-top:6px">Research evidence: waiting for the collector…</div>';
  const sh=ev.shadow||{},mk=ev.markup||{},cal=Array.isArray(ev.calibration)?ev.calibration:[],lab=ev.lab||{},p=lab.proposal;
@@ -974,6 +1023,7 @@ function usResearchHtml(ev){
   :`<div class="muted" style="font-size:10px;margin-top:6px">Lab: ${polyEscape(lab.status?.note||(p&&!p.valid?p.reason:'no combo proposal yet'))}</div>`;
  return `<fieldset style="margin-top:6px"><legend>Research · shadow auto (virtual $${2} stakes, no orders)</legend>
   <div class="muted" style="font-size:10px">Tape: ${Number(ev.stats?.legRows||0)} leg rows · ${Number(ev.stats?.scans||0)} scans · ${Number(ev.tracked||0)} legs awaiting settlement · ${Number(ev.stats?.resolved||0)} resolved · ${Number(ev.stats?.unknown||0)} unknown · RFQ markup ${mk.conservative?'assumed '+polyCents(mk.used)+' (no real quotes yet)':polyCents(mk.median)+' median of '+Number(mk.samples)}</div>
+  ${usResearchViz(ev)}
   <table class="table terminal"><thead><tr><th>Window</th><th>Settled</th><th>Open</th><th>Win</th><th>ROI</th><th>P/L</th><th>Last decision</th></tr></thead><tbody>${shRows||'<tr><td colspan=7>No shadow activity yet.</td></tr>'}</tbody></table>
   ${calRows?`<table class="table terminal" style="margin-top:4px"><thead><tr><th>Window</th><th>Sport</th><th>Price</th><th>Legs</th><th>Won vs implied</th><th>Edge after fee</th></tr></thead><tbody>${calRows}</tbody></table>`:'<div class="muted" style="font-size:10px">Calibration: no resolved legs yet.</div>'}
   ${labLine}</fieldset>`;

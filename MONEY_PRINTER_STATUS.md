@@ -4,7 +4,7 @@
 (`CURRENT_TASKS.md`, `KNOWN_BUGS.md`, `PROJECT_STATE.md`, `RELEASE_STATUS.md`) and in `reports/NEXT-STEPS-2026-09-25.md`.
 Don't re-inventory the repo. Update this file at the end of every batch.
 
-Last updated: 2026-09-26, batch 23 (Polymarket combo plan, batch 4 of 6: evidence capture, shadow auto, Lab module). Branch `feature/polymarket-combo-only`, version `0.5.0-alpha.57`.
+Last updated: 2026-09-26, batch 24 (live visuals: Polymarket, Robinhood, Pump.fun). Branch `feature/polymarket-combo-only`, version `0.5.0-alpha.57`.
 
 ## Architecture (inventoried once)
 
@@ -453,3 +453,15 @@ Plan (from bing): 1 connection truth, 2 page every live game, 3 strategy windows
 - Lab repo (`codex/lab-evidence-20260925`): new `polymarket-combo` worker module (`src/polymarketComboResearch.js`). It reads the outcomes and RFQ tapes, builds the calibration, and replays the shadow over resolved legs (10-min slots, distinct events, weighted rank). It grid-searches 3 windows × 4 price floors × 2/3 legs × 5 weight sets (120 trials) on the first 75% and re-scores the top 5 on the 25% holdout. It publishes a paper-only `lab-link/polymarket-combo-champion.json` once a config has 20 or more replayed combos (stage PROVISIONAL only if train and holdout ROI > 0). Default `MPO_LAB_MODULES` now includes it.
 - Live smoke (temp dir, 2026-09-26): one tick wrote 56 leg rows and 2 estimates, tracked 34 legs, and the shadow placed in LATE and ANY_LIVE (NEAR_END: 1 eligible leg). No evidence of positive EV yet; outcomes will accumulate once the collector runs in the installed app.
 - Tests: trader polymarket-us-evidence 9/0 (new), polymarket-us-combos 50/0 (RFQ log asserts added), visual-contract 21/0 (+1), research-collector 7/0, safety 5/0, lab* 35/0. Lab: polymarket-combo-research 6/0 (new), module-research 6/0, lab-supervision 3/0.
+
+## Batch 24 (2026-09-26): live visuals for Polymarket, Robinhood and Pump.fun (bing request)
+
+- `public/js/mpo-viz.js` (new, served by a `/js/` route that serves only `.js` from `public/js`, with traversal guard, no-store and nosniff). Panels emit `<canvas data-viz=key>` and call `MPOViz.set(key,type,data)`. One rAF loop (~30 fps) draws visible canvases. Eased state and particles are kept per key so motion survives the innerHTML re-renders. It skips hidden windows and background tabs, and prefers-reduced-motion drops it to ~2 fps with no jitter. Types: lanes, hist, lines, scatter, pulse (heartbeat trace), bubbles, funnel (with flowing particles), gauge (live needle), edge, ticker.
+- **Polymarket:** feed-scan heartbeat; "live games · how far along" lanes by sport on a game-progress axis with the strategy zone shaded (eligible dots pulse, outside-window amber, rejected grey, ticked legs ringed, scan sweep); side-price histogram against the floor. Research: evidence-tick heartbeat, shadow P/L curve per window (new `curve` in `shadowRecord`), and a won-vs-implied calibration scatter.
+- `sportsTiming.gameProgress(live)` (display only, never used to qualify) covers soccer, baseball, basketball/football, hockey, tennis/table tennis and esports. Board rows carry `progress`.
+- **Robinhood:** a new `live` part in the Paper and Why views with a quote/signal ticker, a sampling-loop heartbeat, and an edge meter (sparkline plus expected move vs required move per pair). Edited in `public/assets/robinhood-panel.js` and synced into the HTML.
+- **Pump.fun:** launch ticker, scan-cycle heartbeat, meme-market gauge, opportunity map (rug risk vs edge, bubble = liquidity, auto-scaled axes, open positions white and glowing) and entry funnel.
+- Default window heights: trade 520→690, robinhood 620→720. `LAYOUT_VERSION` is now `2026-09-26-alpha58-live-visuals` (resets saved window layouts once). Tests updated.
+- Verified in the isolated preview engine at 1440×900: all three panels render and animate, with no console errors.
+- Tests: full trader sweep `node --test tests/*.mjs tests/*.cjs` **595 pass / 0 fail**.
+- Next per plan: batch 5 (opt-in real AUTO COMBO; also fix the signed settlement shape bug from batch 23).

@@ -155,7 +155,7 @@ test('chrome stays opaque and the simplified alpha56 shell contract is pinned', 
   assert.match(css, /\.taskbar\s*\{[^}]*z-index:\s*100/);
   assert.match(css, /\.brand\s*\{[^}]*z-index:\s*6/);
   assert.match(css, /\.boot\s*\{[^}]*background:\s*#008080/);
-  assert.match(html, /LAYOUT_VERSION='2026-09-26-alpha56-clean-shell'/);
+  assert.match(html, /LAYOUT_VERSION='2026-09-26-alpha58-live-visuals'/);
   assert.match(html, /\['trade','Pump\.fun'/);assert.match(html, /\['robinhood','Robinhood'/);assert.match(html, /\['researchmon','Lab Monitor','LAB','dark','trade'/);
   assert.doesNotMatch(html, /<div class="menu" title="Menus are not wired">/);
   assert.doesNotMatch(html, /mpo-surface-(dark|light)[\s\S]{0,80}poly-strip|poly-strip[\s\S]{0,80}mpo-surface/);
@@ -303,4 +303,22 @@ test('Polymarket panel shows shadow record, calibration and a one-click Lab appl
   assert.match(html, /\/api\/polymarket-us\/evidence/);
   assert.match(dashJs, /\/api\/polymarket-us\/combos\/apply-lab/);
   assert.match(dashJs, /setUSComboSettings\(p\.params\)/);
+});
+
+test('live visuals: one animation engine, served read-only from /js, used by Polymarket, Robinhood and Pump.fun', () => {
+  const viz = read('public/js/mpo-viz.js');
+  const frames = [];
+  const win = { matchMedia: () => ({ matches: false }), devicePixelRatio: 1 };
+  const sandbox = { window: win, document: { hidden: false, querySelectorAll: () => [] }, performance: { now: () => 0 }, requestAnimationFrame: f => frames.push(f), console };
+  vm.runInNewContext(viz, sandbox, { filename: 'mpo-viz.js' });
+  assert.deepEqual([...win.MPOViz.types].sort(), ['bubbles', 'edge', 'funnel', 'gauge', 'hist', 'lanes', 'lines', 'pulse', 'scatter', 'ticker']);
+  assert.match(win.MPOViz.canvas('k', 50, '<t>'), /data-viz="k"[^>]*height:50px/);
+  assert.doesNotMatch(win.MPOViz.canvas('k', 50, '<t>'), /<t>/, 'titles are escaped');
+  assert.equal(JSON.stringify(win.MPOViz.beat('b', 5)), '[5]'); assert.equal(JSON.stringify(win.MPOViz.beat('b', 5)), '[5]', 'same beat not repeated');
+  assert.equal(frames.length, 1, 'a single rAF loop');
+  assert.match(viz, /document\.hidden/); assert.match(viz, /prefers-reduced-motion/);
+  assert.match(html, /<script src="\/js\/mpo-viz\.js"><\/script>/);
+  assert.match(dashJs, /u\.pathname\.startsWith\('\/js\/'\)/);
+  assert.match(dashJs, /path\.extname\(file\)\.toLowerCase\(\) !== '\.js'/);
+  for (const key of ['pm-lanes', 'pm-hist', 'pm-pulse', 'pm-shadow', 'pm-cal', 'rh-edge', 'rh-ticker', 'rh-pulse', 'pf-map', 'pf-meme', 'pf-funnel', 'pf-ticker', 'pf-pulse']) assert.ok(html.includes(`MPOViz.set('${key}'`), key);
 });

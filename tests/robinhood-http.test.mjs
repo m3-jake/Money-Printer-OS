@@ -78,7 +78,7 @@ test('invalid JSON and unknown routes fail cleanly; missing Robinhood keys still
 test('panel ships inline, preserves desktop layout, posts real routes only with typed phrases',async()=>{
  const html=await (await fetch(base+'/')).text();const panel=fs.readFileSync(new URL('../public/assets/robinhood-panel.js',import.meta.url),'utf8');
  const embedded=html.split('// BEGIN ROBINHOOD PAPER PANEL\n')[1].split('// END ROBINHOOD PAPER PANEL')[0];assert.equal(embedded.trim(),panel.trim());
- assert.match(html,/\['robinhood','Robinhood','RH','dark'\]/);assert.match(html,/DEFAULT_OPEN=\['trade','sportsbook','system'\]/);assert.match(html,/LAYOUT_VERSION='2026-09-26-alpha56-clean-shell'/);
+ assert.match(html,/\['robinhood','Robinhood','RH','dark'\]/);assert.match(html,/DEFAULT_OPEN=\['trade','sportsbook','system'\]/);assert.match(html,/LAYOUT_VERSION='2026-09-26-alpha58-live-visuals'/);
  for(const a of ['order','cancel','cancel-all','forget','arm','config','preview','reconcile','autopilot','autopilot/run','evolve/run','evolve/apply'])assert.ok(panel.includes("rhAction('"+a+"'"),a);assert.match(panel,/mpo-danger-fieldset/);assert.match(panel,/confirmation==='RESET PAPER'/);
  for(const phrase of ['PLACE REAL CRYPTO ORDER','CANCEL REAL CRYPTO ORDER','CANCEL REAL CRYPTO ORDERS','ENABLE REAL CRYPTO AUTOPILOT'])assert.doesNotMatch(panel,new RegExp('value="'+phrase+'"'),'phrases are never pre-filled');assert.doesNotMatch(panel,/localStorage|sessionStorage/);
  const code=html.slice(html.indexOf('<script>')+8,html.lastIndexOf('</script>'));assert.doesNotThrow(()=>new vm.Script(code));assert.doesNotThrow(()=>new vm.Script(panel));

@@ -382,6 +382,16 @@ export function startDashboard() {
         res.writeHead(200, {'content-type': types[ext] || 'application/octet-stream','cache-control':'public, max-age=3600','x-content-type-options':'nosniff'});
         return fs.createReadStream(file).pipe(res);
       }
+      if (req.method === 'GET' && u.pathname.startsWith('/js/')) {
+        const rel = decodeURIComponent(u.pathname.slice('/js/'.length));
+        const base = path.join(ROOT, 'public', 'js');
+        const file = path.resolve(base, rel);
+        if (!file.startsWith(path.resolve(base) + path.sep) || !fs.existsSync(file) || !fs.statSync(file).isFile() || path.extname(file).toLowerCase() !== '.js') {
+          res.writeHead(404); return res.end('not found');
+        }
+        res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
+        return fs.createReadStream(file).pipe(res);
+      }
       if (req.method === 'GET' && u.pathname.startsWith('/css/')) {
         const rel = decodeURIComponent(u.pathname.slice('/css/'.length));
         const base = path.join(ROOT, 'public', 'css');

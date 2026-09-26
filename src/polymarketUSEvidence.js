@@ -250,7 +250,8 @@ export function shadowRecord(state){
   const staked=settled.reduce((a,x)=>a+num(x.costUsd),0),pnl=settled.reduce((a,x)=>a+num(x.pnlUsd),0);
   out[w]={open:sh.open.length,settled:settled.length,won,lost:settled.length-won,voided:sh.history.filter(x=>x.status==='VOID').length,
    winRate:settled.length?r4(won/settled.length):null,pnlUsd:r2(pnl),stakedUsd:r2(staked),roi:staked>0?r4(pnl/staked):null,
-   lastDecision:(sh.decisions||[])[0]||null};
+   lastDecision:(sh.decisions||[])[0]||null,
+   curve:settled.slice(0,120).reverse().reduce((acc,x)=>{acc.push(r2((acc.at(-1)||0)+num(x.pnlUsd)));return acc},[])};
  }
  return out;
 }

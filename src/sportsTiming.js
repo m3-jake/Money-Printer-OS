@@ -141,3 +141,45 @@ export function windowEstimate(window='NEAR_END',m={},live={},{maxMinutesLeft=TU
  if(near.etaMinutes>maxMinutesLeft)return {...base,ok:false,etaMinutes:near.etaMinutes,reason:'turnover-window'};
  return {...base,ok:true,etaMinutes:near.etaMinutes,reason:near.reason};
 }
+
+// Rough share of the game already played (0..1), for display only. Never used to qualify a leg.
+export function gameProgress(live={}){
+ const sport=String(live.sport||'');
+ const period=String(live.period||'').trim().toUpperCase();
+ const clock=clockMinutes(live.elapsed);
+ const n=Number(period.match(/\d+/)?.[0]);
+ const cap=x=>Number.isFinite(x)?clamp(x,0,0.99):null;
+ if(live.ended||/^(FT|FINAL)/.test(period))return 1;
+ switch(sport){
+  case 'soccer':
+   if(clock!=null)return cap(clock/95);
+   return /^(2H|H2)/.test(period)?0.75:/^HT/.test(period)?0.5:/^(1H|H1)/.test(period)?0.25:null;
+  case 'baseball':{
+   if(!n)return null;
+   const half=/^TOP/.test(period)?0.25:/^(BOT|BOTTOM)/.test(period)?0.75:0.5;
+   return cap((n-1+half)/9);
+  }
+  case 'basketball':case 'football':{
+   const len=sport==='football'?15:(/\bncaa|ncaab|cbb/.test(String(live.leagueAbbreviation||''))?20:12);
+   if(/^(OT|SO)|OVERTIME/.test(period))return 0.97;
+   if(/^(1H|H1|2H|H2)/.test(period)){const h=/^(2H|H2)/.test(period)?2:1;return cap((h-1+(clock!=null?1-clamp(clock/20,0,1):0.5))/2)}
+   if(n>=1&&n<=4)return cap((n-1+(clock!=null?1-clamp(clock/len,0,1):0.5))/4);
+   return null;
+  }
+  case 'hockey':
+   if(/^(OT|SO)|OVERTIME/.test(period))return 0.97;
+   if(n>=1&&n<=3)return cap((n-1+(clock!=null?1-clamp(clock/20,0,1):0.5))/3);
+   return null;
+  case 'tennis':case 'table-tennis':{
+   const pairs=[...String(live.score||'').matchAll(/(\d{1,2})\s*[-:]\s*(\d{1,2})/g)].map(x=>[Number(x[1]),Number(x[2])]);
+   if(!pairs.length)return null;
+   const bestOf=Number(String(live.leagueAbbreviation||'').match(/BO([357])/)?.[1])||(sport==='table-tennis'?5:3);
+   const cur=pairs.at(-1),per=sport==='table-tennis'?11:6;
+   const expectedSets=bestOf===5?4:bestOf===7?5.5:2.5;
+   return cap((pairs.length-1+clamp(Math.max(cur[0],cur[1])/per,0,1)*0.9)/expectedSets);
+  }
+  case 'esports':
+   return n?cap((n-0.5)/3):null;
+  default:return null;
+ }
+}

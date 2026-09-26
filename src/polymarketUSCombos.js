@@ -7,7 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as ed25519 from '@noble/ed25519';
 import { appendNdjson } from './researchCollector.js';
-import { lateGameEstimate, windowEstimate, STRATEGY_WINDOWS, WINDOW_RULES, TURNOVER_TARGET_MINUTES } from './sportsTiming.js';
+import { lateGameEstimate, windowEstimate, gameProgress, STRATEGY_WINDOWS, WINDOW_RULES, TURNOVER_TARGET_MINUTES } from './sportsTiming.js';
 import { usReadiness, noteUSAuthResult } from './polymarketUS.js';
 import { mapLimit } from './utils.js';
 import { renameSyncWithRetry } from './atomicRename.js';
@@ -300,7 +300,8 @@ export function usCandidatesFromEvents(events=[],now=Date.now(),settings=usCombo
   const title=String(event.title||eventSlug);
   const la=String(live.leagueAbbreviation||'');
   const lg=(live.sport==='tennis'||live.sport==='table-tennis'?la.replace(/^table tennis/,'table-tennis').replace(/\s*BO\d$/,'').replace(/\s+/g,' ').trim():la.split(' ')[0])||live.sport;
-  const meta={eventSlug,event:title,sport:live.sport,league:lg,liveState:{period:live.rawPeriod,elapsed:live.rawElapsed,score:live.rawScore},comboEnabled:false,reason:null};
+  const progress=gameProgress(live);
+  const meta={eventSlug,event:title,sport:live.sport,league:lg,progress,liveState:{period:live.rawPeriod,elapsed:live.rawElapsed,score:live.rawScore},comboEnabled:false,reason:null};
   eventMeta.set(eventSlug,meta);
   const skip=r=>{if(!meta.reason)meta.reason=r;return reject(r)};
   for(const market of event.markets||[]){
@@ -336,7 +337,7 @@ export function usCandidatesFromEvents(events=[],now=Date.now(),settings=usCombo
    const eta=late.etaMinutes;
    const {rank,parts:rankParts}=rankBreakdown({nearEndScore:late.nearEndScore,price,liquidity,liquidityKnown,etaMinutes:eta,priorityBonus:late.priorityBonus,spread},settings.rankWeights);
    const row={key:`${market.slug}|${side}`,symbol:String(market.slug||''),side,
-    eventSlug,event:title,league:lg,sport:live.sport,marketType:type,
+    eventSlug,event:title,league:lg,sport:live.sport,progress,marketType:type,
     question:String(market.question||''),outcome:outcomeLabel(market,side==='SIDE_BUY'),
     price:r4(price),bid:r4(bid),ask:r4(ask),spread,spreadLimit,liquidity,liquidityKnown,
     liveState:{period:live.rawPeriod,elapsed:live.rawElapsed,score:live.rawScore},
