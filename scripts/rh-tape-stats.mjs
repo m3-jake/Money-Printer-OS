@@ -16,7 +16,7 @@ const pct = v => v === null ? null : round(v * 100, 3);
 // Pure: rows are [{t,bid,ask,mid,src}] oldest first. `stride` evaluates the volatility gate every Nth sample.
 export function tapeStats(rows, { params = STRATEGY_DEFAULTS, feeRatio = 0.0085, stride = 20, window = 720 } = {}) {
   const p = normalizeParams(params), sources = {}, spreads = [];
-  for (const r of rows) { sources[r.src || 'unknown'] = (sources[r.src || 'unknown'] || 0) + 1; spreads.push((r.ask - r.bid) / ((r.ask + r.bid) / 2) * 1e4); }
+  for (const r of rows) { sources[r.src || 'unknown'] = (sources[r.src || 'unknown'] || 0) + 1; if (r.src !== 'coinbase-candles') spreads.push((r.ask - r.bid) / ((r.ask + r.bid) / 2) * 1e4); } // candle rows carry no book
   let checked = 0, clears = 0; const costs = [], moves = [];
   for (let i = p.warmupSamples; i < rows.length; i += stride) {
     const f = computeFeatures(rows.slice(Math.max(0, i + 1 - window), i + 1), p, rows[i].t);

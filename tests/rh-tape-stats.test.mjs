@@ -41,3 +41,9 @@ test('CLI prints one line per symbol from a data dir and never writes to it', ()
     assert.equal(fs.readdirSync(dir).map(f => f + ':' + fs.statSync(path.join(dir, f)).size).join(), before);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+test('stats: warm-start candle rows count as a source but never drag the spread quantiles to zero', () => {
+  const rows = walk(400, 0.00002).concat(walk(1600, 0.00002, 'coinbase-candles').map((r, i) => ({ ...r, t: t0 + (400 + i) * STEP, bid: r.mid, ask: r.mid })));
+  const s = tapeStats(rows);
+  assert.deepEqual(s.sources, { robinhood: 400, 'coinbase-candles': 1600 });
+  assert.ok(Math.abs(s.spreadBps.p50 - 10) < 0.01 && Math.abs(s.spreadBps.p90 - 10) < 0.01, JSON.stringify(s.spreadBps));
+});
