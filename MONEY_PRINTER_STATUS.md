@@ -337,3 +337,13 @@ Batches 11–14 are built. The Evolution Lab is retired, so nothing waits on it.
 3. **bing:** run the Robinhood paper loop continuously with read-only credentials, so the tape is Robinhood's own quotes. Done when `npm run rh-tape-stats` shows at least 7 days of `robinhood` rows.
 4. After 7 days, record the verdict here: can the strategy trade at all at Robinhood's costs (vol gate open %, trades per day)? Only then consider `ROBINHOOD_EVOLVE_ENABLED=true`.
 5. (done in batch 15) `state.research` split.
+
+## Install record (2026-09-26, 01:43 local)
+
+- **Installed build:** `Windows-e2f2219-20260926\app.asar` (sha256 `6943aef5…`, 30,287,707 bytes). bing ran the copy command; Claude launched and verified.
+- **Verified live:**
+  - `/api/health` returned 200 `HEALTHY` within 5 s.
+  - `state.json` 1.9 MB plus `research-state.json` 4.9 MB (the batch 15 split is active).
+  - `labLink.source: disabled`.
+  - Children: `index.js`, `networkMesh.js`, `researchCollector.js`. No alpha worker.
+- **Rollback caveat:** `resources\app.asar.cd667a0-backup-20260926` holds the *new* build (the command ran twice). The real previous build is `Desktop\Money Printer OS\Windows-cd667a0-20260926\app.asar` (`a524f7b8…`).
