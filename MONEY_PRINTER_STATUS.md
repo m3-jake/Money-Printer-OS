@@ -4,14 +4,14 @@
 (`CURRENT_TASKS.md`, `KNOWN_BUGS.md`, `PROJECT_STATE.md`, `RELEASE_STATUS.md`) and in `reports/NEXT-STEPS-2026-09-25.md`.
 Don't re-inventory the repo. Update this file at the end of every batch.
 
-Last updated: 2026-09-26, batch 9. Branch `feature/polymarket-combo-only`, version `0.5.0-alpha.56`.
+Last updated: 2026-09-26, batch 10. Branch `feature/polymarket-combo-only`, version `0.5.0-alpha.56`.
 
 ## Architecture (inventoried once)
 
 - **Desktop shell:** `desktop/main.cjs` (Electron). It supervises child processes (engine `src/index.js`, `src/networkMesh.js`, and optionally `src/researchCollector.js`) and restarts them with backoff. Research services policy: `desktop/research-supervision.cjs` (`MPO_RESEARCH_COLLECTOR`, default on).
 - **Engine / HUD:** `src/index.js` (Solana meme paper engine; has a realpath main-guard at `:702`, exports only `main`), `src/dashboard.js` (HTTP API + `public/dashboard.html`).
 - **Books:** `src/store.js` holds paper state and its accounting invariants. Atomic writes go through `src/atomicRename.js`.
-- **Polymarket:** `src/polymarket.js` (global, paper), `src/polymarketUS.js` and `src/polymarketUSCombos.js` (US and RFQ; auth currently fails with `keyNotFound`).
+- **Polymarket:** one live-combo panel over `src/polymarketUSCombos.js` (see `docs/POLYMARKET-COMBOS.md`). `src/polymarketUS.js` serves only credentials and the session arm. `src/polymarket.js` (paper) is detached from the dashboard and kept for the collector and tests. Auth currently fails with `keyNotFound`.
 - **Robinhood (this branch):** `src/robinhood*.js`, paper only. Real execution isn't installed. See `docs/ROBINHOOD-AUTO-TRADER.md` and `docs/ROBINHOOD-RECOVERY-2026-09-25.md`.
 - **Research/evidence:** `src/researchCollector.js` writes the tape to `<data>/research-evidence/raw/*.ndjson`. Around it sit `researchEvidenceGate/Store`, `researchControlPlane` and `polymarketResearchEval`. The gate is intentionally not wired into the live app.
 - **Evolution Lab** (BEAST/GPU furnace) lives in a separate repo, `money-printer-evolution-lab`. Codex was working there as of 2026-09-25. Don't touch it from here.
@@ -199,9 +199,25 @@ Last updated: 2026-09-26, batch 9. Branch `feature/polymarket-combo-only`, versi
   - Fixed along the way: `.mpo-dialog .msg > div {flex:1}` stretched the dialog icon, so the icon is now a `<span>` and the quote text uses `<strong>`.
 - Next: step 8 (docs).
 
+## Batch 10 (2026-09-26): combo renovation step 8, docs, then a local build and install
+
+- Docs:
+  - `.env.example` has a Polymarket US combos section.
+  - New `docs/POLYMARKET-COMBOS.md`, modeled on the Robinhood doc.
+  - `KNOWN_BUGS` product items 2 and 3 updated: the preflight 401 is recorded, and the stale autopilot references are removed.
+- Renovation steps 1-5, 7 and 8 are committed. Step 6 (singles fallback) is not built: it waits for an observed 403.
+- A shell-quoting slip while editing this ledger ran `polymarket-us-preflight.mjs --probe-combo` once (04:43 UTC).
+  - Only the signed read `GET /v1/orders/open` went out, and it got 401 again. The script's gate skipped the combo POST.
+  - The accidental report was deleted.
+- bing asked to build and launch on this Windows machine. The build and install record follows below.
+
 ## Next recommended batch (priority order)
 
-0. Combo renovation step 8: docs (`.env.example`, `docs/POLYMARKET-COMBOS.md`, KNOWN_BUGS, this ledger), then bing builds/installs and runs the owner check with a regenerated key.
+0. **bing:**
+   - Regenerate the Polymarket US key and paste it into the window's key form.
+   - Run `node scripts/polymarket-us-preflight.mjs --probe-combo` during live games.
+   - Do the owner check in `docs/POLYMARKET-COMBOS.md` section 11.
+   - If the preflight reports 403, the singles fallback (step 6) is next.
 
 1. **bing:** run the two merge commands (batch 2), then say whether to push. Schedule `npm run collector -- --data "%APPDATA%\Money Printer OS\data"` at logon, and disable `MoneyPrinterReplayWorkhorse`.
 2. Re-run the Lab's three Polymarket sandbox searches with the committed fee model (report section 2.3: `node scripts/polymarket-research.mjs --mode search ...` in the Lab repo, read-only against `W:/mpo-polymarket-research`). Record the verdict here.
