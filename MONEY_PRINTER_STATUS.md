@@ -1041,3 +1041,8 @@ Worked in a separate worktree, `W:\mpo-claude`, on branch `claude/planned`. Code
 - **Live (2026-09-26, keyless):** jobs report Oct 2 (unemployment 4.07%, payrolls +95.9k implied), CPI Oct 14 (MoM 0.506%, core 0.176%, YoY 3.574%), Fed Oct 28 (upper bound 4.05%), GDP Oct 30 (3.67%). Claims and retail had no two-sided ladder open.
 - Tests: 3 new (vintage as-of, ET end-of-day across DST, transforms, CSV, ladder, per-indicator failure isolation). `market-core` 42.
 - **Polish noted:** with 12 desktop icons the column runs past the bottom at 720 px (System is cut off). Phase 7.
+
+### Install record (2026-09-26, 17:26 local): main `08b2d75` on Windows
+- `Windows-08b2d75-20260926\app.asar`, release `0.5.0-alpha.60+windows.08b2d75`, sha256 `c584b8c0…d37a`; `smoke:windows` passed. It replaced the other session's local merge build `793c736`; backup `resources\app.asar.pre-08b2d75-backup-20260926-172552`.
+- Live on 8792: paper, HEALTHY, holder RPC OK, 10 paper positions, Journal 275 entries (167 after 09-22, newest "…08b2d75 started"), `/api/fitness`, `/api/scoreboard`, `/api/self-report/latest` and `/api/platform/status` all 200.
+- Still owner-only: Evolution Lab install from Lab `master` `2ee5e46` plus start; the MacBook (`bash scripts/mac-install-latest.sh`); `release:cut` for the GitHub auto-update channel.
