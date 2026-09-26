@@ -10,10 +10,13 @@ import { arbitrageQuote,walkBook } from './contracts.js';
 import { decimal,finite,fingerprint,stableId,units } from './model.js';
 import { appendProjectJournal } from '../projectJournal.js';
 import { activateExecutionBoundary } from './executionBoundary.js';
+import { StrategyRegistry } from './strategies.js';
+import { legacyCoverage } from './legacyBooks.js';
+import { syncLabChampions } from './labSync.js';
 
 export class MarketPlatform {
   constructor({file=':memory:',dataDir=null,providers=null}={}){
-    this.store=new CoreDatabase(file);this.ledger=new UnifiedLedger(this.store);this.bus=new MarketEventBus();this.risk=new RiskGovernor(this.store,this.ledger,this.bus);
+    this.store=new CoreDatabase(file);this.ledger=new UnifiedLedger(this.store);this.bus=new MarketEventBus();this.risk=new RiskGovernor(this.store,this.ledger,this.bus);this.strategies=new StrategyRegistry(this.store);this.legacyReaders={};this.dataDir=dataDir;
     this.providers=providers||new ProviderRegistry();if(!providers){this.providers.register(new KalshiProvider());this.providers.register(new PolymarketProvider());}
     this.journalError=null;
     if(dataDir)this.bus.on('RISK_STATE_CHANGED',event=>{
@@ -23,9 +26,9 @@ export class MarketPlatform {
   }
   snapshot(){
     return {at:Date.now(),risk:this.risk.state(),providers:this.providers.status(),database:this.store.health(),eventBus:this.bus.snapshot(),journalError:this.journalError,
-      portfolio:this.ledger.portfolio(),livePortfolio:this.ledger.portfolio('LIVE'),ledger:this.ledger.entries(),events:this.store.events(),
+      strategies:this.strategies.list(),legacy:legacyCoverage(this.legacyReaders),labSync:this.labSync||null,portfolio:this.ledger.portfolio(),livePortfolio:this.ledger.portfolio('LIVE'),ledger:this.ledger.entries(),events:this.store.events(),
       watchlist:this.store.db.prepare('SELECT * FROM watchlist ORDER BY added_at DESC').all(),proposals:this.store.db.prepare('SELECT * FROM proposals ORDER BY created_at DESC LIMIT 100').all().map(r=>({...r,payload:JSON.parse(r.payload),decision:JSON.parse(r.decision)})),
-      coverage:{legacyBooks:'NOT_MIGRATED',liveAccounts:'NOT_RECONCILED',riskValuation:'PAPER_COST_BASIS_AND_REALIZED_LOSS',note:'Core accounts are reconstructed from this ledger only. Existing Solana, Robinhood, and US Combo books remain in their original programs and are not included in these totals.'}};
+      coverage:{legacyBooks:'READ_ONLY_VIEW_NOT_IN_LEDGER',liveAccounts:'NOT_RECONCILED',riskValuation:'PAPER_COST_BASIS_AND_REALIZED_LOSS',note:'Core accounts are reconstructed from this ledger only. Existing Solana, Robinhood, and US Combo books remain in their original programs; they are shown read-only under Legacy books and are not included in these totals.'}};
   }
   async markets(venue,query={}){
     const result=await this.providers.get(venue).markets(query);
@@ -84,6 +87,19 @@ export class MarketPlatform {
     this.bus.publish(result.status==='FILLED'?'ORDER_FILLED':'ORDER_REJECTED',result);return result;
   }
   async compare({a,b,quantity=1}){const [left,right]=await Promise.all([this.book(a.venue,a.sourceId),this.book(b.venue,b.sourceId)]);return {a:left.contract,b:right.contract,...arbitrageQuote(left.contract.data,right.contract.data,left.book,right.book,{quantity:Number(quantity)})};}
+  transitionStrategy({id,to,reason,evidence=null}){
+    const r=this.strategies.transition(id,to,{reason,evidence});
+    if(this.dataDir)try{appendProjectJournal(path.join(this.dataDir,'project-journal.ndjson'),{kind:'strategy',title:`Strategy ${r.promoted?'promoted':'moved'}: ${r.name} → ${to}`,detail:reason,at:Date.now()});}catch{this.journalError='Could not append strategy milestone';}
+    return r;
+  }
+  // Mirrors Evolution Lab champions into the strategy registry through the common gate.
+  syncLab(labLinkDir=this.dataDir&&path.join(this.dataDir,'lab-link')){
+    if(!labLinkDir)return [];
+    const out=syncLabChampions(this.strategies,labLinkDir,{transition:(id,to,{reason,evidence})=>this.transitionStrategy({id,to,reason,evidence})});
+    this.labSync={at:Date.now(),results:out};return out;
+  }
+  // Sync, read-only accessors supplied by the host (dashboard). Keys: solana, robinhoodPractice, usCombos.
+  setLegacyReaders(readers={}){this.legacyReaders={...readers};}
   close(){this.store.close();}
 }
 let platform;

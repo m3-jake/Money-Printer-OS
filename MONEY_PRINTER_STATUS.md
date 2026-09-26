@@ -771,3 +771,74 @@ bing: "Codex got halfway through some work… finish it, push everything to main
 - **Pushed:** `origin/main` fast-forwarded `8ae2795 → 6b24708`; `feature/hud-declutter` pushed; local `main` fast-forwarded (it was a strict ancestor). GitHub renamed the repo, so `origin` now points at `https://github.com/m3-jake/Money-Printer-OS.git`. CI result not checked (no `gh` on this machine).
 - **Windows:** `npm run release:windows-asar` → `Desktop\Money Printer OS\Windows-6b24708-20260926\app.asar`, release `0.5.0-alpha.60+windows.6b24708`, sha256 `1af4d2e9e13d1ba34687ab1b1605a2656187b631065f6c4da021f4a5b01e017c`. `smoke:windows` on 18792 passed. The app wasn't running; backup `resources\app.asar.pre-6b24708-backup-20260926-144040` (that was the sunny build installed 13:19); new hash verified; launched. Live on 8792: paper, HEALTHY, holder RPC OK, `/api/platform/status` GREEN, practice loop IDLE with 2 fresh quotes, sunny assets served. Rollback: quit, copy the backup over `resources\app.asar`.
 - **Mac: not done from here.** No reachable session or SSH, `build-unified.mjs` must run on macOS arm64, and the updater only takes releases signed with bing's key. bing runs on the MacBook: clone/pull `main`, `npm ci`, `npm run release:unified`, then swap the `.app` per the build's `START-HERE.txt`. The MacBook is still alpha.53 (the ungated-champion hazard from the Lab audit) until then.
+
+## Batch M (2026-09-26): unification plan, Risk Governor hardening (Phase 1)
+
+bing pasted the full MPOS unification brief (35 sections, phases 0–7). Phase 0 and most of Phase 1 already exist from Codex's `src/core/` work (batch L), so this batch hardens it rather than rebuilding it.
+- **Bug fixed:** `evaluateRisk` applied the daily loss, drawdown and unknown-loss-state limits to SELLs too. Once the book hit its daily loss limit, it could not close losing positions. Loss limits now block new BUYs only. GLOBAL_HALT still blocks everything.
+- **Risk states:** the governor only ever reported GREEN or HALTED. `portfolioRiskState()` now derives GREEN / YELLOW (50% of a loss limit used) / RED (limit reached or loss state unknown) from the PAPER ledger. `state()` returns `stateReasons` and `metrics`. Command Center shows the state light in yellow/red plus the reasons.
+- **Tests:** 2 regression tests in `tests/market-core.test.mjs` (18 pass). `npm run test:all`: **700 pass, 0 fail**. No browser check this batch (small CSS/label change).
+
+### Next recommended (unification brief, in dependency order)
+1. ~~Strategy lifecycle~~ done in batch N.
+2. Phase 1: read-only import of legacy books (Solana, Robinhood practice, US combos) into the core ledger as `LEGACY` coverage, so Command Center totals stop excluding them.
+3. Phase 2: POLYMARKET.EXE consolidation (Markets / Live / Sports / Positions / History / Combo Engine), and decide on `polymarketPaperCombos.js`.
+4. Phase 2: contract-term extraction for Kalshi/Polymarket so ARBITRAGE.EXE can reach STRONG/EXACT for real pairs (today every pair lacks verified terms).
+
+## Batch N (2026-09-26): strategy registry and lifecycle (Phase 1 / Phase 6 foundation)
+
+- **New `src/core/strategies.js`:** the `strategies` table holds the common metadata (id, name, version, markets, params, allocation, state, execution mode, evidence). `strategy_transitions` is append-only, enforced by UPDATE and DELETE triggers. States are DRAFT / BACKTESTING / PAPER / CANDIDATE / LIVE / PAUSED / RETIRED, with explicit allowed edges. RETIRED is terminal.
+- **Promotion gate (`promotionCheck`):** moving to PAPER or CANDIDATE needs all of these: sample size, fees and slippage modeled, out-of-sample net profit after costs, max drawdown, and share of positive walk-forward folds. CANDIDATE also needs Brier calibration for probabilistic strategies. Missing values fail closed. LIVE is refused outright, in line with the no-real-money policy.
+- **Lab mapping:** `labChampionLifecycle()` reads a Lab champion's INCUBATOR/SHADOW/PAPER/LIVE state as DRAFT/BACKTESTING/PAPER/PAPER. It is a read-only mapping and does not change the Lab's own lifecycle. Syncing Lab champions into the registry isn't wired yet.
+- **API and UI:** `GET /api/platform/strategies`, `GET /api/platform/strategies/history?id=`, `POST /api/platform/strategies/register` and `POST /api/platform/strategies/transition`. Transitions write a project-journal milestone. Command Center has a Strategies table.
+- **Tests:** 2 new tests in `market-core` (20 pass). `npm run test:all`: **703 pass, 0 fail**. Browser check on an isolated engine (`engine-core`, :8851): register → BACKTESTING worked; PAPER without evidence was refused with all five blockers named; the table rendered.
+
+### Next recommended
+1. ~~Legacy books~~ done in batch O (as a read-only view, not ledger rows).
+2. Sync Lab champions (`lab-link/modules/*-champion.json`) into the strategy registry, using `labChampionLifecycle` and the champions' walk-forward evidence.
+3. POLYMARKET.EXE consolidation; contract-term extraction for ARBITRAGE.EXE.
+
+## Batch O (2026-09-26): legacy books visible in Command Center (read-only)
+
+- **Decision:** the Solana, Robinhood practice and US combo books are shown **next to** the core ledger, not imported into it. None of them has a reconciled import, and copying them in would double-count them once one exists. Currencies are never converted: SOL stays SOL, and no SOL price is invented.
+- **New `src/core/legacyBooks.js`:** pure views (`solanaLegacy`, `robinhoodPracticeLegacy`, `usCombosLegacy`, `legacyTotals`, `legacyCoverage`). A missing value stays null ("unavailable"). A failing reader shows UNAVAILABLE with the reason instead of breaking the snapshot. US combos are labelled `LIVE_UNRECONCILED` and count unverified fills. Solana realized P/L covers only the retained history (last 1500 closes), and the table says so.
+- **Wiring:** `MarketPlatform.setLegacyReaders()`; the dashboard passes `loadStateCached`, `practiceSnapshot` and the new `usComboJournalView()` (a read-only journal copy with no feed or signed calls). `/api/platform/status` has `legacy`. Command Center has a Legacy books table.
+- **Tests:** 1 new test in `market-core` (21 pass). `npm run test:all`: **714 pass, 0 fail**. Browser check on the isolated engine (:8851): Solana 0.83 SOL cash / 3 open / -0.0146 SOL realized; Robinhood practice 500 USD; US combos cash "unavailable".
+
+### Next recommended
+1. ~~Lab champion sync~~ done in batch P.
+2. Polymarket consolidation (Markets / Live / Sports / Positions / History / Combo Engine), and decide on `polymarketPaperCombos.js`.
+3. Contract-term extraction for Kalshi and Polymarket, so ARBITRAGE.EXE can rate real pairs above RELATED.
+
+## Batch P (2026-09-26): no more ".EXE" names; Lab champions in the strategy registry
+
+- **bing: "lose the .exe on all of these. It looks bad."** The window, taskbar and desktop names are now Polymarket / Kalshi / Arbitrage (`public/dashboard.html` app registry). In-window headings are KALSHI / ARBITRAGE, and the Command Center buttons were renamed too. **Rule for new modules:** plain names, never NAME.EXE, even where the unification brief suggests them.
+- **New `src/core/labSync.js`:** five Lab champion files (`lab-link/champion.json` for Solana, plus `robinhood`, `robinhood-equities`, `polymarket` and `polymarket-combo` `-champion.json`) are mirrored into the registry as `lab-*` strategies.
+  - The Lab state maps through `labChampionLifecycle`. A Lab PAPER champion without `paperPromotionAllowed` targets BACKTESTING, and WITHDRAWN targets DRAFT.
+  - Moving up goes one step at a time through the **common** promotion gate, so a Lab PAPER champion stays at BACKTESTING with named blockers until the common criteria pass too. Demotions follow the Lab.
+  - PAUSED and RETIRED (user decisions) are never overridden. A new champion id records a version revision (`StrategyRegistry.revise`, which appends a history row).
+  - Records that claim live authority are ignored. The mapping uses only fields the Lab states explicitly; percent returns go to `outOfSampleNetPct` (the gate now accepts USD or pct), and `costsModeled` is true only if the Lab says fees or markup were modeled.
+- **Wiring:** the dashboard syncs on start and every 60 s (the timer is cleared on server close, so tests don't reopen SQLite). There is also `POST /api/platform/strategies/sync-lab`, and `labSync` is in `/api/platform/status`. The Command Center strategies table shows Lab state and gate blockers.
+- **Tests:** 1 new test in `market-core` (22 pass). `npm run test:all`: **730 pass, 0 fail**. Browser check (isolated engine; copied the installed app's Solana `champion.json`, which may be the stale MSIX copy): `lab-solana` BACKTESTING (Lab SHADOW), version = champion id; no ".EXE" anywhere on the page.
+- **Known gap:** the Solana champion record has no fold-share and no fee flag, and module champions have no fold-share. So no Lab champion can reach PAPER in the registry yet. That is intentional (fail closed). The fix belongs in the Lab: publish `positiveFoldShare` and `feesModeled`.
+
+## Batch Q (2026-09-26): Robinhood daily bars (trader side of Lab 0fa2673)
+
+- **Daily crypto paper book** (`src/robinhoodDailyBook.js`): a new book inside the Robinhood module, with a "Daily bars" HUD tab, `GET /api/robinhood/daily`, `POST daily/run` and `daily/reset` (typed `RESET DAILY`), and `snapshot.daily`.
+  - Data: Coinbase public daily candles, one request per symbol per closed UTC day.
+  - One decision per closed bar, persisted before any fill, so a restart never repeats it. Missed days are counted and never decided afterwards.
+  - Fills at the next open: a Robinhood quote if one arrives within 30 min of the open, otherwise the Coinbase open. Holds last as many days as the signal says.
+  - Costs: max(0.95%, account fee) per side plus 5 bps slippage. The signal code is the Lab's own, and a parity test checks it against the Lab replay.
+  - Paper only: the book imports no transport, signer or journal, and `liveEligible` is always false.
+- **Which strategy it runs:** `daily.proposal`, but only when `championPaperAllowed` clears it, it claims no live flags and its params are in bounds. Otherwise it runs the Lab default `trend` SMA200 with a 2% band, labelled "LAB DEFAULT DAILY FAMILY · NOT A QUALIFIED STRATEGY". **Gap:** the Lab publishes `daily.proposal` without `state`/`stateSchema`, so today it reads SHADOW and is never cleared. The Lab needs to add `state: 'PAPER'` when it passes.
+- **Qualification** (paper evidence only; it never unlocks live). All of these must hold inside a 365-day window, counting only trades under the current params:
+  - at least 10 closed round trips and at least 180 paper days;
+  - return above cash and above buy-and-hold (the same sleeves with the same costs);
+  - drawdown no deeper than buy-and-hold;
+  - profit factor at least 1.2.
+- **Lab pass-through:** `robinhoodEvolveView` passes `lab.daily` through (null otherwise), and the Evolution panel shows a daily-verdict line. `labModuleStatuses` includes `robinhood-equities`.
+- **Equities:**
+  - `robinhoodEquities.js` applies `lab-link/robinhood-equities-champion.json` only when `championPaperAllowed` clears it and all of these hold: strategy `tactical-a`, bounded params in range (never clamped), every other param equal to its default, and the trader's own hash. Otherwise the defaults run. `snapshot.strategy.lab` says which.
+  - Alpaca history now goes back 7 years (`ROBINHOOD_EQUITIES_LOOKBACK_DAYS`, minimum 6 years), and weekday bars from before the NYSE table are kept. A store from before this change refetches once. Before 2024, month-ends come from the data.
+  - A successful fetch also writes `lab-link/robinhood-equities-bars.json`. Lab parity still holds: its equities-research test passes 7/7 against this tree.
+- **Tests:** new `tests/robinhood-daily-book.test.mjs` (9) in `test:robinhood` and `tests/robinhood-equities-lab.test.mjs` (5) in `test:robinhood-equities`. Snapshot key pins now include `daily`. `npm run test:all`: **746 pass, 0 fail**.

@@ -9,11 +9,14 @@ import { CoreDatabase } from '../src/core/database.js';
 import { UnifiedLedger } from '../src/core/ledger.js';
 import { entity,stableId,units,decimal,availableHistory } from '../src/core/model.js';
 import { MarketEventBus } from '../src/core/eventBus.js';
-import { evaluateRisk,DEFAULT_LIMITS,validateLimits } from '../src/core/risk.js';
+import { evaluateRisk,DEFAULT_LIMITS,validateLimits,portfolioRiskState } from '../src/core/risk.js';
 import { compareContracts,arbitrageQuote } from '../src/core/contracts.js';
 import { normalizeKalshi,normalizeKalshiBook,normalizePolymarket,KalshiProvider } from '../src/core/predictionProviders.js';
 import { ProviderRegistry,JsonProvider } from '../src/core/provider.js';
 import { MarketPlatform } from '../src/core/platform.js';
+import { legacyCoverage,solanaLegacy,usCombosLegacy,legacyTotals } from '../src/core/legacyBooks.js';
+import { syncLabChampions,labEvidence,LAB_CHAMPION_SOURCES } from '../src/core/labSync.js';
+import { StrategyRegistry,promotionCheck,labChampionLifecycle } from '../src/core/strategies.js';
 import { assertGlobalTradingNotHalted } from '../src/core/executionBoundary.js';
 import { localMutationAllowed } from '../src/core/http.js';
 
@@ -67,6 +70,23 @@ test('governor checks every money limit, modes and stale/nonfinite inputs',()=>{
   const cases=[[{mode:'LIVE'}, {},'LIVE_NOT_AUTHORIZED'],[{mode:'live'}, {},'INVALID_MODE'],[{quoteAt:0},{},'STALE_QUOTE'],[{quoteAt:2000},{},'STALE_QUOTE'],[{quantity:NaN},{},'INVALID_QUANTITY'],[{feeUsd:null},{},'INVALID_FEEUSD'],[{slippageBps:101},{},'SLIPPAGE_LIMIT'],[{liquidityUsd:1},{},'INSUFFICIENT_LIQUIDITY'],[{quantity:100},{},'ORDER_LIMIT'],[{}, {cashUsd:0},'INSUFFICIENT_CASH'],[{}, {positionUsd:99},'MAXPOSITIONUSD'],[{}, {venueUsd:249},'MAXVENUEUSD'],[{}, {strategyUsd:149},'MAXSTRATEGYUSD'],[{}, {eventUsd:99},'MAXEVENTUSD'],[{}, {totalUsd:499},'MAXTOTALUSD'],[{}, {pendingCount:5},'CONCURRENT_ORDER_LIMIT'],[{}, {dailyPnlUsd:-25},'DAILY_LOSS_LIMIT'],[{}, {drawdownPct:20},'DRAWDOWN_LIMIT'],[{}, {halted:true},'GLOBAL_HALT'],[{side:'SELL',quantity:11},{},'OVERSELL']];
   for(const [o,c,reason] of cases)assert.ok(evaluateRisk({...order,...o},{...context,...c},{now:1000}).reasons.includes(reason),reason);
   assert.throws(()=>validateLimits({maxOrderUsd:NaN}));assert.throws(()=>validateLimits({maxConcurrentOrders:1.5}));
+});
+test('loss limits block new BUYs but never trap a risk-reducing SELL (regression)',()=>{
+  const sell={...order,side:'SELL',quantity:5};
+  for(const c of [{dailyPnlUsd:-30},{drawdownPct:50},{dailyPnlUsd:null}]){
+    assert.equal(evaluateRisk(sell,{...context,...c},{now:1000}).allowed,true,JSON.stringify(c));
+    assert.equal(evaluateRisk(order,{...context,...c},{now:1000}).allowed,false,JSON.stringify(c));
+  }
+  assert.ok(evaluateRisk(sell,{...context,halted:true},{now:1000}).reasons.includes('GLOBAL_HALT'));
+});
+test('book risk state is GREEN/YELLOW/RED from loss metrics; HALTED wins',()=>{
+  assert.equal(portfolioRiskState({dailyPnlUsd:0,drawdownPct:0}).state,'GREEN');
+  assert.equal(portfolioRiskState({dailyPnlUsd:-12.5,drawdownPct:0}).state,'YELLOW');
+  assert.equal(portfolioRiskState({dailyPnlUsd:0,drawdownPct:10}).state,'YELLOW');
+  assert.deepEqual(portfolioRiskState({dailyPnlUsd:-25,drawdownPct:0}).reasons,['DAILY_LOSS_LIMIT']);
+  assert.equal(portfolioRiskState({dailyPnlUsd:0,drawdownPct:20}).state,'RED');
+  assert.equal(portfolioRiskState({dailyPnlUsd:null,drawdownPct:0}).state,'RED');
+  assert.equal(portfolioRiskState({dailyPnlUsd:-100,drawdownPct:90},DEFAULT_LIMITS,true).state,'HALTED');
 });
 const terms={eventKey:'federal-decision',outcomeDefinition:'target upper bound <= 4%',expiresAt:10000,resolutionSource:'Federal Reserve official release',settlementRules:'Pays 1 if true',edgeCases:'No announcement: void',cancellationRules:'Return cost on cancellation',currency:'USD',payout:1,termsVerified:true};
 test('matching needs complete verified settlement terms, never just equal titles',()=>{
@@ -129,4 +149,74 @@ test('emergency stop persists across connections/processes and blocks a previous
 test('core mutations reject cross-origin browser requests and remote clients',()=>{
   const req={socket:{remoteAddress:'127.0.0.1'},headers:{host:'127.0.0.1:8897','content-type':'application/json',origin:'http://127.0.0.1:8897'}};
   assert.equal(localMutationAllowed(req),true);assert.equal(localMutationAllowed({...req,headers:{...req.headers,origin:'https://evil.example'}}),false);assert.equal(localMutationAllowed({...req,socket:{remoteAddress:'192.168.1.5'}}),false);assert.equal(localMutationAllowed({...req,headers:{host:'127.0.0.1:8897','content-type':'text/plain'}}),false);
+});
+
+const good={sampleSize:80,outOfSampleNetUsd:12,costsModeled:true,maxDrawdownPct:10,positiveFoldShare:.75,brier:.2};
+test('promotion needs every criterion; one strong metric is never enough',()=>{
+  assert.equal(promotionCheck('CANDIDATE',good,{probabilistic:true}).allowed,true);
+  assert.equal(promotionCheck('CANDIDATE',{outOfSampleNetUsd:1e6}).allowed,false);
+  for(const [k,v] of [['sampleSize',10],['outOfSampleNetUsd',0],['costsModeled',false],['maxDrawdownPct',40],['positiveFoldShare',.3],['brier',.4],['sampleSize',null]])
+    assert.equal(promotionCheck('CANDIDATE',{...good,[k]:v},{probabilistic:true}).allowed,false,k);
+  assert.equal(promotionCheck('PAUSED',{}).allowed,true);
+  assert.equal(labChampionLifecycle('LIVE'),'PAPER');assert.equal(labChampionLifecycle('bogus'),'BACKTESTING');
+});
+test('strategy lifecycle follows allowed edges, never reaches LIVE, and keeps append-only history',()=>{
+  const s=new CoreDatabase(':memory:'),r=new StrategyRegistry(s);
+  r.register({id:'tennis-fast',name:'Tennis fast settle',markets:['polymarket','kalshi'],allocationUsd:50,probabilistic:true});
+  assert.throws(()=>r.register({id:'tennis-fast',name:'dup'}),/already/);
+  assert.throws(()=>r.transition('tennis-fast','PAPER',{reason:'skip'}),/not allowed/);
+  r.transition('tennis-fast','BACKTESTING',{reason:'start'});
+  assert.throws(()=>r.transition('tennis-fast','PAPER',{reason:'no evidence'}),/SAMPLE_SIZE/);
+  r.transition('tennis-fast','PAPER',{reason:'walk-forward ok',evidence:good});
+  assert.equal(r.transition('tennis-fast','CANDIDATE',{reason:'paper ok'}).promoted,true);
+  assert.throws(()=>r.transition('tennis-fast','LIVE',{reason:'go'}),/unavailable/);
+  assert.equal(r.transition('tennis-fast','PAUSED',{reason:'drawdown'}).state,'PAUSED');
+  r.transition('tennis-fast','RETIRED',{reason:'done'});
+  assert.throws(()=>r.transition('tennis-fast','DRAFT',{reason:'revive'}),/not allowed/);
+  assert.deepEqual(r.history('tennis-fast').map(h=>h.to_state),['DRAFT','BACKTESTING','PAPER','CANDIDATE','PAUSED','RETIRED']);
+  assert.throws(()=>s.db.exec('DELETE FROM strategy_transitions'),/append-only/);
+  assert.throws(()=>s.db.exec("UPDATE strategy_transitions SET reason='x'"),/append-only/);
+  s.close();
+});
+
+test('legacy books are read-only, never converted, and unknowns stay unknown',()=>{
+  const sol=solanaLegacy({cashSol:1.5,paperStartSol:2,positions:[{sizeSol:.2,remainingSol:.1},{sizeSol:.3}],history:[{pnlSol:.05},{pnlSol:-.02}]});
+  assert.equal(sol.currency,'SOL');assert.equal(sol.openPositions,2);assert.ok(Math.abs(sol.openCost-.4)<1e-12);assert.ok(Math.abs(sol.realized-.03)<1e-12);
+  assert.equal(solanaLegacy({positions:[],history:[{pnlSol:null}]}).realized,null);
+  const us=usCombosLegacy({open:[{costUsd:5,fillVerified:true},{stakeUsd:3}],stats:{pnlUsd:-2}});
+  assert.equal(us.mode,'LIVE_UNRECONCILED');assert.equal(us.unverifiedFills,1);assert.equal(us.openCost,8);assert.equal(us.cash,null);
+  const cov=legacyCoverage({solana:()=>({cashSol:1,positions:[],history:[]}),robinhoodPractice:()=>{throw new Error('disk')},usCombos:()=>({open:[],stats:{pnlUsd:4}})});
+  assert.equal(cov.books[1].status,'UNAVAILABLE');assert.match(cov.books[1].reason,/disk/);
+  assert.deepEqual(cov.totals.map(t=>t.currency).sort(),['SOL','USD']);
+  assert.equal(legacyTotals([{currency:'USD',status:'LEGACY_READ_ONLY',openCost:null,realized:1}])[0].openCost,null);
+  const p=new MarketPlatform({providers:new ProviderRegistry()});
+  assert.equal(p.snapshot().legacy.books.every(b=>b.status==='UNAVAILABLE'),true);
+  p.setLegacyReaders({usCombos:()=>({open:[],stats:{pnlUsd:1}})});
+  const snap=p.snapshot();assert.equal(snap.legacy.books[2].realized,1);assert.equal(snap.ledger.length,0);p.close();
+});
+
+test('Lab champions mirror into the registry through the common gate, never past it',()=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'mpo-labsync-')),s=new CoreDatabase(':memory:'),r=new StrategyRegistry(s);
+  const write=(f,d)=>fs.writeFileSync(path.join(dir,f),JSON.stringify(d));
+  // Solana: Lab SHADOW -> BACKTESTING; evidence has no cost flag, so PAPER would be blocked anyway.
+  write('champion.json',{schema:'mpo.lab-champion.v1',labNodeId:'n',stateSchema:'mpo.champion-state.v1',state:'SHADOW',paperPromotionAllowed:false,champion:{id:'c1',variant:{a:1},metrics:{heldOutN:43,heldOutAvgPct:13.9,maxDrawdownPct:-79.6,consistencyPct:100}}});
+  // Robinhood: Lab PAPER with paper review, strong holdout evidence.
+  write('robinhood-champion.json',{schema:'mpo.lab-module-champion.v1',module:'robinhood',stateSchema:'mpo.champion-state.v1',state:'PAPER',paperPromotionAllowed:true,candidate:{id:'RH-1',params:{x:1},holdout:{trades:60,netReturnPct:3,maxDrawdownPct:-8}},evidence:{feesModeled:true}});
+  // A record claiming live authority is ignored entirely.
+  write('polymarket-champion.json',{schema:'mpo.lab-module-champion.v1',state:'PAPER',paperPromotionAllowed:true,liveActivationAllowed:true,candidate:{id:'bad'}});
+  let res=Object.fromEntries(syncLabChampions(r,dir).map(x=>[x.id,x]));
+  assert.equal(res['lab-solana'].state,'BACKTESTING');assert.equal(labEvidence(JSON.parse(fs.readFileSync(path.join(dir,'champion.json')))).maxDrawdownPct,79.6);
+  // Lab PAPER but no fold-stability evidence: the common gate holds it at BACKTESTING and says why.
+  assert.equal(res['lab-robinhood'].state,'BACKTESTING');assert.ok(res['lab-robinhood'].blockers.some(b=>b.startsWith('UNSTABLE_ACROSS_FOLDS')));
+  assert.equal(res['lab-polymarket'].present,false);assert.equal(r.get('lab-polymarket'),null);
+  // Lab withdraws the Solana champion: the registry demotes, and a new champion id is a new version.
+  write('champion.json',{schema:'mpo.lab-champion.v1',labNodeId:'n',stateSchema:'mpo.champion-state.v1',state:'INCUBATOR',qualificationStage:'WITHDRAWN',champion:{id:'c2',variant:{a:2},metrics:{}}});
+  res=Object.fromEntries(syncLabChampions(r,dir).map(x=>[x.id,x]));
+  assert.equal(res['lab-solana'].state,'DRAFT');assert.equal(r.get('lab-solana').version,'c2');
+  // A user pause is never overridden, and a second sync with nothing new is a no-op.
+  r.transition('lab-robinhood','PAUSED',{reason:'user'});const n=r.history('lab-robinhood').length;
+  res=Object.fromEntries(syncLabChampions(r,dir).map(x=>[x.id,x]));
+  assert.equal(res['lab-robinhood'].state,'PAUSED');assert.equal(r.history('lab-robinhood').length,n);
+  assert.equal(LAB_CHAMPION_SOURCES.every(x=>r.get(x.id)?.state!=='LIVE'),true);
+  s.close();fs.rmSync(dir,{recursive:true,force:true});
 });

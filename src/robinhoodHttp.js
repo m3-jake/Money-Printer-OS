@@ -4,6 +4,7 @@
 import * as RH from './robinhoodAutoTrader.js';
 import { creds } from './robinhoodTransport.js';
 import * as RP from './robinhoodPractice.js';
+import * as RD from './robinhoodDailyBook.js';
 import path from 'node:path';
 export { startRobinhoodLoops, stopRobinhoodLoops } from './robinhoodAutoTrader.js';
 export { startPracticeLoop, stopPracticeLoop } from './robinhoodPractice.js';
@@ -18,6 +19,7 @@ export async function handleRobinhoodRequest(req,res,u,{json,body}){
  if(req.method==='GET'){
   if(u.pathname==='/api/robinhood')return json(res,await RH.robinhoodSnapshot());
   if(u.pathname==='/api/robinhood/practice')return json(res,RP.practiceSnapshot({dataDir:path.dirname(RH.__testing.journalFile)}));
+  if(u.pathname==='/api/robinhood/daily')return json(res,RD.dailySnapshot({dataDir:path.dirname(RH.__testing.journalFile)}));
   if(u.pathname==='/api/robinhood/readiness')return json(res,RH.robinhoodReadiness());
   if(u.pathname==='/api/robinhood/evolve')return json(res,RH.robinhoodEvolveView());
   if(u.pathname==='/api/robinhood/chart'){try{return json(res,RH.robinhoodChart({symbol:u.searchParams.get('symbol')||undefined,range:u.searchParams.get('range')||'6h'}))}catch(e){return json(res,{ok:false,error:redact(e?.message||'chart failed'),code:e?.code||'unknown'},400)}}
@@ -50,6 +52,9 @@ export async function handleRobinhoodRequest(req,res,u,{json,body}){
   'practice/order':()=>RP.placePracticeOrder({dataDir:path.dirname(RH.__testing.journalFile),symbol:b.symbol,now:Date.now()}),
   'practice/close':()=>RP.closePracticeOrder({dataDir:path.dirname(RH.__testing.journalFile),id:String(b.id||''),now:Date.now()}),
   'practice/reset':()=>RP.resetPractice({dataDir:path.dirname(RH.__testing.journalFile),budgetUsd:b.budgetUsd,now:Date.now()}),
+  // Daily-bar paper book: run one pass now (still one decision per closed UTC bar) or reset after review. Paper only.
+  'daily/run':()=>RD.runDailyTick({dataDir:path.dirname(RH.__testing.journalFile),quoteFn:RH.robinhoodDailyQuote,feeFn:RH.robinhoodFeeRatio}),
+  'daily/reset':()=>RD.resetDailyBook({dataDir:path.dirname(RH.__testing.journalFile),confirmation:b.confirmation}),
   'evolve/run':()=>RH.runRobinhoodEvolveOnce({manual:true}),
   'evolve/apply':()=>RH.applyRobinhoodEvolution({paramsHash:str(b.paramsHash),by:'operator'})
  };

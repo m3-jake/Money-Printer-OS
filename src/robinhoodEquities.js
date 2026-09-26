@@ -2,12 +2,14 @@
 // Decide after a completed regular session (first moment the app runs after that close), fill at the first
 // regular open after the decision was saved (late=true if the PC was off past the intended open), exactly once.
 // Missed sessions are counted, never decided after the fact. Paper only; real equity orders are NOT wired.
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { lastCompletedSession, nextSession, nextOpenAfter, sessionFor, marketState, isSession, CALENDAR_SOURCE, CALENDAR_END } from './robinhoodEquitiesCalendar.js';
 import { refreshBars, readBarStore, dataStatus } from './robinhoodEquitiesData.js';
 import { STRATEGIES, DEFAULT_STRATEGY, normalizeParams, paramsHash, symbolsFor, targetWeights, replay } from './robinhoodEquitiesStrategy.js';
 import { loadBook, saveBook, fillPending, equityAt, cashUsd, settle, FEES, DEFAULTS } from './robinhoodEquitiesBook.js';
+import { championState, championPaperAllowed } from './championState.js';
 
 const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 export function equitiesDataDir(env=process.env){return path.resolve(env.MONEY_PRINTER_DATA_DIR||path.join(ROOT,'data'))}
@@ -20,6 +22,39 @@ export function equitiesReadiness(env=process.env){
   text:READINESS_TEXT};
 }
 
+// Evolution Lab champion for this lane (lab-link/robinhood-equities-champion.json, published by the Lab's
+// robinhood-equities worker). Applied only when championState clears it for paper, it claims no live authority,
+// it is for this strategy, every bounded param is inside the strategy's bounds (never clamped into range), every
+// other param equals the strategy default, and its params hash is the trader's own hash. Otherwise the defaults run.
+export function equitiesChampionFile(dataDir){return path.join(dataDir,'lab-link','robinhood-equities-champion.json')}
+const sameValue=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+export function equitiesLabChampion(dataDir,strategyId=DEFAULT_STRATEGY){
+ const no=(reason,extra={})=>({applied:false,reason,...extra});
+ let doc;try{doc=JSON.parse(fs.readFileSync(equitiesChampionFile(dataDir),'utf8'))}catch(e){return no(e?.code==='ENOENT'?'no Lab champion published':'Lab champion file unreadable')}
+ if(!doc||doc.schema!=='mpo.lab-module-champion.v1'||doc.module!=='robinhood-equities')return no('not a robinhood-equities Lab champion record');
+ const c=doc.candidate||{},base={id:c.id||null,paramsHash:c.paramsHash||null,state:championState(doc).state,publishedAt:doc.publishedAt||null};
+ if(doc.liveActivationAllowed===true||doc.automaticLivePromotionAllowed===true)return no('the record claims live authority; refused',base);
+ if(!championPaperAllowed(doc))return no(`Lab champion is ${base.state}${doc.paperPromotionAllowed===true?'':' without the paper-promotion flag'}, not cleared for paper`,base);
+ const s=STRATEGIES[strategyId];
+ if(!s||c.strategyId!==strategyId)return no(`champion is for ${String(c.strategyId)}, this book runs ${strategyId}`,base);
+ if(!c.params||typeof c.params!=='object'||Array.isArray(c.params))return no('champion has no params',base);
+ for(const [k,v] of Object.entries(c.params)){
+  if(Object.hasOwn(s.bounds,k)){const [lo,hi]=s.bounds[k];if(typeof v!=='number'||!Number.isFinite(v)||v<lo||v>hi)return no(`${k} ${JSON.stringify(v)} outside [${lo}, ${hi}]`,base);if(k==='topN'&&!Number.isInteger(v))return no('topN must be a whole number',base)}
+  else if(!Object.hasOwn(s.defaults,k))return no(`unknown param ${k}`,base);
+  else if(!sameValue(v,s.defaults[k]))return no(`${k} differs from the strategy default; only bounded params may change`,base);
+ }
+ const params=normalizeParams(strategyId,c.params),hash=paramsHash(strategyId,params);
+ if(c.paramsHash!==hash)return no(`params hash ${String(c.paramsHash)} does not match the trader's ${hash}`,base);
+ return {applied:true,reason:null,...base,params,paramsHash:hash};
+}
+// Params the book runs now: the cleared Lab champion, else the strategy defaults.
+export function equitiesStrategyParams(dataDir,strategyId=DEFAULT_STRATEGY){
+ const lab=equitiesLabChampion(dataDir,strategyId);
+ const params=lab.applied?lab.params:normalizeParams(strategyId,{});
+ const {params:_p,...labView}=lab;
+ return {params,hash:paramsHash(strategyId,params),lab:{...labView,source:lab.applied?'evolution-lab':'defaults'}};
+}
+
 let state={running:false,lastRunAt:null,lastError:null,busy:false};
 let timer=null;
 
@@ -27,7 +62,7 @@ function priceMaps(bars){const m={};for(const [s,rows] of Object.entries(bars||{
 
 export async function runEquitiesOnce({now=Date.now(),env=process.env,fetchImpl=globalThis.fetch,dataDir=equitiesDataDir(env),strategyId=env.ROBINHOOD_EQUITIES_STRATEGY||DEFAULT_STRATEGY}={}){
  if(!STRATEGIES[strategyId]||strategyId==='cash'||strategyId==='buy-hold')strategyId=DEFAULT_STRATEGY;
- const params=normalizeParams(strategyId,{});const hash=paramsHash(strategyId,params);const symbols=symbolsFor(strategyId,params);
+ const {params,hash}=equitiesStrategyParams(dataDir,strategyId);const symbols=symbolsFor(strategyId,params);
  const startUsd=Number(env.ROBINHOOD_EQUITIES_START_USD)>0?Number(env.ROBINHOOD_EQUITIES_START_USD):DEFAULTS.startUsd;
  const slippageBps=Number.isFinite(Number(env.ROBINHOOD_EQUITIES_SLIPPAGE_BPS))&&env.ROBINHOOD_EQUITIES_SLIPPAGE_BPS!==''?Math.max(0,Number(env.ROBINHOOD_EQUITIES_SLIPPAGE_BPS)):DEFAULTS.slippageBps;
  const {store}=await refreshBars(dataDir,symbols,{now,env,fetchImpl});
@@ -95,7 +130,7 @@ function baselines(store,strategyId,params,book){
 
 export function robinhoodEquitiesSnapshot({now=Date.now(),env=process.env,dataDir=equitiesDataDir(env)}={}){
  const strategyId=STRATEGIES[env.ROBINHOOD_EQUITIES_STRATEGY]&&!['cash','buy-hold'].includes(env.ROBINHOOD_EQUITIES_STRATEGY)?env.ROBINHOOD_EQUITIES_STRATEGY:DEFAULT_STRATEGY;
- const params=normalizeParams(strategyId,{});const symbols=symbolsFor(strategyId,params);
+ const {params,hash,lab}=equitiesStrategyParams(dataDir,strategyId);const symbols=symbolsFor(strategyId,params);
  const store=readBarStore(dataDir);const book=loadBook(dataDir,{strategyId});
  const m=marketState(now);const L=lastCompletedSession(now);
  const last=book.equityDaily.at(-1)||null;
@@ -110,7 +145,7 @@ export function robinhoodEquitiesSnapshot({now=Date.now(),env=process.env,dataDi
    recentFills:book.history.slice(-12),lastDecidedSession:book.lastDecidedSession,missedSessions:book.missedSessions,equityDaily:book.equityDaily.slice(-260),
    recoveryRequired:!!book.recoveryRequired,recoveryReason:book.recoveryReason||null,
    costs:{commissionUsd:FEES.commissionUsd,slippageBps:book.slippageBps,sellFees:FEES,settlement:'T+1 (cash account; buys use settled cash only)',longOnly:true,margin:false,fractional:'1e-6 shares, $1 minimum'}},
-  strategy:{id:strategyId,title:STRATEGIES[strategyId].title,params,paramsHash:paramsHash(strategyId,params),lastDecision:book.lastDecision||null},
+  strategy:{id:strategyId,title:STRATEGIES[strategyId].title,params,paramsHash:hash,lastDecision:book.lastDecision||null,lab},
   benchmark:{live:last?{buyHoldSpyUsd:last.benchUsd,buyHoldSpyReturnPct:pct(last.benchUsd,book.startUsd),cashUsd:last.cashUsd,cashReturnPct:0,since:book.bench?.startSession||null}:null,
    replay:baselines(store,strategyId,params,book)},
   loop:{running:state.running,lastRunAt:state.lastRunAt},

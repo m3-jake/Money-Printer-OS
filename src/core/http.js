@@ -15,6 +15,8 @@ export async function handlePlatformRequest(req,res,url,{json,body,platform=mark
       if(route==='/markets')return json(res,{ok:true,...await platform.markets(url.searchParams.get('venue')||'kalshi',{cursor:url.searchParams.get('cursor')||'',offset:Number(url.searchParams.get('cursor')||0)||0,series:url.searchParams.get('series')||'',eventTicker:url.searchParams.get('event')||''})});
       if(route==='/book')return json(res,{ok:true,...await platform.book(url.searchParams.get('venue'),url.searchParams.get('id'))});
       if(route==='/entities')return json(res,{ok:true,entities:platform.store.list({kind:url.searchParams.get('kind')||null,provider:url.searchParams.get('provider')||null})});
+      if(route==='/strategies')return json(res,{ok:true,strategies:platform.strategies.list()});
+      if(route==='/strategies/history')return json(res,{ok:true,history:platform.strategies.history(url.searchParams.get('id'))});
       if(route==='/relationships')return json(res,{ok:true,relationships:platform.store.relationships(url.searchParams.get('id'))});
     }
     if(req.method==='POST'){
@@ -27,6 +29,9 @@ export async function handlePlatformRequest(req,res,url,{json,body,platform=mark
       else if(route==='/paper/fund')result=platform.deposit(input);
       else if(route==='/orders/propose')result=await platform.propose(input);
       else if(route==='/orders/execute')result=platform.executePaper(input.id,input.confirmation);
+      else if(route==='/strategies/register')result=platform.strategies.register(input);
+      else if(route==='/strategies/sync-lab')result=platform.syncLab();
+      else if(route==='/strategies/transition')result=platform.transitionStrategy(input);
       else if(route==='/watchlist')result=platform.watch(input.id,input.on===true);
       else if(route==='/compare')result=await platform.compare(input);
       else return json(res,{ok:false,error:'Unknown platform action'},404);

@@ -6,7 +6,7 @@
 // baselines 'buy-hold' (100% SPY) and cash (0%).
 // Pure: targetWeights(bars, asOf) reads only rows with d <= asOf.
 import { createHash } from 'node:crypto';
-import { nextSession } from './robinhoodEquitiesCalendar.js';
+import { nextSession, inCalendar } from './robinhoodEquitiesCalendar.js';
 
 export const CASH='CASH';
 export const STRATEGIES={
@@ -67,14 +67,17 @@ export function targetWeights(id,params,bars,asOf){
  const inTrend=trendIn(tRows,p);
  if(inTrend===null)reasons.push(`trend sleeve needs ${p.smaDays} ${p.trendSymbol} bars (have ${tRows.length})`);
  else add(inTrend?p.trendSymbol:p.tbill,p.trendWeight);
- let rebalAt=null;for(let i=tRows.length-1;i>=0;i--){if(isLastOfMonth(tRows[i].d)){rebalAt=tRows[i].d;break}}
+ let rebalAt=null;for(let i=tRows.length-1;i>=0;i--){if(isLastOfMonth(tRows[i].d,tRows[i+1]?.d)){rebalAt=tRows[i].d;break}}
  const picks=rebalAt?rotationPicks(bars,rebalAt,p):null;
  if(!picks)reasons.push(`rotation sleeve needs ${p.momLookback+1} bars for every ETF and ${p.tbill}`);
  else for(const s of picks)add(s,(1-p.trendWeight)/p.topN);
  const ready=reasons.length===0;
  return {weights:ready?w:{},ready,reasons,detail:{trend:inTrend===null?null:(inTrend?'IN':'OUT'),sma:tRows.length>=p.smaDays?sma(tRows,p.smaDays,tRows.length-1):null,lastClose:tRows.at(-1)?.c??null,rotationAsOf:rebalAt,picks}};
 }
-function isLastOfMonth(d){const n=nextSession(d);return !!n&&n.slice(0,7)!==d.slice(0,7)}
+// Inside the NYSE table the calendar decides. Older history (before CALENDAR_START) has no holiday table, so the
+// next bar in the data decides, or the next weekday for the newest bar (the Lab's robinhood-equities replay does the same).
+function nextWeekday(d){const t=new Date(d+'T12:00:00Z');do t.setUTCDate(t.getUTCDate()+1);while([0,6].includes(t.getUTCDay()));return t.toISOString().slice(0,10)}
+function isLastOfMonth(d,nextInData){if(inCalendar(d)){const n=nextSession(d);return !!n&&n.slice(0,7)!==d.slice(0,7)}const n=nextInData||nextWeekday(d);return n.slice(0,7)!==d.slice(0,7)}
 
 // Pure replay: decide at each close, fill at the next session's open with slippage; cash earns 0.
 // Ignores T+1 settlement (the live book enforces it). Used for the baseline comparison panel.

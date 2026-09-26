@@ -10,6 +10,11 @@ import path from 'node:path';
 import { writeFileAtomicSync } from './atomicRename.js';
 import { etDate, isSession, lastCompletedSession, CALENDAR_START } from './robinhoodEquitiesCalendar.js';
 
+// History depth: at least 6 years, so the Lab's robinhood-equities lane can run its walk-forward and sealed holdout
+// (it needs about 5.5 years after warm-up). Default 7 years; ROBINHOOD_EQUITIES_LOOKBACK_DAYS may raise it, never below 6.
+export const MIN_LOOKBACK_DAYS=2192, DEFAULT_LOOKBACK_DAYS=2557;
+export function lookbackDaysFor(env=process.env){const n=Math.floor(Number(env?.ROBINHOOD_EQUITIES_LOOKBACK_DAYS));return Number.isFinite(n)&&n>0?Math.min(7300,Math.max(MIN_LOOKBACK_DAYS,n)):DEFAULT_LOOKBACK_DAYS}
+
 export const SYMBOL_RE=/^[A-Z]{1,5}(?:[.-][A-Z]{1,2})?$/;
 export function validSymbol(s){return typeof s==='string'&&SYMBOL_RE.test(s)}
 
@@ -50,11 +55,14 @@ export function providerFor(env=process.env){
  return PROVIDERS[id]||null;
 }
 
-// Keep only clean, completed-session rows: valid numbers, real NYSE session dates, no partial current-session bar.
+// Weekday dates older than the hand-copied holiday table: the provider's own rows are the session list there
+// (a provider never prints a bar for a closed market), so they are kept instead of dropped.
+export function preCalendarWeekday(d){return typeof d==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(d)&&d<CALENDAR_START&&![0,6].includes(new Date(d+'T12:00:00Z').getUTCDay())}
+// Keep only clean, completed-session rows: valid numbers, real NYSE session dates (or pre-calendar weekdays), no partial current-session bar.
 export function cleanBars(rows,{completedThrough}={}){
  const byDate=new Map();
  for(const b of rows||[]){
-  if(!b||typeof b.d!=='string'||!isSession(b.d))continue;
+  if(!b||typeof b.d!=='string'||!(isSession(b.d)||preCalendarWeekday(b.d)))continue;
   if(completedThrough&&b.d>completedThrough)continue;
   if(![b.o,b.h,b.l,b.c].every(x=>Number.isFinite(x)&&x>0))continue;
   byDate.set(b.d,{d:b.d,o:b.o,h:b.h,l:b.l,c:b.c,v:Number.isFinite(b.v)?b.v:0});
@@ -63,6 +71,13 @@ export function cleanBars(rows,{completedThrough}={}){
 }
 
 export function barsFile(dataDir){return path.join(dataDir,'robinhood-equities','bars.json')}
+// Hand-off copy for the Evolution Lab's robinhood-equities lane (it reads this before the trader's own store).
+export function labBarsFile(dataDir){return path.join(dataDir,'lab-link','robinhood-equities-bars.json')}
+export function writeLabBars(dataDir,store){
+ if(!store?.bars||!Object.keys(store.bars).length)return false;
+ writeJsonAtomic(labBarsFile(dataDir),{version:1,schema:'mpo.trader-equities-bars.v1',provider:store.provider,fetchedAt:store.fetchedAt,lastSession:store.lastSession,lookbackDays:store.lookbackDays||null,firstSession:store.bars.SPY?.[0]?.d||null,adjusted:'splits and dividends',robinhoodQuotes:false,bars:store.bars});
+ return true;
+}
 export function readBarStore(dataDir){
  try{const v=JSON.parse(fs.readFileSync(barsFile(dataDir),'utf8'));if(v&&v.version===1&&v.bars)return v}catch{}
  return {version:1,provider:null,fetchedAt:null,lastSession:null,bars:{},lastError:null,lastAttemptAt:null};
@@ -87,20 +102,22 @@ export function dataStatus(store,symbols,now=Date.now(),env=process.env){
 
 // Full refetch each refresh: adjusted history is rewritten by every split/dividend, so it is never treated as append-only.
 // Budget: at most one attempt per new completed session, retried no sooner than retryMs after an error.
-export async function refreshBars(dataDir,symbols,{now=Date.now(),env=process.env,fetchImpl=globalThis.fetch,lookbackDays=800,retryMs=15*60000,force=false}={}){
+export async function refreshBars(dataDir,symbols,{now=Date.now(),env=process.env,fetchImpl=globalThis.fetch,lookbackDays=lookbackDaysFor(env),retryMs=15*60000,force=false}={}){
  const store=readBarStore(dataDir);const p=providerFor(env);
  if(!p||!p.configured(env))return {store,fetched:false,reason:'NO_DATA'};
  const last=lastCompletedSession(now);if(!last)return {store,fetched:false,reason:'CALENDAR'};
- const upToDate=symbols.every(s=>store.bars?.[s]?.at(-1)?.d>=last)&&store.provider===p.id;
- if(!force&&upToDate)return {store,fetched:false,reason:'FRESH'};
+ // A store fetched with a shorter history window than asked is refetched once (the next attempt inside the budget).
+ const upToDate=symbols.every(s=>store.bars?.[s]?.at(-1)?.d>=last)&&store.provider===p.id&&(store.lookbackDays||0)>=lookbackDays;
+ if(!force&&upToDate){try{if(!fs.existsSync(labBarsFile(dataDir)))writeLabBars(dataDir,store)}catch{}return {store,fetched:false,reason:'FRESH'}}
  if(!force&&store.lastAttemptAt&&now-Date.parse(store.lastAttemptAt)<retryMs)return {store,fetched:false,reason:'BUDGET'};
- const startMs=Math.max(Date.parse(CALENDAR_START+'T00:00:00Z'),now-lookbackDays*86400000);
+ const startMs=now-lookbackDays*86400000;
  store.lastAttemptAt=new Date(now).toISOString();
  try{
   const raw=await p.fetchDailyBars(symbols.filter(validSymbol),{start:new Date(startMs).toISOString().slice(0,10),fetchImpl,env});
   const bars={};for(const s of symbols)bars[s]=cleanBars(raw[s],{completedThrough:last});
-  Object.assign(store,{provider:p.id,fetchedAt:new Date(now).toISOString(),lastSession:last,bars,lastError:null});
+  Object.assign(store,{provider:p.id,fetchedAt:new Date(now).toISOString(),lastSession:last,lookbackDays,bars,lastError:null});
   writeJsonAtomic(barsFile(dataDir),store);
+  try{writeLabBars(dataDir,store)}catch{}
   return {store,fetched:true,reason:'OK'};
  }catch(e){
   store.lastError={at:new Date(now).toISOString(),code:e?.code||'FETCH',message:String(e?.message||e).slice(0,200)};

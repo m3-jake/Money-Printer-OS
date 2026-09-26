@@ -7,6 +7,7 @@ import { solanaBookView } from './solanaEconomics.js';
 import { traderSwitches } from './killSwitches.js';
 import { robinhoodReadiness } from './robinhoodAutoTrader.js';
 import { holderRpcHealth } from './rpc.js';
+import { walletScorecardView } from './walletScorecard.js';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -22,12 +23,14 @@ import { runSelfReport, latestSelfReport } from './selfReport.js';
 import { saveResourcePolicy, resourceSnapshot, systemTelemetry } from './resourcePolicy.js';
 // polymarketUS.js is parked except for credentials and the session arm: its scanner and single-order routes are not served.
 import { usReadiness, configurePolymarketUS, armPolymarketUS, polymarketUSAccount } from './polymarketUS.js';
-import { usComboSnapshot, buildUSCombo, quoteUSCombo, placeUSCombo, cancelUSRfq, setUSComboSettings, settleUSCombos, forgetUSCombo, startUSComboLoops, setUSComboAutopilot } from './polymarketUSCombos.js';
+import { usComboJournalView, usComboSnapshot, buildUSCombo, quoteUSCombo, placeUSCombo, cancelUSRfq, setUSComboSettings, settleUSCombos, forgetUSCombo, startUSComboLoops, setUSComboAutopilot } from './polymarketUSCombos.js';
 import { readApiUnitEconomics } from './apiUnitEconomics.js';
 import { productEconomics, productIngestionAuthorized, productReadAuthorized } from './productEconomics.js';
 import updateChannel from '../desktop/update-channel.cjs';
 import { handlePlatformRequest } from './core/http.js';
 import { marketPlatform, closeMarketPlatform } from './core/platform.js';
+import { practiceSnapshot } from './robinhoodPractice.js';
+import { JOURNAL_FILE as RH_JOURNAL_FILE } from './robinhoodJournal.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const html = fs.readFileSync(path.join(ROOT, 'public', 'dashboard.html'), 'utf8');
@@ -79,7 +82,7 @@ function requestUpdater(action){
 }
 
 function researchCaptureStatus(){try{return JSON.parse(fs.readFileSync(RESEARCH_CAPTURE_STATUS_FILE,'utf8'))}catch{return {schema:'mpo.research-capture-status.v1',updatedAt:null}}}
-function labModuleStatuses(){const out={};for(const id of ['robinhood','polymarket','polymarket-combo']){try{const v=JSON.parse(fs.readFileSync(path.join(DATA_DIR,'lab-link','modules',`${id}.json`),'utf8'));if(v&&v.module===id)out[id]=v}catch{}}return out}
+function labModuleStatuses(){const out={};for(const id of ['robinhood','robinhood-equities','polymarket','polymarket-combo']){try{const v=JSON.parse(fs.readFileSync(path.join(DATA_DIR,'lab-link','modules',`${id}.json`),'utf8'));if(v&&v.module===id)out[id]=v}catch{}}return out}
 const readJupiterStatus = () => { try { return JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'research-capture-status.json'), 'utf8')).jupiter || null; } catch { return null; } };
 // One fitness record per module (docs/FITNESS-LEDGER.md). A failing module reports a blocker instead of throwing.
 async function fitnessNow(s = loadStateCached()) {
@@ -359,6 +362,7 @@ function snapshot() {
     walletIntel: {
       wallets: Object.values(s.research?.walletProfiles || {}).sort((a,b)=>(b.recurrenceScore||0)-(a.recurrenceScore||0)).slice(0,24),
       holderRpc: holderRpcHealth(),
+      scorecard: walletScorecardView(),
     },
     researchSummary: {
       universeCount: Object.keys(s.research?.universe || {}).length,
@@ -384,7 +388,9 @@ function snapshot() {
 }
 
 export function startDashboard() {
-  marketPlatform();
+  marketPlatform().setLegacyReaders({solana:loadStateCached,robinhoodPractice:()=>practiceSnapshot({dataDir:path.dirname(RH_JOURNAL_FILE)}),usCombos:usComboJournalView});
+  // Lab champions -> strategy registry, once now and every minute. Failures stay in the snapshot, never thrown.
+  const syncLab=()=>{try{marketPlatform().syncLab();}catch{}};syncLab();const labSyncTimer=setInterval(syncLab,60_000);labSyncTimer.unref();
   // Catch the project journal up with this build's history (packaged builds ship it; no git there).
   const seeded = seedProjectJournal({ journalFile: controlPlaneFiles(DATA_DIR).journal, appRoot: ROOT });
   if (seeded.appended || seeded.error) console.log(`[journal] +${seeded.appended} from ${seeded.source || 'none'}${seeded.error ? ' error: ' + seeded.error : ''}`);
@@ -468,6 +474,7 @@ export function startDashboard() {
       if (req.method === 'GET' && u.pathname === '/api/evolution') { const st = loadStateCached(); return json(res, { ...(st.evolution || {}), loop: evolutionLoopView(st.evolutionLoop || st.evolution?.loop || {}), labLink: labLinkView(st) }); }
       if (req.method === 'GET' && u.pathname === '/api/network') { const r=await meshRequest('GET','/state'); return json(res,r.body,r.status); }
       if (req.method === 'GET' && u.pathname === '/api/resources') return json(res, resourceSnapshot());
+      if (req.method === 'GET' && u.pathname === '/api/scoreboard') { const sb=await import('./scoreboard.js'); return json(res, await sb.readScoreboard()); }
       if (req.method === 'GET' && u.pathname === '/api/data-coverage') return json(res, dataCoverage(DATA_DIR, { force: u.searchParams.get('force') === '1' }));
       if (req.method === 'GET' && u.pathname === '/api/desktop-prefs') return json(res, readDesktopPrefs());
       if (req.method === 'GET' && u.pathname === '/api/unit-economics') return json(res, readApiUnitEconomics());
@@ -565,7 +572,7 @@ export function startDashboard() {
   try { startUSComboLoops(); } catch { /* combo loops are optional */ }
   startRobinhoodLoops();
   startPracticeLoop({ dataDir: DATA_DIR });
-  server.on('close',()=>{ stopRobinhoodLoops(); stopPracticeLoop(); closeMarketPlatform(); });
+  server.on('close',()=>{ clearInterval(labSyncTimer); stopRobinhoodLoops(); stopPracticeLoop(); closeMarketPlatform(); });
   startRobinhoodEquitiesLoop();
   // The Lab reads <data>/lab-link/fitness/*.json; refresh it every minute (first write shortly after start).
   const writeFitness = () => fitnessNow().then(snap => writeFitnessFiles(DATA_DIR, snap)).catch(() => {});

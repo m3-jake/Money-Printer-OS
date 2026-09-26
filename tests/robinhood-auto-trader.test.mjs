@@ -112,7 +112,7 @@ test('primary order multiplier is capped by maxOrderUsd and by 2.0; default univ
 });
 test('snapshot: pinned key list, signal enum values, never throws on a dead feed, masks the account',async()=>{
  reset();const s=await RH.robinhoodSnapshot({force:true});
- assert.deepEqual(Object.keys(s),['at','readiness','outbound','account','pairs','quotes','tape','paper','practice','journal','limits','qualificationThresholds','strategy','loop','equities','evolve','explore','gauges','lastError']);
+ assert.deepEqual(Object.keys(s),['at','readiness','outbound','account','pairs','quotes','tape','paper','practice','daily','journal','limits','qualificationThresholds','strategy','loop','equities','evolve','explore','gauges','lastError']);
  for(const [sym,t] of Object.entries(s.tape)){assert.ok(SIGNALS.includes(t.signal),sym+' '+t.signal);assert.equal(t.primary,sym==='BTC-USD')}
  assert.equal(s.tape['BTC-USD'].signal,'WARMUP');assert.match(s.tape['BTC-USD'].reason,/warming up 0\/120/);assert.equal(Object.keys(s.tape)[0],'BTC-USD','primary is listed first');
  assert.equal(s.account.accountNumber,'****9876');assert.equal(s.readiness.execution,'manual-confirm-only');assert.equal(s.loop.needsQuotes,false);

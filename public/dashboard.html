@@ -49,14 +49,140 @@ let rhState=null,rhSubmitting=false,rhRefreshBusy=false,rhMessage='',rhDraft={},
 const rhPref=(k,d)=>{try{const v=JSON.parse(localStorage.getItem(k));return v??d}catch{return d}};
 const rhSave=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}};
 let rhView=rhPref('mpo-rh-view','paper');
-const RH_VIEWS={paper:['head','live','order','autopilot','qual','positions','closes'],why:['head','live','signals','gauges'],charts:['head','charts'],explore:['head','explore'],more:['head','connection','evolution','real','reset']};
+const RH_VIEWS={paper:['head','cryptohead','live','order','autopilot','qual','positions','closes'],why:['head','cryptohead','live','signals','gauges'],charts:['head','cryptohead','charts'],explore:['head','cryptohead','explore'],daily:['head','cryptohead','daily'],stocks:['head','stocks'],practice:['head','practice'],more:['head','cryptohead','connection','evolution','real','reset']};
 if(!RH_VIEWS[rhView])rhView='paper';
 // Each view fits the window without scrolling; nothing is deleted, other views' parts are just not shown.
-function rhViewTabs(){return `<div class="rh-tabs">${Object.keys(RH_VIEWS).map(v=>`<button class="btn ${v===rhView?'on':''}" data-rh-view="${v}">${{paper:'Paper',why:'Why not trading',charts:'Charts',explore:'Exploration',more:'More'}[v]}</button>`).join('')}</div>`}
+// Multi-asset suite: crypto (strict book + its views), stocks & ETFs (§25 paper lane), and the isolated practice sandbox.
+const RH_VIEW_LABELS={paper:'Crypto paper',why:'Why not trading',charts:'Charts',explore:'Exploration',daily:'Daily bars',stocks:'Stocks & ETFs',practice:'Practice',more:'More'};
+const RH_VIEW_SUB={daily:'CRYPTO · DAILY BARS · PAPER ONLY',stocks:'STOCKS & ETFS · PAPER · ALPACA DATA',practice:'CRYPTO PRACTICE SANDBOX · NEVER COUNTS'};
+function rhViewTabs(){return `<div class="rh-tabs">${Object.keys(RH_VIEWS).map(v=>`<button class="btn ${v===rhView?'on':''}" data-rh-view="${v}">${RH_VIEW_LABELS[v]}</button>`).join('')}</div>`}
+// Stocks & ETFs lane: read-only GET /api/robinhood-equities (§25), at most once a minute unless forced.
+let rhEq=null,rhEqAt=0,rhEqBusy=false,rhEqError=null;
+async function rhLoadEquities(force=false){
+ if(rhEqBusy||(!force&&Date.now()-rhEqAt<60000))return;rhEqBusy=true;
+ try{const r=await fetch('/api/robinhood-equities');const d=await r.json();if(!r.ok||d.ok===false)throw Error(d.error||'stocks & ETFs request failed');rhEq=d;rhEqError=null}
+ catch(e){rhEqError=e.message}
+ finally{rhEqAt=Date.now();rhEqBusy=false;if(windowVisible('robinhood')&&rhView==='stocks')renderRobinhood()}
+}
+// Honest one-line readiness for the whole suite. Fee: the account's tier when authenticated, else the 0.95%/side fallback.
+function rhReadinessText(st){
+ const f=Number(st?.account?.feeRatio),fee=Number.isFinite(f)&&f>=0?f:0.0095;
+ return `Crypto: Robinhood Crypto API, paper only; fee ${fmt(fee*100,2)}%/side${st?.account?'':' (fallback until keys authenticate)'}, so about ${fmt(fee*200,1)}% round trip before spread. Stocks & ETFs: paper only on Alpaca public end-of-day bars, not Robinhood quotes; real orders would go only through Robinhood's official Agentic Trading MCP, which is NOT wired in this app. Practice: an isolated sandbox that never counts.`;
+}
+const RH_EQ_TONE={FRESH:'green',STALE:'amber',ERROR:'red',NO_DATA:'red'};
+function rhEqStatusHtml(e){
+ const d=e?.data||{},s=d.status||'NO_DATA',needKey=s==='NO_DATA'&&!d.configured;
+ return `<span class="mpo-badge" id="rhEqStatus"><b class="${RH_EQ_TONE[s]||''}">${needKey?'NO DATA · ADD A FREE ALPACA KEY':polyEscape(s.replace('_',' '))}</b></span>`;
+}
+function rhEqCurveSvg(daily,o={}){
+ const pts=(daily||[]).filter(p=>Number.isFinite(p.equityUsd)),cid=o.id||'rhEqCurve';
+ if(pts.length<2)return `<div class="mpo-empty" id="${cid}">${o.empty||'The equity curve starts at the first marked session close'}${pts.length?' (1 so far)':''}; it is drawn next to ${o.bench||'buy-and-hold SPY'} and cash from that day.</div>`;
+ const W=460,H=190,pl=6,pr=62,pt=10,pb=18,vals=pts.flatMap(p=>[p.equityUsd,p.benchUsd,p.cashUsd]).filter(Number.isFinite);
+ let lo=Math.min(...vals),hi=Math.max(...vals);const pad=Math.max(0.5,(hi-lo)*0.1);lo-=pad;hi+=pad;
+ const x=i=>pl+i/Math.max(1,pts.length-1)*(W-pl-pr),y=v=>pt+(hi-v)/(hi-lo)*(H-pt-pb);
+ const line=k=>pts.map((p,i)=>Number.isFinite(p[k])?(i?'L':'M')+x(i).toFixed(1)+' '+y(p[k]).toFixed(1):'').join('');
+ const tag=(k,c)=>{const v=pts.at(-1)[k];return Number.isFinite(v)?`<text x="${W-pr+4}" y="${(y(v)+4).toFixed(1)}" fill="${c}" font-size="11">${rhMoney(v)}</text>`:''};
+ return `<svg id="${cid}" viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${o.aria||'Stocks and ETFs paper equity vs buy-and-hold SPY and cash'}" style="display:block;background:#0d1419;border:1px solid ${RH_C.grid}">
+ <path class="rh-eq-cash" d="${line('cashUsd')}" fill="none" stroke="${RH_C.text}" stroke-width="1" stroke-dasharray="4 3"/>
+ <path class="rh-eq-spy" d="${line('benchUsd')}" fill="none" stroke="#00c8ff" stroke-width="1.4"/>
+ <path class="rh-eq-strategy" d="${line('equityUsd')}" fill="none" stroke="${RH_C.ef}" stroke-width="2"/>
+ ${tag('equityUsd',RH_C.ef)}${tag('benchUsd','#00c8ff')}
+ <text x="${pl+2}" y="${H-5}" fill="${RH_C.text}" font-size="11">${polyEscape(pts[0].d)}</text><text x="${W-pr}" y="${H-5}" fill="${RH_C.text}" font-size="11" text-anchor="end">${polyEscape(pts.at(-1).d)}</text></svg>`;
+}
+function rhStocksSection(e){
+ if(!e)return `<fieldset class="mpo-fieldset" id="rhStocks"><legend>Stocks &amp; ETFs · paper</legend><p>${polyEscape(rhEqError||'Loading the stocks & ETFs lane...')}</p></fieldset>`;
+ const d=e.data||{},b=e.book||{},s=e.strategy||{},m=e.market||{},bl=e.benchmark?.live,rp=e.benchmark?.replay,dec=s.lastDecision,pend=b.pending;
+ const pos=Object.entries(b.positions||{}),metric=(label,value,cls='')=>`<div class="mpo-metric"><label>${label}</label><strong class="${cls}">${value}</strong></div>`;
+ const weights=Object.entries(pend?.targets||dec?.weights||{}).sort((a,z)=>z[1]-a[1]);
+ const pctTxt=v=>v==null||!Number.isFinite(Number(v))?'--':(v>0?'+':'')+fmt(v,2)+'%';
+ const stat=(label,x)=>`<tr><td>${label}</td><td>${pctTxt(x?.returnPct)}</td><td>${pctTxt(x?.cagrPct)}</td><td>${pctTxt(x?.maxDrawdownPct)}</td><td>${x?.sharpe==null?'--':fmt(x.sharpe,2)}</td></tr>`;
+ return `<fieldset class="mpo-fieldset" id="rhStocks"><legend>Stocks &amp; ETFs · paper · ${polyEscape(s.title||s.id||'')}</legend>
+ <p>${rhEqStatusHtml(e)} <span class="mpo-badge">MARKET ${polyEscape(String(m.state||'--').replace('_',' '))}</span> <span class="mpo-badge">PAPER ONLY · NO ROBINHOOD ORDERS</span> <small>${polyEscape(d.providerLabel||'no provider')} · latest bar ${polyEscape(d.latestBar||'--')} · last completed session ${polyEscape(m.lastCompletedSession||'--')}</small></p>
+ ${d.status==='NO_DATA'&&!d.configured?`<div class="mpo-empty" id="rhEqNeedKey">Add a free Alpaca key to start this lane: set <code>ALPACA_KEY_ID</code> and <code>ALPACA_SECRET_KEY</code> (Alpaca Basic, market data only) in .env and restart. Without a key the lane never fetches or trades.</div>`:''}
+ ${d.lastError||e.lastError?`<div class="mpo-error">${polyEscape((d.lastError?.message||d.lastError||e.lastError?.message||e.lastError)+'')}</div>`:''}
+ ${b.recoveryRequired?`<div class="mpo-error">STOCKS BOOK RECOVERY REQUIRED: ${polyEscape(b.recoveryReason||'review the book file')}</div>`:''}
+ <div class="metric-grid">${metric('Paper equity',rhMoney(b.equityUsd))}${metric('Return',pctTxt(b.returnPct),(b.returnPct||0)>=0?'green':'red')}${metric('Buy-and-hold SPY',bl?rhMoney(bl.buyHoldSpyUsd)+' ('+pctTxt(bl.buyHoldSpyReturnPct)+')':'--')}${metric('Cash baseline',bl?rhMoney(bl.cashUsd):rhMoney(b.startUsd))}${metric('Cash (settled)',rhMoney(b.cashUsd)+' ('+rhMoney(b.settledCashUsd)+')')}${metric('Next session',polyEscape(m.nextSession||'--'))}</div>
+ <div class="mpo-split"><div>
+ ${rhEqCurveSvg(b.equityDaily)}
+ <div style="font-size:11px;margin:4px 0;color:${RH_C.text}"><span style="color:${RH_C.ef}">— strategy (paper book)</span> · <span style="color:#00c8ff">— buy-and-hold SPY</span> · <span>- - cash (0%)</span> · marked at each session close${bl?.since?' since '+polyEscape(bl.since):''}</div>
+ <table class="mpo-table" id="rhEqReplay"><thead><tr><th>Replay${rp?.from?' from '+polyEscape(rp.from):''}</th><th>Return</th><th>CAGR</th><th>Max DD</th><th>Sharpe</th></tr></thead><tbody>${rp?stat('Strategy',rp.strategy)+stat('Buy-and-hold SPY',rp.buyHoldSpy)+stat('Cash',rp.cash):'<tr><td colspan="5">Replay needs fetched history.</td></tr>'}</tbody></table>
+ <small>${polyEscape(rp?.note||'Expectation: drawdown control, not alpha.')}</small>
+ </div><div>
+ <table class="mpo-table" id="rhEqWeights"><thead><tr><th>${pend?'Pending target':'Target weight'}</th><th>Weight</th><th></th></tr></thead><tbody>${weights.length?weights.map(([sym,w])=>`<tr><td>${polyEscape(sym)}</td><td>${fmt(w*100,1)}%</td><td>${rhBar(w,'#39ff68')}</td></tr>`).join(''):'<tr><td colspan="3">No target yet: the first decision needs FRESH data after a completed session.</td></tr>'}</tbody></table>
+ <table class="mpo-table" id="rhEqPositions"><thead><tr><th>Position</th><th>Shares</th><th>Avg</th><th>Last</th><th>Value</th></tr></thead><tbody>${pos.length?pos.map(([sym,p])=>`<tr><td>${polyEscape(sym)}</td><td>${fmt(p.qty,4)}</td><td>${rhMoney(p.avgPx)}</td><td>${rhMoney(p.lastPx)}</td><td>${rhMoney((p.qty||0)*(p.lastPx||0))}</td></tr>`).join(''):'<tr><td colspan="5">No stock or ETF positions.</td></tr>'}</tbody></table>
+ <p id="rhEqDecision"><b>Last decision:</b> ${dec?polyEscape(dec.session+' · '+(dec.ready?'ready':'not ready')+(dec.reasons?.length?' · '+dec.reasons.join('; '):'')):'none yet'}${pend?` · <b>queued</b> for the ${polyEscape(pend.executeAtOpenOf||'--')} open`:''}${b.lastFill?` · last fill ${polyEscape(b.lastFill.session)}${b.lastFill.late?' (late)':''}`:''} · <b>next session</b> ${polyEscape(m.nextSession||'--')}${b.missedSessions?` · ${polyEscape(String(b.missedSessions))} missed (never decided after the fact)`:''}</p>
+ <small>$0 commission + ${polyEscape(String(b.costs?.slippageBps??'--'))} bps slippage + SEC/FINRA sell fees · ${polyEscape(b.costs?.settlement||'T+1')} · long-only, no margin.</small>
+ </div></div>
+ <p><small>${polyEscape(e.readiness?.text||'')}</small></p></fieldset>`;
+}
+// Daily-bar crypto book (src/robinhoodDailyBook.js): one decision per closed UTC bar, fills at the next open,
+// paper only. rhDailyVerdictLine reads the Lab's raw `daily` block that robinhoodEvolveView passes through.
+const rhSignedPct=v=>v==null||!Number.isFinite(Number(v))?'--':(v>0?'+':'')+fmt(Number(v),2)+'%';
+const RH_DAILY_TONE={PAPER_REVIEW_READY:'green',NO_EDGE:'amber',INSUFFICIENT_HISTORY:'amber',NO_DATA:'red',ERROR:'red'};
+function rhDailyVerdictLine(d){
+ if(!d)return '<p class="muted" id="rhDailyVerdict"><small>Daily bars (Lab): no verdict published yet.</small></p>';
+ const l=d.leader,h=l?.holdout,ph=String(d.phase||'--');
+ const parts=[l?'leader '+polyEscape(l.id||l.family||'--'):'no leader',h?'holdout '+rhSignedPct(h.strategy?.totalReturnPct)+' vs buy-and-hold '+rhSignedPct(h.buyHold?.totalReturnPct):null,d.proposal?'proposal '+polyEscape(d.proposal.id)+' (paper review)':'no proposal',d.blockers?.length?polyEscape(d.blockers[0]):null].filter(Boolean);
+ return `<p id="rhDailyVerdict"><small>Daily bars (Lab): <b class="${RH_DAILY_TONE[ph]||''}">${polyEscape(ph.replace(/_/g,' '))}</b> · ${parts.join(' · ')}</small></p>`;
+}
+function rhDailySection(dy,labDaily){
+ if(!dy)return '<fieldset class="mpo-fieldset" id="rhDaily"><legend>Daily bars · crypto paper book</legend><p>Loading the daily-bar book...</p></fieldset>';
+ const b=dy.book||{},src=dy.source||{},q=dy.qualification||{},qm=q.metrics||{},dec=b.lastDecision,metric=(label,value,cls='')=>`<div class="mpo-metric"><label>${label}</label><strong class="${cls}">${value}</strong></div>`;
+ const params=Object.entries(src.params||{}).map(([k,v])=>k+' '+v).join(', ');
+ return `<fieldset class="mpo-fieldset" id="rhDaily"><legend>Daily bars · crypto paper book</legend>
+ <p><span class="mpo-badge" id="rhDailyLabel"><b class="${src.kind==='lab-proposal'?'green':'amber'}">${polyEscape(dy.label||src.label||'')}</b></span> <span class="mpo-badge">PAPER ONLY · NEVER LIVE</span> <small>${polyEscape(src.family||'--')} (${polyEscape(params||'--')}) · hash ${polyEscape(src.paramsHash||'--')}</small></p>
+ ${src.kind!=='lab-proposal'&&src.reasons?.length?`<p class="muted" id="rhDailyWhyDefault"><small>Not on a Lab proposal: ${polyEscape(src.reasons.join('; '))}</small></p>`:''}
+ ${rhDailyVerdictLine(labDaily)}
+ ${b.recoveryRequired?`<div class="mpo-error">DAILY BOOK RECOVERY REQUIRED: ${polyEscape(b.recoveryReason||'review the book file')}</div>`:''}
+ ${dy.lastError||dy.data?.lastError?`<div class="mpo-error">${polyEscape(String(dy.lastError?.message||dy.data?.lastError?.message||''))}</div>`:''}
+ <div class="metric-grid">${metric('Paper equity',rhMoney(b.equityUsd))}${metric('Return',rhSignedPct(b.returnPct),(b.returnPct||0)>=0?'green':'red')}${metric('Buy-and-hold',b.buyHoldUsd==null?'--':rhMoney(b.buyHoldUsd)+' ('+rhSignedPct(b.buyHoldReturnPct)+')')}${metric('Last decided bar',polyEscape(b.lastDecidedDay||'--'))}${metric('Missed days',polyEscape(String(b.missedDays||0)))}${metric('Qualification',q.qualified?'QUALIFIED (paper)':'NOT QUALIFIED',q.qualified?'green':'')}</div>
+ <div class="mpo-split"><div>
+ ${rhEqCurveSvg(b.equityDaily,{id:'rhDailyCurve',aria:'Daily-bar crypto paper equity vs buy-and-hold and cash',empty:'The daily curve starts at the first marked UTC close',bench:'buy-and-hold'})}
+ <div style="font-size:11px;margin:4px 0;color:${RH_C.text}"><span style="color:${RH_C.ef}">— daily book</span> · <span style="color:#00c8ff">— buy-and-hold (same sleeves, same costs)</span> · <span>- - cash (0%)</span> · marked at each UTC close</div>
+ <p id="rhDailyQual"><small><b>${q.qualified?'Qualified on paper':'Not qualified'}:</b> ${polyEscape((q.reasons||[]).join('; ')||'all gates pass')} · rules: ${polyEscape(String(q.rules?.minClosedTrades??'--'))}+ closed round trips and ${polyEscape(String(q.rules?.minRunDays??'--'))}+ paper days in a ${polyEscape(String(q.rules?.windowDays??'--'))}-day window, return above cash and above buy-and-hold, drawdown no deeper than buy-and-hold, profit factor ${polyEscape(String(q.rules?.minProfitFactor??'--'))}+ · ${polyEscape(String(qm.closedTrades??0))} trades, ${polyEscape(String(qm.runDays??0))} days · never unlocks live.</small></p>
+ </div><div>
+ <table class="mpo-table" id="rhDailyPositions"><thead><tr><th>Pair</th><th>State</th><th>Entry</th><th>Last close</th><th>Value</th><th>Open P/L</th></tr></thead><tbody>${(b.positions||[]).map(p=>`<tr><td>${polyEscape(p.symbol)}</td><td class="${p.long?'green':''}">${p.long?'LONG':'FLAT'}</td><td>${p.entry?polyEscape(p.entry.day)+' @ '+rhMoney(p.entry.fillPrice):'--'}</td><td>${rhMoney(p.lastClose)}</td><td>${rhMoney(p.valueUsd)}</td><td>${rhMoney(p.unrealizedUsd)}</td></tr>`).join('')||'<tr><td colspan="6">No sleeves yet.</td></tr>'}</tbody></table>
+ <p id="rhDailyDecision"><b>Last decision:</b> ${dec?polyEscape(dec.day+' close · '+Object.entries(dec.bySymbol||{}).map(([s,x])=>s.replace('-USD','')+' '+x.action).join(', ')):'none yet'}${(b.pending||[]).length?' · <b>pending</b> '+polyEscape(b.pending.map(o=>o.side+' '+o.symbol+' at the '+o.fillDay+' open').join(', ')):''}</p>
+ <small>${polyEscape(dy.rules||'')} Costs: ${fmt((b.costs?.feeRatio??0.0095)*100,2)}%/side + ${polyEscape(String(b.costs?.slipBps??'--'))} bps slippage.</small>
+ <table class="mpo-table" id="rhDailyTrades"><thead><tr><th>Pair</th><th>Entry</th><th>Exit</th><th>Days</th><th>Net</th><th>Exit price from</th></tr></thead><tbody>${(b.history||[]).slice(0,8).map(t=>`<tr><td>${polyEscape(t.symbol)}</td><td>${polyEscape(t.entryDay||'--')}</td><td>${polyEscape(t.exitDay)}</td><td>${polyEscape(String(t.holdDays??'--'))}</td><td class="${(t.pnlUsd||0)>=0?'green':'red'}">${rhMoney(t.pnlUsd)}</td><td><small>${polyEscape(t.priceSource?.exit||'--')}</small></td></tr>`).join('')||'<tr><td colspan="6">No closed daily trades yet (expect one or two a month).</td></tr>'}</tbody></table>
+ <div><button id="rhDailyRun">Run daily pass</button><button id="rhDailyReset">Reset daily book…</button></div>
+ </div></div></fieldset>`;
+}
+// Isolated practice sandbox (src/robinhoodPractice.js): its own ledger; never counts toward qualification, promotion or real authority.
+function rhPracticeSection(pr){
+ if(!pr)return `<fieldset class="mpo-fieldset" id="rhPractice"><legend>Practice sandbox</legend><p>Practice book not loaded yet.</p></fieldset>`;
+ const s=pr.settings||{},t=pr.telemetry||{},pos=pr.positions||[],hist=pr.history||[],dis=rhSubmitting?'disabled':'',ld=t.lastDecision||{};
+ const metric=(label,value,cls='')=>`<div class="mpo-metric"><label>${label}</label><strong class="${cls}">${value}</strong></div>`;
+ const opt=(list,cur)=>list.map(v=>`<option value="${v}" ${v===cur?'selected':''}>${v.replace(/_/g,' ').toLowerCase()}</option>`).join('');
+ // Realized curve from the retained closes (oldest first): net after both fees, dashed line before fees.
+ let net=0,gross=0,fees=0;const pts=hist.filter(x=>x.status==='CLOSED').slice().reverse().map(x=>{const f=(Number(x.feeUsd)||0)+(Number(x.exit?.feeUsd)||0);net+=Number(x.pnlUsd)||0;fees+=f;gross=net+fees;return {t:x.closedAt||x.at,net:(pr.budgetUsd||0)+net,gross:(pr.budgetUsd||0)+gross}});
+ const curve=rhEquitySvg({points:pts.length?[{t:pts[0].t-1,net:pr.budgetUsd||0,gross:pr.budgetUsd||0},...pts]:[],startUsd:pr.budgetUsd||0,netUsd:net,feesUsd:fees,grossUsd:gross,closes:pts.length},'PRACTICE (REALIZED, LAST '+pts.length+' CLOSES)','rhPrEquity');
+ return `<fieldset class="mpo-fieldset" id="rhPractice" style="border-color:#00c8ff"><legend>Practice sandbox · isolated paper ledger</legend>
+ <p><span class="mpo-badge">LOOP ${polyEscape(t.loopStatus||'--')}</span> <span class="mpo-badge">${s.autopilot?'PRACTICE AUTOPILOT ON':'PRACTICE AUTOPILOT OFF'}</span> <span class="mpo-badge">NEVER COUNTS TOWARD QUALIFICATION, PROMOTION OR REAL AUTHORITY</span> <small>${polyEscape(s.mode||'--')} · ${polyEscape(s.strategyMode||'--')} · fee ${fmt((s.feeBps||0)/100,2)}%/side + ${polyEscape(String(s.slippageBps??'--'))} bps slippage · source ${polyEscape(t.lastSource||'--')} · hash ${polyEscape(pr.settingsHash||'--')}</small></p>
+ ${pr.recoveryRequired?`<div class="mpo-error">PRACTICE RECOVERY REQUIRED: ${polyEscape(pr.recoveryReason||'reset after review')}</div>`:''}${pr.lastError?`<div class="mpo-error">${polyEscape(pr.lastError)}</div>`:''}
+ <div class="metric-grid">${metric('Practice equity',rhMoney(pr.equityUsd))}${metric('Budget',rhMoney(pr.budgetUsd))}${metric('Cash',rhMoney(pr.cashUsd))}${metric('Realized',rhMoney(pr.realizedPnlUsd),(pr.realizedPnlUsd||0)>=0?'green':'red')}${metric('Unrealized',rhMoney(pr.unrealizedPnlUsd),(pr.unrealizedPnlUsd||0)>=0?'green':'red')}${metric('Fills / fees',polyEscape(String(t.fills||0))+' / '+rhMoney(t.feesUsd))}</div>
+ <p id="rhPrDecision"><b>Last decision:</b> ${polyEscape([ld.action,ld.symbol,ld.reason].filter(Boolean).join(' · ')||'--')}${ld.at?' · '+rhAge(Date.now()-ld.at)+' ago':''} · <b>blocking:</b> ${polyEscape(t.blockingReason||'nothing')}${Object.keys(t.rejectionReasons||{}).length?' · skipped: '+polyEscape(Object.entries(t.rejectionReasons).map(([k,n])=>k+' '+n).join(', ')):''}</p>
+ <div class="mpo-split"><div>
+ ${curve}
+ <table class="mpo-table" id="rhPrPositions"><thead><tr><th>Open</th><th>Qty</th><th>Cost</th><th>Open P/L</th><th>Age</th><th></th></tr></thead><tbody>${pos.length?pos.map(x=>`<tr><td>${polyEscape(x.symbol)}</td><td>${fmt(x.qty,6)}</td><td>${rhMoney(x.costUsd)}</td><td class="${(x.unrealizedPnlUsd||0)>=0?'green':'red'}">${rhMoney(x.unrealizedPnlUsd)}</td><td>${rhHold(x.ageMs)}</td><td><button data-rh-pr-close="${polyEscape(x.id)}" ${dis}>Close</button></td></tr>`).join(''):'<tr><td colspan="6">No open practice positions.</td></tr>'}</tbody></table>
+ <small>Recent: ${hist.length?hist.slice(0,6).map(x=>polyEscape(x.symbol+' '+(x.exit?.reason||'')+' ')+rhMoney(x.pnlUsd)).join(' · '):'no practice closes yet'}</small>
+ </div><div>
+ <label>Mode <select id="rhPrMode">${opt(['PRACTICE','BUY_AND_HOLD','OBSERVE_ONLY'],rhVal('rhPrMode',s.mode))}</select></label>
+ <label>Strategy <select id="rhPrStrategy">${opt(['MOMENTUM','MEAN_REVERSION','BUY_AND_HOLD'],rhVal('rhPrStrategy',s.strategyMode))}</select></label>
+ <label>Pairs <input id="rhPrSymbols" value="${polyEscape(rhVal('rhPrSymbols',(s.symbols||[]).join(',')))}" size="22"></label>
+ <label>USD/order <input id="rhPrOrderUsd" type="number" min="1" value="${polyEscape(rhVal('rhPrOrderUsd',s.orderUsd))}" style="width:70px"></label>
+ <label>Max open <input id="rhPrMaxOpen" type="number" min="1" max="100" value="${polyEscape(rhVal('rhPrMaxOpen',s.maxOpenPositions))}" style="width:55px"></label>
+ <label>Daily loss cap <input id="rhPrLossCap" type="number" min="0" value="${polyEscape(rhVal('rhPrLossCap',s.dailyLossCapUsd))}" style="width:70px"></label>
+ <div><button id="rhPrSave" ${dis}>Save practice settings</button><button id="rhPrAuto" ${dis}>${s.autopilot?'Stop practice autopilot':'Start practice autopilot'}</button><button id="rhPrRun" ${dis}>Run one cycle</button></div>
+ <div><label>Pair <input id="rhPrSymbol" value="${polyEscape(rhVal('rhPrSymbol',(s.symbols||['BTC-USD'])[0]))}" maxlength="14" size="10"></label><button id="rhPrBuy" ${dis}>Practice buy ${rhMoney(s.orderUsd)}</button></div>
+ <div><label>Reset budget USD <input id="rhPrBudget" type="number" min="50" value="${polyEscape(rhVal('rhPrBudget',pr.budgetUsd||500))}" style="width:80px"></label><button id="rhPrReset" ${dis}>Reset practice…</button></div>
+ <small>Public quotes only, no signed Robinhood calls. Fills use the observed ask/bid plus modeled slippage and fee. This sandbox exists to exercise the controls; it is not evidence and cannot promote anything.</small>
+ </div></div></fieldset>`;
+}
 let rhChart={symbol:null,range:'6h',data:null,at:0,busy:false,error:null};
 {const c=rhPref('mpo-rh-chart',{});if(c&&typeof c==='object'){if(['1h','6h','24h'].includes(c.range))rhChart.range=c.range;if(typeof c.symbol==='string'&&c.symbol)rhChart.symbol=c.symbol}}
 const rhSaveChart=()=>rhSave('mpo-rh-chart',{range:rhChart.range,symbol:rhChart.symbol});
-const RH_FOCUS_IDS=['rhSymbol','rhUsd','rhSymbols','rhOrderUsd','rhMaxOpen','rhBank','rhParams','rhResetConfirm','rhRealSymbol','rhRealUsd','rhRealType','rhApOrderUsd','rhApMaxOpen','rhApLossCap','rhApSymbols','rhApType'];
+const RH_FOCUS_IDS=['rhSymbol','rhUsd','rhSymbols','rhOrderUsd','rhMaxOpen','rhBank','rhParams','rhResetConfirm','rhRealSymbol','rhRealUsd','rhRealType','rhApOrderUsd','rhApMaxOpen','rhApLossCap','rhApSymbols','rhApType','rhPrMode','rhPrStrategy','rhPrSymbols','rhPrOrderUsd','rhPrMaxOpen','rhPrLossCap','rhPrSymbol','rhPrBudget'];
 const RH_SECRET_IDS=['rhApiKey','rhSecret','rhConfirm','rhAutoConfirm'];
 const RH_PHRASES={place:'PLACE REAL CRYPTO ORDER',cancel:'CANCEL REAL CRYPTO ORDER',cancelAll:'CANCEL REAL CRYPTO ORDERS',autopilot:'ENABLE REAL CRYPTO AUTOPILOT',forget:'FORGET'};
 const rhMoney=n=>typeof n==='number'&&Number.isFinite(n)?money(n):'--';
@@ -67,7 +193,7 @@ function rhCapture(){for(const id of RH_FOCUS_IDS){const el=document.getElementB
 function rhTyping(){const ae=document.activeElement;if(ae&&(RH_FOCUS_IDS.includes(ae.id)||RH_SECRET_IDS.includes(ae.id)))return true;return RH_SECRET_IDS.some(id=>{const el=document.getElementById(id);return el&&el.value})}
 async function refreshRobinhood(){
  if(rhRefreshBusy)return;rhRefreshBusy=true;
- try{const r=await fetch('/api/robinhood');if(!r.ok)throw Error('Robinhood status request failed');rhState=await r.json();trackRobinhoodProfitBurst(rhState);if(windowVisible('robinhood')){renderRobinhood();rhLoadChart()}}
+ try{const r=await fetch('/api/robinhood');if(!r.ok)throw Error('Robinhood status request failed');rhState=await r.json();trackRobinhoodProfitBurst(rhState);rhLoadEquities();if(windowVisible('robinhood')){renderRobinhood();rhLoadChart()}}
  catch(e){rhMessage=e.message;if(windowVisible('robinhood'))renderRobinhood()}finally{rhRefreshBusy=false}
 }
 async function rhAction(action,body,label){
@@ -198,16 +324,17 @@ function renderRobinhood(force=false){
  const ev=rhState.evolve||{},evLab=ev.source==='evolution-lab',evReady=!evLab||ev.paperPromotionAllowed===true,evNum=(v,d)=>typeof v==='number'&&Number.isFinite(v)?fmt(v,d):v==='infinity'?'inf':'--';
  const evRow=(label,c)=>{const m=(c&&c.metrics)||{};return `<tr><td>${label}</td><td>${polyEscape(c?c.paramsHash:'--')}</td><td>${evNum(c?c.score:null,3)}</td><td>${polyEscape(String(m.closes??'--'))}</td><td>${rhPct(m.hitRate)}</td><td>${evNum(m.profitFactor,2)}</td><td>${rhMoney(m.pnlUsd)}</td><td>${rhMoney(m.maxDrawdownUsd)}</td><td>${evNum(m.tradesPerDay,2)}</td></tr>`};
  setBody('robinhood',`<div class="mpo-surface-dark rh-v-${rhView}" style="padding:10px">
-<div data-rh-part="head"> <h2>ROBINHOOD <small> / CRYPTO · BITCOIN PRIMARY</small></h2>
- <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><span class="mpo-badge">${r.credentialsReady?'RH KEYS PRESENT':'RH KEYS OPTIONAL FOR PAPER'}</span><span class="mpo-badge">${paperLocked?'PAPER ONLY · LIVE LOCKED':(r.realEnabled?'REAL ENABLED':'REAL DISABLED')}</span><span class="mpo-badge">PAPER FEED · ${polyEscape(r.paperQuoteSource||'CONNECTING')}</span><span class="mpo-badge">${a.enabled?'PAPER AUTOPILOT ON':'PAPER AUTOPILOT OFF'}</span>${r.recoveryRequired?'<span class="mpo-badge">RECOVERY</span>':''}<button id="rhRefresh" ${disabled}>Refresh</button></div>
+<div data-rh-part="head"> <h2>ROBINHOOD <small> / ${RH_VIEW_SUB[rhView]||'CRYPTO · BITCOIN PRIMARY'}</small> <button id="rhRefresh" ${disabled}>Refresh</button></h2>
+ <small id="rhReadiness">${polyEscape(rhReadinessText(rhState))}</small>
+ <div data-rh-part="cryptohead"><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><span class="mpo-badge">${r.credentialsReady?'RH KEYS PRESENT':'RH KEYS OPTIONAL FOR PAPER'}</span><span class="mpo-badge">${paperLocked?'PAPER ONLY · LIVE LOCKED':(r.realEnabled?'REAL ENABLED':'REAL DISABLED')}</span><span class="mpo-badge">PAPER FEED · ${polyEscape(r.paperQuoteSource||'CONNECTING')}</span><span class="mpo-badge">${a.enabled?'PAPER AUTOPILOT ON':'PAPER AUTOPILOT OFF'}</span>${r.recoveryRequired?'<span class="mpo-badge">RECOVERY</span>':''}</div>
  <div class="metric-grid">${metric('Buying power',rhMoney(rhState.account?.buyingPowerUsd))}${metric('Fee tier',rhPct(rhState.account?.feeRatio))}${metric('Paper equity',rhMoney(p.equityUsd))}${metric('Paper P/L',rhMoney(p.stats?.pnlUsd))}${metric('Real open / unverified',(openReal.length)+' / '+(j.stats?.unverified||0))}${metric('Realized today / cap',rhMoney(j.realizedTodayUsd)+' / '+rhMoney(lim.dailyLossCapUsd))}</div>
- <p role="status" id="rhMessage">${polyEscape(rhMessage)}</p>
  ${p.recoveryRequired?`<div class="mpo-error">PAPER RECOVERY REQUIRED: ${polyEscape(p.recoveryError||'Review the book before resetting.')}</div>`:''}
  ${j.recoveryRequired?`<div class="mpo-error">REAL JOURNAL RECOVERY REQUIRED: ${polyEscape(j.recoveryError||'Review data/robinhood-auto-trader.json before any real action.')}</div>`:''}
  ${rhState.lastError?`<div class="mpo-error">${polyEscape(rhState.lastError.stage+': '+rhState.lastError.message)}</div>`:''}
- ${r.paperFallbackReason?`<div class="mpo-empty">Robinhood authenticated quotes unavailable (${polyEscape(r.paperFallbackReason.code||'unknown')}); simulation is using public Coinbase market data until Robinhood credentials work.</div>`:''}${rhViewTabs()}</div>
+ ${r.paperFallbackReason?`<div class="mpo-empty">Robinhood authenticated quotes unavailable (${polyEscape(r.paperFallbackReason.code||'unknown')}); simulation is using public Coinbase market data until Robinhood credentials work.</div>`:''}</div>
+ <p role="status" id="rhMessage">${polyEscape(rhMessage)}</p>${rhViewTabs()}</div>
 <div data-rh-part="live">${rhLiveViz(rhState)}</div>
-<div data-rh-part="connection"> <details><summary>Connection and safety</summary><p>Paper mode can use a public read-only market feed when Robinhood authentication is unavailable. For Robinhood-authenticated quotes later, generate a key pair locally with <code>node -e "import('./src/robinhoodSigner.js').then(m=>console.log(JSON.stringify(m.generateRobinhoodKeyPair(),null,2)))"</code>, paste the public key into the Robinhood portal, then connect the API key and matching private seed below.</p><p>Account: ${polyEscape(rhState.account?.accountNumber||'not authenticated')} | Robinhood API: ${polyEscape(r.authCode||'not checked')} | Paper quote source: ${polyEscape(r.paperQuoteSource||'connecting')} | Public key: ${polyEscape(r.publicKey||'--')}</p><p>Stocks and options are not automated here; Robinhood's Agentic Trading MCP is the only sanctioned route and this app never uses mobile-app impersonation.</p></details></div>
+<div data-rh-part="connection"> <details><summary>Connection and safety</summary><p>Paper mode can use a public read-only market feed when Robinhood authentication is unavailable. For Robinhood-authenticated quotes later, generate a key pair locally with <code>node -e "import('./src/robinhoodSigner.js').then(m=>console.log(JSON.stringify(m.generateRobinhoodKeyPair(),null,2)))"</code>, paste the public key into the Robinhood portal, then connect the API key and matching private seed below.</p><p>Account: ${polyEscape(rhState.account?.accountNumber||'not authenticated')} | Robinhood API: ${polyEscape(r.authCode||'not checked')} | Paper quote source: ${polyEscape(r.paperQuoteSource||'connecting')} | Public key: ${polyEscape(r.publicKey||'--')}</p><p>Stocks and ETFs run only as a paper lane on Alpaca public end-of-day bars (Stocks &amp; ETFs tab). Real stock, ETF or option orders would go only through Robinhood's official Agentic Trading MCP, which is NOT wired in this app, and this app never uses mobile-app impersonation.</p></details></div>
 <div data-rh-part="order"> <fieldset class="mpo-fieldset"><legend>Paper order</legend>
  <label>Pair <input id="rhSymbol" value="${polyEscape(symbol)}" maxlength="14"></label>
  <label>USD <input id="rhUsd" type="number" min="1" max="${lim.maxOrderUsd}" step="1" value="${polyEscape(usd)}"></label>
@@ -227,6 +354,9 @@ function renderRobinhood(force=false){
 <div data-rh-part="charts"> ${rhChartSection(rhState)}</div>
 <div data-rh-part="gauges"> ${rhGaugeSection(rhState)}</div>
 <div data-rh-part="explore"> ${rhExploreSection(rhState)}</div>
+<div data-rh-part="daily" style="grid-column:1/-1"> ${rhView==='daily'?rhDailySection(rhState.daily,ev.daily):''}</div>
+<div data-rh-part="stocks" style="grid-column:1/-1"> ${rhView==='stocks'?rhStocksSection(rhEq):''}</div>
+<div data-rh-part="practice" style="grid-column:1/-1"> ${rhView==='practice'?rhPracticeSection(rhState.practice):''}</div>
 <div data-rh-part="qual"> <fieldset class="mpo-fieldset"><legend>Paper research qualification</legend>
  <b>${q.qualified?'QUALIFIED under params '+polyEscape(p.paramsHash||'--'):'NOT QUALIFIED'}</b><p>${q.closes||0} eligible strategy closes / ${rhState.qualificationThresholds.minCloses} required | Hit rate ${rhPct(q.hitRate)} vs required ${rhPct(q.requiredHitRate)} | PF ${polyEscape(String(q.profitFactor??'--'))} | Net sample P/L ${rhMoney(q.pnlUsd)} | Max drawdown ${rhMoney(q.maxDrawdownUsd)}</p>
  <p>${polyEscape((q.reasons||[]).join('; ')||'Paper evidence only. This does not establish future profitability; live trading remains locked in this build.')}</p>
@@ -238,6 +368,7 @@ function renderRobinhood(force=false){
 <div data-rh-part="evolution"><details class="rh-more evolution-lab-panel"><summary>Evolution Lab (paper-only research)</summary> <fieldset class="mpo-fieldset"><legend>Evolution Lab · Robinhood research lane</legend>
  <p><span class="mpo-badge">GEN ${polyEscape(String(ev.generation||0))}</span> <span class="mpo-badge">${evLab?'EVOLUTION LAB':(ev.enabled?'LOCAL FALLBACK':'DISABLED')}</span> <span class="mpo-badge">${polyEscape(String(ev.phase||'RESEARCH'))}</span> ${ev.running?'<span class="mpo-badge">RUNNING</span>':''} ${evLab?`<span class="mpo-badge">${evReady?'PAPER REVIEW READY':'RESEARCH ONLY'}</span>`:''} <small>${evLab?'parallel Lab worker':`every ${polyEscape(String(ev.intervalMin||'--'))} min`} · last run ${ev.lastRunAt?rhAge(Date.now()-ev.lastRunAt)+' ago':'never'}</small></p>
  <p>Tape coverage: ${Object.entries(ev.tapeDays||{}).map(([s,d])=>polyEscape(s)+' '+polyEscape(String(d))+'d').join(' · ')||'--'} (needs ${polyEscape(String(ev.minTapeDays||3))}d on the primary pair)${(()=>{const src=Object.values(ev.tapeSources||{}).reduce((a,x)=>{for(const [k,n] of Object.entries(x||{}))a[k]=(a[k]||0)+n;return a},{});const keys=Object.keys(src);return keys.length?' · quotes: '+keys.map(k=>polyEscape(k)+' '+polyEscape(String(src[k]))).join(' · '):''})()}${ev.lastError?' | <span class="mpo-error">'+polyEscape(ev.lastError.stage+': '+ev.lastError.message)+'</span>':''}</p>
+ ${rhDailyVerdictLine(ev.daily)}
  <table class="mpo-table"><thead><tr><th>Split test</th><th>Hash</th><th>Score</th><th>Closes</th><th>Hit</th><th>PF</th><th>Net P/L</th><th>Drawdown</th><th>Trades/day</th></tr></thead><tbody>
  ${evRow('Incumbent',ev.incumbent)}${evRow(ev.proposed?'Champion (proposed)':'Champion',ev.champion)}</tbody></table>
  <button id="rhEvolveRun" ${evLab?'disabled':(disabled||(ev.running?'disabled':''))}>${evLab?'Lab runs automatically':'Run local fallback'}</button><button id="rhEvolveApply" ${disabled||(!ev.proposed||!evReady?'disabled':'')}>Apply Lab candidate to paper</button>
@@ -280,9 +411,20 @@ function renderRobinhood(force=false){
 <div data-rh-part="reset"><details class="rh-more"><summary>Reset simulated book</summary> <fieldset class="mpo-fieldset"><legend>Reset simulated book</legend><label>Starting USD <input id="rhBank" type="number" min="50" max="100000" value="${polyEscape(rhVal('rhBank',p.startUsd||1000))}"></label><label>Type RESET PAPER <input id="rhResetConfirm" value="${polyEscape(rhVal('rhResetConfirm',''))}" autocomplete="off"></label><button id="rhReset" ${disabled}>Reset paper only</button><p>Clears simulated positions, history and qualification; stops paper autopilot. Real balances and the real journal are untouched.</p></fieldset></details></div>
  </div>`);
  const keep=RH_VIEWS[rhView]||RH_VIEWS.paper;root.querySelectorAll('[data-rh-part]').forEach(n=>{if(!keep.includes(n.dataset.rhPart))n.remove()});
- root.querySelectorAll('[data-rh-view]').forEach(b=>b.onclick=()=>{rhView=b.dataset.rhView;rhSave('mpo-rh-view',rhView);renderRobinhood(true);if(rhView==='charts')rhLoadChart(true)});
+ root.querySelectorAll('[data-rh-view]').forEach(b=>b.onclick=()=>{rhView=b.dataset.rhView;rhSave('mpo-rh-view',rhView);renderRobinhood(true);if(rhView==='charts')rhLoadChart(true);if(rhView==='stocks')rhLoadEquities(true)});
  const el=id=>root.querySelector('#'+id)||{};
- el('rhRefresh').onclick=()=>refreshRobinhood();
+ el('rhRefresh').onclick=()=>{refreshRobinhood();rhLoadEquities(true)};
+ // Practice sandbox: POST /api/robinhood/practice/{config,run,order,close,reset}; all isolated from the strict book.
+ const prPatch=()=>({mode:el('rhPrMode').value,strategyMode:el('rhPrStrategy').value,symbols:el('rhPrSymbols').value,orderUsd:Number(el('rhPrOrderUsd').value),maxOpenPositions:Number(el('rhPrMaxOpen').value),dailyLossCapUsd:Number(el('rhPrLossCap').value)});
+ el('rhPrSave').onclick=()=>rhAction('practice/config',prPatch(),'Practice settings saved.');
+ el('rhPrAuto').onclick=()=>{const on=!rhState.practice?.settings?.autopilot;rhAction('practice/config',{...prPatch(),autopilot:on},on?'Practice autopilot on (sandbox only).':'Practice autopilot off.')};
+ el('rhPrRun').onclick=()=>rhAction('practice/run',{},'Practice cycle ran.');
+ el('rhPrBuy').onclick=()=>rhAction('practice/order',{symbol:el('rhPrSymbol').value},'Practice buy filled in the sandbox.');
+ root.querySelectorAll('[data-rh-pr-close]').forEach(b=>b.onclick=()=>rhAction('practice/close',{id:b.dataset.rhPrClose},'Practice position closed.'));
+ el('rhPrReset').onclick=()=>{const confirmation=rhPrompt('RESET PRACTICE','Reset the practice sandbox? Its positions and history are cleared and its autopilot stops. The strict book is untouched.');if(confirmation===null)return;if(confirmation==='RESET PRACTICE')rhAction('practice/reset',{budgetUsd:Number(el('rhPrBudget').value)},'Practice sandbox reset.');else{rhMessage='Type RESET PRACTICE to confirm.';renderRobinhood(true)}};
+ // Daily-bar book: run one pass (still one decision per closed bar) or reset with a typed phrase. Paper only.
+ el('rhDailyRun').onclick=()=>rhAction('daily/run',{},'Daily pass ran.');
+ el('rhDailyReset').onclick=()=>{const confirmation=rhPrompt('RESET DAILY','Reset the daily-bar paper book? Its sleeves, trades and curve are cleared. Other books are untouched.');if(confirmation===null)return;if(confirmation==='RESET DAILY')rhAction('daily/reset',{confirmation},'Daily book reset.');else{rhMessage='Type RESET DAILY to confirm.';renderRobinhood(true)}};
  root.querySelectorAll('[data-rh-chart-symbol]').forEach(b=>b.onclick=()=>{rhChart.symbol=b.dataset.rhChartSymbol;rhChart.data=null;rhSaveChart();rhLoadChart(true);renderRobinhood(true)});
  root.querySelectorAll('[data-rh-chart-range]').forEach(b=>b.onclick=()=>{rhChart.range=b.dataset.rhChartRange;rhSaveChart();rhLoadChart(true);renderRobinhood(true)});
  el('rhBuy').onclick=()=>rhAction('paper-order',{symbol:el('rhSymbol').value,usd:Number(el('rhUsd').value)});
@@ -335,11 +477,11 @@ const APPS=[
 ['risk','Risk Radar','!','dark','trade'],
 ['archive','Archive','DB','light','trade'],
 ['control','Control Bay','CTL','light','trade'],
-['sportsbook','POLYMARKET.EXE','PM','dark'],
+['sportsbook','Polymarket','PM','dark'],
 ['predictionmarkets','Markets','PM','dark','sportsbook'],
 ['command','Command Center','CMD','dark'],
-['kalshi','KALSHI.EXE','K','dark'],
-['arbitrage','ARBITRAGE.EXE','ARB','dark'],
+['kalshi','Kalshi','K','dark'],
+['arbitrage','Arbitrage','ARB','dark'],
 ['robinhood','Robinhood','RH','dark'],
 ['researchmon','Lab Monitor','LAB','dark','trade'],
 ['journal','Journal','JRN','dark'],
@@ -607,7 +749,73 @@ function fxFloor(){const r=$('#moneyRain');return r?r.clientHeight:innerHeight-3
 function fxBill(o){const tiny=o.tiny,pick=tiny&&Math.random()<.7?FX_BILLS[5]:FX_BILLS[Math.floor(Math.random()*(tiny?6:5))],stack=o.stack,w=Math.round((stack?120:64+Math.random()*40)*(pick[1]<1.3&&!stack?.8:1)),ar=stack?1:pick[1],h=Math.round(w/ar),left=4+Math.random()*88,rot=(Math.random()*50-25).toFixed(0),drift=(40+Math.random()*100).toFixed(0),src=stack?'/assets/money-printer-logo.png':'/assets/money-fx/'+pick[0]+'.webp';
  return `<img class="bill ${o.cls}${stack?' stack':''}" data-market="${o.src||'profit'}" src="${src}" alt="" style="left:${left}%;width:${w}px;--floor:${fxFloor()-h}px;--drift:${drift}px;--rot:${rot}deg;--spin:${(Math.random()*720-360).toFixed(0)}deg;animation-duration:${o.d}s,${o.d}s;animation-delay:${o.delay}s,${o.delay}s">`}
 function makeBurstBills(n,intensity,source='profit'){const tiny=intensity<.25;let h=Array.from({length:n},()=>fxBill({cls:'burst',src:source,tiny,d:(8.5+Math.random()*3).toFixed(2),delay:(Math.random()*2.2).toFixed(2)})).join('');if(intensity>=.7)h+=Array.from({length:Math.round(2+intensity*3)},()=>fxBill({cls:'burst',src:source,stack:1,d:(7+Math.random()*1.5).toFixed(2),delay:(Math.random()*.8).toFixed(2)})).join('');return h}
-function fxRainHost(rain){if(rain.dataset.fx)return;rain.dataset.fx='1';rain.addEventListener('animationend',e=>{if(e.animationName==='billDrop'&&e.target.classList.contains('burst'))e.target.remove()})}
+// Falling-paper physics: each bill is simulated per frame instead of a fixed keyframe path. Real paper
+// falls in regimes - pendulum "flutter" (glides side to side, tilts into the swing, stalls and even lifts
+// at the ends), "tumble" (autorotates end over end while sliding one way, falling faster), and a lazy
+// "drift". Bills switch regimes mid-fall, ride shared wind gusts and catch light as they turn.
+// On the ground it becomes a little sandbox: bills slide, bounce and settle; a landing stack kicks up the
+// paper beside it; stacks and big bills can be grabbed and thrown to plow through the pile. Kicked paper
+// flies ballistically, then catches the air and flutters back down. Landed bills linger and fade slowly.
+const FX_PHYS={bills:new Set(),raf:0,last:0,t:0};
+function fxRand(a,b){return a+Math.random()*(b-a)}
+function fxWind(t){return Math.sin(t*.31)*18+Math.sin(t*.73+1.7)*11+Math.sin(t*1.9+.4)*5*Math.max(0,Math.sin(t*.17))}
+function fxPickMode(b){const r=Math.random();return b.heavy?(r<.7?"drift":"flutter"):r<.5?"flutter":r<.8?"tumble":"drift"}
+function fxResetBill(b,host,first){const el=b.el,H=host.clientHeight||innerHeight||720;b.w=el.offsetWidth||80;b.h=el.offsetHeight||40;b.bx=el.offsetLeft;b.y=-(H+b.h+fxRand(20,120));b.x=0;b.vx=0;b.vy=0;b.phase=fxRand(0,6.283);b.omega=fxRand(2.1,3.6)*(b.heavy?.7:1);b.amp=fxRand(.7,1.25);b.pitch=fxRand(-40,40);b.yaw=fxRand(-30,30);b.roll=fxRand(-20,20);b.spin=(Math.random()<.5?-1:1)*fxRand(380,720);b.mode=fxPickMode(b);b.modeT=fxRand(1.2,3.5);b.state="fall";b.rest=0;b.restSet=0;b.alpha=1;b.hitT=0;b.vt=(H+b.h)/Math.max(3,b.dur*.58)*(b.heavy?1.9:1);if(first&&b.delay<0){const skip=-b.delay;if(skip<b.dur*.58){b.y+=b.vt*skip*.85;b.delay=0}else b.delay=fxRand(0,b.dur*.4)}}
+function fxCx(b){return b.bx+b.x+b.w/2}
+function fxWalls(b){const W=b.host.clientWidth||innerWidth,L=-b.bx,R=W-b.w-b.bx;if(b.x<L){b.x=L;b.vx=Math.abs(b.vx)*.35;b.spinR=-(b.spinR||0)}else if(b.x>R){b.x=R;b.vx=-Math.abs(b.vx)*.35;b.spinR=-(b.spinR||0)}}
+function fxLinger(b,min){b.rest=Math.max(b.rest||0,min);b.alpha=1}
+function fxLaunch(o,vx,vy){if(o.state==="drag")return;o.state="air";o.delay=0;o.vx=vx;o.vy=vy;if(o.y>-1)o.y=-1;o.spinP=fxRand(-900,900)*(o.heavy?.25:1);o.spinR=vx*.35+fxRand(-140,140)*(o.heavy?.3:1);o.restRot=fxRand(-25,25);o.hitT=.35;fxLinger(o,8)}
+// A landing stack punches the ground: paper within reach is flung up and away, harder the closer it lies.
+function fxKick(src,impact){const s0=Math.min(1,impact/450),R=src.w*1.9,sx=fxCx(src);
+ for(const o of FX_PHYS.bills){if(o===src||o.delay>0||o.state==="drag"||o.y<-src.h*1.5)continue;const dx=fxCx(o)-sx,d=Math.abs(dx);if(d>R)continue;const f=s0*(1-d/R);if(f<.06)continue;const m=o.heavy?.35:1;fxLaunch(o,(dx===0?(Math.random()<.5?-1:1):Math.sign(dx))*(140+460*f)*m,-(320+760*f)*m)}}
+// A grabbed or fast-moving bill shoves whatever it overlaps, passing on its own velocity plus a push outward.
+function fxShove(d){const sp=Math.hypot(d.vx,d.vy),mass=d.heavy?1:.55,dcx=fxCx(d),dcy=d.y-d.h/2;
+ for(const o of FX_PHYS.bills){if(o===d||o.delay>0||o.state==="drag"||o.hitT>0)continue;const dx=fxCx(o)-dcx,dy=(o.y-o.h/2)-dcy,nx=dx/((d.w+o.w)*.45),ny=dy/((d.h+o.h)*.5);if(nx*nx+ny*ny>=1)continue;
+  const len=Math.hypot(dx,dy)||1,push=Math.max(240,sp*1.05)*mass*(o.heavy?.45:1),carry=o.heavy?.4:.85;fxLaunch(o,d.vx*carry*mass+dx/len*push*.6,Math.min(d.vy*carry*mass+dy/len*push*.6,-160*mass))}}
+function fxTouchDown(b){const impact=b.vy,punch=b.state==="fall"&&!b.restSet||b.thrown;if(Math.abs(b.vx)<300)b.thrown=0;b.y=0;b.state="ground";b.vy=-Math.min(b.heavy?110:55,impact*(b.heavy?.2:.08));b.vx*=b.heavy?.5:.35;if(b.heavy&&punch&&impact>200)fxKick(b,impact);if(!b.restSet){b.restSet=1;b.rest=b.rain?fxRand(10,14):fxRand(16,24)}else fxLinger(b,5)}
+function fxGrab(b,e){if(e.button>0)return;e.preventDefault();e.stopPropagation();const el=b.el,hb=b.host.getBoundingClientRect();try{el.setPointerCapture(e.pointerId)}catch{}b.state="drag";b.delay=0;b.alpha=1;b.grabX=e.clientX-(hb.left+b.bx+b.x);b.grabY=e.clientY-(hb.bottom+b.y);b.pts=[{t:performance.now(),x:e.clientX,y:e.clientY}];el.classList.add("grabbing");fxStart()}
+function fxDragMove(b,e){if(b.state!=="drag")return;const hb=b.host.getBoundingClientRect(),now=performance.now();b.x=e.clientX-hb.left-b.grabX-b.bx;b.y=Math.min(0,e.clientY-hb.bottom-b.grabY);fxWalls(b);
+ b.pts.push({t:now,x:e.clientX,y:e.clientY});while(b.pts.length>2&&now-b.pts[0].t>90)b.pts.shift();const p=b.pts[0],span=Math.max(.016,(now-p.t)/1000);b.vx=(e.clientX-p.x)/span;b.vy=(e.clientY-p.y)/span}
+function fxRelease(b,e){if(b.state!=="drag")return;try{b.el.releasePointerCapture(e.pointerId)}catch{}b.el.classList.remove("grabbing");const now=performance.now();if(!b.pts.length||now-b.pts.at(-1).t>120){b.vx=0;b.vy=0}
+ const c=v=>Math.max(-2600,Math.min(2600,v));b.state="air";b.vx=c(b.vx);b.vy=c(b.vy);b.spinP=b.vx*(b.heavy?.15:.6);b.spinR=b.vx*.3;b.restSet=1;b.thrown=1;fxLinger(b,10)}
+function fxAdopt(el,host){if(el.dataset.phys||el.tagName!=="IMG"||!el.classList.contains("bill"))return;el.dataset.phys="1";el.classList.add("phys");const cs=el.style,dur=parseFloat(cs.animationDuration)||10,delay=parseFloat(cs.animationDelay)||0;const b={el,host,dur,delay,rain:el.classList.contains("rain"),heavy:el.classList.contains("stack"),restRot:parseFloat(cs.getPropertyValue("--rot"))||0};el.style.animation="none";el.style.opacity="0";
+ const init=()=>{fxResetBill(b,host,true);FX_PHYS.bills.add(b);if(b.heavy||b.w>=80){el.classList.add("grab");el.addEventListener("pointerdown",e=>fxGrab(b,e));el.addEventListener("pointermove",e=>fxDragMove(b,e));el.addEventListener("pointerup",e=>fxRelease(b,e));el.addEventListener("pointercancel",e=>fxRelease(b,e));el.addEventListener("dragstart",e=>e.preventDefault())}fxStart()};el.complete?init():el.addEventListener("load",init,{once:true})}
+function fxStart(){if(FX_PHYS.raf)return;FX_PHYS.last=performance.now();FX_PHYS.raf=requestAnimationFrame(fxStep)}
+function fxSettle(b,dt,rate){const k=Math.min(1,dt*rate),pr=((b.pitch%360)+540)%360-180;b.pitch=pr+((Math.abs(pr)>90?(pr>0?180:-180):0)-pr)*k;b.yaw-=b.yaw*k;const rr=((b.roll-b.restRot)%360+540)%360-180;b.roll=b.restRot+rr*(1-k)}
+function fxStep(now){const dt=Math.min(.05,(now-FX_PHYS.last)/1000);FX_PHYS.last=now;FX_PHYS.t+=dt;const T=FX_PHYS.t,wind=fxWind(T);
+ for(const b of FX_PHYS.bills){const el=b.el;if(!el.isConnected){FX_PHYS.bills.delete(b);continue}
+  if(b.delay>0){b.delay-=dt;continue}
+  if(b.hitT>0)b.hitT-=dt;
+  if(b.state==="fall"){
+   b.modeT-=dt;if(b.modeT<=0){b.mode=fxPickMode(b);b.modeT=fxRand(1.2,3.5);if(b.mode==="tumble")b.spin=(b.vx>=0?1:-1)*fxRand(420,760)}
+   const heavy=b.heavy?.45:1;let ax=wind*.9*heavy,targetVy=b.vt;
+   if(b.mode==="flutter"){b.phase+=b.omega*dt;const s=Math.sin(b.phase),c=Math.cos(b.phase);
+    // glide velocity follows the swing; vertical speed peaks mid-swing, stalls (slight lift) at the ends
+    ax+=(c*140*b.amp*heavy-b.vx)*3;targetVy=b.vt*(.25+1.25*c*c)-(s*s>.85?b.vt*.35:0);
+    b.roll+=((c*38*b.amp*heavy)-b.roll)*Math.min(1,dt*9);b.pitch+=((s*55*b.amp*heavy*heavy)-b.pitch)*Math.min(1,dt*6);b.yaw+=((s*18)-b.yaw)*dt*2}
+   else if(b.mode==="tumble"){b.pitch+=b.spin*dt;ax+=((b.spin>0?1:-1)*70*heavy-b.vx)*1.5;targetVy=b.vt*1.35;b.roll+=((b.spin>0?-12:12)-b.roll)*dt*3;b.yaw+=Math.sin(T*2+b.phase)*40*dt}
+   else{b.phase+=b.omega*.45*dt;ax+=(Math.sin(b.phase)*45-b.vx)*1.2;targetVy=b.vt*.75;b.pitch+=((Math.sin(b.phase*1.3)*25)-b.pitch)*dt*2;b.roll+=((Math.cos(b.phase)*15)-b.roll)*dt*2;b.yaw+=Math.cos(b.phase*.7)*25*dt}
+   b.vx+=ax*dt;b.vy+=(targetVy-b.vy)*Math.min(1,dt*4);b.x+=b.vx*dt;b.y+=b.vy*dt;
+   if(b.y>=0)fxTouchDown(b)}
+  else if(b.state==="air"){
+   // ballistic flight: stacks keep their momentum, paper bleeds speed fast and hands back to the flutter model
+   b.vy+=(b.heavy?1700:1100)*dt;b.vx*=Math.pow(b.heavy?.75:.3,dt);b.x+=b.vx*dt;b.y+=b.vy*dt;fxWalls(b);
+   b.pitch+=b.spinP*dt;b.roll+=b.spinR*dt;b.yaw+=b.spinR*.2*dt;b.spinP*=Math.pow(b.heavy?.4:.6,dt);b.spinR*=Math.pow(.5,dt);
+   if(b.y>=0)fxTouchDown(b);else if(!b.heavy&&b.vy>b.vt*.6){b.state="fall";b.mode=Math.random()<.7?"flutter":"tumble";b.modeT=fxRand(1,2.5);b.spin=(b.vx>=0?1:-1)*fxRand(420,760)}}
+  else if(b.state==="ground"){
+   b.vy+=1800*dt;b.y+=b.vy*dt;if(b.y>=0){b.y=0;b.vy=b.vy>90?-b.vy*.3:0}
+   b.x+=b.vx*dt;if(b.y===0){b.vx*=Math.pow(b.heavy?.03:.03,dt);if(Math.abs(b.vx)<250)b.thrown=0}fxWalls(b);fxSettle(b,dt,7);
+   if(b.y===0&&Math.abs(b.vx)<20){b.rest-=dt;b.alpha=Math.max(0,Math.min(1,b.rest/4));if(b.rest<=0){if(b.rain){fxResetBill(b,b.host,false);b.delay=fxRand(0,1.5)}else{el.remove();FX_PHYS.bills.delete(b);continue}}}}
+  else if(b.state==="drag"){b.alpha=1;const k=Math.min(1,dt*10);b.roll+=(Math.max(-35,Math.min(35,b.vx*.03))-b.roll)*k;b.pitch+=(Math.max(-40,Math.min(40,-b.vy*.02))-b.pitch)*k;b.yaw-=b.yaw*k;b.vx*=Math.pow(.05,dt);b.vy*=Math.pow(.05,dt)}
+  if(b.state==="drag"||(b.thrown&&Math.hypot(b.vx,b.vy)>(b.heavy?250:500)))fxShove(b);
+  // light catch: brighter when the face turns toward the viewer, darker edge-on or flipped
+  const face=Math.cos(b.pitch*Math.PI/180)*Math.cos(b.yaw*Math.PI/180),lit=(.72+.38*Math.abs(face)+(face<0?-.08:0)).toFixed(2),lift=b.state==="drag"?14:3+Math.abs(face)*3;
+  el.style.opacity=(b.state==="fall"&&b.y<-(b.host.clientHeight||innerHeight||720)-b.h*.2?0:b.alpha).toFixed(2);
+  el.style.transform=`translate3d(${b.x.toFixed(1)}px,${b.y.toFixed(1)}px,0) rotateZ(${b.roll.toFixed(1)}deg) rotateY(${b.yaw.toFixed(1)}deg) rotateX(${b.pitch.toFixed(1)}deg)`;
+  el.style.filter=`brightness(${lit}) drop-shadow(0 ${lift.toFixed(1)}px ${b.state==="drag"?8:3}px #0005)`}
+ FX_PHYS.raf=FX_PHYS.bills.size?requestAnimationFrame(fxStep):0}
+function fxRainHost(rain){if(rain.dataset.fx)return;rain.dataset.fx="1";const adopt=el=>{if(el.nodeType===1)fxAdopt(el,rain)};
+ new MutationObserver(ms=>ms.forEach(m=>m.addedNodes.forEach(adopt))).observe(rain,{childList:true});rain.querySelectorAll("img.bill").forEach(adopt)}
 function makeRainBills(n,intensity){return Array.from({length:n},()=>{const d=12+Math.random()*5;return fxBill({cls:'rain',src:'paper-equity',tiny:intensity<.2,d:d.toFixed(2),delay:(-Math.random()*d).toFixed(2)})}).join('')}
 function makePileBills(n,intensity){return Array.from({length:n},(_,i)=>{const left=Math.max(2,Math.min(94,(i+.25)*100/Math.max(1,n)+Math.random()*8-4)),bottom=Math.max(0,Math.round(Math.random()*20+intensity*12)),rot=(Math.random()*30-15).toFixed(1),scale=(.62+Math.random()*.42).toFixed(2);return `<div class="bill pile" data-market="paper-equity" style="left:${left}%;bottom:${bottom}px;--rot:${rot}deg;--scale:${scale};animation-delay:${(-Math.random()*2).toFixed(2)}s"></div>`}).join('')}
 function renderMoneyEvents(){const el=$('#moneyEventFeed');if(!el)return;el.innerHTML=moneyEvents.slice(-7).map(x=>`<div class="money-event ${x.kind||'profit'}"><span>${new Date(x.at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</span> ${polyEscape(x.text)}</div>`).join('')}
@@ -741,7 +949,13 @@ function renderWallet(){
  const hLabel={OK:'OK',RATE_LIMITED:'RATE LIMITED',TIMEOUT:'TIMING OUT',ERROR:'ERROR',BUDGET:'DAILY CAP HIT',UNKNOWN:'WAITING'}[h?.status]||'—';
  const holderLine=h?`<div class="mpo-status" title="${polyEscape(h.lastError||'')}"><span class="muted">Holder data</span><b class="mpo-badge ${hOk?'mpo-badge--live':h.status==='UNKNOWN'?'mpo-badge--degraded':'mpo-badge--down'}">${hLabel}</b><span class="muted">${polyEscape(h.provider||'')}${h.dedicated?'':' (public RPC)'} · ${h.calls||0}${h.dailyBudget?` / ${h.dailyBudget}`:''} calls today</span></div>`:'';
  const empty=h&&!hOk&&h.status!=='UNKNOWN'?`Holder lookups are failing (${hLabel.toLowerCase()}), so no wallets can be collected.${h.dedicated?'':' Add HOLDER_RPC_URL to the .env.'}`:'No wallet intelligence collected yet.';
- setBody('wallet',`<div class="mpo-surface-light" style="height:100%;display:flex;flex-direction:column;min-height:0;padding:8px;color:#111"><div class="mpo-status"><b>WALLET INTEL</b><span class="muted">${w.length} tracked</span>${w.length?`<b class="mpo-badge ${(w[0].recurrenceScore||0)>60?'mpo-badge--armed':'mpo-badge--degraded'}">${(w[0].recurrenceScore||0)>60?'HOT':'WARM'}</b>`:''}</div>${holderLine}<div class="mpo-table-wrap" data-scroll="wallet-table"><table class="table mpo-table"><thead><tr><th>Wallet</th><th>Seen</th><th>Score</th><th>Status</th></tr></thead><tbody>${w.length?w.slice(0,16).map(x=>`<tr><td>${polyEscape(String(x.address||'').slice(0,6))}...${polyEscape(String(x.address||'').slice(-4))}</td><td>${x.seen||0}</td><td>${fmt(x.recurrenceScore,1)}<div class="mpo-meter-bar--sm ${(x.recurrenceScore||0)>60?'hot':''}"><i style="width:${Math.max(2,Math.min(100,Number(x.recurrenceScore)||0))}%"></i></div></td><td class="${(x.recurrenceScore||0)>60?'red':'amber'}">${(x.recurrenceScore||0)>60?'Hot':'Warm'}</td></tr>`).join(''):`<tr><td colspan="4" style="white-space:normal"><div class="mpo-empty" style="white-space:normal">${polyEscape(empty)}</div></td></tr>`}</tbody></table></div></div>`);
+ // PnL scorecard from the lean tx indexer (research collector). Says plainly how many wallets have enough round trips.
+ const sc=state?.walletIntel?.scorecard||null,si=sc?.indexer||{},ss=sc?.summary||null,sOk=si.status==='OK'||si.status==='IDLE';
+ const sLabel={OK:'OK',IDLE:'IDLE',PACING:'PACING',BUDGET:'DAILY CAP HIT',RATE_LIMITED:'RATE LIMITED',ERROR:'ERROR',OFF:'OFF',STALE:'STALE','NOT RUNNING':'NOT RUNNING'}[si.status]||'—';
+ const scoreLine=sc?`<div class="mpo-status" title="${polyEscape(si.lastError||'')}"><span class="muted">Tx indexer</span><b class="mpo-badge ${sOk?'mpo-badge--live':si.status==='PACING'?'mpo-badge--degraded':'mpo-badge--down'}">${sLabel}</b><span class="muted">${polyEscape(si.provider||'')} · ${si.credits||0}${si.dailyCredits!=null?` / ${si.dailyCredits}`:''} credits today · ${si.trackedMints||0} mints</span></div><div class="mpo-status"><b>PnL SCORECARD</b><span class="muted" style="white-space:normal">${ss?`${ss.wallets} wallets · ${ss.withRoundTrip} with a round trip · ${ss.withAtLeast3} with 3+ · <b>${ss.graded} graded</b> (needs ${sc.minTrips}+ round trips)`:'No scorecard written yet.'}</span></div>`:'';
+ const gw=(sc?.wallets||[]).filter(x=>x.graded).slice(0,8);
+ const gradedBlock=gw.length?`<div class="mpo-table-wrap" style="max-height:40%;flex:0 0 auto"><table class="table mpo-table"><thead><tr><th>Wallet</th><th>Trips</th><th>Win</th><th>PnL SOL</th><th title="Mean return per round trip, shrunk toward 0 and capped at +200% per trip">Score %</th><th>Hold</th><th title="Median seconds after the mint's first trade">Entry s</th></tr></thead><tbody>${gw.map(x=>`<tr><td>${polyEscape(String(x.wallet||'').slice(0,6))}...${polyEscape(String(x.wallet||'').slice(-4))}</td><td>${x.roundTrips}</td><td>${fmt((x.winRate||0)*100,0)}%</td><td class="${(x.realizedPnlSol||0)>=0?'green':'red'}">${fmt(x.realizedPnlSol,3)}</td><td>${fmt(x.shrunkReturnPct,1)}</td><td>${x.medianHoldSec==null?'—':fmt(x.medianHoldSec/60,1)+'m'}</td><td>${x.medianEntrySec==null?'—':fmt(x.medianEntrySec,0)}</td></tr>`).join('')}</tbody></table></div>`:ss?`<div class="muted" style="white-space:normal;padding:2px 0 6px">No wallet has ${sc.minTrips}+ round trips with SOL on both legs yet, so none is graded.</div>`:'';
+ setBody('wallet',`<div class="mpo-surface-light" style="height:100%;display:flex;flex-direction:column;min-height:0;padding:8px;color:#111"><div class="mpo-status"><b>WALLET INTEL</b><span class="muted">${w.length} tracked</span>${w.length?`<b class="mpo-badge ${(w[0].recurrenceScore||0)>60?'mpo-badge--armed':'mpo-badge--degraded'}">${(w[0].recurrenceScore||0)>60?'HOT':'WARM'}</b>`:''}</div>${holderLine}${scoreLine}${gradedBlock}<div class="mpo-table-wrap" data-scroll="wallet-table"><table class="table mpo-table"><thead><tr><th>Wallet</th><th>Seen</th><th title="How many checked tokens list this wallet as a top-10 holder. Not profit.">Holder recurrence (not profit)</th><th>Status</th></tr></thead><tbody>${w.length?w.slice(0,16).map(x=>`<tr><td>${polyEscape(String(x.address||'').slice(0,6))}...${polyEscape(String(x.address||'').slice(-4))}</td><td>${x.seen||0}</td><td>${fmt(x.recurrenceScore,1)}<div class="mpo-meter-bar--sm ${(x.recurrenceScore||0)>60?'hot':''}"><i style="width:${Math.max(2,Math.min(100,Number(x.recurrenceScore)||0))}%"></i></div></td><td class="${(x.recurrenceScore||0)>60?'red':'amber'}">${(x.recurrenceScore||0)>60?'Hot':'Warm'}</td></tr>`).join(''):`<tr><td colspan="4" style="white-space:normal"><div class="mpo-empty" style="white-space:normal">${polyEscape(empty)}</div></td></tr>`}</tbody></table></div></div>`);
 }
 function renderControl(){
  const s=state||{},r=s.runtime||{},cfg=s.config||{},ec=s.effectiveControls||{},eb=ec.bounds||{},ex=r.exitPreset==='custom'?(ec.customExit||{}):(ec.exit||{});
@@ -1242,11 +1456,14 @@ function glanceRobinhood(){
  const q=(r.quotes||[]).slice(0,3);
  const tiles=q.length?`<div class="g-tiles">${q.map(x=>{const mid=(Number(x.bid)+Number(x.ask))/2,sp=Number(x.spreadPct);return `<div class="g-tile"><label>${polyEscape(String(x.symbol||'').replace('-USD',''))}</label><b>${Number.isFinite(mid)?money(mid):'—'}</b><span>spread ${Number.isFinite(sp)?(sp*1e4).toFixed(1)+' bps':'—'}</span></div>`}).join('')}</div>`:'<div class="g-empty">Waiting for quotes.</div>';
  // rhLiveViz registers the tape ticker and the edge meter (expected move vs the move a trade needs).
- const viz=window.MPOViz&&r.tape?(rhLiveViz(r),`${MPOViz.canvas('rh-ticker',22)}${tiles}<div class="g-fill">${MPOViz.canvas('rh-edge',90,'edge meter · expected move vs required')}</div>`):tiles;
- setGlance('robinhood',glance({title:'Robinhood crypto · paper',pill,
+ // Suite lines: the stocks & ETFs paper lane (§25) and the isolated practice sandbox.
+ const ed=rhEq?.data||{},eb=rhEq?.book||{},es=ed.status||'NO_DATA',pr=r.practice||{},pt=pr.telemetry||{};
+ const suite=`<div class="g-rows">${gRow('Stocks & ETFs',!rhEq?'loading':es==='NO_DATA'&&!ed.configured?'no data · add a free Alpaca key':`${es.toLowerCase().replace('_',' ')} · next session ${rhEq.market?.nextSession||'—'}`,rhEq&&es!=='NO_DATA'?`${money(eb.equityUsd)} <span class="${gTone(eb.returnPct)}">${gSigned(eb.returnPct,2,'%')}</span>`:'',es==='FRESH'?'ok':es==='STALE'?'warn':'bad')}${gRow('Practice',[String(pt.loopStatus||'—').toLowerCase(),pr.settings?.autopilot?'autopilot on':'autopilot off',`${(pr.positions||[]).length} open`,'never counts'].join(' · '),Number.isFinite(Number(pr.equityUsd))?money(pr.equityUsd):'',pr.lastError||pr.recoveryRequired?'bad':pt.loopStatus==='BLOCKED'?'warn':pt.loopStatus?'ok':'')}</div>`;
+ const viz=(window.MPOViz&&r.tape?(rhLiveViz(r),`${MPOViz.canvas('rh-ticker',22)}${tiles}<div class="g-fill">${MPOViz.canvas('rh-edge',90,'edge meter · expected move vs required')}</div>`):tiles)+suite;
+ setGlance('robinhood',glance({title:'Robinhood · paper suite',pill,
   hero:Number.isFinite(eq)?money(eq):'—',heroSub:start&&Number.isFinite(eq)?`<span class="${gTone(eq-start)}">${gSigned((eq-start)/start*100,2,'%')}</span> since start`:'Paper equity',
   stats:[{label:'Open',value:String((pp.positions||[]).length)},{label:'Closed trades',value:String(st.closes??0)},{label:'Hit rate',value:st.closes?gPct(st.hitRate):'—'}],
-  visual:viz,foot:gFoot([pp.autopilot?.enabled?'autopilot on':'autopilot off',ev.generation&&`lab gen ${ev.generation} · ${String(ev.phase||'').toLowerCase()}`])}));
+  visual:viz,foot:gFoot([pp.autopilot?.enabled?'crypto autopilot on':'crypto autopilot off',ev.generation&&`lab gen ${ev.generation} · ${String(ev.phase||'').toLowerCase()}`])}));
 }
 // CPU / memory history for the System glance (one sample per state refresh, about six minutes kept).
 const sysHist=[];
@@ -1281,7 +1498,7 @@ function glanceMoney(){
 const GLANCE={
  trade:{render:glanceTrade,sig:()=>{const s=state||{},p=s.portfolio||{},ps=s.portfolioSeries||[];return[p.equitySol,s.dailyPnlSol,s.system?.paused,s.system?.killSwitch,s.system?.health,(s.positions||[]).length,s.solanaBook?.hitRate,s.watchlist,s.memeIndex,s.system?.opportunityFunnel,s.walletIntel?.holderRpc?.status,s.evolutionLoop?.generation,ps.length,ps.at(-1)?.ts,s.market?.solUsd,s.mode]}},
  sportsbook:{render:glanceSportsbook,sig:()=>[polyUSComboState,polyUSAccount?.balance,polyUSAccount?.keyStatus]},
- robinhood:{render:glanceRobinhood,sig:()=>{const r=rhState||{};return[r.at,r.paper?.equityUsd,r.paper?.positions?.length,r.paper?.stats,r.quotes,r.loop?.running,r.evolve?.generation,r.evolve?.phase,r.paper?.autopilot?.enabled,r.readiness?.recoveryRequired]}},
+ robinhood:{render:glanceRobinhood,sig:()=>{const r=rhState||{};return[r.at,r.paper?.equityUsd,r.paper?.positions?.length,r.paper?.stats,r.quotes,r.loop?.running,r.evolve?.generation,r.evolve?.phase,r.paper?.autopilot?.enabled,r.readiness?.recoveryRequired,rhEq?.at,rhEq?.data?.status,rhEq?.book?.equityUsd,r.practice?.equityUsd,r.practice?.telemetry?.loopStatus,r.practice?.settings?.autopilot,r.practice?.positions?.length,r.practice?.lastError]}},
  system:{render:glanceSystem,sig:()=>{const s=state||{},m=s.system?.metrics||{},e=s.evolutionLoop||{};return[sysHist.length,sysHist.at(-1)?.at,s.system?.health,s.mode,e.status,e.generation,e.workerCount,s.walletIntel?.holderRpc?.status,s.walletIntel?.holderRpc?.calls,(networkState?.peers||[]).filter(x=>x.online).length,Math.round((m.cycleMs||0)/100)]}},
  journal:{render:glanceJournal,sig:()=>[projectJournal?.rows?.length,projectJournal?.rows?.[0]?.at,journal.length,journal.at(-1)?.ts]},
  money:{render:glanceMoney,sig:()=>[state?.build?.version,state?.system?.health,state?.mode,state?.portfolio?.equitySol,state?.dailyPnlSol,state?.system?.paused,state?.system?.killSwitch,(state?.positions||[]).length,state?.evolutionLoop?.status,state?.evolutionLoop?.generation,polyUSComboState?.autopilot?.enabled,polyUSAccount?.balance,rhState?.loop?.running,rhState?.paper?.equityUsd]}
@@ -1307,7 +1524,7 @@ function renderAll(force=false){
  renderChanged('system',[m,e.status,e.workerCount,e.datasetSamples,s.system?.lastCycle,perf.stateKB,Math.round(perf.refreshMs)],renderSystem);
  renderChanged('economics',productEconomicsState,renderProductEconomics);
  renderChanged('log',journal.slice(-180),renderLog);
- renderChanged('wallet',[s.walletIntel?.wallets,s.walletIntel?.holderRpc?.status,s.walletIntel?.holderRpc?.calls,s.walletIntel?.holderRpc?.dedicated],renderWallet);
+ renderChanged('wallet',[s.walletIntel?.wallets,s.walletIntel?.holderRpc?.status,s.walletIntel?.holderRpc?.calls,s.walletIntel?.holderRpc?.dedicated,s.walletIntel?.scorecard?.indexer?.status,s.walletIntel?.scorecard?.indexer?.credits,s.walletIntel?.scorecard?.asOf],renderWallet);
  renderChanged('control',[s.mode,s.runtime,s.config,e.status,s.system?.paused,s.system?.killSwitch],renderControl);
  renderChanged('network',[networkState.room,networkState.peers,networkState.messages,networkState.events,networkState.totals,networkState.error],renderNetwork);
  renderChanged('updater',updateState,renderUpdater);

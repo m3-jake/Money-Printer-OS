@@ -38,6 +38,7 @@ import { paperRecordFrom } from './fitnessLedger.js';
 import { laneMayPropose } from './evidenceFlags.js';
 import { appendProjectJournal } from './projectJournal.js';
 import { writeFileAtomicSync } from './atomicRename.js';
+import * as RD from './robinhoodDailyBook.js';
 export const CONFIRM_PLACE='PLACE REAL CRYPTO ORDER', CONFIRM_CANCEL='CANCEL REAL CRYPTO ORDER', CONFIRM_CANCEL_ALL='CANCEL REAL CRYPTO ORDERS', CONFIRM_AUTOPILOT='ENABLE REAL CRYPTO AUTOPILOT', CONFIRM_FORGET='FORGET';
 const clone=x=>structuredClone(x), envNum=(k,d)=>{const n=Number(process.env[k]);return Number.isFinite(n)&&n>0?n:d};
 const TICK_MS=Math.max(5000,envNum('ROBINHOOD_TICK_MS',15000)), PREVIEW_TTL_MS=30000, PREVIEW_CACHE_MS=10000, SNAPSHOT_TTL_MS=5000, ENTRY_TTL_MS=90000, RECONCILE_THROTTLE_MS=5000, NEVER_RECEIVED_MS=600000, NEVER_RECEIVED_LISTINGS=3;
@@ -87,6 +88,9 @@ function explore(strict=paper()){const e=J.loadExplore();e.params=exploreParams(
 function fee(){const f=account?.feeRatio;return Number.isFinite(f)&&f>=0&&f<0.25?f:envNum('ROBINHOOD_FEE_RATIO_FALLBACK',0.0095)}
 function fresh(q){return q&&Number.isFinite(q.bid)&&q.bid>0&&Number.isFinite(q.ask)&&q.ask>=q.bid&&Number.isFinite(q.at)&&q.at<=now()&&now()-q.at<=30000}
 function quote(symbol){const q=quotes.get(symbol);if(!fresh(q))fail('validation','A fresh, valid bid/ask quote is required');return q}
+// Daily-bar paper book: a fresh Robinhood-authenticated quote (never the public fallback feed), or null.
+export function robinhoodDailyQuote(symbol){const q=quotes.get(String(symbol||'').toUpperCase());return fresh(q)&&!/^coinbase/i.test(String(q.source||''))?{symbol:q.symbol,bid:q.bid,ask:q.ask,at:q.at,source:String(q.source||'robinhood')}:null}
+export function robinhoodFeeRatio(){return fee()}
 const openSymbolsReal=(j=J.loadJournal())=>j.open.map(e=>e.symbol);
 async function refreshFeed(requested=robinhoodSymbols(),force=false){
  const c=creds(),key=keyObject(),hasCredentials=!!(c.apiKey&&key),fingerprint=hasCredentials?createHash('sha256').update(JSON.stringify(c)).digest('hex'):'paper-public';
@@ -630,8 +634,8 @@ function ensureRobinhoodPaperPractice(){
  J.savePaper(p,{force:true});
  return p;
 }
-export function startRobinhoodLoops(){if(timer)return timer;const setting=process.env.ROBINHOOD_AUTOSTART??'true'; /* §23: no longer falls back to POLYMARKET_AUTOSTART */if(String(setting).toLowerCase()==='false')return null;try{ensureRobinhoodPaperPractice()}catch(e){note('paper-practice-default',e)}timer=setInterval(()=>{tick().catch(()=>{})},TICK_MS);timer.unref?.();if(collectAlways()&&String(process.env.ROBINHOOD_WARM_START??'true').toLowerCase()!=='false')warmStartRobinhood().then(()=>tick()).catch(()=>{});return timer}
-export function stopRobinhoodLoops(){if(timer)clearInterval(timer);timer=null;if(paperDirty){try{J.savePaper(paper(),{force:true});paperDirty=false}catch(e){note('paper-save',e)}}T.flushTape({force:true,now:now()})}
+export function startRobinhoodLoops(){if(timer)return timer;const setting=process.env.ROBINHOOD_AUTOSTART??'true'; /* §23: no longer falls back to POLYMARKET_AUTOSTART */if(String(setting).toLowerCase()==='false')return null;try{ensureRobinhoodPaperPractice()}catch(e){note('paper-practice-default',e)}timer=setInterval(()=>{tick().catch(()=>{})},TICK_MS);timer.unref?.();if(collectAlways()&&String(process.env.ROBINHOOD_WARM_START??'true').toLowerCase()!=='false')warmStartRobinhood().then(()=>tick()).catch(()=>{});try{RD.startDailyLoop({dataDir:DATA_DIR,quoteFn:robinhoodDailyQuote,feeFn:fee})}catch(e){note('daily-book',e)}return timer}
+export function stopRobinhoodLoops(){if(timer)clearInterval(timer);timer=null;RD.stopDailyLoop();if(paperDirty){try{J.savePaper(paper(),{force:true});paperDirty=false}catch(e){note('paper-save',e)}}T.flushTape({force:true,now:now()})}
 // ------------------------------------------------------------------ evolution (§22, paper-only)
 const LAB_RH_STATUS_FILE=path.join(DATA_DIR,'lab-link','modules','robinhood.json');
 const LAB_RH_CHAMPION_FILE=path.join(DATA_DIR,'lab-link','robinhood-champion.json');
@@ -686,11 +690,11 @@ export function robinhoodFitnessParts({at=now()}={}){
 }
 export function robinhoodEvolveView(p=paper()){
  const lab=readLabRobinhoodStatus(),labDoc=readLabRobinhoodChampion();
- if(lab||labDoc){const c=labDoc?.candidate||null,champion=c?compactCandidate({params:c.params,paramsHash:c.paramsHash,score:c.score,metrics:c.metrics,bySymbol:c.bySymbol,at:labDoc.publishedAt,generation:lab?.generation||0}):null,proposed=champion&&champion.paramsHash!==p.paramsHash?champion:null;return {source:'evolution-lab',volGate:robinhoodVolGate(p),enabled:true,running:lab?.status==='RUNNING',phase:lab?.phase||lab?.status||'STARTING',generation:lab?.generation||0,champion,proposed,incumbent:lab?.incumbent||null,applied:null,currentParamsHash:p.paramsHash,tapeDays:lab?.tapeDays||{},tapeSources:lab?.tapeSources||{},minTapeDays:lab?.minTapeDays||7,lastRunAt:lab?.lastRunAt||null,nextRunAt:null,intervalMin:5,candidates:null,minGainPct:lab?.gainPct??null,autopromote:false,history:[],events:[],lastError:lab?.lastError?{stage:'lab',message:String(lab.lastError)}:null,tape:T.tapeStatus(),paperPromotionAllowed:championPaperAllowed(labDoc),championState:championState(labDoc).state,note:lab?.note||null};}
+ if(lab||labDoc){const c=labDoc?.candidate||null,champion=c?compactCandidate({params:c.params,paramsHash:c.paramsHash,score:c.score,metrics:c.metrics,bySymbol:c.bySymbol,at:labDoc.publishedAt,generation:lab?.generation||0}):null,proposed=champion&&champion.paramsHash!==p.paramsHash?champion:null;return {source:'evolution-lab',volGate:robinhoodVolGate(p),enabled:true,running:lab?.status==='RUNNING',phase:lab?.phase||lab?.status||'STARTING',generation:lab?.generation||0,champion,proposed,incumbent:lab?.incumbent||null,applied:null,currentParamsHash:p.paramsHash,tapeDays:lab?.tapeDays||{},tapeSources:lab?.tapeSources||{},minTapeDays:lab?.minTapeDays||7,lastRunAt:lab?.lastRunAt||null,nextRunAt:null,intervalMin:5,candidates:null,minGainPct:lab?.gainPct??null,autopromote:false,history:[],events:[],lastError:lab?.lastError?{stage:'lab',message:String(lab.lastError)}:null,tape:T.tapeStatus(),paperPromotionAllowed:championPaperAllowed(labDoc),championState:championState(labDoc).state,note:lab?.note||null,daily:lab?.daily&&typeof lab.daily==='object'?lab.daily:null};}
  const cfg=E.evolveConfig(),l=E.loadEvolveLedger(),tapeDays={},tapeSources={};
  for(const s of evolveSymbols(p)){try{const c=T.tapeCoverage(s,now());tapeDays[s]=Math.round(c.days*100)/100;tapeSources[s]=c.sources}catch{tapeDays[s]=0;tapeSources[s]={}}}
  const champion=compactCandidate(l.champion),proposed=champion&&champion.paramsHash!==p.paramsHash?champion:null;
- return {volGate:robinhoodVolGate(p),enabled:cfg.enabled,running:evolveBusy,generation:l.generation,champion,proposed,incumbent:compactCandidate(l.incumbent),applied:l.applied,currentParamsHash:p.paramsHash,tapeDays,tapeSources,minTapeDays:cfg.minTapeDays,lastRunAt:l.lastRunAt,nextRunAt:l.lastRunAt?l.lastRunAt+cfg.intervalMin*60000:null,intervalMin:cfg.intervalMin,candidates:cfg.candidates,minGainPct:Math.round(cfg.minGain*1000)/10,autopromote:cfg.autopromote,history:l.history.slice(0,10),events:l.events.slice(0,10),lastError:l.lastError,tape:T.tapeStatus()};
+ return {volGate:robinhoodVolGate(p),enabled:cfg.enabled,running:evolveBusy,generation:l.generation,champion,proposed,incumbent:compactCandidate(l.incumbent),applied:l.applied,currentParamsHash:p.paramsHash,tapeDays,tapeSources,minTapeDays:cfg.minTapeDays,lastRunAt:l.lastRunAt,nextRunAt:l.lastRunAt?l.lastRunAt+cfg.intervalMin*60000:null,intervalMin:cfg.intervalMin,candidates:cfg.candidates,minGainPct:Math.round(cfg.minGain*1000)/10,autopromote:cfg.autopromote,history:l.history.slice(0,10),events:l.events.slice(0,10),lastError:l.lastError,tape:T.tapeStatus(),daily:null};
 }
 export async function runRobinhoodEvolveOnce({manual=false}={}){
  const cfg=E.evolveConfig();
@@ -837,6 +841,7 @@ function snapshotView(){
  return {at:now(),readiness:robinhoodReadiness(),outbound:rhCallStats(),account:account?{...account,accountNumber:'****'+String(account.accountNumber).slice(-4)}:null,pairs:[...pairs.values()].map(x=>({symbol:x.symbol,assetIncrement:x.assetIncrement,quoteIncrement:x.quoteIncrement,minOrderAmountUsd:x.minOrderAmountUsd,isApiTradable:x.isApiTradable})),quotes:[...quotes.values()].map(q=>({...q,spreadPct:(q.ask-q.bid)/((q.ask+q.bid)/2)})),tape,
   paper:{cashUsd:p.cashUsd,startUsd:p.startUsd,equityUsd:known?p.cashUsd+positions.reduce((s,x)=>s+x.costUsd+x.unrealizedUsd,0):null,unrealizedUsd,positions,history:p.history.slice(0,8),stats:p.stats,autopilot:p.autopilot,params:p.params,paramsHash:p.paramsHash,qualification:p.qualification,recoveryRequired:!!p.recoveryRequired,recoveryError:p.recoveryError||null,fillModel:'Conservative simulated fills with spread, slippage and estimated fees; not actual executions'},
   practice:RP.practiceSnapshot({dataDir:DATA_DIR,now:now()}),
+  daily:RD.dailySnapshot({dataDir:DATA_DIR,now:now()}),
   journal:{open:j.open.map(entry),history:j.history.slice(0,12).map(entry),stats,autopilot:clone(j.autopilot),cooldowns:clone(j.cooldowns),realizedTodayUsd:J.realizedTodayUsd(j,now()),lastReconcileAt:j.lastReconcileAt,recoveryRequired:!!j.recoveryRequired,recoveryError:j.recoveryError||null},limits:robinhoodLimits(),qualificationThresholds:J.qualificationThresholds(),strategy:{params:p.params,paramsHash:p.paramsHash,requiredHitRate:p.qualification.requiredHitRate,primary:{symbol:primary.symbol,weight:primary.weight,orderMult:primary.orderMult}},loop:{running:!!timer,tickMs:TICK_MS,lastTickAt,needsQuotes:needsQuotes(p,j),alwaysOn:collectAlways(),warmStart:warmStatus?clone(warmStatus):null},equities:{automated:false,route:'Agentic Trading MCP',url:'https://agent.robinhood.com/mcp/trading',note:'Separate integration; no stock or option orders from this app'},evolve:robinhoodEvolveView(p),explore:exploreView,gauges,lastError};
 }
 // §24 read-only chart payload: tape (durable tail + in-memory), indicators, both books' markers, equity and trades.
