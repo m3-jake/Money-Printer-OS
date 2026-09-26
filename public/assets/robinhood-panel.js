@@ -1,11 +1,17 @@
 // Robinhood panel. This release is paper-only: API credentials feed authenticated market data,
 // while the backend hard-rejects Robinhood real-order, cancel, reconcile and real-autopilot mutations.
 let rhState=null,rhSubmitting=false,rhRefreshBusy=false,rhMessage='',rhDraft={},rhPreview=null;
-let rhView='paper';
+// View and chart range/symbol survive restarts.
+const rhPref=(k,d)=>{try{const v=JSON.parse(localStorage.getItem(k));return v??d}catch{return d}};
+const rhSave=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}};
+let rhView=rhPref('mpo-rh-view','paper');
 const RH_VIEWS={paper:['head','live','order','autopilot','qual','positions','closes'],why:['head','live','signals','gauges'],charts:['head','charts'],explore:['head','explore'],more:['head','connection','evolution','real','reset']};
+if(!RH_VIEWS[rhView])rhView='paper';
 // Each view fits the window without scrolling; nothing is deleted, other views' parts are just not shown.
 function rhViewTabs(){return `<div class="rh-tabs">${Object.keys(RH_VIEWS).map(v=>`<button class="btn ${v===rhView?'on':''}" data-rh-view="${v}">${{paper:'Paper',why:'Why not trading',charts:'Charts',explore:'Exploration',more:'More'}[v]}</button>`).join('')}</div>`}
 let rhChart={symbol:null,range:'6h',data:null,at:0,busy:false,error:null};
+{const c=rhPref('mpo-rh-chart',{});if(c&&typeof c==='object'){if(['1h','6h','24h'].includes(c.range))rhChart.range=c.range;if(typeof c.symbol==='string'&&c.symbol)rhChart.symbol=c.symbol}}
+const rhSaveChart=()=>rhSave('mpo-rh-chart',{range:rhChart.range,symbol:rhChart.symbol});
 const RH_FOCUS_IDS=['rhSymbol','rhUsd','rhSymbols','rhOrderUsd','rhMaxOpen','rhBank','rhParams','rhResetConfirm','rhRealSymbol','rhRealUsd','rhRealType','rhApOrderUsd','rhApMaxOpen','rhApLossCap','rhApSymbols','rhApType'];
 const RH_SECRET_IDS=['rhApiKey','rhSecret','rhConfirm','rhAutoConfirm'];
 const RH_PHRASES={place:'PLACE REAL CRYPTO ORDER',cancel:'CANCEL REAL CRYPTO ORDER',cancelAll:'CANCEL REAL CRYPTO ORDERS',autopilot:'ENABLE REAL CRYPTO AUTOPILOT',forget:'FORGET'};
@@ -230,11 +236,11 @@ function renderRobinhood(force=false){
 <div data-rh-part="reset"><details class="rh-more"><summary>Reset simulated book</summary> <fieldset class="mpo-fieldset"><legend>Reset simulated book</legend><label>Starting USD <input id="rhBank" type="number" min="50" max="100000" value="${polyEscape(rhVal('rhBank',p.startUsd||1000))}"></label><label>Type RESET PAPER <input id="rhResetConfirm" value="${polyEscape(rhVal('rhResetConfirm',''))}" autocomplete="off"></label><button id="rhReset" ${disabled}>Reset paper only</button><p>Clears simulated positions, history and qualification; stops paper autopilot. Real balances and the real journal are untouched.</p></fieldset></details></div>
  </div>`);
  const keep=RH_VIEWS[rhView]||RH_VIEWS.paper;root.querySelectorAll('[data-rh-part]').forEach(n=>{if(!keep.includes(n.dataset.rhPart))n.remove()});
- root.querySelectorAll('[data-rh-view]').forEach(b=>b.onclick=()=>{rhView=b.dataset.rhView;renderRobinhood(true);if(rhView==='charts')rhLoadChart(true)});
+ root.querySelectorAll('[data-rh-view]').forEach(b=>b.onclick=()=>{rhView=b.dataset.rhView;rhSave('mpo-rh-view',rhView);renderRobinhood(true);if(rhView==='charts')rhLoadChart(true)});
  const el=id=>root.querySelector('#'+id)||{};
  el('rhRefresh').onclick=()=>refreshRobinhood();
- root.querySelectorAll('[data-rh-chart-symbol]').forEach(b=>b.onclick=()=>{rhChart.symbol=b.dataset.rhChartSymbol;rhChart.data=null;rhLoadChart(true);renderRobinhood(true)});
- root.querySelectorAll('[data-rh-chart-range]').forEach(b=>b.onclick=()=>{rhChart.range=b.dataset.rhChartRange;rhLoadChart(true);renderRobinhood(true)});
+ root.querySelectorAll('[data-rh-chart-symbol]').forEach(b=>b.onclick=()=>{rhChart.symbol=b.dataset.rhChartSymbol;rhChart.data=null;rhSaveChart();rhLoadChart(true);renderRobinhood(true)});
+ root.querySelectorAll('[data-rh-chart-range]').forEach(b=>b.onclick=()=>{rhChart.range=b.dataset.rhChartRange;rhSaveChart();rhLoadChart(true);renderRobinhood(true)});
  el('rhBuy').onclick=()=>rhAction('paper-order',{symbol:el('rhSymbol').value,usd:Number(el('rhUsd').value)});
  el('rhTick').onclick=()=>rhAction('paper-autopilot/run',{});
  el('rhToggle').onclick=()=>rhAction('paper-autopilot',{enabled:!a.enabled});

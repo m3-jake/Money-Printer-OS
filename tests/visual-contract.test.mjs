@@ -328,16 +328,40 @@ test('live visuals: one animation engine, served read-only from /js, used by Pol
   for (const key of ['pm-lanes', 'pm-hist', 'pm-pulse', 'pm-shadow', 'pm-cal', 'rh-edge', 'rh-ticker', 'rh-pulse', 'pf-map', 'pf-meme', 'pf-funnel', 'pf-ticker', 'pf-pulse']) assert.ok(html.includes(`MPOViz.set('${key}'`), key);
 });
 
+test('layout persistence: no wipes, every window reopens, saved spots are authoritative', () => {
+  const resetAt = html.indexOf("$('#setResetLayout')?.addEventListener");
+  assert.ok(resetAt > 0, 'reset handler exists');
+  const outside = html.slice(0, resetAt) + html.slice(html.indexOf('\n', resetAt));
+  assert.doesNotMatch(outside, /removeItem\('mpo-layout'\)/, 'only the reset handler may wipe mpo-layout');
+  assert.match(html, /restoreAll:true/);
+  assert.match(html, /mpo-restore-migrated/);
+  assert.match(html, /mpo-size-migrated-0927/);
+  assert.match(html, /window\.__mpoPersist=/);
+  assert.match(html, /addEventListener\('pagehide',persist\)/);
+  assert.match(html, /mpo-chart-view/);
+  assert.match(html, /window\.addEventListener\('resize',\(\)=>\{reflowAll\(\)\}\)/, 'resize reflows windows back to their saved spot');
+});
+
+test('desktop window state: bounds restored, shown late, storage flushed on quit', () => {
+  const main = read('desktop/main.cjs');
+  assert.match(main, /show:false/);
+  assert.match(main, /require\('\.\/window-state\.cjs'\)/);
+  assert.match(main, /flushStorageData/);
+  const create = main.slice(main.indexOf('function createWindow()'));
+  const maxAt = create.indexOf('win.maximize()'), loadAt = create.indexOf('win.loadURL(');
+  assert.ok(maxAt > 0 && loadAt > maxAt, 'maximize happens before the first loadURL');
+});
+
 test('glance design: every window opens as one calm card, full detail is an option, text size sets the fit ceiling', () => {
   const glanceCss = read('public/css/mpo-glance.css');
   assert.match(html, /<link rel="stylesheet" href="\/css\/mpo-glance\.css">/);
-  assert.match(html, /DEFAULT_OPEN=\['trade'\]/, 'launch opens one window');
+  assert.match(html, /DEFAULT_OPEN=\['trade'\]/, 'fresh install opens one window');
   assert.match(html, /const shown=openSet\.has\(id\)&&\(displayPrefs\.restoreAll\?!L\.min:id===bootFocus\)/, 'only the last-used window is shown unless Reopen all is on');
   for (const host of ['trade', 'sportsbook', 'robinhood', 'system', 'journal', 'money']) assert.match(html, new RegExp(`\\n ${host}:\\{render:glance`), `${host} has a glance`);
   assert.match(html, /data-act="detail" class="detail-btn"/, 'every title bar has its own Simple / Advanced button');
   assert.match(html, /<div class="mode-switch" role="group" aria-label="Window mode"><button class="task-tool" id="modeSimple"[^>]*>Simple<\/button><button class="task-tool" id="modeAdvanced"[^>]*>Advanced<\/button><\/div>/, 'taskbar switch flips every window');
   assert.match(html, /\$\('#modeSimple'\)\.onclick=\(\)=>setGlobalMode\(false\);\$\('#modeAdvanced'\)\.onclick=\(\)=>setGlobalMode\(true\);/);
-  assert.match(html, /const TEXT_SCALES=\{S:1,M:1\.25,L:1\.5\}/);
+  assert.match(html, /const TEXT_SCALES=\{S:\.9,M:1\.1,L:1\.3\}/);
   assert.match(html, /const FIT_MIN=\.5;let FIT_MAX=textScale\(\);/, 'text size is the fit-zoom ceiling');
   assert.match(html, /id="setFullDetail"/);assert.match(html, /id="setRestoreAll"/);assert.match(html, /data-textsize=/);
   assert.match(html, /if\(!w\|\|w\.classList\.contains\('hidden'\)\|\|w\.classList\.contains\('glance'\)\)return false;/, 'detail renderers skip glance windows');

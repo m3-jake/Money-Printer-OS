@@ -1,7 +1,8 @@
 // Money Printer OS — desktop supervisor.
 // Owns the Node children (trading engine, network mesh, evidence collector), keeps them alive,
 // adopts an engine that is already answering on the port, and never leaves orphans.
-const { app, BrowserWindow, Menu, shell, Tray, nativeImage } = require('electron');
+const { app, BrowserWindow, Menu, shell, Tray, nativeImage, screen, session } = require('electron');
+const windowState = require('./window-state.cjs');
 const { spawn } = require('node:child_process');
 const crypto = require('node:crypto');
 const { verifyManifest } = require('./update-auth.cjs');
@@ -256,6 +257,7 @@ del "%~f0"
 `;
   fs.writeFileSync(cmdFile,cmd,'utf8');
   log(`updater: handing ${updateReady.version} to Windows shell helper`);
+  try { session.defaultSession.flushStorageData(); } catch {}
   shell.openPath(cmdFile).then(err=>{if(err){updateStatus({status:'ERROR',available:updateReady.version,error:`cannot launch updater helper: ${err}`});log(`updater helper: ${err}`);return}log(`updater: applying ${updateReady.version} after graceful shutdown`);app.quit()});
   return;
  }
@@ -275,14 +277,35 @@ function page(title, body) {
      <p style="color:#a0c4ab">Log: ${LOG}</p>
      </div></div></body>`);
 }
+// Saved OS window bounds; writes are debounced and skipped while minimized.
+let windowSaver = null;
+function saveWindowState() {
+  if (!win || win.isDestroyed() || win.isMinimized()) return;
+  try { windowState.saveState(windowState.stateFile(app), windowState.captureState(win, screen)); } catch (e) { log(`window-state: ${e.message}`); }
+}
 function createWindow() {
+  const D = windowState.DEFAULTS;
+  const primary = screen.getPrimaryDisplay();
+  const st = windowState.validateState(windowState.loadState(windowState.stateFile(app)), screen.getAllDisplays(), primary);
   win = new BrowserWindow({
-    width: 1536, height: 1024, minWidth: 900, minHeight: 620,
+    x: st.x, y: st.y, width: st.width, height: st.height, minWidth: D.minWidth, minHeight: D.minHeight, show:false,
     backgroundColor: '#008080', title: 'Money Printer OS', autoHideMenuBar: true,
     icon: path.join(ROOT, 'public', 'assets', 'app-icon.png'),
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
+  // Mixed-DPI monitors: Electron can size a window on a secondary display with the primary's scale.
+  if (st.displayId !== primary.id) win.setBounds({ x: st.x, y: st.y, width: st.width, height: st.height });
+  // Maximize before the first loadURL so the page boots at its real size.
+  if (st.maximized) win.maximize();
+  if (st.fullScreen) win.setFullScreen(true);
+  const createdWindow = win;
+  const reveal = () => { if (!createdWindow.isDestroyed() && !createdWindow.isVisible()) createdWindow.show(); };
+  win.once('ready-to-show', reveal);
+  setTimeout(reveal, 3000);
+  windowSaver = windowState.makeDebouncedSaver(saveWindowState, 400);
+  for (const ev of ['move', 'resize', 'maximize', 'unmaximize', 'enter-full-screen', 'leave-full-screen']) win.on(ev, () => { if (!win.isMinimized()) windowSaver.schedule(); });
   win.on('close', e => {
+    windowSaver?.flush();
     if (quitting || process.platform === 'darwin' || readDesktopPrefs().runInBackground !== true) return;
     e.preventDefault(); win.hide(); installTray();
     if (!trayHintShown && tray && process.platform === 'win32') { trayHintShown = true; try { tray.displayBalloon({ title: 'Money Printer OS is still running', content: 'Trading and data collection continue in the background. Right-click the tray icon to quit.' }); } catch {} }
@@ -383,7 +406,8 @@ function installMenu() {
 const QA_ALLOW_SECOND_INSTANCE = process.env.MONEY_PRINTER_QA_ALLOW_SECOND_INSTANCE === '1';
 if (!QA_ALLOW_SECOND_INSTANCE && !app.requestSingleInstanceLock()) { app.quit(); }
 else {
-  app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } else createWindow(); });
+  // No window left (tray mode): recreate it through createWindow so it opens at its saved spot.
+  app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); } else createWindow(); });
   app.whenReady().then(() => {
     log(`supervisor: root=${ROOT} port=${PORT} electron=${process.versions.electron} node=${process.versions.node}`);
     const priorUpdate=readUpdateStatus();
@@ -407,7 +431,15 @@ else {
   app.on('before-quit', e => {
     if (quitting) return;
     quitting = true;
-    if (!anyAlive()) return;
+    // Flush the OS window spot and the dashboard layout (localStorage) before anything exits.
+    windowSaver?.flush();
+    const pagePersist = win && !win.isDestroyed() ? win.webContents.executeJavaScript('window.__mpoPersist&&window.__mpoPersist()', true).catch(() => {}) : Promise.resolve();
+    const flushed = pagePersist.then(() => session.defaultSession.flushStorageData()).catch(() => {});
+    if (!anyAlive()) {
+      e.preventDefault();
+      Promise.race([flushed, new Promise(r => setTimeout(r, 300))]).then(() => { try { session.defaultSession.flushStorageData(); } catch {} app.quit(); });
+      return;
+    }
     e.preventDefault();
     stopAll('SIGTERM');
     const deadline = Date.now() + SHUTDOWN_GRACE_MS;
@@ -416,6 +448,7 @@ else {
         clearInterval(poll);
         if (anyAlive()) stopAll('SIGKILL');
         log('supervisor: children stopped, quitting');
+        try { session.defaultSession.flushStorageData(); } catch {}
         app.quit();
       }
     }, 100);

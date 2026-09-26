@@ -13,10 +13,23 @@
 <body>
 <div class="desktop" id="desktop">
   <div class="wallpaper"></div>
+  <div class="sky-clouds" aria-hidden="true">
+    <img class="sky-cloud" src="/assets/clouds/09.webp" alt="" style="width:30vw;top:3%;animation-duration:420s;animation-delay:-300s">
+    <img class="sky-cloud" src="/assets/clouds/10.webp" alt="" style="width:24vw;top:8%;animation-duration:380s;animation-delay:-60s">
+    <img class="sky-cloud" src="/assets/clouds/07.webp" alt="" style="width:18vw;bottom:44.6%;animation-duration:720s;animation-delay:-432s">
+    <img class="sky-cloud" src="/assets/clouds/06.webp" alt="" style="width:16vw;bottom:43.8%;animation-duration:650s;animation-delay:-95s">
+    <div class="sky-cloud" style="width:10vw;bottom:42.6%;animation-duration:780s;animation-delay:-660s"><img src="/assets/clouds/06.webp" alt=""></div>
+    <img class="sky-cloud" src="/assets/clouds/08.webp" alt="" style="width:12vw;bottom:49%;animation-duration:560s;animation-delay:-470s">
+    <img class="sky-cloud" src="/assets/clouds/05.webp" alt="" style="width:9vw;top:34%;animation-duration:210s;animation-delay:-40s">
+    <div class="sky-cloud" style="width:12vw;top:29%;animation-duration:240s;animation-delay:-200s"><img src="/assets/clouds/04.webp" alt=""></div>
+    <img class="sky-cloud" src="/assets/clouds/03.webp" alt="" style="width:17vw;top:24%;animation-duration:235s;animation-delay:-30s">
+    <img class="sky-cloud" src="/assets/clouds/02.webp" alt="" style="width:30vw;top:18%;animation-duration:290s;animation-delay:-205s">
+    <img class="sky-cloud" src="/assets/clouds/01.webp" alt="" style="width:27vw;top:5%;animation-duration:265s;animation-delay:-188s">
+  </div>
   <div class="hill-foreground"></div>
   <div class="money-layer market-fx" id="moneyRain"></div>
   <div class="money-layer market-fx money-pile" id="moneyPile"></div>
-  <div class="brand"><div class="brand-text">MONEY<br>PRINTER OS<small id="runningVersion"></small></div></div>
+  <div class="brand"><div class="mpo-logo"><img class="brand-logo" src="/assets/mpo-logo-3d.webp" alt="Money Printer OS"><span class="shine"></span></div><small id="runningVersion"></small></div>
   <div class="icons" id="icons"></div>
   <div class="money-event-feed" id="moneyEventFeed" aria-live="polite"></div>
   <div id="windows"></div>
@@ -30,11 +43,17 @@
 // Robinhood panel. This release is paper-only: API credentials feed authenticated market data,
 // while the backend hard-rejects Robinhood real-order, cancel, reconcile and real-autopilot mutations.
 let rhState=null,rhSubmitting=false,rhRefreshBusy=false,rhMessage='',rhDraft={},rhPreview=null;
-let rhView='paper';
+// View and chart range/symbol survive restarts.
+const rhPref=(k,d)=>{try{const v=JSON.parse(localStorage.getItem(k));return v??d}catch{return d}};
+const rhSave=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}};
+let rhView=rhPref('mpo-rh-view','paper');
 const RH_VIEWS={paper:['head','live','order','autopilot','qual','positions','closes'],why:['head','live','signals','gauges'],charts:['head','charts'],explore:['head','explore'],more:['head','connection','evolution','real','reset']};
+if(!RH_VIEWS[rhView])rhView='paper';
 // Each view fits the window without scrolling; nothing is deleted, other views' parts are just not shown.
 function rhViewTabs(){return `<div class="rh-tabs">${Object.keys(RH_VIEWS).map(v=>`<button class="btn ${v===rhView?'on':''}" data-rh-view="${v}">${{paper:'Paper',why:'Why not trading',charts:'Charts',explore:'Exploration',more:'More'}[v]}</button>`).join('')}</div>`}
 let rhChart={symbol:null,range:'6h',data:null,at:0,busy:false,error:null};
+{const c=rhPref('mpo-rh-chart',{});if(c&&typeof c==='object'){if(['1h','6h','24h'].includes(c.range))rhChart.range=c.range;if(typeof c.symbol==='string'&&c.symbol)rhChart.symbol=c.symbol}}
+const rhSaveChart=()=>rhSave('mpo-rh-chart',{range:rhChart.range,symbol:rhChart.symbol});
 const RH_FOCUS_IDS=['rhSymbol','rhUsd','rhSymbols','rhOrderUsd','rhMaxOpen','rhBank','rhParams','rhResetConfirm','rhRealSymbol','rhRealUsd','rhRealType','rhApOrderUsd','rhApMaxOpen','rhApLossCap','rhApSymbols','rhApType'];
 const RH_SECRET_IDS=['rhApiKey','rhSecret','rhConfirm','rhAutoConfirm'];
 const RH_PHRASES={place:'PLACE REAL CRYPTO ORDER',cancel:'CANCEL REAL CRYPTO ORDER',cancelAll:'CANCEL REAL CRYPTO ORDERS',autopilot:'ENABLE REAL CRYPTO AUTOPILOT',forget:'FORGET'};
@@ -259,11 +278,11 @@ function renderRobinhood(force=false){
 <div data-rh-part="reset"><details class="rh-more"><summary>Reset simulated book</summary> <fieldset class="mpo-fieldset"><legend>Reset simulated book</legend><label>Starting USD <input id="rhBank" type="number" min="50" max="100000" value="${polyEscape(rhVal('rhBank',p.startUsd||1000))}"></label><label>Type RESET PAPER <input id="rhResetConfirm" value="${polyEscape(rhVal('rhResetConfirm',''))}" autocomplete="off"></label><button id="rhReset" ${disabled}>Reset paper only</button><p>Clears simulated positions, history and qualification; stops paper autopilot. Real balances and the real journal are untouched.</p></fieldset></details></div>
  </div>`);
  const keep=RH_VIEWS[rhView]||RH_VIEWS.paper;root.querySelectorAll('[data-rh-part]').forEach(n=>{if(!keep.includes(n.dataset.rhPart))n.remove()});
- root.querySelectorAll('[data-rh-view]').forEach(b=>b.onclick=()=>{rhView=b.dataset.rhView;renderRobinhood(true);if(rhView==='charts')rhLoadChart(true)});
+ root.querySelectorAll('[data-rh-view]').forEach(b=>b.onclick=()=>{rhView=b.dataset.rhView;rhSave('mpo-rh-view',rhView);renderRobinhood(true);if(rhView==='charts')rhLoadChart(true)});
  const el=id=>root.querySelector('#'+id)||{};
  el('rhRefresh').onclick=()=>refreshRobinhood();
- root.querySelectorAll('[data-rh-chart-symbol]').forEach(b=>b.onclick=()=>{rhChart.symbol=b.dataset.rhChartSymbol;rhChart.data=null;rhLoadChart(true);renderRobinhood(true)});
- root.querySelectorAll('[data-rh-chart-range]').forEach(b=>b.onclick=()=>{rhChart.range=b.dataset.rhChartRange;rhLoadChart(true);renderRobinhood(true)});
+ root.querySelectorAll('[data-rh-chart-symbol]').forEach(b=>b.onclick=()=>{rhChart.symbol=b.dataset.rhChartSymbol;rhChart.data=null;rhSaveChart();rhLoadChart(true);renderRobinhood(true)});
+ root.querySelectorAll('[data-rh-chart-range]').forEach(b=>b.onclick=()=>{rhChart.range=b.dataset.rhChartRange;rhSaveChart();rhLoadChart(true);renderRobinhood(true)});
  el('rhBuy').onclick=()=>rhAction('paper-order',{symbol:el('rhSymbol').value,usd:Number(el('rhUsd').value)});
  el('rhTick').onclick=()=>rhAction('paper-autopilot/run',{});
  el('rhToggle').onclick=()=>rhAction('paper-autopilot',{enabled:!a.enabled});
@@ -298,7 +317,10 @@ const money=n=>Number.isFinite(Number(n))?'$'+Number(n).toLocaleString(undefined
 const age=ts=>!ts?'—':Math.max(0,Math.round((Date.now()-ts)/1000))+'s';
 const fmtSol=v=>Number.isFinite(Number(v))?Number(v).toFixed(3)+' SOL':'—';
 let state=null,journal=[],projectJournal={rows:[]},networkState={peers:[],messages:[]},polyUSComboState={},updateState={status:'IDLE'},researchMonitor={status:'idle',running:[],leaderboard:[],rejections:{}},journalFilter='all',journalQuery='',z=20,selectedIcon=null;
-let chartView={range:'session',zoom:1,pan:0,dragging:false,lastX:0,hoverX:null};let fxSig='',fxBurstTimer=null,fxBurstUntil=0,fxLastRealizedSol=null,fxComboPrimed=false,fxRobinhoodPrimed=false,fxAheadAnnounced=false;const fxSeenComboSettlements=new Set(),fxSeenRobinhoodCloses=new Set(),moneyEvents=[];
+// Pump.fun chart range and zoom survive restarts (pan/hover stay per-session).
+const readPrefEarly=k=>{try{return JSON.parse(localStorage.getItem(k))}catch{return null}};
+function saveChartView(){try{localStorage.setItem('mpo-chart-view',JSON.stringify({range:chartView.range,zoom:chartView.zoom}))}catch{}}
+let chartView={range:'session',zoom:1,...(()=>{const v=readPrefEarly('mpo-chart-view');return v&&typeof v==='object'?{...(['m1','m5','m15','h1','session'].includes(v.range)?{range:v.range}:{}),...(Number.isFinite(v.zoom)?{zoom:Math.max(1,Math.min(32,v.zoom))}:{})}:{}})(),pan:0,dragging:false,lastX:0,hoverX:null};let fxSig='',fxBurstTimer=null,fxBurstUntil=0,fxLastRealizedSol=null,fxComboPrimed=false,fxRobinhoodPrimed=false,fxAheadAnnounced=false;const fxSeenComboSettlements=new Set(),fxSeenRobinhoodCloses=new Set(),moneyEvents=[];
 const renderSig=new Map();
 const perf={stateKB:0,renderMs:0,refreshMs:0,lastStateAt:0};
 let productEconomicsState=null;
@@ -339,7 +361,9 @@ const DEFAULT_OPEN=['trade'];
 const LAYOUT_VERSION='2026-09-26-glance';
 let saved=JSON.parse(localStorage.getItem('mpo-layout')||'{}');
 let openSet=new Set(JSON.parse(localStorage.getItem('mpo-open')||JSON.stringify(DEFAULT_OPEN)));
-if(localStorage.getItem('mpo-layout-version')!==LAYOUT_VERSION){localStorage.removeItem('mpo-layout');localStorage.setItem('mpo-open',JSON.stringify(DEFAULT_OPEN));localStorage.setItem('mpo-layout-version',LAYOUT_VERSION);saved={};openSet=new Set(DEFAULT_OPEN)}
+// Layout changes must migrate, never wipe: a version bump only records the new version and keeps the
+// saved spots and open windows. #setResetLayout is the only thing allowed to clear mpo-layout.
+if(localStorage.getItem('mpo-layout-version')!==LAYOUT_VERSION)localStorage.setItem('mpo-layout-version',LAYOUT_VERSION);
 // Windows only exist for hosts now; drop anything left over from a pre-consolidation layout.
 saved=Object.fromEntries(Object.entries(saved||{}).filter(([k])=>HOSTS.includes(k)));
 openSet=new Set([...openSet].filter(id=>HOSTS.includes(id)));
@@ -350,15 +374,22 @@ for(const h of HOSTS)if(!tabsOf(h).includes(activeTab[h]))activeTab[h]=h;
 // Simple | Advanced switch or a window's own button says Advanced; only the last-used window opens at launch.
 const readPref=(k,d)=>{try{const v=JSON.parse(localStorage.getItem(k));return v??d}catch{return d}};
 const writePref=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}};
-const TEXT_SCALES={S:1,M:1.25,L:1.5};
-let displayPrefs={textSize:'M',fullDetail:false,restoreAll:false,...readPref('mpo-display',{})};
+const TEXT_SCALES={S:.9,M:1.1,L:1.3};
+let displayPrefs={textSize:'M',fullDetail:false,restoreAll:true,...readPref('mpo-display',{})};
+// Older builds saved restoreAll:false inside mpo-display; flip it once so every open window reopens.
+if(!readPref('mpo-restore-migrated',false)){displayPrefs.restoreAll=true;writePref('mpo-display',displayPrefs);writePref('mpo-restore-migrated',true)}
+// One-time 12% shrink of saved window sizes (Simple mode got smaller); positions are kept.
+if(!readPref('mpo-size-migrated-0927',false)){for(const L of Object.values(saved)){if(!L||typeof L!=='object')continue;if(Number.isFinite(L.w))L.w=Math.max(260,Math.round(L.w*.88));if(Number.isFinite(L.h))L.h=Math.max(150,Math.round(L.h*.88))}writePref('mpo-layout',saved);writePref('mpo-size-migrated-0927',true)}
+// The user's intended spot for each window. Clamping to a small viewport is visual only and never
+// overwrites this; persist() takes DOM geometry only from windows the user actually moved.
+let intended={...saved};
 const detailSet=new Set(readPref('mpo-detail',[]));
 const isDetail=host=>displayPrefs.fullDetail||detailSet.has(host);
 const textScale=()=>TEXT_SCALES[displayPrefs.textSize]||TEXT_SCALES.M;
 const bootFocus=(()=>{const f=readPref('mpo-last-focus','trade');const id=HOSTS.includes(f)?f:'trade';openSet.add(id);return id})();
 // A window without a saved spot opens centred and large: one clear thing on the desktop.
-const HERO_MAX_H={money:560,journal:680};
-function heroLayout(id){const W=window.innerWidth||1280,H=(window.innerHeight||800)-36,w=Math.round(Math.min(1000,Math.max(520,W*.7))),h=Math.round(Math.min(HERO_MAX_H[id]||800,Math.max(420,H*.9)));return{x:Math.max(0,Math.round((W-w)/2)),y:Math.max(8,Math.round((H-h)/2)),w,h}}
+const HERO_MAX_H={money:500,journal:600};
+function heroLayout(id){const W=window.innerWidth||1280,H=(window.innerHeight||800)-36,w=Math.round(Math.min(880,Math.max(520,W*.7))),h=Math.round(Math.min(HERO_MAX_H[id]||700,Math.max(420,H*.9)));return{x:Math.max(0,Math.round((W-w)/2)),y:Math.max(8,Math.round((H-h)/2)),w,h}}
 let layoutResetting=false;
 function persist(){
  // Never persist a transient layout (boot overlay, pane still opening) and never record a hidden
@@ -368,7 +399,8 @@ function persist(){
  const d=$('#desktop');if(d&&(d.clientWidth<480||d.clientHeight<320))return;
  const o={}; $$('.window').forEach(w=>{const id=w.dataset.app,prev=saved[id]||defaultLayout[id]||{},hidden=w.classList.contains('hidden');
   const ww=hidden?(parseInt(w.style.width)||prev.w||480):w.offsetWidth,hh=hidden?(parseInt(w.style.height)||prev.h||350):w.offsetHeight;
-  o[id]={x:parseInt(w.style.left)||0,y:parseInt(w.style.top)||0,w:Math.max(260,ww||260),h:Math.max(150,hh||150),min:hidden,max:w.classList.contains('max')}});
+  const I=intended[id],geo=(w.dataset.userMoved==='1'||!I)?{x:parseInt(w.style.left)||0,y:parseInt(w.style.top)||0,w:Math.max(260,ww||260),h:Math.max(150,hh||150)}:{x:I.x,y:I.y,w:I.w,h:I.h};
+  o[id]={...geo,min:hidden,max:w.classList.contains('max')};intended[id]={...geo};delete w.dataset.userMoved});
  saved=o;
  localStorage.setItem('mpo-layout',JSON.stringify(o)); localStorage.setItem('mpo-open',JSON.stringify([...openSet])); localStorage.setItem('mpo-tabs',JSON.stringify(activeTab));
 }
@@ -386,6 +418,7 @@ function buildIcons(){
 }
 function appShell(id,title){
  const L=saved[id]||heroLayout(id);
+ intended[id]||={x:L.x,y:L.y,w:L.w,h:L.h};
  // Launch shows only the last-used window; the rest wait in the taskbar (Settings can reopen all).
  const shown=openSet.has(id)&&(displayPrefs.restoreAll?!L.min:id===bootFocus);
  const tabs=tabsOf(id),tabbed=tabs.length>1,act=activeTab[id]||id,detail=isDetail(id);
@@ -400,7 +433,7 @@ function buildWindows(){
  $$('.window').forEach(initWindow);
  $$('.window').forEach(w=>{fitResize?.observe(w);fitMutations.observe(w,{childList:true,subtree:true,characterData:true})});
  $$('.win-tabs .tab98').forEach(b=>b.onclick=e=>{e.stopPropagation();setTab(b.dataset.host,b.dataset.tab)});
- clampAll(); renderTasks();
+ reflowAll(); renderTasks();
  const first=$(`.window[data-app="${bootFocus}"]`);if(first&&!first.classList.contains('hidden'))focus(first);
 }
 function applyMode(w){
@@ -446,6 +479,9 @@ function clampWin(w){
  w.style.left=Math.round(x)+'px';w.style.top=Math.round(y)+'px';
 }
 function clampAll(){$$('.window').forEach(clampWin)}
+// Put every non-maximized window back at its intended spot, then clamp visually to the current
+// viewport: a window squeezed by a small viewport returns to its saved place when the viewport grows.
+function reflowAll(){$$('.window').forEach(w=>{const I=intended[w.dataset.app];if(I&&!w.classList.contains('max')){w.style.left=I.x+'px';w.style.top=I.y+'px';w.style.width=I.w+'px';w.style.height=I.h+'px'}clampWin(w)})}
 // Fit to window: the visible pane (window body or active tab) is scaled with CSS zoom so its whole
 // content fits the window and shrinks as the window shrinks. The pane carries the zoom itself with
 // an explicit size of box/zoom, so it still fills exactly its box and #body-x>… selectors keep
@@ -492,7 +528,7 @@ function tileGrid(ws,x0,y0,W,H,gap){
  const n=ws.length;if(!n)return;
  const cols=Math.max(1,Math.min(n,Math.ceil(Math.sqrt(n*W/H/1.25))||1)),rows=Math.ceil(n/cols);
  ws.forEach((w,i)=>{const r=Math.floor(i/cols),inRow=r===rows-1?n-r*cols:cols,c=i-r*cols,cw=(W-gap)/inRow,rh=(H-gap)/rows;
-  w.classList.remove('max');w.style.left=Math.round(x0+gap+c*cw)+'px';w.style.top=Math.round(y0+gap+r*rh)+'px';w.style.width=Math.round(cw-gap)+'px';w.style.height=Math.round(rh-gap)+'px'});
+  w.classList.remove('max');w.dataset.userMoved='1';w.style.left=Math.round(x0+gap+c*cw)+'px';w.style.top=Math.round(y0+gap+r*rh)+'px';w.style.width=Math.round(cw-gap)+'px';w.style.height=Math.round(rh-gap)+'px'});
 }
 function tileWindows(){
  const d=$('#desktop'),bar=$('.taskbar');if(!d)return;
@@ -513,9 +549,9 @@ function initWindow(w){
  const EDGE=10;
  const begin=(e,m)=>{if(w.classList.contains('max'))return;focus(w);mode=m;sx=e.clientX;sy=e.clientY;ox=parseInt(w.style.left);oy=parseInt(w.style.top);ow=w.offsetWidth;oh=w.offsetHeight;w.setPointerCapture?.(e.pointerId);document.onpointermove=move;document.onpointerup=end;e.preventDefault()};
  const move=e=>{const dx=e.clientX-sx,dy=e.clientY-sy;if(mode==='drag'){w.style.left=(ox+dx)+'px';w.style.top=Math.max(0,oy+dy)+'px';clampWin(w);return}let x=ox,y=oy,nw=ow,nh=oh;if(mode.includes('e'))nw=Math.max(260,ow+dx);if(mode.includes('s'))nh=Math.max(150,oh+dy);if(mode.includes('w')){nw=Math.max(260,ow-dx);x=ox+(ow-nw)}if(mode.includes('n')){nh=Math.max(150,oh-dy);y=oy+(oh-nh)}w.style.left=Math.max(0,x)+'px';w.style.top=Math.max(0,y)+'px';w.style.width=nw+'px';w.style.height=nh+'px';clampWin(w)};
- const end=()=>{document.onpointermove=null;document.onpointerup=null;mode=null;clampWin(w);persist()};
+ const end=()=>{document.onpointermove=null;document.onpointerup=null;mode=null;clampWin(w);w.dataset.userMoved='1';persist()};
  bar.onpointerdown=e=>{if(e.target.tagName!=='BUTTON')begin(e,'drag')};resize.onpointerdown=e=>begin(e,'se');
- bar.ondblclick=e=>{if(e.target.tagName==='BUTTON')return;w.classList.toggle('max');if(!w.classList.contains('max'))clampWin(w);persist()};
+ bar.ondblclick=e=>{if(e.target.tagName==='BUTTON')return;w.classList.toggle('max');if(!w.classList.contains('max'))reflowAll();persist()};
  w.addEventListener('pointermove',e=>{if(mode||e.target.closest('.titlebar,.resize,.win-buttons,.win-tabs'))return;const r=w.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;let m='';if(y<EDGE)m+='n';else if(r.height-y<EDGE)m+='s';if(x<EDGE)m+='w';else if(r.width-x<EDGE)m+='e';w.style.cursor=m?(m==='n'||m==='s'?'ns-resize':m==='e'||m==='w'?'ew-resize':m==='ne'||m==='sw'?'nesw-resize':'nwse-resize'):''});
  w.addEventListener('pointerdown',e=>{if(e.target.closest('.titlebar,.resize,.win-buttons,.win-tabs,button,input,select,textarea'))return;const r=w.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;let m='';if(y<EDGE)m+='n';else if(r.height-y<EDGE)m+='s';if(x<EDGE)m+='w';else if(r.width-x<EDGE)m+='e';if(m)begin(e,m)});
  w.onpointerdown=()=>focus(w);
@@ -523,7 +559,7 @@ function initWindow(w){
  w.querySelector('[data-act=fit]').onclick=e=>{e.stopPropagation();const id=w.dataset.app;if(fitOff.has(id))fitOff.delete(id);else fitOff.add(id);try{localStorage.setItem('mpo-fit-off',JSON.stringify([...fitOff]))}catch{}scheduleFit(w)};
  w.querySelector('[data-act=min]').onclick=e=>{e.stopPropagation();w.classList.add('hidden');persist();renderTasks()};
  w.querySelector('[data-act=close]').onclick=e=>{e.stopPropagation();w.classList.add('hidden');openSet.delete(w.dataset.app);persist();renderTasks()};
- w.querySelector('[data-act=max]').onclick=e=>{e.stopPropagation();w.classList.toggle('max');if(!w.classList.contains('max'))clampWin(w);persist()};
+ w.querySelector('[data-act=max]').onclick=e=>{e.stopPropagation();w.classList.toggle('max');if(!w.classList.contains('max'))reflowAll();persist()};
 }
 function focus(w){$$('.window').forEach(x=>x.classList.add('inactive'));w.classList.remove('inactive');w.style.zIndex=++z;writePref('mpo-last-focus',w.dataset.app);renderTasks()}
 function openApp(id){
@@ -604,8 +640,8 @@ function chartSeries(){
  const now=Date.now(),ranges={m1:60000,m5:300000,m15:900000,h1:3600000,session:Infinity},span=ranges[chartView.range]??Infinity,base=span===Infinity?all:all.filter(q=>now-q.ts<=span);return base.length?base:all.slice(-2)
 }
 function bindChartControls(){
- $$('.range-btn').forEach(b=>b.onclick=()=>{chartView.range=b.dataset.range;chartView.zoom=1;chartView.pan=0;renderSig.delete('trade');renderTrade()});
- const c=$('#priceChart');if(!c)return;$('#chartZoomIn').onclick=()=>{chartView.zoom=Math.min(32,chartView.zoom*1.5);drawChart()};$('#chartZoomOut').onclick=()=>{chartView.zoom=Math.max(1,chartView.zoom/1.5);chartView.pan=Math.min(chartView.pan,1-1/chartView.zoom);drawChart()};$('#chartFit').onclick=()=>{chartView.range='session';chartView.zoom=1;chartView.pan=0;renderSig.delete('trade');renderTrade()};
+ $$('.range-btn').forEach(b=>b.onclick=()=>{chartView.range=b.dataset.range;chartView.zoom=1;chartView.pan=0;saveChartView();renderSig.delete('trade');renderTrade()});
+ const c=$('#priceChart');if(!c)return;$('#chartZoomIn').onclick=()=>{chartView.zoom=Math.min(32,chartView.zoom*1.5);saveChartView();drawChart()};$('#chartZoomOut').onclick=()=>{chartView.zoom=Math.max(1,chartView.zoom/1.5);chartView.pan=Math.min(chartView.pan,1-1/chartView.zoom);saveChartView();drawChart()};$('#chartFit').onclick=()=>{chartView.range='session';chartView.zoom=1;chartView.pan=0;saveChartView();renderSig.delete('trade');renderTrade()};
  c.onwheel=e=>{e.preventDefault();const old=chartView.zoom;chartView.zoom=Math.max(1,Math.min(32,old*(e.deltaY<0?1.25:.8)));if(chartView.zoom===1)chartView.pan=0;drawChart()};
  c.onpointerdown=e=>{chartView.dragging=true;chartView.lastX=e.clientX;c.setPointerCapture?.(e.pointerId)};c.onpointerup=()=>chartView.dragging=false;c.onpointercancel=()=>chartView.dragging=false;
  c.onpointermove=e=>{const r=c.getBoundingClientRect();chartView.hoverX=(e.clientX-r.left)/r.width;if(chartView.dragging){const dx=(e.clientX-chartView.lastX)/r.width;chartView.lastX=e.clientX;chartView.pan=Math.max(0,Math.min(1-1/chartView.zoom,chartView.pan-dx/chartView.zoom));}drawChart()};c.onpointerleave=()=>{chartView.hoverX=null;drawChart()};c.ondblclick=()=>{chartView.zoom=1;chartView.pan=0;drawChart()};
@@ -1422,14 +1458,17 @@ setInterval(()=>{if(!document.hidden&&windowVisible('economics'))refreshProductE
 setInterval(()=>{if(!document.hidden&&windowVisible('researchmon'))refreshResearchMonitor()},3000);
 setInterval(()=>{if(!document.hidden)refreshJournal()},15000);
 setInterval(()=>{if(!document.hidden&&windowShown('journal'))refreshProjectJournal()},15000);
-window.addEventListener('resize',()=>{clampAll()});
+window.addEventListener('resize',()=>{reflowAll()});
 $('#tileBtn').onclick=()=>tileWindows();
 $('#modeSimple').onclick=()=>setGlobalMode(false);$('#modeAdvanced').onclick=()=>setGlobalMode(true);paintModeSwitch();
 document.addEventListener('keydown',e=>{if(e.key==='Escape')$('#startMenu').classList.remove('open')});
 $('#startBtn').onclick=e=>{e.stopPropagation();$('#startMenu').classList.toggle('open')};document.addEventListener('pointerdown',e=>{if(!e.target.closest('.startmenu')&&!e.target.closest('#startBtn'))$('#startMenu').classList.remove('open')});
 setInterval(()=>$('#clock').textContent=new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}),1000);
-document.addEventListener('keydown',e=>{if(e.target.matches?.('input,select,textarea'))return;if(!$('#priceChart'))return;if(e.key==='+'||e.key==='='){chartView.zoom=Math.min(32,chartView.zoom*1.5);drawChart()}else if(e.key==='-'){chartView.zoom=Math.max(1,chartView.zoom/1.5);drawChart()}else if(e.key==='0'){chartView.zoom=1;chartView.pan=0;drawChart()}else if(e.key.toLowerCase()==='s'){chartView.range='session';chartView.zoom=1;chartView.pan=0;renderSig.delete('trade');renderTrade()}});
+document.addEventListener('keydown',e=>{if(e.target.matches?.('input,select,textarea'))return;if(!$('#priceChart'))return;if(e.key==='+'||e.key==='='){chartView.zoom=Math.min(32,chartView.zoom*1.5);saveChartView();drawChart()}else if(e.key==='-'){chartView.zoom=Math.max(1,chartView.zoom/1.5);saveChartView();drawChart()}else if(e.key==='0'){chartView.zoom=1;chartView.pan=0;saveChartView();drawChart()}else if(e.key.toLowerCase()==='s'){chartView.range='session';chartView.zoom=1;chartView.pan=0;saveChartView();renderSig.delete('trade');renderTrade()}});
 window.addEventListener('beforeunload',persist);
+window.addEventListener('pagehide',persist);
+// Electron's before-quit calls this so the layout is on disk before the process exits.
+window.__mpoPersist=()=>{persist()};
 setInterval(()=>{if(!document.hidden&&windowShown('robinhood'))refreshRobinhood()},15000);
 </script>
 </body></html>
