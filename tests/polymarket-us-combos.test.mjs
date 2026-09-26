@@ -355,27 +355,26 @@ test('auth failures are classified and surfaced in readiness',async()=>{
  us.armPolymarketUS(false);
 });
 
-// ------------------------------------------------------------------ item 9
-test('autopilot stays off without the second opt-in and disables itself on auth errors',async()=>{
+// ------------------------------------------------------------------ item 9 (removed)
+test('autopilot is deleted: no exports, no snapshot key, the loop only settles, old journals still load',async()=>{
+ for(const k of ['usComboAutopilot','setUSComboAutopilot','runUSComboAutopilotOnce'])assert.equal(k in combos,false,k);
+ assert.equal('CONFIRM_AUTOPILOT' in combos.__testing,false);
+ const src=fs.readFileSync(new URL('../src/polymarketUSCombos.js',import.meta.url),'utf8');
+ assert.doesNotMatch(src,/ENABLE REAL AUTOPILOT|MANUAL_ORDER_INDICATOR_AUTOMATIC/);
+ const loop=src.slice(src.indexOf('export function startUSComboLoops'),src.indexOf('export function stopUSComboLoops'));
+ assert.match(loop,/settleUSCombos()/);assert.doesNotMatch(loop,/place|quote|Autopilot/i);
  reset();
- assert.equal(combos.usComboAutopilot().enabled,false);
- assert.throws(()=>combos.setUSComboAutopilot({enabled:true}),e=>e.code==='confirmation');
- assert.throws(()=>combos.setUSComboAutopilot({enabled:true,confirmation:'ENABLE REAL AUTOPILOT'}),e=>e.code==='notArmed');
- us.armPolymarketUS(true);
- const on=combos.setUSComboAutopilot({enabled:true,confirmation:'ENABLE REAL AUTOPILOT',stakeUsd:5,maxLegs:9,maxOpen:2});
- assert.equal(on.enabled,true);
- assert.equal(on.maxLegs,3,'maxLegs is clamped to 2-3');
- installFetch((u,init)=>{
-  if(u.pathname==='/v1/events')return jsonRes(eventsResponse(liveEvents()));
-  if(u.pathname==='/v1/combos')return textRes('API key not found',401);
-  return null;
- });
- const run=await combos.runUSComboAutopilotOnce();
- assert.equal(run.reason,'keyNotFound');
- assert.equal(run.disabled,true);
- assert.equal(combos.usComboAutopilot().enabled,false,'autopilot must disable itself on auth failure');
- us.armPolymarketUS(false);
- assert.deepEqual(await combos.runUSComboAutopilotOnce(),{ran:false,reason:'disabled'});
+ // A journal written by an older build, autopilot left ON, loads with the key dropped and nothing lost.
+ const entry={id:'uc-old',symbol:'caoc-old',legs:[],status:'OPEN',fillVerified:true,stakeUsd:5,at:Date.now()};
+ fs.writeFileSync(combos.__testing.stateFile,JSON.stringify({version:1,combos:{},open:[entry],history:[],stats:{placed:1,won:0,lost:0,pnlUsd:0,hitRate:null},
+  autopilot:{enabled:true,stakeUsd:25,maxLegs:3,maxOpen:5,skipped:'garbage'},cooldowns:{}}));
+ combos.__testing.resetJournal();
+ installFetch(u=>u.pathname==='/v1/events'?jsonRes(eventsResponse([])):null);
+ const snap=await combos.usComboSnapshot({force:true});
+ assert.equal('autopilot' in snap,false);
+ assert.equal(snap.journal.open.length,1);assert.equal(snap.journal.open[0].id,'uc-old');
+ combos.setUSComboSettings({maxLegs:2});
+ assert.equal('autopilot' in JSON.parse(fs.readFileSync(combos.__testing.stateFile,'utf8')),false,'the next save drops the stale key');
 });
 
 // ------------------------------------------------------------------ item 8
@@ -411,7 +410,7 @@ test('snapshot matches the UI contract and never throws on a dead feed',async()=
  reset();
  installFetch(u=>u.pathname==='/v1/events'?jsonRes(eventsResponse(liveEvents())):null);
  const s=await combos.usComboSnapshot({force:true});
- for(const k of ['at','readiness','feed','candidates','suggested','quote','journal','autopilot','limits','betaAccess','lastError'])assert.ok(k in s,'missing '+k);
+ for(const k of ['at','readiness','feed','candidates','suggested','quote','journal','limits','betaAccess','lastError'])assert.ok(k in s,'missing '+k);
  for(const k of ['credentialsReady','sessionArmed','lastAuthError','authCode'])assert.ok(k in s.readiness,'missing readiness.'+k);
  for(const k of ['ok','error','ageMs','eventsInPlay','eventsLive','candidates','rejections'])assert.ok(k in s.feed,'missing feed.'+k);
  assert.deepEqual(Object.keys(s.limits).sort(),['dailyLossCapUsd','maxOpen','maxStakeUsd','priceTolerance']);
@@ -419,7 +418,7 @@ test('snapshot matches the UI contract and never throws on a dead feed',async()=
  assert.ok(Number.isFinite(s.feed.ageMs)&&s.feed.ageMs>=0,'healthy feed age is never negative');
  assert.equal(s.suggested.legs.length,2);
  assert.equal(s.journal.stats.placed,0);
- assert.equal(s.autopilot.enabled,false);
+ assert.equal('autopilot' in s,false);
  const c=s.candidates[0];
  for(const k of ['key','symbol','side','eventSlug','event','league','marketType','question','outcome','price','bid','ask','spread','liveState','etaMinutes','nearEndScore','lateReason','feeCoefficient','feePerContract','netPrice','rank','comboEnabled','minimumTradeQty','freshnessSec'])assert.ok(k in c,'missing candidate.'+k);
  // A failing feed is reported as an error while the last-known events are retained;
@@ -741,8 +740,6 @@ test('settlement responsiveness leaves the real-money safety limits and confirma
  assert.equal(combos.__testing.SETTLE_FETCH_CONCURRENCY,3);
  assert.deepEqual(combos.usComboLimits(),{maxStakeUsd:25,maxOpen:5,dailyLossCapUsd:50,priceTolerance:0.02});
  assert.equal(combos.__testing.CONFIRM_PLACE,'PLACE REAL COMBO');
- assert.equal(combos.__testing.CONFIRM_AUTOPILOT,'ENABLE REAL AUTOPILOT');
- assert.throws(()=>combos.setUSComboAutopilot({enabled:true,confirmation:'anything else'}),e=>e.code==='confirmation');
 });
 
 // ------------------------------------------------------ owner settings (renovation step 3)

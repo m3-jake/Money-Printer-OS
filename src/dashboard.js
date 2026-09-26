@@ -9,7 +9,7 @@ import { readEvidenceMonitor } from './researchEvidenceStore.js';
 import { readResearchControlPlane, attachControlPlaneToMonitor, leaderboardRows, championPublicationView } from './researchControlPlane.js';
 import { saveResourcePolicy, resourceSnapshot, systemTelemetry } from './resourcePolicy.js';
 import { polymarketUSSnapshot, usReadiness, configurePolymarketUS, armPolymarketUS, previewPolymarketUSOrder, submitPolymarketUSOrder, closePolymarketUSPosition, cancelPolymarketUSOrder, cancelAllPolymarketUS } from './polymarketUS.js';
-import { usComboSnapshot, buildUSCombo, quoteUSCombo, placeUSCombo, cancelUSRfq, setUSComboAutopilot, setUSComboSettings, settleUSCombos, forgetUSCombo, startUSComboLoops } from './polymarketUSCombos.js';
+import { usComboSnapshot, buildUSCombo, quoteUSCombo, placeUSCombo, cancelUSRfq, setUSComboSettings, settleUSCombos, forgetUSCombo, startUSComboLoops } from './polymarketUSCombos.js';
 import { readApiUnitEconomics } from './apiUnitEconomics.js';
 import { productEconomics, productIngestionAuthorized, productReadAuthorized } from './productEconomics.js';
 import updateChannel from '../desktop/update-channel.cjs';
@@ -472,7 +472,6 @@ export function startDashboard() {
         if (u.pathname === '/api/polymarket-us/combos/quote') { try{return json(res,{ok:true,quote:await quoteUSCombo({legKeys:b.legKeys,stakeUsd:b.stakeUsd})})}catch(e){return comboFail(e)} }
         if (u.pathname === '/api/polymarket-us/combos/place') { try{return json(res,await placeUSCombo({legKeys:b.legKeys,stakeUsd:b.stakeUsd,mode:b.mode,rfqId:b.rfqId,quoteId:b.quoteId,limitPrice:b.limitPrice,confirmation:b.confirmation,placedBy:'manual'}))}catch(e){return comboFail(e)} }
         if (u.pathname === '/api/polymarket-us/combos/cancel-rfq') { try{return json(res,{ok:true,...await cancelUSRfq({rfqId:b.rfqId})})}catch(e){return comboFail(e)} }
-        if (u.pathname === '/api/polymarket-us/combos/autopilot') { try{return json(res,{ok:true,autopilot:setUSComboAutopilot(b)})}catch(e){return comboFail(e)} }
         if (u.pathname === '/api/polymarket-us/combos/settings') { try{return json(res,{ok:true,settings:setUSComboSettings(b)})}catch(e){return comboFail(e)} }
         if (u.pathname === '/api/polymarket-us/combos/settle') { try{return json(res,{ok:true,...await settleUSCombos({force:true})})}catch(e){return comboFail(e)} }
         if (u.pathname === '/api/polymarket-us/combos/forget') { try{return json(res,forgetUSCombo({id:b.id,confirmation:b.confirmation}))}catch(e){return comboFail(e)} }
@@ -510,7 +509,7 @@ export function startDashboard() {
   });
 
   server.on('clientError', (_, socket) => socket.end('HTTP/1.1 400 Bad Request\r\n\r\n'));
-  // Combo loops are inert unless autopilot is enabled AND the session is armed.
+  // The combo loop only settles journalled combos; it never places anything.
   try { startUSComboLoops(); } catch { /* combo loops are optional */ }
   startRobinhoodLoops();
   server.on('close',()=>stopRobinhoodLoops());

@@ -38,7 +38,7 @@ export const SETTINGS_BOUNDS={priceMin:{min:0.60,max:PRICE_MAX,default:0.80},max
 // 11:59 PM ET Wed Sep 16 2026 == 03:59 UTC Thu Sep 17 2026 (EDT, UTC-4).
 const COMBO_CURVE_FROM=Date.parse('2026-09-17T03:59:00Z');
 const CONFIRM_PLACE='PLACE REAL COMBO';
-const CONFIRM_AUTOPILOT='ENABLE REAL AUTOPILOT';
+const SUGGEST_STAKE_USD=5;       // stake used only to price the snapshot's suggested combo
 
 const num=v=>{const x=Number(v);return Number.isFinite(x)?x:0};
 const val=x=>num(x?.value??x);
@@ -373,7 +373,6 @@ export function buildUSCombo({legKeys,stakeUsd,candidates=null,at=Date.now(),set
 }
 
 // ---------------------------------------------------------------- journal
-function defaultAutopilot(){return {enabled:false,stakeUsd:5,maxLegs:2,maxOpen:3,dailyLossCapUsd:50,lastRunAt:0,lastAction:null,skipped:[]}}
 function defaultSettings(){return Object.fromEntries(Object.entries(SETTINGS_BOUNDS).map(([k,b])=>[k,b.default]))}
 // Out-of-range or garbage stored values fall back to the default, never to a wider band.
 function normalizeSettings(s={}){
@@ -382,7 +381,7 @@ function normalizeSettings(s={}){
  return out;
 }
 function defaultJournal(){return {version:1,combos:{},open:[],history:[],
- stats:{placed:0,won:0,lost:0,pnlUsd:0,hitRate:null},autopilot:defaultAutopilot(),cooldowns:{},settings:defaultSettings()}}
+ stats:{placed:0,won:0,lost:0,pnlUsd:0,hitRate:null},cooldowns:{},settings:defaultSettings()}}
 function normalizeJournal(s={}){
  const out={...defaultJournal(),...s};
  out.combos=s.combos&&typeof s.combos==='object'?s.combos:{};
@@ -390,8 +389,7 @@ function normalizeJournal(s={}){
  out.history=Array.isArray(s.history)?s.history:[];
  out.cooldowns=s.cooldowns&&typeof s.cooldowns==='object'?s.cooldowns:{};
  out.settings=normalizeSettings(s.settings);
- out.autopilot={...defaultAutopilot(),...(s.autopilot||{})};
- out.autopilot.skipped=Array.isArray(out.autopilot.skipped)?out.autopilot.skipped.slice(-8):[];
+ delete out.autopilot; // autopilot was removed; old journals may still carry the key
  return out;
 }
 let journalCache=null;
@@ -400,7 +398,7 @@ function loadJournal(){
  try{journalCache=normalizeJournal(JSON.parse(fs.readFileSync(STATE_FILE,'utf8')))}
  catch(e){
   if(e?.code==='ENOENT')journalCache=defaultJournal();
-  else journalCache={...defaultJournal(),recoveryRequired:true,recoveryError:`STATE RECOVERY REQUIRED: ${e?.message||e}`,autopilot:{...defaultAutopilot(),enabled:false}};
+  else journalCache={...defaultJournal(),recoveryRequired:true,recoveryError:`STATE RECOVERY REQUIRED: ${e?.message||e}`};
  }
  return journalCache;
 }
@@ -557,7 +555,7 @@ async function placeUSComboLocked({legKeys,stakeUsd,mode='rfq',rfqId=null,quoteI
   const order={marketSlug:symbol,intent:'ORDER_INTENT_BUY_LONG',type:'ORDER_TYPE_LIMIT',
    price:{value:price.toFixed(3),currency:'USD'},quantity:limitQty,
    tif:'TIME_IN_FORCE_IMMEDIATE_OR_CANCEL',participateDontInitiate:false,
-   manualOrderIndicator:placedBy==='autopilot'?'MANUAL_ORDER_INDICATOR_AUTOMATIC':'MANUAL_ORDER_INDICATOR_MANUAL'};
+   manualOrderIndicator:'MANUAL_ORDER_INDICATOR_MANUAL'};
   await signedFetch('POST','/v1/order/preview',{body:order});
   const placed=await signedFetch('POST','/v1/orders',{body:order});
   entry=journalEntry({combo,symbol,mode:'limit',price,quantity:limitQty,orderId:String(placed?.id||placed?.order?.id||placed?.orderId||''),placedBy});
@@ -772,76 +770,10 @@ export async function settleUSCombos({force=false}={}){
  return settleBusy;
 }
 
-// -------------------------------------------------------------- autopilot
-export function usComboAutopilot(){return {...loadJournal().autopilot}}
-// Item 9: default OFF, second explicit opt-in required to enable.
-export function setUSComboAutopilot(patch={}){
- const j=loadJournal();
- const limits=usComboLimits();
- const next={...j.autopilot};
- const turningOn=patch.enabled===true&&!j.autopilot.enabled;
- if(turningOn){
-  if(patch.confirmation!==CONFIRM_AUTOPILOT)fail('confirmation',`Type ${CONFIRM_AUTOPILOT} to enable real autopilot`);
-  requireArmed();
- }
- if(patch.enabled!==undefined)next.enabled=!!patch.enabled;
- if(patch.stakeUsd!==undefined)next.stakeUsd=r2(clamp(num(patch.stakeUsd),1,limits.maxStakeUsd));
- if(patch.maxLegs!==undefined)next.maxLegs=Math.round(clamp(num(patch.maxLegs),2,3));
- if(patch.maxOpen!==undefined)next.maxOpen=Math.round(clamp(num(patch.maxOpen),1,limits.maxOpen));
- if(patch.dailyLossCapUsd!==undefined)next.dailyLossCapUsd=r2(clamp(num(patch.dailyLossCapUsd),1,limits.dailyLossCapUsd));
- j.autopilot=next;
- saveJournal(j);
- return {...next};
-}
-function noteAutopilot(action,skip=null){
- const j=loadJournal();
- j.autopilot.lastRunAt=Date.now();
- if(action)j.autopilot.lastAction=action;
- if(skip)j.autopilot.skipped=[...j.autopilot.skipped,{at:Date.now(),reason:skip}].slice(-8);
- saveJournal(j);
- return j.autopilot;
-}
-let apBusy=false;
-export async function runUSComboAutopilotOnce(){
- const j=loadJournal();
- const ap=j.autopilot;
- if(!ap.enabled)return {ran:false,reason:'disabled'};
- if(apBusy)return {ran:false,reason:'busy'};
- apBusy=true;
- try{return await runUSComboAutopilotPass(j,ap)}finally{apBusy=false}
-}
-async function runUSComboAutopilotPass(j,ap){
- const r=usReadiness();
- if(!r.credentialsReady||!r.sessionArmed||r.realEnabled===false){noteAutopilot(null,'session not armed');return {ran:false,reason:'notArmed'}}
- if(j.open.length>=ap.maxOpen){noteAutopilot(null,`max open (${ap.maxOpen})`);return {ran:false,reason:'openCap'}}
- if(realizedTodayUsd(j)<=-Math.abs(ap.dailyLossCapUsd)){noteAutopilot(null,'daily loss cap');return {ran:false,reason:'dailyLossCap'}}
- try{
-  const pool=await refreshCandidates();
-  const legs=chooseUSCombo(pool,Math.min(clamp(ap.maxLegs,2,3),j.settings.maxLegs),j);
-  if(legs.length<2){noteAutopilot(null,'not enough live candidates');return {ran:false,reason:'noCandidates'}}
-  const legKeys=legs.map(l=>l.key);
-  const quote=await quoteUSCombo({legKeys,stakeUsd:ap.stakeUsd,candidates:pool});
-  const placed=await placeUSCombo({legKeys,stakeUsd:ap.stakeUsd,mode:'rfq',rfqId:quote.rfqId,quoteId:quote.quoteId,
-   confirmation:CONFIRM_PLACE,placedBy:'autopilot'});
-  noteAutopilot({at:Date.now(),symbol:placed.entry.symbol,price:placed.entry.fillPrice,quantity:placed.entry.quantity});
-  return {ran:true,placed:1,entry:placed.entry};
- }catch(e){
-  const code=e?.code||'unknown';
-  if(code==='keyNotFound'||code==='betaNotEnabled'){
-   const s=loadJournal();s.autopilot.enabled=false;saveJournal(s);
-   noteAutopilot({at:Date.now(),disabled:true,reason:code},`autopilot disabled: ${code}`);
-   return {ran:false,reason:code,disabled:true};
-  }
-  noteAutopilot(null,`${code}: ${String(e?.message||e).slice(0,140)}`);
-  return {ran:false,reason:code,error:String(e?.message||e)};
- }
-}
-
 let loopTimer=null;
 export function startUSComboLoops(){
  if(loopTimer||!AUTOSTART())return loopTimer;
  loopTimer=setInterval(()=>{
-  runUSComboAutopilotOnce().catch(()=>{});
   settleUSCombos().catch(()=>{});
  },5000);
  loopTimer.unref?.();
@@ -898,13 +830,12 @@ export async function usComboSnapshot({force=false}={}){
    feedErr=f.ok?null:f.error;
   }catch(e){feedErr=String(e?.message||e);lastError=feedErr}
   const j=loadJournal();
-  const ap=j.autopilot;
   if(lastQuote&&num(lastQuote.expiresAt)<now)lastQuote=null;
   let suggested=null;
   const picked=chooseUSCombo(candidates,j.settings.maxLegs,j);
   if(picked.length>=2){
    try{
-    const c=buildUSCombo({legKeys:picked.map(l=>l.key),stakeUsd:ap.stakeUsd,candidates,at:now});
+    const c=buildUSCombo({legKeys:picked.map(l=>l.key),stakeUsd:Math.min(SUGGEST_STAKE_USD,usComboLimits().maxStakeUsd),candidates,at:now});
     suggested={legs:picked.map(l=>l.key),price:c.price,decimalOdds:c.decimalOdds,stakeUsd:c.stakeUsd,
      quantity:c.quantity,feeUsd:c.feeUsd,payoutUsd:c.payoutUsd,profitUsd:c.profitUsd};
    }catch{suggested=null}
@@ -918,7 +849,6 @@ export async function usComboSnapshot({force=false}={}){
    suggested,
    quote:lastQuote,
    journal:{open:j.open,history:j.history.slice(0,8),stats:{...j.stats,unverified:j.open.filter(x=>x.fillVerified!==true).length}},
-   autopilot:{...ap},
    limits:usComboLimits(),
    settings:{...j.settings},
    settingsBounds:SETTINGS_BOUNDS,
@@ -930,6 +860,6 @@ export async function usComboSnapshot({force=false}={}){
  return snapBusy;
 }
 
-export const __testing={resetJournal(){journalCache=null;lastQuote=null;lastCandidates=[];betaAccess='unknown';lastError=null;snapCache={at:0,data:null};feed={at:0,fetchedAt:0,ok:false,error:null,events:[],inPlay:0,live:0};bboCache.clear();settlementCache.clear();settleAt=0;settleClock=null;placeBusy=null;apBusy=false},
+export const __testing={resetJournal(){journalCache=null;lastQuote=null;lastCandidates=[];betaAccess='unknown';lastError=null;snapCache={at:0,data:null};feed={at:0,fetchedAt:0,ok:false,error:null,events:[],inPlay:0,live:0};bboCache.clear();settlementCache.clear();settleAt=0;settleClock=null;placeBusy=null},
  setClock(fn){settleClock=typeof fn==='function'?fn:null},
- get lastQuote(){return lastQuote},get candidates(){return lastCandidates},stateFile:STATE_FILE,CONFIRM_PLACE,CONFIRM_AUTOPILOT,SETTLE_THROTTLE_MS,SETTLE_CACHE_PENDING_MS,SETTLE_CACHE_RESOLVED_MS,SETTLE_FETCH_CONCURRENCY,settlementCache};
+ get lastQuote(){return lastQuote},get candidates(){return lastCandidates},stateFile:STATE_FILE,CONFIRM_PLACE,SETTLE_THROTTLE_MS,SETTLE_CACHE_PENDING_MS,SETTLE_CACHE_RESOLVED_MS,SETTLE_FETCH_CONCURRENCY,settlementCache};

@@ -4,7 +4,7 @@
 (`CURRENT_TASKS.md`, `KNOWN_BUGS.md`, `PROJECT_STATE.md`, `RELEASE_STATUS.md`) and in `reports/NEXT-STEPS-2026-09-25.md`.
 Don't re-inventory the repo. Update this file at the end of every batch.
 
-Last updated: 2026-09-25, batch 7. Branch `feature/polymarket-combo-only`, version `0.5.0-alpha.56`.
+Last updated: 2026-09-25, batch 8. Branch `feature/polymarket-combo-only`, version `0.5.0-alpha.56`.
 
 ## Architecture (inventoried once)
 
@@ -154,9 +154,25 @@ Last updated: 2026-09-25, batch 7. Branch `feature/polymarket-combo-only`, versi
 - Tests: `test:combos` 41/0 (+4: entry on disk at accept time, 4xx removes, network/502 keeps, confirm 500 keeps). `test:all` **543 / 0**.
 - Next: step 5 (delete autopilot).
 
+## Batch 8 (2026-09-25): combo renovation step 5, autopilot deleted
+
+- **Removed from `src/polymarketUSCombos.js`:**
+  - `usComboAutopilot`, `setUSComboAutopilot`, `runUSComboAutopilotOnce/Pass`, `noteAutopilot`, `apBusy`
+  - `CONFIRM_AUTOPILOT`, `defaultAutopilot`
+  - the `MANUAL_ORDER_INDICATOR_AUTOMATIC` branch: limit orders are always MANUAL now
+- `startUSComboLoops` runs only `settleUSCombos`.
+- The snapshot has no `autopilot` key. `suggested` is kept and priced at `min($5, maxStake)`.
+- `normalizeJournal` drops an old `autopilot` key, so an older journal (even one with autopilot ON) loads, and the next save removes the key.
+- The `/combos/autopilot` route and the HUD autopilot fieldset and handlers are gone. The builder's stake fallback is now a flat $5.
+- Tests:
+  - The old autopilot test was replaced by "autopilot is deleted": no exports, the loop only settles, and old journals load and are cleaned.
+  - `visual-contract` now asserts `ENABLE REAL AUTOPILOT` and `combos/autopilot` are absent. The Robinhood crypto-autopilot phrases are untouched.
+  - `test:all` **543 / 0**.
+- Next: step 6 (singles fallback) is **skipped, because preflight saw 401, not 403**. So step 7 is next: the single-panel UI.
+
 ## Next recommended batch (priority order)
 
-0. Combo renovation step 5: delete autopilot (see batch 7).
+0. Combo renovation step 7: single-panel UI (step 6 skipped until a 403 is observed; see batch 8).
 
 1. **bing:** run the two merge commands (batch 2), then say whether to push. Schedule `npm run collector -- --data "%APPDATA%\Money Printer OS\data"` at logon, and disable `MoneyPrinterReplayWorkhorse`.
 2. Re-run the Lab's three Polymarket sandbox searches with the committed fee model (report section 2.3: `node scripts/polymarket-research.mjs --mode search ...` in the Lab repo, read-only against `W:/mpo-polymarket-research`). Record the verdict here.

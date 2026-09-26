@@ -27,7 +27,7 @@ test('embedded dashboard script parses as JavaScript', () => {
 test('confirmation phrases remain exact in UI and backends', () => {
   const phrases = [
     'PLACE REAL COMBO', 'PLACE REAL ORDER', 'CLOSE REAL POSITION',
-    'CANCEL REAL ORDER', 'CANCEL REAL ORDERS', 'ENABLE REAL AUTOPILOT',
+    'CANCEL REAL ORDER', 'CANCEL REAL ORDERS',
   ];
   for (const p of phrases) assert.match(html, rx(p));
   assert.match(us, /PLACE REAL ORDER/);
@@ -35,7 +35,9 @@ test('confirmation phrases remain exact in UI and backends', () => {
   assert.match(us, /CANCEL REAL ORDER/);
   assert.match(us, /CANCEL REAL ORDERS/);
   assert.match(combos, /CONFIRM_PLACE='PLACE REAL COMBO'|PLACE REAL COMBO/);
-  assert.match(combos, /CONFIRM_AUTOPILOT='ENABLE REAL AUTOPILOT'|ENABLE REAL AUTOPILOT/);
+  // Combo autopilot was deleted (renovation step 5); its phrase must not come back.
+  assert.doesNotMatch(combos, /ENABLE REAL AUTOPILOT/);
+  assert.doesNotMatch(html, /ENABLE REAL AUTOPILOT|combos\/autopilot/);
   assert.match(html, /confirmation!=='FORGET'|phrase:\s*'FORGET'/);
   assert.match(combos, /confirmation!=='FORGET'/);
 });

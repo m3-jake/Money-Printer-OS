@@ -449,7 +449,7 @@ function renderControl(){
 }
 
 // Fast Combos (Polymarket US real execution).
-let usComboSelected=new Set(),usComboAutoSeedKey='',usComboStakeValue='',usComboModeValue='rfq',usComboSubmitting=false,usComboBuildState=null,usComboBuildTimer=null,usComboApDraft={},usComboCountdownTimer=null,usComboRefreshBusy=false;
+let usComboSelected=new Set(),usComboAutoSeedKey='',usComboStakeValue='',usComboModeValue='rfq',usComboSubmitting=false,usComboBuildState=null,usComboBuildTimer=null,usComboCountdownTimer=null,usComboRefreshBusy=false;
 const polyEscape=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function researchParamLine(p={}){const keys=[['aggression','agg'],['tp','tp'],['stop','stop'],['trail','trail'],['maxHold','hold'],['cooldown','cool'],['filter','filter'],['entry','in'],['exit','out']];return keys.filter(([k])=>p[k]!=null).map(([k,l])=>`${l} ${p[k]}`).join(' · ')||'default profile'}
 function monNum(v){const n=Number(v);return Number.isFinite(n)?n:null}
@@ -549,7 +549,7 @@ const polyUsd=(v,d=2)=>polyNum(v)==null?'—':'$'+fmt(v,d);
 const polyAgeS=ms=>polyNum(ms)==null?'—':Math.max(0,Math.round(Number(ms)/1000))+'s';
 const polyTime=t=>{const n=Number(t),d=new Date(n);return Number.isFinite(n)&&n>0&&!Number.isNaN(d.getTime())?d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}):'—'};
 // Any input/select the operator can be typing into must suppress the 5s re-render.
-const POLY_FOCUS_IDS=['usKeyId','usSecret','usSlug','usIntent','usPrice','usQty','usConfirm','usComboStake','usComboMode','usComboConfirm','usComboAutoConfirm','usComboApStake','usComboApMaxLegs','usComboApMaxOpen','usComboApLossCap'];
+const POLY_FOCUS_IDS=['usKeyId','usSecret','usSlug','usIntent','usPrice','usQty','usConfirm','usComboStake','usComboMode','usComboConfirm'];
 // ---- Polymarket Suite: independent modules (combos / us) ------------------
 let polyModules=(()=>{const d={combos:{visible:true,open:true},us:{visible:true,open:true}};try{const s=JSON.parse(localStorage.getItem('mpo-poly-modules')||'null');if(s&&typeof s==='object')for(const k of Object.keys(d))if(s[k]&&typeof s[k]==='object')d[k]={visible:s[k].visible!==false,open:s[k].open!==false}}catch{}return d})();
 const polyModuleSig=new Map();
@@ -603,7 +603,7 @@ function renderSportsbook(){
 function renderPolyCombos(box){
  // Fast Combos · Polymarket US · REAL — snapshot contract per .workflow/scratch/SPEC-fast-combos.md. Every field is optional so an
  // undefined/empty/error snapshot still renders (no throws) while the backend worker builds src/polymarketUSCombos.js in parallel.
- const ucs=polyUSComboState||{},ucReady=ucs.readiness||{},ucFeed=ucs.feed||{},ucCandidates=Array.isArray(ucs.candidates)?ucs.candidates:[],ucSuggested=ucs.suggested||{},ucQuote=ucs.quote||null,ucJournal=ucs.journal||{},ucOpen=Array.isArray(ucJournal.open)?ucJournal.open:[],ucHistory=Array.isArray(ucJournal.history)?ucJournal.history:[],ucStats=ucJournal.stats||{},ucAutopilot=ucs.autopilot||{},ucBeta=ucs.betaAccess||'unknown',ucErr=ucs.error||ucs.lastError||null;
+ const ucs=polyUSComboState||{},ucReady=ucs.readiness||{},ucFeed=ucs.feed||{},ucCandidates=Array.isArray(ucs.candidates)?ucs.candidates:[],ucSuggested=ucs.suggested||{},ucQuote=ucs.quote||null,ucJournal=ucs.journal||{},ucOpen=Array.isArray(ucJournal.open)?ucJournal.open:[],ucHistory=Array.isArray(ucJournal.history)?ucJournal.history:[],ucStats=ucJournal.stats||{},ucBeta=ucs.betaAccess||'unknown',ucErr=ucs.error||ucs.lastError||null;
  const ucSuggestedLegs=Array.isArray(ucSuggested.legs)?ucSuggested.legs.map(String):[],ucSeedKey=ucSuggestedLegs.join('|');
  if(ucSeedKey&&!usComboSelected.size&&usComboAutoSeedKey!==ucSeedKey){ucSuggestedLegs.forEach(k=>usComboSelected.add(k));usComboAutoSeedKey=ucSeedKey;scheduleUSComboBuild()}
  const ucChosenKeys=[...usComboSelected];
@@ -633,18 +633,15 @@ function renderPolyCombos(box){
  const ucKeyBadClass=ucReady.authCode==='keyNotFound'?'red':ucReady.credentialsReady?'green':'amber';
  const ucKeyText=ucReady.authCode==='keyNotFound'?'KEY REJECTED — regenerate at polymarket.us/developer':(ucReady.credentialsReady?'CONNECTED':'KEYS NEEDED');
  const ucBetaLabel=ucBeta==='enabled'?'COMBO API: ENABLED':(ucBeta==='denied'?'COMBO API: DENIED → MANUAL COPY MODE':'COMBO API: UNKNOWN');
- const ucAutoMaxLegs=Number(usComboApDraft.maxLegs??ucAutopilot.maxLegs??2);
- const ucSkippedText=(Array.isArray(ucAutopilot.skipped)?ucAutopilot.skipped:[]).slice(0,4).map(s=>polyEscape(typeof s==='string'?s:((s&&s.reason)||JSON.stringify(s)))).join(' · ')||'—';
  const usComboPanel=`<fieldset class="mpo-danger-fieldset" style="margin-top:6px"><legend>FAST COMBOS · POLYMARKET US · REAL</legend>
   <div class="metric-grid"><div class="metric"><label>FEED</label><b class="${ucFeed.ok?'green':'red'}">${Number(ucFeed.eventsLive||0)} live</b><label>${Number(ucFeed.candidates??ucCandidates.length)} candidates · age ${polyAgeS(ucFeed.ageMs)}${Number(ucStats.unverified||0)?` · <span class="amber">${Number(ucStats.unverified)} unverified</span>`:''}</label></div><div class="metric"><label>KEY</label><b class="${ucKeyBadClass}">${polyEscape(ucKeyText)}</b></div><div class="metric"><label>BETA</label><b class="${ucBeta==='enabled'?'green':(ucBeta==='denied'?'amber':'muted')}">${ucBetaLabel}</b></div><div class="metric"><label>EXECUTION</label><b class="${ucReady.sessionArmed?'red':'amber'}">${ucReady.sessionArmed?'ARMED':'SAFE'}</b><label>manual confirm only</label></div></div>
   ${ucErr?`<div class="mpo-error"><b>Fast combos error</b> — ${polyEscape(ucErr)}</div>`:''}
   <div data-scroll="combo-cands" style="overflow:auto;max-height:200px"><table class="table terminal"><thead><tr><th></th><th>Event / League / Type</th><th>Clock</th><th>Side / Outcome</th><th>Ask (net)</th><th>ETA / reason</th><th>Spread</th></tr></thead><tbody>${ucRows||'<tr><td colspan=7>No near-settlement real candidates right now.</td></tr>'}</tbody></table></div>
-  <div class="inset" style="padding:6px;margin-top:6px"><b>Real combo builder</b><div class="formrow" style="grid-template-columns:90px 1fr 150px"><label>Stake $</label><input class="field" id="usComboStake" type="number" min="1" step="0.5" value="${polyEscape(usComboStakeValue||ucAutopilot.stakeUsd||5)}"><select class="field" id="usComboMode"><option value="rfq" ${usComboModeValue==='rfq'?'selected':''}>RFQ</option><option value="limit" ${usComboModeValue==='limit'?'selected':''}>Limit @ est. price</option></select></div>
+  <div class="inset" style="padding:6px;margin-top:6px"><b>Real combo builder</b><div class="formrow" style="grid-template-columns:90px 1fr 150px"><label>Stake $</label><input class="field" id="usComboStake" type="number" min="1" step="0.5" value="${polyEscape(usComboStakeValue||5)}"><select class="field" id="usComboMode"><option value="rfq" ${usComboModeValue==='rfq'?'selected':''}>RFQ</option><option value="limit" ${usComboModeValue==='limit'?'selected':''}>Limit @ est. price</option></select></div>
   <div class="muted" style="font-size:11px;margin:4px 0">${ucBuildErr?`<span class="red">${polyEscape(ucBuildErr)}</span>`:polyEscape(ucEstLine)}</div>
   <div class="toolbar"><button class="btn" id="usComboGetQuote" ${ucChosenKeys.length<2?'disabled':''}>Get quote</button>${ucQuote?`<span>Quote ${polyCents(ucQuote.buyPrice)} × ${fmt(ucQuote.buyQtyDecimal,2)} · expires in <b id="usComboQuoteCountdown">—</b>${ucQuoteMatches?'':' · <b class="red">legs changed — re-quote</b>'}</span>`:'<span class="muted">No active quote.</span>'}<button class="btn" id="usComboCancelQuote" ${ucQuote&&ucQuote.rfqId?'':'disabled'}>Cancel quote</button><button class="btn" id="usComboCopyLegs" ${ucChosenKeys.length?'':'disabled'}>Copy legs</button></div>
   <div class="toolbar"><input class="field" id="usComboConfirm" placeholder="Type PLACE REAL COMBO" style="width:200px"><button class="btn" id="usComboPlace" ${ucReady.sessionArmed?'':'disabled'}>Place combo</button></div></div>
   <div class="grid2" style="margin-top:6px"><fieldset><legend>Open real combos · ${ucOpen.length}</legend><div class="toolbar" style="margin-bottom:4px"><button class="btn" id="usComboSettle">Check settlement</button></div><div data-scroll="combo-open" style="overflow:auto;max-height:160px"><table class="table terminal"><thead><tr><th>Symbol</th><th>Legs</th><th>Price × Qty</th><th>Stake</th><th>Status</th><th>P/L</th></tr></thead><tbody>${ucOpenRows}</tbody></table></div></fieldset><fieldset><legend>Last 8 combos journal</legend><div data-scroll="combo-hist" style="overflow:auto;max-height:160px"><table class="table terminal"><thead><tr><th>Symbol</th><th>Legs</th><th>Price × Qty</th><th>Stake</th><th>Status</th><th>P/L</th></tr></thead><tbody>${ucHistRows}</tbody></table></div><div class="muted" style="font-size:10px;margin-top:3px">${Number(ucStats.placed||0)} placed · ${Number(ucStats.won||0)} won · ${Number(ucStats.lost||0)} lost · P/L ${polyUsd(ucStats.pnlUsd)} · hit rate ${ucStats.hitRate==null?'—':polyPct(ucStats.hitRate)}</div></fieldset></div>
-  <fieldset style="margin-top:6px"><legend>Autopilot · REAL money (double opt-in)</legend><div class="toolbar"><b class="${ucAutopilot.enabled?'green':'amber'}">${ucAutopilot.enabled?'ON':'OFF'}</b><button class="btn" id="usComboApToggle">${ucAutopilot.enabled?'Turn OFF':'Turn ON'}</button></div><div class="formrow" style="grid-template-columns:1fr 100px"><label>Stake $</label><input class="field" id="usComboApStake" type="number" min="1" step="0.5" value="${polyEscape(usComboApDraft.stakeUsd??ucAutopilot.stakeUsd??5)}"></div><div class="formrow" style="grid-template-columns:1fr 100px"><label>Max legs</label><select class="field" id="usComboApMaxLegs">${[2,3].map(v=>`<option value="${v}" ${ucAutoMaxLegs===v?'selected':''}>${v}</option>`).join('')}</select></div><div class="formrow" style="grid-template-columns:1fr 100px"><label>Max open</label><input class="field" id="usComboApMaxOpen" type="number" min="1" step="1" value="${polyEscape(usComboApDraft.maxOpen??ucAutopilot.maxOpen??3)}"></div><div class="formrow" style="grid-template-columns:1fr 100px"><label>Daily loss cap $</label><input class="field" id="usComboApLossCap" type="number" min="1" step="1" value="${polyEscape(usComboApDraft.dailyLossCapUsd??ucAutopilot.dailyLossCapUsd??50)}"></div><input class="field" id="usComboAutoConfirm" placeholder="Type ENABLE REAL AUTOPILOT to turn on" style="width:100%;margin:4px 0"><div class="toolbar"><button class="btn" id="usComboApApply">Apply settings</button></div><div class="muted" style="font-size:10px">Last action: ${polyEscape((a=>!a?'—':typeof a==='string'?a:a.disabled?('autopilot disabled: '+(a.reason||'')):(String(a.symbol||'').slice(0,18)+' @ '+polyCents(a.price)+' × '+fmt(a.quantity,2)))(ucAutopilot.lastAction))} · last run ${polyTime(ucAutopilot.lastRunAt)}<br>Skipped: ${ucSkippedText}</div></fieldset>
  </fieldset>`;
  box.innerHTML=`<div class="dark terminal" style="padding:8px">`+usComboPanel+`</div>`;
  // Fast Combos · Polymarket US · REAL — wiring for the fieldset injected above.
@@ -659,10 +656,6 @@ function renderPolyCombos(box){
  $('#usComboStake')?.addEventListener('input',e=>{usComboStakeValue=e.target.value;scheduleUSComboBuild()});
  $('#usComboMode')?.addEventListener('change',e=>{usComboModeValue=e.target.value;updateUsComboPlaceGate()});
  $('#usComboConfirm')?.addEventListener('input',updateUsComboPlaceGate);
- $('#usComboApStake')?.addEventListener('input',e=>{usComboApDraft.stakeUsd=e.target.value});
- $('#usComboApMaxLegs')?.addEventListener('change',e=>{usComboApDraft.maxLegs=e.target.value});
- $('#usComboApMaxOpen')?.addEventListener('input',e=>{usComboApDraft.maxOpen=e.target.value});
- $('#usComboApLossCap')?.addEventListener('input',e=>{usComboApDraft.dailyLossCapUsd=e.target.value});
  if(usComboCountdownTimer){clearInterval(usComboCountdownTimer);usComboCountdownTimer=null}
  if(ucQuote?.expiresAt){
   const tickUsComboCountdown=()=>{const el=$('#usComboQuoteCountdown');if(!el){if(usComboCountdownTimer){clearInterval(usComboCountdownTimer);usComboCountdownTimer=null}return}const ms=Number(ucQuote.expiresAt)-Date.now();el.textContent=ms>0?Math.ceil(ms/1000)+'s':'expired';if(ms<=0&&usComboCountdownTimer){clearInterval(usComboCountdownTimer);usComboCountdownTimer=null}};
@@ -673,7 +666,7 @@ function renderPolyCombos(box){
   const legKeys=ucChosenKeys.slice();
   if(legKeys.length<2)return showDialog('Fast Combos','Select at least 2 legs','Check two or more candidate rows before requesting a quote.');
   usComboSubmitting=true;
-  try{const r=await post('/api/polymarket-us/combos/quote',{legKeys,stakeUsd:Number(usComboStakeValue)||Number(ucAutopilot.stakeUsd)||5});
+  try{const r=await post('/api/polymarket-us/combos/quote',{legKeys,stakeUsd:Number(usComboStakeValue)||5});
    if(!r?.ok)showDialog('Fast Combos','Quote failed',r?.error||'Polymarket US rejected the quote request.');
   }catch(e){showDialog('Fast Combos','Quote failed',e.message||'Unknown error')}
   finally{usComboSubmitting=false;await refreshUSComboSnapshot()}
@@ -700,7 +693,7 @@ function renderPolyCombos(box){
   if(mode==='rfq'&&!ucQuoteMatches)return showDialog('Fast Combos','Quote is for different legs','The selected legs changed after the quote was requested. Get a new quote.');
   usComboSubmitting=true;
   try{
-   const body={legKeys,stakeUsd:Number(usComboStakeValue)||Number(ucAutopilot.stakeUsd)||5,mode,confirmation};
+   const body={legKeys,stakeUsd:Number(usComboStakeValue)||5,mode,confirmation};
    if(mode==='rfq'){body.rfqId=ucQuote?.rfqId;body.quoteId=ucQuote?.quoteId}
    else{body.limitPrice=polyNum(ucBuild?.price)??polyNum(ucSuggested.price)}
    const r=await post('/api/polymarket-us/combos/place',body);
@@ -721,26 +714,6 @@ function renderPolyCombos(box){
  $('#usComboSettle')?.addEventListener('click',async()=>{
   try{const r=await post('/api/polymarket-us/combos/settle',{});if(!r?.ok)showDialog('Fast Combos','Settlement check failed',r?.error||'Could not check settlement.');}
   catch(e){showDialog('Fast Combos','Settlement check failed',e.message||'Unknown error')}
-  finally{await refreshUSComboSnapshot()}
- });
- $('#usComboApToggle')?.addEventListener('click',async()=>{
-  const turningOn=!ucAutopilot.enabled;let confirmation='';
-  if(turningOn){confirmation=$('#usComboAutoConfirm')?.value||'';if(confirmation!=='ENABLE REAL AUTOPILOT')return showDialog('Fast Combos Autopilot','Confirmation required','Type ENABLE REAL AUTOPILOT exactly to turn on real-money autopilot.')}
-  try{
-   const patch={enabled:turningOn,stakeUsd:Number($('#usComboApStake')?.value)||undefined,maxLegs:Number($('#usComboApMaxLegs')?.value)||undefined,maxOpen:Number($('#usComboApMaxOpen')?.value)||undefined,dailyLossCapUsd:Number($('#usComboApLossCap')?.value)||undefined};
-   if(turningOn)patch.confirmation=confirmation;
-   const r=await post('/api/polymarket-us/combos/autopilot',patch);
-   if(!r?.ok)return showDialog('Fast Combos Autopilot','Not updated',r?.error||'The server rejected the autopilot change.');
-   usComboApDraft={};const ac=$('#usComboAutoConfirm');if(ac)ac.value='';
-  }catch(e){showDialog('Fast Combos Autopilot','Not updated',e.message||'Unknown error')}
-  finally{await refreshUSComboSnapshot()}
- });
- $('#usComboApApply')?.addEventListener('click',async()=>{
-  try{
-   const r=await post('/api/polymarket-us/combos/autopilot',{stakeUsd:Number($('#usComboApStake')?.value),maxLegs:Number($('#usComboApMaxLegs')?.value),maxOpen:Number($('#usComboApMaxOpen')?.value),dailyLossCapUsd:Number($('#usComboApLossCap')?.value)});
-   if(!r?.ok)return showDialog('Fast Combos Autopilot','Settings not saved',r?.error||'The server rejected the settings change.');
-   usComboApDraft={};
-  }catch(e){showDialog('Fast Combos Autopilot','Settings not saved',e.message||'Unknown error')}
   finally{await refreshUSComboSnapshot()}
  });
 }
