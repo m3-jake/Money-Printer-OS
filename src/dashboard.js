@@ -1,4 +1,5 @@
 import { handleRobinhoodRequest, startRobinhoodLoops, stopRobinhoodLoops } from './robinhoodHttp.js';
+import { handleRobinhoodEquitiesRequest, startRobinhoodEquitiesLoop, stopRobinhoodEquitiesLoop } from './robinhoodEquitiesHttp.js';
 import { exitPresets, customExitPolicy, openLimitFor, aggressionParams, customExitBounds, MAX_OPEN_OVERRIDE } from './runtime.js';
 import { evolutionChampionPolicy } from './learner.js';
 import { dataCoverage } from './dataCoverage.js';
@@ -374,6 +375,7 @@ export function startDashboard() {
     try {
       const u = new URL(req.url, 'http://127.0.0.1');
       if(u.pathname==='/api/robinhood'||u.pathname.startsWith('/api/robinhood/'))return await handleRobinhoodRequest(req,res,u,{json,body});
+      if(u.pathname==='/api/robinhood-equities'||u.pathname.startsWith('/api/robinhood-equities/'))return await handleRobinhoodEquitiesRequest(req,res,u,{json});
       if (req.method === 'GET' && u.pathname === '/') {
         productTelemetry(ledger => ledger.recordVisit(req, res, u));
         res.writeHead(200, {
@@ -543,6 +545,8 @@ export function startDashboard() {
   try { startUSComboLoops(); } catch { /* combo loops are optional */ }
   startRobinhoodLoops();
   server.on('close',()=>stopRobinhoodLoops());
+  startRobinhoodEquitiesLoop();
+  server.on('close',()=>stopRobinhoodEquitiesLoop());
   server.listen(cfg.dashboardPort, cfg.dashboardHost, () => console.log(`Dashboard: http://${cfg.dashboardHost}:${cfg.dashboardPort}`));
   return server;
 }
