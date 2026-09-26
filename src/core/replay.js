@@ -126,7 +126,7 @@ export function strategyParams(id, patch = {}) {
 // Sequential backtest over a session. Decisions see only session-visible data; fills use the next
 // record that becomes available after the decision. lookAheadViolations counts any decision input
 // whose availableAt is later than the decision time (must be 0; tested).
-export function runReplay(session, { key, strategy = 'buy-hold', params = {}, stepMs = 15000, cash = 1000, feeBps = 0, slippageBps = 0, maxPoints = 600 } = {}) {
+export function runReplay(session, { key, strategy = 'buy-hold', params = {}, stepMs = 15000, cash = 1000, feeBps = 0, slippageBps = 0, liquidateAtEnd = false, maxPoints = 600 } = {}) {
   const s = REPLAY_STRATEGIES[strategy]; if (!s) throw new Error('Unknown replay strategy');
   if (!(Number.isFinite(stepMs) && stepMs > 0 && Number.isFinite(cash) && cash > 0 && Number.isFinite(feeBps) && feeBps >= 0 && Number.isFinite(slippageBps) && slippageBps >= 0 && slippageBps < 10000)) throw new Error('Invalid replay step, cash, fee, or slippage');
   const p = strategyParams(strategy, params);
@@ -134,30 +134,47 @@ export function runReplay(session, { key, strategy = 'buy-hold', params = {}, st
   let position = null, pending = null, violations = 0; const trades = [], curve = [];
   const fee = v => v * feeBps / 10000;
   const markEquity = q => cash + (position && q ? position.qty * q.bid : 0);
+  const execute = fill => {
+    if (pending.side === 'BUY') {
+      const px = fill.ask * (1 + slippageBps / 10000), qty = cash / (px * (1 + feeBps / 10000)), f = fee(qty * px);
+      cash -= qty * px + f; position = { qty, px, entryFee: f, at: fill.availableAt };
+      trades.push({ side: 'BUY', at: fill.availableAt, decidedAt: pending.at, price: px, qty, fee: f, synthetic: fill.synthetic });
+    } else {
+      const px = fill.bid * (1 - slippageBps / 10000), gross = position.qty * px, f = fee(gross), basis = position.qty * position.px + position.entryFee;
+      cash += gross - f;
+      trades.push({ side: 'SELL', at: fill.availableAt, decidedAt: pending.at, price: px, qty: position.qty, fee: f, entryFee: position.entryFee, pnl: gross - f - basis, ret: (gross - f) / basis - 1, synthetic: fill.synthetic, boundaryLiquidation: pending.reason === 'BOUNDARY' });
+      position = null;
+    }
+    pending = null;
+  };
   while (!session.done) {
     const t = session.clock;
     if (pending) {
       const fill = session.nextAvailableAfter(pending.at, key);
-      if (fill && fill.availableAt <= t) {
-        if (pending.side === 'BUY') { const px = fill.ask * (1 + slippageBps / 10000), qty = cash / (px * (1 + feeBps / 10000)); const f = fee(qty * px); cash -= qty * px + f; position = { qty, px, entryFee: f, at: fill.availableAt }; trades.push({ side: 'BUY', at: fill.availableAt, decidedAt: pending.at, price: px, qty, fee: f, synthetic: fill.synthetic }); }
-        else { const px = fill.bid * (1 - slippageBps / 10000), gross = position.qty * px, f = fee(gross), basis = position.qty * position.px + position.entryFee; cash += gross - f; trades.push({ side: 'SELL', at: fill.availableAt, decidedAt: pending.at, price: px, qty: position.qty, fee: f, entryFee: position.entryFee, pnl: gross - f - basis, ret: (gross - f) / basis - 1, synthetic: fill.synthetic }); position = null; }
-        pending = null;
-      }
+      if (fill && fill.availableAt <= t) execute(fill);
     }
     const history = session.history(key), quote = session.quote(key);
     if (history.length && history.at(-1).availableAt > t) violations++; // records are revealed in availableAt order, so the last is the latest
     if (!pending && quote) { const d = s.decide({ history, quote, position, params: p }); if ((d === 'BUY' && !position) || (d === 'SELL' && position)) pending = { side: d, at: t }; }
+    // Each walk-forward fold declares its exit one step before the boundary. The
+    // next quote may fill it at the boundary, with the same fee/slippage as other sells.
+    if (liquidateAtEnd && position && t + stepMs >= session.end && !pending) pending = { side: 'SELL', at: t, reason: 'BOUNDARY' };
     curve.push({ t, equity: markEquity(quote), mid: quote ? mid(quote) : null });
     session.advanceTo(t + stepMs);
   }
-  // The terminal observation is available for marking only. An order still pending at end
-  // is cancelled; an open position remains open and is valued at the latest bid.
+  // Only a predeclared SELL may execute on the terminal quote. Other pending orders
+  // remain unfilled, and any open position is marked but makes this fold incomplete.
+  if (liquidateAtEnd && pending?.side === 'SELL') {
+    const fill = session.nextAvailableAfter(pending.at, key);
+    if (fill && fill.availableAt <= session.end) execute(fill);
+  }
   const last = session.quote(key), finalEquity = markEquity(last), start = curve.find(c => c.mid !== null);
   if (!curve.length || curve.at(-1).t !== session.clock) curve.push({ t: session.clock, equity: finalEquity, mid: last ? mid(last) : null });
+  else curve[curve.length - 1].equity = finalEquity;
   let peak = -Infinity, maxDd = 0; for (const c of curve) { peak = Math.max(peak, c.equity); maxDd = Math.max(maxDd, peak > 0 ? (peak - c.equity) / peak : 0); }
   const every = Math.max(1, Math.ceil(curve.length / maxPoints)), rows = session.seen.filter(r => r.key === key);
   return {
-    evaluatorVersion: REPLAY_EVALUATOR_VERSION, strategy, params: p, key, start: session.start, end: session.end, stepMs, feeBps, slippageBps, startCash: initialCash, finalEquity,
+    evaluatorVersion: REPLAY_EVALUATOR_VERSION, strategy, params: p, key, start: session.start, end: session.end, stepMs, feeBps, slippageBps, liquidateAtEnd, startCash: initialCash, finalEquity,
     returnPct: (finalEquity / initialCash - 1) * 100,
     buyHoldPct: start && last ? (last.bid / start.mid - 1) * 100 : null, maxDrawdownPct: maxDd * 100, trades, openPosition: position, pendingOrder: pending,
     records: rows.length, syntheticShare: rows.length ? rows.filter(r => r.synthetic).length / rows.length : null, lookAheadViolations: violations,
@@ -196,25 +213,29 @@ function effectiveClosedSamples(returns) {
 export function walkForward(records, { key, strategy, grid = {}, folds = 4, start, end, stepMs = 15000, feeBps = 0, slippageBps = 0, feeModelVerified = false, cash = 1000 } = {}) {
   if (!(folds >= 2 && folds <= 12)) throw new Error('Folds must be between 2 and 12');
   const combos = paramGrid(strategy, grid), span = (end - start) / folds, out = [];
-  const run = (params, a, b, selectedStrategy = strategy) => runReplay(new ReplaySession(records, { start: a, end: b }), { key, strategy: selectedStrategy, params, stepMs, feeBps, slippageBps, cash, maxPoints: 50 });
+  const run = (params, a, b, selectedStrategy = strategy) => runReplay(new ReplaySession(records, { start: a, end: b }), { key, strategy: selectedStrategy, params, stepMs, feeBps, slippageBps, cash, liquidateAtEnd: true, maxPoints: 50 });
   for (let i = 1; i < folds; i++) {
     const trA = start + (i - 1) * span, trB = start + i * span, teB = start + (i + 1) * span;
-    const trained = combos.map(p => ({ p, r: run(p, trA, trB) })).sort((x, y) => (y.r.returnPct ?? -Infinity) - (x.r.returnPct ?? -Infinity));
+    const trained = combos.map(p => ({ p, r: run(p, trA, trB) })).sort((x, y) =>
+      (y.r.openPosition || y.r.pendingOrder ? -Infinity : y.r.returnPct) - (x.r.openPosition || x.r.pendingOrder ? -Infinity : x.r.returnPct));
     const best = trained[0], test = run(best.p, trB, teB), baseline = run({}, trB, teB, 'buy-hold');
     const closed = test.trades.filter(t => t.side === 'SELL');
-    out.push({ fold: i, train: { start: trA, end: trB, params: best.p, returnPct: best.r.returnPct, candidates: combos.length }, test: { start: trB, end: teB, returnPct: test.returnPct, buyHoldPct: baseline.returnPct, trades: test.trades.length, closedTrades: closed.length, openPosition: !!test.openPosition, maxDrawdownPct: test.maxDrawdownPct, lookAheadViolations: test.lookAheadViolations, syntheticShare: test.syntheticShare, tradeReturns: closed.map(t => t.ret) } });
+    const complete = !test.openPosition && !test.pendingOrder;
+    out.push({ fold: i, train: { start: trA, end: trB, params: best.p, returnPct: best.r.openPosition || best.r.pendingOrder ? null : best.r.returnPct, candidates: combos.length }, test: { start: trB, end: teB, returnPct: complete ? test.returnPct : null, markedReturnPct: test.returnPct, buyHoldPct: baseline.openPosition || baseline.pendingOrder ? null : baseline.returnPct, trades: test.trades.length, closedTrades: closed.length, openPosition: !!test.openPosition, complete, boundaryLiquidations: closed.filter(t => t.boundaryLiquidation).length, maxDrawdownPct: test.maxDrawdownPct, lookAheadViolations: test.lookAheadViolations, syntheticShare: test.syntheticShare, tradeReturns: closed.map(t => t.ret) } });
   }
-  const tests = out.map(f => f.test), compounded = tests.reduce((m, t) => m * (1 + (t.returnPct ?? 0) / 100), 1);
+  const tests = out.map(f => f.test), incompleteFolds = tests.filter(t => !t.complete).length;
+  const compounded = incompleteFolds ? null : tests.reduce((m, t) => m * (1 + t.returnPct / 100), 1);
   const closedReturns = tests.flatMap(t => t.tradeReturns);
   // Round trips, not order legs, are observations. Estimate effective N within each
   // chronological fold using the positive serial-correlation sequence; flat returns count
   // as one observation. This estimate cannot establish independence by itself.
   const effectiveN = tests.reduce((s, t) => s + effectiveClosedSamples(t.tradeReturns), 0);
-  const evidence = { evaluatorVersion: REPLAY_EVALUATOR_VERSION, sampleSize: closedReturns.length, effectiveSampleSize: effectiveN, outOfSampleNetPct: Math.round((compounded - 1) * 1e6) / 1e4,
-    costsModeled: feeBps > 0 && slippageBps > 0 && feeModelVerified === true && tests.every(t => t.syntheticShare === 0), feeBps, slippageBps, feeModelVerified,
-    maxDrawdownPct: Math.max(0, ...tests.map(t => t.maxDrawdownPct || 0)), positiveFoldShare: tests.length ? tests.filter(t => (t.returnPct ?? 0) > 0).length / tests.length : null,
+  const evidence = { evaluatorVersion: REPLAY_EVALUATOR_VERSION, sampleSize: closedReturns.length, effectiveSampleSize: effectiveN, outOfSampleNetPct: compounded === null ? null : Math.round((compounded - 1) * 1e6) / 1e4,
+    costsModeled: incompleteFolds === 0 && feeBps > 0 && slippageBps > 0 && feeModelVerified === true && tests.every(t => t.syntheticShare === 0), feeBps, slippageBps, feeModelVerified,
+    maxDrawdownPct: Math.max(0, ...tests.map(t => t.maxDrawdownPct || 0)), positiveFoldShare: incompleteFolds || !tests.length ? null : tests.filter(t => t.returnPct > 0).length / tests.length,
     lookAheadViolations: tests.reduce((s, t) => s + (t.lookAheadViolations || 0), 0), syntheticShare: tests.length ? Math.max(...tests.map(t => t.syntheticShare ?? 0)) : null, pendingOpenPositions: tests.filter(t => t.openPosition).length,
-    method: `walk-forward ${folds} folds, train on previous fold, ${combos.length} parameter sets; effective N estimated from positive serial autocorrelation within folds` };
+    incompleteFolds, boundaryLiquidations: tests.reduce((s, t) => s + t.boundaryLiquidations, 0),
+    method: `walk-forward ${folds} folds, train on previous fold, ${combos.length} parameter sets; predeclared boundary exits fill at next quote with costs; incomplete folds excluded; effective N estimated from positive serial autocorrelation within folds` };
   return { strategy, key, folds: out, evidence };
 }
 

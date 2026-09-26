@@ -1,5 +1,5 @@
-import { canonicalJson, finite, requiredText } from './model.js';
-import { REPLAY_EVALUATOR_VERSION } from './replay.js';
+import { canonicalJson, finite, fingerprint, requiredText } from './model.js';
+import { REPLAY_EVALUATOR_VERSION, paramGrid } from './replay.js';
 
 // Common strategy metadata and lifecycle. Every transition is appended to strategy_transitions;
 // the strategies row is only the latest reading of that history.
@@ -18,6 +18,18 @@ export const PROMOTION_CRITERIA = Object.freeze({
   PAPER: { minSample: 30, requireOutOfSample: true, requireCosts: true, maxDrawdownPct: 35, minStableFolds: 0.5 },
   CANDIDATE: { minSample: 50, requireOutOfSample: true, requireCosts: true, maxDrawdownPct: 25, minStableFolds: 0.6, maxBrier: 0.25 },
 });
+export const strategyEvidenceIdentity = s => fingerprint({ id: s.id, version: s.version, params: s.params,
+  identity: { codeHash: null, dataLineage: null, feeModelHash: null, ...(s.identity || {}) } });
+function matchesRegisteredReplayPolicy(s, run, summary) {
+  try {
+    const family = s.params?.replayStrategy, parameters = s.params?.parameters;
+    if (typeof family !== 'string' || !parameters || typeof parameters !== 'object' || Array.isArray(parameters) || run.strategy !== `walkforward:${family}`) return false;
+    const grid = JSON.parse(run.params).grid || {}, combinations = paramGrid(family, grid);
+    return combinations.length === 1 && canonicalJson(combinations[0]) === canonicalJson(parameters)
+      && Array.isArray(summary.folds) && summary.folds.length > 0
+      && summary.folds.every(f => f.train?.candidates === 1 && canonicalJson(f.train.params) === canonicalJson(parameters));
+  } catch { return false; }
+}
 
 // Only evidence produced by a current verified evaluator can qualify. Legacy Market Lab
 // artifacts are retained in history but its pre-v2 accounting must not promote strategies.
@@ -29,10 +41,12 @@ export function promotionCheck(target, evidence = {}, { probabilistic = false } 
   const n = finite(e.sampleSize), effective = finite(e.effectiveSampleSize), oos = finite(e.outOfSampleNetUsd) ?? finite(e.outOfSampleNetPct), dd = finite(e.maxDrawdownPct), folds = finite(e.positiveFoldShare);
   if (e.evaluatorVersion !== REPLAY_EVALUATOR_VERSION) blockers.push('EVALUATOR_VERSION_UNVERIFIED');
   if (e.verifiedEvaluatorOutput !== true) blockers.push('EVALUATOR_OUTPUT_UNVERIFIED');
+  if (typeof e.strategyIdentity !== 'string' || !/^[0-9a-f]{64}$/.test(e.strategyIdentity)) blockers.push('STRATEGY_IDENTITY_UNVERIFIED');
   if (n === null || n < c.minSample || effective === null || effective < c.minSample || effective > n) blockers.push(`SAMPLE_SIZE<${c.minSample}`);
   if (finite(e.lookAheadViolations) !== 0) blockers.push('LOOK_AHEAD_UNVERIFIED');
   if (finite(e.syntheticShare) !== 0) blockers.push('EXECUTION_DATA_SYNTHETIC_OR_UNKNOWN');
   if (finite(e.pendingOpenPositions) !== 0) blockers.push('OPEN_POSITIONS_WITH_UNMODELED_EXIT_COST');
+  if (finite(e.incompleteFolds) !== 0) blockers.push('INCOMPLETE_WALK_FORWARD_FOLDS');
   if (c.requireCosts && e.costsModeled !== true) blockers.push('FEES_AND_SLIPPAGE_NOT_MODELED');
   if (c.requireOutOfSample && (oos === null || oos <= 0)) blockers.push('OUT_OF_SAMPLE_NOT_PROFITABLE_AFTER_COSTS');
   if (dd === null || dd > c.maxDrawdownPct) blockers.push(`MAX_DRAWDOWN>${c.maxDrawdownPct}%`);
@@ -59,6 +73,18 @@ export class StrategyRegistry {
       CREATE TRIGGER IF NOT EXISTS strategy_transitions_no_update BEFORE UPDATE ON strategy_transitions BEGIN SELECT RAISE(ABORT,'Strategy history is append-only'); END;`);
     if (!store.db.prepare('PRAGMA table_info(strategies)').all().some(c => c.name === 'identity'))
       store.db.exec("ALTER TABLE strategies ADD COLUMN identity TEXT NOT NULL DEFAULT '{}'");
+    // Old evaluator results remain in append-only history. Suspend active paper
+    // eligibility on open rather than waiting for a user to attach new evidence.
+    for (const row of store.db.prepare("SELECT id,state,evidence FROM strategies WHERE state IN ('PAPER','CANDIDATE','LIVE')").all()) {
+      let evidence; try { evidence = JSON.parse(row.evidence); } catch { evidence = {}; }
+      const s = this.get(row.id), gate = promotionCheck(row.state === 'CANDIDATE' ? 'CANDIDATE' : 'PAPER', evidence, { probabilistic: s.probabilistic });
+      if (row.state !== 'LIVE' && evidence.strategyIdentity === strategyEvidenceIdentity(s) && gate.allowed) continue;
+      store.transaction(() => {
+        store.db.prepare("UPDATE strategies SET state='BACKTESTING',evidence='{}',updated_at=? WHERE id=?").run(Date.now(), row.id);
+        store.db.prepare('INSERT INTO strategy_transitions(strategy_id,from_state,to_state,at,reason,evidence) VALUES(?,?,?,?,?,?)').run(row.id,row.state,'BACKTESTING',Date.now(),'Existing evidence invalidated: evaluator or strategy identity is incompatible',canonicalJson(evidence));
+        store.record('STRATEGY_EVIDENCE_INVALIDATED',{id:row.id,priorState:row.state,reason:'Evaluator or strategy identity incompatible'});
+      });
+    }
   }
   register({ id, name, version = '1', markets = [], params = {}, allocationUsd = 0, probabilistic = false, codeHash = null, dataLineage = null, feeModelHash = null }, now = Date.now()) {
     requiredText(id, 'Strategy ID', 100); requiredText(name, 'Strategy name', 200); requiredText(String(version), 'Strategy version', 50);
@@ -107,9 +133,12 @@ export class StrategyRegistry {
       let verified = false;
       if (evidence.labRunId && evidence.evaluatorVersion === REPLAY_EVALUATOR_VERSION) {
         try {
-          const run = this.store.db.prepare('SELECT at,dataset_fp,result FROM lab_runs WHERE id=?').get(String(evidence.labRunId));
-          const actual = run ? JSON.parse(run.result).evidence : null;
-          verified = !!actual && run.at >= s.updatedAt && run.dataset_fp === evidence.datasetFp && Object.entries(actual).every(([k, v]) => canonicalJson(v) === canonicalJson(evidence[k]));
+          const run = this.store.db.prepare('SELECT at,dataset_fp,strategy,params,result FROM lab_runs WHERE id=?').get(String(evidence.labRunId));
+          const summary = run ? JSON.parse(run.result) : null, actual = summary?.evidence;
+          const identity = strategyEvidenceIdentity(s);
+          verified = !!actual && run.at >= s.updatedAt && run.dataset_fp === evidence.datasetFp && summary.strategyIdentity === identity && evidence.strategyIdentity === identity
+            && matchesRegisteredReplayPolicy(s, run, summary)
+            && Object.entries(actual).every(([k, v]) => canonicalJson(v) === canonicalJson(evidence[k]));
         } catch { verified = false; }
       }
       const attached = { ...evidence, verifiedEvaluatorOutput: verified };

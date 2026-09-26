@@ -8,7 +8,7 @@ import { acquireComputeLease, renewComputeLease, releaseComputeLease, computeBud
 
 export function computeTask(task) {
   const { kind, records, opts } = task;
-  if (kind === 'run') return runReplay(new ReplaySession(records, { start: opts.start, end: opts.end }), { key: opts.key, strategy: opts.strategy, params: strategyParams(opts.strategy, opts.params), stepMs: opts.stepMs, feeBps: opts.feeBps, cash: opts.cash });
+  if (kind === 'run') return runReplay(new ReplaySession(records, { start: opts.start, end: opts.end }), { key: opts.key, strategy: opts.strategy, params: strategyParams(opts.strategy, opts.params), stepMs: opts.stepMs, feeBps: opts.feeBps, slippageBps: opts.slippageBps, liquidateAtEnd: opts.liquidateAtEnd, cash: opts.cash });
   if (kind === 'walkforward') return walkForward(records, opts);
   throw new Error('Unknown lab task');
 }
@@ -27,21 +27,40 @@ export class LabPool {
     if (!Number.isInteger(size) || size < 1 || !Number.isInteger(maxQueue) || maxQueue < 1 || !(defaultTimeoutMs > 0)) throw new Error('Invalid Lab pool limits');
     this.size = size; this.maxQueue = maxQueue; this.defaultTimeoutMs = defaultTimeoutMs; this.leaseFile = leaseFile;
     this.workers = []; this.queue = []; this.pending = new Map(); this.seq = 0; this.closed = false; this.retry = null;
-    this.stats = { done: 0, failed: 0, cancelled: 0, timedOut: 0, maxQueue: 0 };
+    this.stats = { done: 0, failed: 0, cancelled: 0, timedOut: 0, leaseReleaseErrors: 0, maxQueue: 0 };
+  }
+  #release(token) {
+    if (!token) return;
+    try { if (releaseComputeLease(token, { file: this.leaseFile }).ok) return; }
+    catch { /* A failed cleanup must not prevent the job from settling. */ }
+    this.stats.leaseReleaseErrors++;
+    // A transient cross-process lock is retried after the terminal promise settles.
+    let attempts = 0;
+    const retry = () => {
+      try { if (releaseComputeLease(token, { file: this.leaseFile }).ok) return; }
+      catch { /* Keep the shared budget fail-closed until cleanup succeeds. */ }
+      if (++attempts < 10) setTimeout(retry, 100);
+      else this.stats.leaseReleaseErrors++;
+    };
+    setTimeout(retry, 100);
   }
   #spawn() {
-    const w = new Worker(new URL(import.meta.url)); w.busy = false; w.job = null; w.unref();
+    const w = new Worker(new URL(import.meta.url)); w.busy = false; w.stopping = false; w.job = null; w.leaseToken = null; w.unref();
     w.on('message', ({ id, ok, result, error }) => {
       if (w.job?.id !== id) return; // late reply from a cancelled/expired job
       this.#settle(w.job, ok ? null : new Error(error || 'Worker task failed'), result);
     });
-    const lost = e => {
+    w.on('error', e => {
+      w.stopping = true;
+      if (w.job) this.#settle(w.job, e, null, 'workerError');
+      w.terminate().catch(() => {});
+    });
+    w.on('exit', code => {
+      if (w.job) this.#settle(w.job, new Error(`Lab worker exited (${code})`), null, 'workerExited');
+      this.#release(w.leaseToken); w.leaseToken = null;
       this.workers = this.workers.filter(x => x !== w);
-      if (w.job) this.#settle(w.job, e || new Error('Lab worker exited'));
       this.#drain();
-    };
-    w.on('error', lost);
-    w.on('exit', code => lost(new Error(`Lab worker exited (${code})`)));
+    });
     this.workers.push(w); return w;
   }
   #settle(job, error, result, outcome = 'failed') {
@@ -52,44 +71,48 @@ export class LabPool {
     if (job.signal && job.abort) job.signal.removeEventListener('abort', job.abort);
     this.queue = this.queue.filter(x => x !== job);
     this.pending.delete(job.id);
-    if (job.lease) releaseComputeLease(job.lease, { file: this.leaseFile });
-    if (job.worker?.job === job) { job.worker.job = null; job.worker.busy = false; }
+    const w = job.worker;
+    if (w?.job === job) w.job = null;
+    const stopWorker = !!w && ['cancelled', 'timedOut', 'leaseLost', 'shutdown', 'workerError', 'workerExited', 'postError'].includes(outcome);
+    if (stopWorker) { w.stopping = true; w.busy = true; }
+    else if (w) { this.#release(w.leaseToken); w.leaseToken = null; w.busy = false; }
     if (error) {
       if (outcome === 'cancelled') this.stats.cancelled++;
       else if (outcome === 'timedOut') this.stats.timedOut++;
       else this.stats.failed++;
       job.reject(error);
     } else { this.stats.done++; job.resolve(result); }
-    if ((outcome === 'cancelled' || outcome === 'timedOut' || outcome === 'leaseLost') && job.worker) {
-      this.workers = this.workers.filter(x => x !== job.worker);
-      job.worker.terminate().catch(() => {});
-    }
+    if (stopWorker && outcome !== 'workerExited') w.terminate().catch(() => {});
     this.#drain();
   }
   #drain() {
     if (this.closed) return;
     while (this.queue.length) {
-      let w = this.workers.find(x => !x.busy);
+      let w = this.workers.find(x => !x.busy && !x.stopping);
       if (!w && this.workers.length >= this.size) return;
-      const lease = acquireComputeLease({ owner: 'trader-market-lab', file: this.leaseFile });
+      let lease;
+      try { lease = acquireComputeLease({ owner: 'trader-market-lab', file: this.leaseFile }); }
+      catch (e) { this.#settle(this.queue.shift(), e); continue; }
       if (!lease.ok) {
         if (!this.retry) { this.retry = setTimeout(() => { this.retry = null; this.#drain(); }, 250); this.retry.unref(); }
         return;
       }
       if (!w) {
         try { w = this.#spawn(); }
-        catch (e) { releaseComputeLease(lease.token, { file: this.leaseFile }); this.#settle(this.queue.shift(), e); continue; }
+        catch (e) { this.#release(lease.token); this.#settle(this.queue.shift(), e); continue; }
       }
       const job = this.queue.shift();
-      if (job.settled) { releaseComputeLease(lease.token, { file: this.leaseFile }); continue; }
-      job.worker = w; job.lease = lease.token; w.busy = true; w.job = job; this.pending.set(job.id, job);
+      if (job.settled) { this.#release(lease.token); continue; }
+      job.worker = w; job.lease = lease.token; w.leaseToken = lease.token; w.busy = true; w.job = job; this.pending.set(job.id, job);
       job.leaseRenewal = setInterval(() => {
-        const renewed = renewComputeLease(job.lease, { file: this.leaseFile });
+        let renewed;
+        try { renewed = renewComputeLease(job.lease, { file: this.leaseFile }); }
+        catch (e) { renewed = { ok: false, reason: e.message }; }
         if (!renewed.ok) this.#settle(job, Object.assign(new Error('Shared compute lease lost'), { code: 'LAB_LEASE_LOST' }), null, 'leaseLost');
       }, 20000);
       job.leaseRenewal.unref();
       try { w.postMessage({ id: job.id, task: job.task }); }
-      catch (e) { this.#settle(job, e); }
+      catch (e) { this.#settle(job, e, null, 'postError'); }
     }
   }
   run(task, { signal = null, timeoutMs = this.defaultTimeoutMs } = {}) {
@@ -109,7 +132,7 @@ export class LabPool {
   async close() {
     if (this.closed) return;
     this.closed = true; clearTimeout(this.retry);
-    for (const job of [...this.queue, ...this.pending.values()]) this.#settle(job, Object.assign(new Error('Lab pool closed'), { code: 'LAB_CLOSED' }));
+    for (const job of [...this.queue, ...this.pending.values()]) this.#settle(job, Object.assign(new Error('Lab pool closed'), { code: 'LAB_CLOSED' }), null, 'shutdown');
     const workers = this.workers; this.workers = [];
     await Promise.allSettled(workers.map(w => w.terminate()));
   }

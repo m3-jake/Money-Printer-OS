@@ -58,3 +58,30 @@ test('worker crash and shutdown each settle jobs once and release leases', async
     releaseComputeLease(probe.token, { file: f.file });
   } finally { await pool.close(); f.cleanup(); }
 });
+
+test('cancellation holds shared slot until worker exit; lease cleanup errors cannot lose result', async () => {
+  const f = fixture(), pool = new LabPool({ size: 1, maxQueue: 1, leaseFile: f.file });
+  try {
+    const aborter = new AbortController();
+    const cancelled = pool.run(task, { signal: aborter.signal });
+    aborter.abort();
+    assert.equal(pool.status().busy, 1);
+    assert.equal(acquireComputeLease({ owner: 'probe', maxSlots: 1, file: f.file }).ok, false);
+    await assert.rejects(cancelled, { code: 'LAB_CANCELLED' });
+    await new Promise(resolve => setTimeout(resolve, 50));
+    assert.equal(pool.status().workers, 0);
+    const slow = { kind: 'walkforward', records: Array.from({ length: 8000 }, (_, i) => ({ key: 'X', observedAt: i * 15000, availableAt: i * 15000, bid: 100 + Math.sin(i / 5), ask: 100.1 + Math.sin(i / 5), synthetic: false })),
+      opts: { key: 'X', strategy: 'momentum', grid: { lookback: [3, 5, 8, 13], thresholdBps: [5, 10, 20, 40] }, folds: 6, start: 0, end: 7999 * 15000, feeBps: 10 } };
+    const result = pool.run(slow);
+    fs.renameSync(f.file, `${f.file}.saved`);
+    fs.mkdirSync(f.file);
+    assert.ok((await result).evidence);
+    assert.ok(pool.status().leaseReleaseErrors >= 1);
+    fs.rmdirSync(f.file);
+    fs.renameSync(`${f.file}.saved`, f.file);
+    await new Promise(resolve => setTimeout(resolve, 150));
+    const probe = acquireComputeLease({ owner: 'probe', maxSlots: 1, file: f.file });
+    assert.equal(probe.ok, true);
+    releaseComputeLease(probe.token, { file: f.file });
+  } finally { await pool.close(); f.cleanup(); }
+});

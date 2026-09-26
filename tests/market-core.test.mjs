@@ -34,7 +34,7 @@ import { solanaPlan,practicePlan } from '../src/core/legacyImport.js';
 import { LabPool,computeTask } from '../src/core/labWorker.js';
 import { summarizeFiling,htmlToText,MAX_FILING_CHARS } from '../src/core/aiSummary.js';
 import { reconcileVenue } from '../src/core/accountReconcile.js';
-import { StrategyRegistry,promotionCheck,labChampionLifecycle } from '../src/core/strategies.js';
+import { StrategyRegistry,promotionCheck,labChampionLifecycle,strategyEvidenceIdentity } from '../src/core/strategies.js';
 import { assertGlobalTradingNotHalted } from '../src/core/executionBoundary.js';
 import { localMutationAllowed } from '../src/core/http.js';
 
@@ -169,7 +169,7 @@ test('core mutations reject cross-origin browser requests and remote clients',()
   assert.equal(localMutationAllowed(req),true);assert.equal(localMutationAllowed({...req,headers:{...req.headers,origin:'https://evil.example'}}),false);assert.equal(localMutationAllowed({...req,socket:{remoteAddress:'192.168.1.5'}}),false);assert.equal(localMutationAllowed({...req,headers:{host:'127.0.0.1:8897','content-type':'text/plain'}}),false);
 });
 
-const good={evaluatorVersion:'market-replay.v2',verifiedEvaluatorOutput:true,sampleSize:80,effectiveSampleSize:75,outOfSampleNetUsd:12,costsModeled:true,maxDrawdownPct:10,positiveFoldShare:.75,brier:.2,lookAheadViolations:0,syntheticShare:0,pendingOpenPositions:0};
+const good={evaluatorVersion:'market-replay.v2',verifiedEvaluatorOutput:true,strategyIdentity:'a'.repeat(64),sampleSize:80,effectiveSampleSize:75,outOfSampleNetUsd:12,costsModeled:true,maxDrawdownPct:10,positiveFoldShare:.75,brier:.2,lookAheadViolations:0,syntheticShare:0,pendingOpenPositions:0,incompleteFolds:0};
 test('promotion needs every criterion; one strong metric is never enough',()=>{
   assert.equal(promotionCheck('CANDIDATE',good,{probabilistic:true}).allowed,true);
   assert.equal(promotionCheck('CANDIDATE',{outOfSampleNetUsd:1e6}).allowed,false);
@@ -180,14 +180,15 @@ test('promotion needs every criterion; one strong metric is never enough',()=>{
 });
 test('strategy lifecycle follows allowed edges, never reaches LIVE, and keeps append-only history',()=>{
   const s=new CoreDatabase(':memory:'),r=new StrategyRegistry(s);
-  r.register({id:'tennis-fast',name:'Tennis fast settle',markets:['polymarket','kalshi'],allocationUsd:50,probabilistic:true});
+  r.register({id:'tennis-fast',name:'Tennis fast settle',markets:['polymarket','kalshi'],params:{replayStrategy:'buy-hold',parameters:{}},allocationUsd:50,probabilistic:true});
   assert.throws(()=>r.register({id:'tennis-fast',name:'dup'}),/already/);
   assert.throws(()=>r.transition('tennis-fast','PAPER',{reason:'skip'}),/not allowed/);
   r.transition('tennis-fast','BACKTESTING',{reason:'start'});
   assert.throws(()=>r.transition('tennis-fast','PAPER',{reason:'no evidence'}),/SAMPLE_SIZE/);
-  s.db.exec('CREATE TABLE lab_runs(id TEXT PRIMARY KEY,at INTEGER,dataset_fp TEXT,result TEXT)');
-  s.db.prepare('INSERT INTO lab_runs VALUES(?,?,?,?)').run('run-1',Date.now(),'dataset-1',JSON.stringify({evidence:good}));
-  r.attachEvidence('tennis-fast',{...good,labRunId:'run-1',datasetFp:'dataset-1'},'verified replay');
+  const trusted={...good,strategyIdentity:strategyEvidenceIdentity(r.get('tennis-fast'))};
+  s.db.exec('CREATE TABLE lab_runs(id TEXT PRIMARY KEY,at INTEGER,dataset_fp TEXT,strategy TEXT,params TEXT,result TEXT)');
+  s.db.prepare('INSERT INTO lab_runs VALUES(?,?,?,?,?,?)').run('run-1',Date.now(),'dataset-1','walkforward:buy-hold',JSON.stringify({grid:{}}),JSON.stringify({evidence:trusted,strategyIdentity:trusted.strategyIdentity,folds:[{train:{params:{},candidates:1}}]}));
+  r.attachEvidence('tennis-fast',{...trusted,labRunId:'run-1',datasetFp:'dataset-1'},'verified replay');
   r.transition('tennis-fast','PAPER',{reason:'walk-forward ok'});
   assert.equal(r.transition('tennis-fast','CANDIDATE',{reason:'paper ok'}).promoted,true);
   assert.throws(()=>r.transition('tennis-fast','LIVE',{reason:'go'}),/unavailable/);

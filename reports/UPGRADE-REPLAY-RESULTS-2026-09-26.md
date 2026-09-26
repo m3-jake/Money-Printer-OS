@@ -1,0 +1,33 @@
+# Replay, worker, and soak results — 2026-09-26
+
+## Implementation and evidence semantics
+
+- `market-replay.v2` reveals market records only when available. Coinbase candle OHLC expansion is reduced to the close observation and marked synthetic. Orders decided at time `t` fill at the first executable quote strictly after `t`; entry and exit fees and slippage affect round-trip return. The final observed bid marks open exposure and drawdown.
+- Walk-forward folds declare a boundary exit before the last quote. An exit that fills pays bid-side slippage and the sell fee. A fold with an unfilled order or open position is incomplete; its return is excluded and the aggregate out-of-sample result is null. Boundary liquidations and incomplete folds are counted in the evidence.
+- Effective sample size is estimated from closed round trips, within each chronological fold. `sampleSize` is not an order-leg count. Fee/slippage qualification requires verified cost provenance and non-synthetic executable data. Current tape runs cannot establish that provenance and remain research evidence; a caller boolean must not confer it.
+- Registered-strategy promotion binds the persisted run to a fingerprint of strategy ID, version, parameters, and code/data/fee identity. The run must evaluate the same replay family and exactly one parameter combination equal to the registered parameters. A run from another strategy or adaptive parameter sweep cannot be attached as qualifying evidence. Previously active legacy evidence is moved to append-only history and its strategy returned to `BACKTESTING` when the registry opens.
+- The worker pool bounds its queue and deadline, settles each job once, and retains a shared compute lease until a cancelled/timed-out worker exits. A lease-release error does not suppress the terminal promise. `computeTask` forwards cost and terminal-liquidation options.
+- Robinhood backtests in both repositories use `robinhood-backtest.v2`: next observed quote for fills, fees on both legs, and interim marked drawdown. Prior version results require new evaluation.
+
+## Verification
+
+Targeted trader suite: `node --test tests/core-replay-correctness.test.mjs tests/lab-pool-lifecycle.test.mjs tests/market-core.test.mjs tests/robinhood-backtest.test.mjs` — **79 passed, 0 failed**. Includes deterministic regressions for candle close availability, next-quote fills, two-sided costs, terminal drawdown, charged fold exits, incomplete folds, cross-strategy evidence reuse, legacy active-state invalidation, queue cancellation, worker exit, and lease cleanup failure. Lab Robinhood backtest/proposal focused suite passed **11/11** after parity copy. The parent integration report owns full-suite results.
+
+The isolated worker benchmark used a copied installed BTC-USD tape with 4,085 records (5.95% synthetic), four identical jobs, and two workers. Before: 174 ms wall / 563 ms process CPU / 15.8 ms max event-loop lag / 131 MiB peak RSS. After: 255 ms wall / 734 ms CPU / 14.5 ms lag / 137 MiB RSS. Output hashes were identical. This is a measured worker throughput and memory regression under the added lease and lifecycle guards; no speedup is claimed. Reproduce with `node scripts/bench-marketlab-worker.mjs "$env:APPDATA\Money Printer OS\data\robinhood-tape\BTC-USD.ndjson"` in PowerShell. The installed tape was read only.
+
+## Bounded, resumable soak
+
+`node scripts/upgrade-soak.mjs --max-seconds 120` creates an isolated temp SQLite ledger and compute budget; `--dir <the reported directory>` resumes its checkpoint. The default target is 24 hours, but each invocation stops after at most two minutes. The script exercises paper deposit, buy, marked-risk check, sell, deterministic replay worker, queued cancellation, and worker/database restart recovery. The parent process rejects `fetch`, HTTP(S) requests, and socket connections. It does not import a live order transport or credentials. Local API latency is not exercised by this core-only soak.
+
+Observed first run: about 95 seconds. Subsequent resumes produced **98.429 seconds accumulated**, 567 complete paper cycles, 1,135 ledger entries, 567 worker completions, 56 cancellations, 11 reopen/restart checks, maximum queue depth 1, final cash `$1000.000000`, zero open positions, zero network attempts, and zero failures. Initial RSS was 69 MiB. The first run observed a maximum of 110 MiB; an earlier checkpoint implementation reset this peak to 94 MiB on resume, so peak retention was corrected in the script for future runs. A separate one-second fresh smoke passed eight cycles with no failure. The 24-hour target was **not reached**. Continuation directory: `C:\Users\jakem\AppData\Local\Temp\mpo-upgrade-soak-tuZBzj`. The soak touched no installed application data.
+
+## Read-only local security integration audit
+
+- `src/core/http.js` platform mutations require loopback, JSON content type, and a matching browser Origin when present. `src/robinhoodHttp.js` has a similar guard. The dashboard body parser caps JSON at 32 KiB, and its default bind address is `127.0.0.1`.
+- Legacy POST routes in `src/dashboard.js` currently bypass that guard. Simple cross-origin form posts can reach bodyless actions such as `/api/kill`, `/api/pause`, and `/api/update/install` on the loopback server; other state-changing routes also lack an Origin/JSON check. Browser cross-origin response blocking does not prevent the request itself. Apply the shared mutation guard before all dashboard POST dispatch, preserving explicitly authenticated ingestion as needed.
+- `desktop/main.cjs` uses `contextIsolation: true`, `nodeIntegration: false`, and `sandbox: true`, with no preload/IPC bridge found in this window. Its popup handler sends any URL outside a string-prefix `BASE` to `shell.openExternal`, without a scheme allowlist. There is no `will-navigate` guard. Restrict external opening to intended `https:` (and, if needed, `http:`) URLs, and block renderer navigation away from the trusted dashboard/recovery pages.
+- The update download path verifies a signed manifest and package SHA-256 before staging; this was source inspection only. No live update or dependency exploit test was run. Secret values were not logged or read during this audit.
+
+## Remaining qualification limits
+
+No current Market Lab result is claimed profitable or promotion-ready. The observed tape mixes synthetic data and has no authenticated historical fee/depth/slippage lineage. The promotion gate therefore remains closed pending verified executable market data, cost evidence, and the required out-of-sample sample count. The soak is a bounded core-path result, not 24-hour unattended evidence. This review did not run macOS or Linux runtime tests.
