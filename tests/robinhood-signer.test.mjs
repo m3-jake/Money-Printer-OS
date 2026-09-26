@@ -448,6 +448,20 @@ test('fetchBestBidAsk batches symbols in one call; v1 fallback maps spread-inclu
  assert.deepEqual(v1,[{symbol:'BTC-USD',bid:100.2,ask:101.2,at:fakeNow,source:'v1'}]);
 });
 
+test('fetchBestBidAsk: a small v2 cross is uncrossed and a small clock lead takes the receipt time; wide ones pass through',async()=>{
+ reset();const iso=ms=>new Date(ms).toISOString();
+ installFetch(u=>u.pathname==='/api/v2/crypto/marketdata/best_bid_ask/'?jsonRes({results:[
+  {symbol:'BTC-USD',bid:'84024.63',ask:'84012.24',timestamp:iso(fakeNow+1100)}, // live 2026-09-26: ~1.5 bps cross, 1.1 s ahead
+  {symbol:'ETH-USD',bid:'100',ask:'99',timestamp:iso(fakeNow+60000)},             // 100 bps cross, a minute ahead
+  {symbol:'SOL-USD',bid:'120',ask:'120.01',timestamp:iso(fakeNow-2000)},          // normal
+ ]}):null);
+ const [btc,eth,sol]=await tx.fetchBestBidAsk(['BTC-USD','ETH-USD','SOL-USD']);
+ assert.deepEqual(btc,{symbol:'BTC-USD',bid:84012.24,ask:84024.63,at:fakeNow,source:'v2'});
+ assert.deepEqual(eth,{symbol:'ETH-USD',bid:100,ask:99,at:fakeNow+60000,source:'v2'},'left crossed and future so fresh() rejects it');
+ assert.deepEqual(sol,{symbol:'SOL-USD',bid:120,ask:120.01,at:fakeNow-2000,source:'v2'});
+ assert.equal(tx.QUOTE_CROSS_TOLERANCE_BPS,5);assert.equal(tx.QUOTE_FUTURE_TOLERANCE_MS,5000);
+});
+
 test('fetchEstimatedPrice sends unencoded comma list capped at 10 and maps fee fields',async()=>{
  reset();const log=[];
  installFetch(u=>u.pathname==='/api/v2/crypto/trading/estimated_price/'?jsonRes({results:[{symbol:'BTC-USD',side:'ask',quantity:'0.1',price:'101.5',fee_ratio:'0.0085',estimated_fee:'0.08',estimated_total_cost:'10.23'},{symbol:'BTC-USD',side:'bid',quantity:'1',price:'99',estimated_total_credit:'98.1'}]}):null,log);

@@ -95,10 +95,11 @@ async function refreshFeed(requested=robinhoodSymbols(),force=false){
     if(force||wanted.some(s=>!pairs.has(s)))for(const [s,p] of await fetchTradingPairs(wanted))pairs.set(s,p);
     const batch=await fetchBestBidAsk(wanted);let valid=0;
     for(const q of batch){if(!wanted.includes(q.symbol)||!fresh(q))continue;quotes.set(q.symbol,{...q,source:q.source||'robinhood'});valid++}
-    if(!valid)fail('validation','Robinhood returned no valid current quotes');
+    if(!valid)fail('badQuotes','Robinhood returned no valid current quotes');
     feedAt=now();paperQuoteSource='robinhood';paperFallbackReason=null;paperFallbackUntil=0;lastError=null;return;
    }catch(e){
-    const fallbackCodes=new Set(['keyNotFound','notPermitted','noCredentials','badKey','rateLimited','network','http']);
+    // badQuotes: the quote call worked but no row passed fresh(); paper keeps running on the public book.
+    const fallbackCodes=new Set(['keyNotFound','notPermitted','noCredentials','badKey','rateLimited','network','http','badQuotes']);
     if(!canFallback||!fallbackCodes.has(e?.code))throw e;
     note('robinhood-quotes',e);paperFallbackReason={code:e.code||'unknown',message:safeMessage(e),at:now()};
     paperFallbackUntil=now()+(['keyNotFound','notPermitted','badKey'].includes(e?.code)?300000:30000);
@@ -523,13 +524,16 @@ export function resetRobinhoodPaper({amountUsd=1000}={}){
  return clone(p);
 }
 // ------------------------------------------------------------------ loop
+// Robinhood quotes carry their API version (v1/v2) as source; the tape, the evolve holdout's Robinhood-share
+// gate and the Lab all count them as 'robinhood'. Public-feed sources pass through unchanged.
+const tapeSrc=q=>q.source==='v1'||q.source==='v2'||q.source==='robinhood'?'robinhood':q.source;
 function needsQuotes(p=paper(),j=J.loadJournal()){return !!(p.autopilot.enabled||p.positions.length||j.autopilot.enabled||j.open.length)}
 async function paperPass(initial){
  return withPaperLock(async()=>{
   const ex=exploreEnabled()?explore(initial):null;
   const wanted=[...new Set([...(collectAlways()?robinhoodSymbols():[]),...initial.autopilot.symbols,...initial.positions.map(p=>p.symbol),...(ex?[...ex.autopilot.symbols,...ex.positions.map(p=>p.symbol)]:[]),...(J.loadJournal().autopilot.enabled?J.loadJournal().autopilot.symbols:[])])];
   await refreshFeed(wanted,true);const p=clone(paper());assertPaper(p);p.autopilot.skipped=[];let changed=false;
-  for(const symbol of primaryFirst([...new Set([robinhoodPrimary().symbol,...wanted,...openSymbolsReal()])])){const q=quotes.get(symbol);if(fresh(q)){J.appendTape(p,symbol,{...q,quoteSource:q.source});T.bufferTape(symbol,{t:q.at,bid:q.bid,ask:q.ask,src:q.source})}}
+  for(const symbol of primaryFirst([...new Set([robinhoodPrimary().symbol,...wanted,...openSymbolsReal()])])){const q=quotes.get(symbol);if(fresh(q)){J.appendTape(p,symbol,{...q,quoteSource:q.source});T.bufferTape(symbol,{t:q.at,bid:q.bid,ask:q.ask,src:tapeSrc(q)})}}
   for(const position of [...p.positions]){
    const q=quotes.get(position.symbol);if(!fresh(q))continue;const params=position.params||p.params;
    const features=S.computeFeatures(J.tapeFor(p,position.symbol),params,now());

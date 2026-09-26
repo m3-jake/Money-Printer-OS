@@ -11,9 +11,15 @@ process.env.ROBINHOOD_AUTOSTART='false';process.env.POLYMARKET_AUTOSTART='false'
 process.env.ROBINHOOD_API='https://rh.test';process.env.ROBINHOOD_REAL_ENABLED='false';
 process.env.ROBINHOOD_API_KEY='test-only-read-key';process.env.ROBINHOOD_PRIVATE_KEY=generateRobinhoodKeyPair().privateKeyBase64;
 const nativeFetch=globalThis.fetch,calls=[];
-let time=1700000000000,bid=100,ask=100.1,quoteTime=null;
+let time=1700000000000,bid=100,ask=100.1,quoteTime=null,publicUp=false;
 globalThis.fetch=async(url,init={})=>{
- const u=new URL(url);calls.push({path:u.pathname,method:init.method});assert.equal(u.origin,'https://rh.test');assert.equal(init.method,'GET','No broker writes in paper tests');
+ const u=new URL(url);calls.push({origin:u.origin,path:u.pathname,method:init.method});
+ if(u.origin==='https://api.exchange.coinbase.com'){ // public paper fallback; down unless a test opts in
+  assert.equal(init.method,'GET');if(!publicUp)throw Error('public paper feed down in this test');
+  const value=/\/book$/.test(u.pathname)?{bids:[['200','1',1]],asks:[['200.1','1',1]],time:new Date(time).toISOString()}:{status:'online',trading_disabled:false,base_increment:'0.00000001',quote_increment:'0.01'};
+  return {ok:true,status:200,json:async()=>value};
+ }
+ assert.equal(u.origin,'https://rh.test');assert.equal(init.method,'GET','No broker writes in paper tests');
  let value;
  if(u.pathname.endsWith('/accounts/'))value={results:[{account_number:'PAPER-TEST-1234',status:'active',buying_power:'500',is_api_tradable:true,fee_tier_status:{fee_ratio:0.0085}}]};
  else if(u.pathname.endsWith('/trading_pairs/'))value={results:u.searchParams.getAll('symbol').map(symbol=>({symbol,asset_code:symbol.split('-')[0],asset_increment:'0.000001',quote_increment:'0.01',max_order_size:'100',min_order_amount:'1',status:'tradable',is_api_tradable:true}))};
@@ -22,8 +28,8 @@ globalThis.fetch=async(url,init={})=>{
  return {ok:true,status:200,headers:{get:()=>null},text:async()=>JSON.stringify(value)};
 };
 const RH=await import('../src/robinhoodAutoTrader.js'),J=await import('../src/robinhoodJournal.js'),TX=await import('../src/robinhoodTransport.js');
-const S=await import('../src/robinhoodStrategy.js');
-function reset(){RH.__testing.reset();fs.rmSync(process.env.MONEY_PRINTER_DATA_DIR,{recursive:true,force:true});fs.mkdirSync(process.env.MONEY_PRINTER_DATA_DIR,{recursive:true});J.__testing.resetPaper();J.__testing.resetJournal();TX.__testing.resetTransport();TX.__testing.setClock(()=>time);RH.__testing.setClock(()=>time);bid=100;ask=100.1;quoteTime=null;calls.length=0;process.env.ROBINHOOD_REAL_ENABLED='false'}
+const S=await import('../src/robinhoodStrategy.js'),T=await import('../src/robinhoodTape.js');
+function reset(){RH.__testing.reset();fs.rmSync(process.env.MONEY_PRINTER_DATA_DIR,{recursive:true,force:true});fs.mkdirSync(process.env.MONEY_PRINTER_DATA_DIR,{recursive:true});J.__testing.resetPaper();J.__testing.resetJournal();TX.__testing.resetTransport();TX.__testing.setClock(()=>time);RH.__testing.setClock(()=>time);bid=100;ask=100.1;quoteTime=null;publicUp=false;calls.length=0;process.env.ROBINHOOD_REAL_ENABLED='false'}
 test.after(()=>{RH.stopRobinhoodLoops();globalThis.fetch=nativeFetch;fs.rmSync(root,{recursive:true,force:true})});
 test('import makes no venue requests; the idle tick is quiet only when always-on collection is off',async()=>{assert.equal(calls.length,0);reset();process.env.ROBINHOOD_COLLECT_QUOTES='false';try{assert.equal((await RH.__testing.tick()).reason,'idle');assert.equal(calls.length,0)}finally{delete process.env.ROBINHOOD_COLLECT_QUOTES}
  reset();const t=await RH.__testing.tick();assert.equal(t.ran,true,'always-on: the tick collects quotes with autopilot off');assert.ok(calls.every(c=>c.method==='GET'));assert.equal(J.loadPaper().autopilot.enabled,false);assert.ok(J.tapeFor(J.loadPaper(),'BTC-USD').length>=1)});
@@ -49,7 +55,25 @@ test('simultaneous paper buys serialize; reset is refused while a buy is pending
  reset();const first=RH.placeRobinhoodPaperOrder({symbol:'BTC-USD',usd:10});assert.throws(()=>RH.resetRobinhoodPaper(),e=>e.code==='busy');await assert.rejects(RH.placeRobinhoodPaperOrder({symbol:'ETH-USD',usd:10}),e=>e.code==='busy');await first;assert.equal(J.loadPaper().positions.length,1);
 });
 test('malformed, crossed and future quotes cannot create paper positions',async()=>{
- for(const kind of ['crossed','future','zero']){reset();if(kind==='crossed')ask=99;if(kind==='future')quoteTime=time+1000;if(kind==='zero')bid=0;await assert.rejects(RH.placeRobinhoodPaperOrder({symbol:'BTC-USD',usd:10}));assert.equal(J.loadPaper().positions.length,0)}
+ // "future" is a minute ahead: a few seconds ahead is clock skew and is accepted (see the next test).
+ for(const kind of ['crossed','future','zero']){reset();if(kind==='crossed')ask=99;if(kind==='future')quoteTime=time+60000;if(kind==='zero')bid=0;await assert.rejects(RH.placeRobinhoodPaperOrder({symbol:'BTC-USD',usd:10}));assert.equal(J.loadPaper().positions.length,0)}
+});
+test('live v2 quirks (a ~1 bp cross, timestamps ~1.1 s ahead) are accepted and taped as robinhood',async()=>{
+ // Shape observed from Robinhood on 2026-09-26: bid a hair above ask, server clock ahead of the PC.
+ reset();time+=3600000;bid=84024.63;ask=84012.24;quoteTime=time+1100;
+ const t=await RH.__testing.tick();assert.equal(t.ran,true,JSON.stringify(t));
+ const r=RH.robinhoodReadiness();assert.equal(r.paperQuoteSource,'robinhood');assert.equal(r.paperFallbackReason,null);
+ const s=await RH.robinhoodSnapshot();const q=s.quotes.find(x=>x.symbol==='BTC-USD');
+ assert.equal(q.bid,84012.24);assert.equal(q.ask,84024.63,'uncrossed: buys pay the higher side');assert.equal(s.lastError,null);
+ T.flushTape({force:true,now:time});assert.deepEqual(Object.keys(T.tapeCoverage('BTC-USD',time).sources),['robinhood']);
+ assert.ok(calls.every(c=>c.origin==='https://rh.test'),'no public fallback needed');
+});
+test('Robinhood quotes that fail validation fall back to the public paper book instead of halting',async()=>{
+ reset();time+=3600000;ask=99;publicUp=true;
+ const t=await RH.__testing.tick();assert.equal(t.ran,true,JSON.stringify(t));
+ const r=RH.robinhoodReadiness();assert.equal(r.paperQuoteSource,'coinbase-public-paper');assert.equal(r.paperFallbackReason.code,'badQuotes');
+ const {position}=await RH.placeRobinhoodPaperOrder({symbol:'BTC-USD',usd:10});assert.equal(position.quoteSource,'coinbase-public-paper');
+ T.flushTape({force:true,now:time});assert.deepEqual(Object.keys(T.tapeCoverage('BTC-USD',time).sources),['coinbase-public-paper']);
 });
 test('invalid size and non-crypto symbols are rejected',async()=>{reset();for(const usd of [0,-1,NaN,Infinity,100000])await assert.rejects(RH.placeRobinhoodPaperOrder({symbol:'BTC-USD',usd}));await assert.rejects(RH.placeRobinhoodPaperOrder({symbol:'AAPL',usd:10}));assert.equal(J.loadPaper().positions.length,0)});
 test('a deterministic breakout enters automatically and a take-profit produces eligible paper evidence',async()=>{

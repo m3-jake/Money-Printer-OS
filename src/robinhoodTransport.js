@@ -180,6 +180,12 @@ export async function fetchHoldings(accountNumber,assetCodes){
  const res=await rhGet('/api/v2/crypto/trading/holdings/',{account_number:accountNumber,asset_code:assetCodes&&assetCodes.length?assetCodes:undefined});
  return (Array.isArray(res?.results)?res.results:[]).map(h=>({assetCode:String(h.asset_code||''),totalQty:num(h.total_quantity)??0,availableQty:num(h.quantity_available_for_trading??h.available_quantity??h.total_quantity)??0}));
 }
+// The v2 book is an aggregated near-mid quote; Robinhood's cost is the account fee_ratio, not the spread.
+// Observed live 2026-09-26: bid and ask cross by up to ~2 bps, and timestamps run ~1.1 s ahead of this PC.
+// A cross within QUOTE_CROSS_TOLERANCE_BPS is uncrossed conservatively (buy at the higher, sell at the lower);
+// a timestamp up to QUOTE_FUTURE_TOLERANCE_MS ahead is clock skew and takes the receipt time. Anything
+// wider is left as is, so the caller's freshness check still rejects it.
+export const QUOTE_CROSS_TOLERANCE_BPS=5,QUOTE_FUTURE_TOLERANCE_MS=5000;
 export async function fetchBestBidAsk(symbols){
  const syms=(symbols||[]).map(s=>String(s).toUpperCase());
  let res,source='v2';
@@ -187,10 +193,12 @@ export async function fetchBestBidAsk(symbols){
  catch(e){if(!isFallback(e))throw e;source='v1';res=await rhGet('/api/v1/crypto/marketdata/best_bid_ask/',{symbol:syms})}
  const at=now();
  return (Array.isArray(res?.results)?res.results:[]).map(r=>{
-  const bid=source==='v1'?num(r.bid_inclusive_of_sell_spread??r.bid_price):num(r.bid??r.bid_price??r.bid_inclusive_of_sell_spread);
-  const ask=source==='v1'?num(r.ask_inclusive_of_buy_spread??r.ask_price):num(r.ask??r.ask_price??r.ask_inclusive_of_buy_spread);
+  let bid=source==='v1'?num(r.bid_inclusive_of_sell_spread??r.bid_price):num(r.bid??r.bid_price??r.bid_inclusive_of_sell_spread);
+  let ask=source==='v1'?num(r.ask_inclusive_of_buy_spread??r.ask_price):num(r.ask??r.ask_price??r.ask_inclusive_of_buy_spread);
+  if(bid>0&&ask>0&&bid>ask&&(bid-ask)/((bid+ask)/2)*1e4<=QUOTE_CROSS_TOLERANCE_BPS)[bid,ask]=[ask,bid];
   const t=r.timestamp?Date.parse(r.timestamp):NaN;
-  return {symbol:String(r.symbol||'').toUpperCase(),bid:bid??0,ask:ask??0,at:Number.isFinite(t)?t:at,source};
+  const stamped=!Number.isFinite(t)?at:t>at&&t-at<=QUOTE_FUTURE_TOLERANCE_MS?at:t;
+  return {symbol:String(r.symbol||'').toUpperCase(),bid:bid??0,ask:ask??0,at:stamped,source};
  }).filter(q=>q.symbol);
 }
 export async function fetchEstimatedPrice(symbol,side,quantities){
