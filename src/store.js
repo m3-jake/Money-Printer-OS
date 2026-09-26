@@ -10,6 +10,13 @@ import { renameSyncWithRetry } from './atomicRename.js';
 const dir = path.resolve(process.env.MONEY_PRINTER_DATA_DIR || 'data');
 const stateFile = path.join(dir, 'state.json');
 const backupFile = path.join(dir, 'state.backup.json');
+// The heavy research sections live in research-state.json, written at most every RESEARCH_SAVE_MS; state.json keeps
+// the account plus the small research fields and lists the moved keys in research.externalized. A crash can lose up
+// to a minute of research, never account data. Old state.json files with inline research migrate on the next save.
+const researchFile = path.join(dir, 'research-state.json');
+export const RESEARCH_HEAVY = ['learner', 'universe', 'postmortems', 'walletProfiles', 'deployerProfiles', 'alpha', 'improvementLoop', 'daily', 'experiments', 'lessons', 'challengers'];
+export const RESEARCH_SAVE_MS = 60_000;
+let lastResearchSaveAt = 0;
 const journalFile = path.join(dir, 'market.ndjson');
 const actionFile = path.join(dir, 'actions.ndjson');
 const JOURNAL_MAX_BYTES = 128 * 1024 * 1024;
@@ -177,8 +184,20 @@ function validateAccount(s) {
   return s;
 }
 
+function attachResearch(raw) {
+  const keys = raw?.research?.externalized;
+  if (!Array.isArray(keys)) return raw;
+  delete raw.research.externalized;
+  try {
+    const ext = JSON.parse(fs.readFileSync(researchFile, 'utf8'));
+    for (const k of keys) if (ext && k in ext) raw.research[k] = ext[k];
+  } catch {
+    // Missing or torn research file: the account still loads; ensureResearch rebuilds empty sections.
+  }
+  return raw;
+}
 function parseState(file) {
-  return merge(validateAccount(JSON.parse(fs.readFileSync(file, 'utf8'))));
+  return merge(validateAccount(attachResearch(JSON.parse(fs.readFileSync(file, 'utf8')))));
 }
 
 export function loadState() {
@@ -308,7 +327,7 @@ export function saveState(state) {
   // Persist the previous measured save duration; the current duration is returned to the caller.
   s.system.metrics.saveMs = lastSaveMs;
   const temp = `${stateFile}.${process.pid}.tmp`;
-  const json = JSON.stringify(s);
+  const json = JSON.stringify(externalizeResearch(s));
   fs.writeFileSync(temp, json, { flush: true });
   if (fs.existsSync(stateFile) && Date.now() - lastBackupAt > 120_000) {
     const backupTemp = `${backupFile}.${process.pid}.tmp`;
@@ -331,6 +350,23 @@ export function saveState(state) {
   publishedBasis = snapshotBasis(s);
   lastSaveMs = Math.round(performance.now() - started);
   return lastSaveMs;
+}
+
+// Returns the object to write as state.json. Writes research-state.json when due; if that write fails the research
+// stays inline, so nothing is ever referenced that was not persisted at least once.
+function externalizeResearch(s) {
+  if (!s.research || typeof s.research !== 'object') return s;
+  const heavy = {}, light = { ...s.research };
+  for (const k of RESEARCH_HEAVY) if (k in light) { heavy[k] = light[k]; delete light[k]; }
+  if (!Object.keys(heavy).length) return s;
+  const now = Date.now();
+  if (now - lastResearchSaveAt >= RESEARCH_SAVE_MS || !fs.existsSync(researchFile)) {
+    const tmp = `${researchFile}.${process.pid}.tmp`;
+    try { fs.writeFileSync(tmp, JSON.stringify(heavy), { flush: true }); renameSyncWithRetry(tmp, researchFile); lastResearchSaveAt = now; }
+    catch { try { fs.rmSync(tmp, { force: true }); } catch {} return s; }
+  }
+  light.externalized = Object.keys(heavy);
+  return { ...s, research: light };
 }
 
 function rotateJournalIfNeeded() {

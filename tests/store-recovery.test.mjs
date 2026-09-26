@@ -267,10 +267,53 @@ test('save caps the research blob: learner outcomes, universe and postmortems', 
   s.research.universe = Object.fromEntries(Array.from({ length: 3000 }, (_, i) => ['m' + i, { mint: 'm' + i, lastSeen: i }]));
   s.research.postmortems = Array.from({ length: 900 }, (_, i) => ({ i }));
   f.saveState(s);
-  const saved = JSON.parse(f.read('state.json'));
+  const saved = { research: JSON.parse(f.read('research-state.json')) };
   assert.equal(saved.research.learner.outcomes.length, f.OUTCOME_KEEP);
   assert.equal(saved.research.learner.outcomes[0].ts, 4000, 'the newest outcomes are kept');
   assert.equal(Object.keys(saved.research.universe).length, f.UNIVERSE_KEEP);
   assert.ok(saved.research.universe.m2999 && !saved.research.universe.m0, 'the most recently seen mints are kept');
   assert.equal(saved.research.postmortems.length, 200);
+});
+test('heavy research lives in research-state.json; state.json keeps the account and small research fields', async () => {
+  const f = await fixture();
+  const s = f.loadState();
+  s.research.autonomyLevel = 3;
+  s.research.learner = { ...(s.research.learner || {}), outcomes: [{ ts: 1, horizonMin: 5 }] };
+  f.saveState(s);
+  const state = JSON.parse(f.read('state.json')), ext = JSON.parse(f.read('research-state.json'));
+  assert.ok(!('learner' in state.research) && Array.isArray(state.research.externalized) && state.research.externalized.includes('learner'));
+  assert.equal(state.research.autonomyLevel, 3, 'small fields stay readable by doctor/mesh');
+  assert.equal(ext.learner.outcomes[0].ts, 1);
+  assert.ok(Number.isFinite(state.cashSol), 'the account is untouched');
+  const again = f.loadState();
+  assert.equal(again.research.learner.outcomes[0].ts, 1, 'load reattaches the moved sections');
+  assert.ok(!('externalized' in again.research));
+});
+test('an old state.json with inline research migrates on the next save', async () => {
+  const f = await fixture();
+  const old = f.loadState();
+  old.research.learner.outcomes = [{ ts: 9, horizonMin: 5 }];
+  fs.writeFileSync(path.join(f.dir, 'state.json'), JSON.stringify(old)); // pre-split format: research inline
+  assert.ok(!fs.existsSync(path.join(f.dir, 'research-state.json')));
+  const s = f.loadState();
+  assert.equal(s.research.learner.outcomes[0].ts, 9);
+  f.saveState(s);
+  assert.ok(!('learner' in JSON.parse(f.read('state.json')).research));
+  assert.equal(JSON.parse(f.read('research-state.json')).learner.outcomes[0].ts, 9);
+});
+test('a missing or torn research file never blocks the account', async () => {
+  const f = await fixture({ cashSol: 4, paperStartSol: 10, positions: [], history: [], research: { autonomyLevel: 1, externalized: ['learner', 'universe'] } });
+  const s = f.loadState();
+  assert.equal(s.cashSol, 4); assert.ok(!s.system?.recovery, 'no backup recovery for a research-only problem');
+  fs.writeFileSync(path.join(f.dir, 'research-state.json'), '{"learner":');
+  assert.equal(f.loadState().cashSol, 4);
+});
+test('research-state.json is rewritten at most every RESEARCH_SAVE_MS; state.json saves are not held back', async () => {
+  const f = await fixture();
+  const s = f.loadState();
+  s.research.learner = { ...(s.research.learner || {}), outcomes: [{ ts: 1, horizonMin: 5 }] };
+  f.saveState(s);
+  s.research.learner.outcomes = [{ ts: 2, horizonMin: 5 }]; s.cashSol = s.cashSol; f.saveState(s);
+  assert.equal(JSON.parse(f.read('research-state.json')).learner.outcomes[0].ts, 1, 'throttled: at most a minute of research can be lost');
+  assert.equal(f.RESEARCH_SAVE_MS, 60000);
 });

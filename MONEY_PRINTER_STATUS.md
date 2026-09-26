@@ -4,7 +4,7 @@
 (`CURRENT_TASKS.md`, `KNOWN_BUGS.md`, `PROJECT_STATE.md`, `RELEASE_STATUS.md`) and in `reports/NEXT-STEPS-2026-09-25.md`.
 Don't re-inventory the repo. Update this file at the end of every batch.
 
-Last updated: 2026-09-26, batch 13. Branch `feature/polymarket-combo-only`, version `0.5.0-alpha.56`.
+Last updated: 2026-09-26, batch 15. Branch `feature/polymarket-combo-only`, version `0.5.0-alpha.56`.
 
 ## Architecture (inventoried once)
 
@@ -295,6 +295,21 @@ Last updated: 2026-09-26, batch 13. Branch `feature/polymarket-combo-only`, vers
 - **Installed `.env`:** it had `ALPHA_WORKER_ENABLED=true`, copied from the old example. That one line is now `false`. Nothing else in the file was read or changed.
 - **Tests:** evolve 10/0 (+1 holdout test; the trader fixtures now use a sane drift, because the old one compounded to 1e12 and couldn't trade). `test:all` **550 pass, 0 fail**. SELFTEST PASS.
 
+## Batch 15 (2026-09-26): state.research split
+
+- **What moved:** `src/store.js` now writes the heavy research sections to `<data>/research-state.json`, atomically and at most once every 60 s.
+  - The moved sections: learner, universe, postmortems, wallet/deployer profiles, alpha, improvementLoop, daily, experiments, lessons, challengers.
+  - `state.json` keeps the account and the small research fields, plus `research.externalized` (the list of moved keys).
+- **Load:** reattaches the moved sections. A missing or torn research file never blocks the account, and doesn't trigger backup recovery.
+- **Failure handling:** if the research write fails, the save stays inline, so nothing is referenced that was never written.
+- **Migration:** an old inline file converts on its first save.
+- **On a copy of the live data:**
+  - `state.json` 9.6 MB → **2.3 MB**, most of the rest being the bounded 1.9 MB `tickHistory`.
+  - `research-state.json` 4.9 MB.
+  - Save took 182 ms; the reload was intact.
+- **Trade-off:** a crash can lose up to a minute of research, never account data.
+- **Tests:** `store-recovery` 23/0 (+4: split, migration, torn file, throttle). `test:all` **554 pass, 0 fail**. SELFTEST PASS, and doctor still reads `autonomyLevel`.
+
 ## Next recommended batch (priority order)
 
 0. **bing:**
@@ -321,4 +336,4 @@ Batches 11–14 are built. The Evolution Lab is retired, so nothing waits on it.
 2. **bing:** take the Solana profile off SPRINT and stop it in the HUD. Done when there are no new `history` rows for 24 h.
 3. **bing:** run the Robinhood paper loop continuously with read-only credentials, so the tape is Robinhood's own quotes. Done when `npm run rh-tape-stats` shows at least 7 days of `robinhood` rows.
 4. After 7 days, record the verdict here: can the strategy trade at all at Robinhood's costs (vol gate open %, trades per day)? Only then consider `ROBINHOOD_EVOLVE_ENABLED=true`.
-5. Split `state.research` into its own file (batch 15).
+5. (done in batch 15) `state.research` split.
