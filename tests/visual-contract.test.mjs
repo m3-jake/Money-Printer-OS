@@ -312,7 +312,7 @@ test('Polymarket panel shows shadow record, calibration and a one-click Lab appl
   assert.match(html, /id="usApplyLab"/);
   assert.match(html, /\/api\/polymarket-us\/evidence/);
   assert.match(dashJs, /\/api\/polymarket-us\/combos\/apply-lab/);
-  assert.match(dashJs, /setUSComboSettings\(p\.params\)/);
+  assert.match(dashJs, /setPaperLabPolicy\(p\)/);
 });
 
 test('live visuals: one animation engine, served read-only from /js, used by Polymarket, Robinhood and Pump.fun', () => {

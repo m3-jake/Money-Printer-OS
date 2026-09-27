@@ -23,6 +23,7 @@ import { runSelfReport, latestSelfReport } from './selfReport.js';
 import { saveResourcePolicy, resourceSnapshot, systemTelemetry } from './resourcePolicy.js';
 // polymarketUS.js is parked except for credentials and the session arm: its scanner and single-order routes are not served.
 import { usReadiness, configurePolymarketUS, armPolymarketUS, polymarketUSAccount } from './polymarketUS.js';
+import { placePaperCombo, settlePaperCombos, setPaperAutopilot, resetPaperBook, paperBookView, startPaperLoops, stopPaperLoops, setPaperLabPolicy, rollbackPaperLabPolicy } from './polymarketUSPaper.js';
 import { usComboJournalView, usComboSnapshot, buildUSCombo, quoteUSCombo, placeUSCombo, cancelUSRfq, setUSComboSettings, settleUSCombos, forgetUSCombo, startUSComboLoops, setUSComboAutopilot } from './polymarketUSCombos.js';
 import { readApiUnitEconomics } from './apiUnitEconomics.js';
 import { productEconomics, productIngestionAuthorized, productReadAuthorized } from './productEconomics.js';
@@ -498,7 +499,8 @@ export function startDashboard() {
       if (req.method === 'GET' && u.pathname === '/api/polymarket-us/evidence') { const ev=await import('./polymarketUSEvidence.js'); return json(res, {...ev.evidenceSummary(),lab:{proposal:ev.labComboProposal(),status:labModuleStatuses()['polymarket-combo']||null}}); }
       if (req.method === 'GET' && u.pathname === '/api/polymarket-us/account') return json(res, await polymarketUSAccount());
       if (req.method === 'GET' && u.pathname === '/api/polymarket-us/combos/journal') { const j=usComboJournalView({historyLimit:500}); return json(res, {...j,performance:comboPerformance(j.history,j.open)}); }
-      if (req.method === 'GET' && u.pathname === '/api/polymarket-us/combos') return json(res, await usComboSnapshot());
+      if (req.method === 'GET' && u.pathname === '/api/polymarket-us/combos') { const snap=await usComboSnapshot(); let paper=null; try{paper=paperBookView()}catch(e){paper={error:String(e.message||e)}} return json(res, {...snap,paper}); }
+      if (req.method === 'GET' && u.pathname === '/api/polymarket-us/paper') return json(res, paperBookView());
       if (req.method === 'GET' && u.pathname === '/api/update') return json(res, updaterState());
       if (req.method === 'GET' && u.pathname === '/api/research-monitor') return json(res, researchMonitorState());
       if (req.method === 'GET' && u.pathname === '/api/research-control-plane') return json(res, researchPlane());
@@ -544,8 +546,14 @@ export function startDashboard() {
         if (u.pathname === '/api/polymarket-us/combos/quote') { try{return json(res,{ok:true,quote:await quoteUSCombo({legKeys:b.legKeys,stakeUsd:b.stakeUsd})})}catch(e){return comboFail(e)} }
         if (u.pathname === '/api/polymarket-us/combos/place') { try{return json(res,await placeUSCombo({legKeys:b.legKeys,stakeUsd:b.stakeUsd,mode:b.mode,rfqId:b.rfqId,quoteId:b.quoteId,limitPrice:b.limitPrice,confirmation:b.confirmation,placedBy:'manual'}))}catch(e){return comboFail(e)} }
         if (u.pathname === '/api/polymarket-us/combos/cancel-rfq') { try{return json(res,{ok:true,...await cancelUSRfq({rfqId:b.rfqId})})}catch(e){return comboFail(e)} }
-        if (u.pathname === '/api/polymarket-us/combos/apply-lab') { try{const ev=await import('./polymarketUSEvidence.js');const p=ev.labComboProposal();if(!p||!p.valid)return json(res,{ok:false,error:p?.reason||'No Lab proposal to apply'},400);if(!p.paperAllowed)return json(res,{ok:false,error:`Lab proposal is ${p.championState}, not cleared for paper`},409);return json(res,{ok:true,settings:setUSComboSettings(p.params),applied:p.id})}catch(e){return comboFail(e)} }
+        if (u.pathname === '/api/polymarket-us/combos/apply-lab') { try{const ev=await import('./polymarketUSEvidence.js');const p=ev.labComboProposal();if(!p||!p.valid)return json(res,{ok:false,error:p?.reason||'No Lab proposal to apply'},400);if(!p.paperAllowed)return json(res,{ok:false,error:`Lab proposal is ${p.championState}, not cleared for paper`},409);return json(res,{ok:true,policy:setPaperLabPolicy(p),paper:paperBookView()})}catch(e){return comboFail(e)} }
+        if (u.pathname === '/api/polymarket-us/combos/paper/rollback-lab') { try{return json(res,{ok:true,rolledBack:rollbackPaperLabPolicy({reason:'operator rollback'}),paper:paperBookView()})}catch(e){return comboFail(e)} }
         if (u.pathname === '/api/polymarket-us/combos/autopilot') { try{return json(res,{ok:true,autopilot:await setUSComboAutopilot(b)})}catch(e){return comboFail(e)} }
+        // Paper book: virtual money only, never signs or sends anything.
+        if (u.pathname === '/api/polymarket-us/combos/paper/place') { try{return json(res,{ok:true,entry:placePaperCombo({legKeys:b.legKeys,stakeUsd:b.stakeUsd}),paper:paperBookView()})}catch(e){return json(res,{ok:false,code:e.code||'error',error:String(e.message||e)},400)} }
+        if (u.pathname === '/api/polymarket-us/combos/paper/autopilot') { try{return json(res,{ok:true,autopilot:setPaperAutopilot(b),paper:paperBookView()})}catch(e){return json(res,{ok:false,error:String(e.message||e)},400)} }
+        if (u.pathname === '/api/polymarket-us/combos/paper/settle') { try{return json(res,{ok:true,...await settlePaperCombos(),paper:paperBookView()})}catch(e){return json(res,{ok:false,error:String(e.message||e)},502)} }
+        if (u.pathname === '/api/polymarket-us/combos/paper/reset') { if(b.confirmation!=='RESET PAPER')return json(res,{ok:false,error:'Type RESET PAPER to reset the paper book'},400); resetPaperBook({startUsd:b.startUsd}); return json(res,{ok:true,paper:paperBookView()}) }
         if (u.pathname === '/api/polymarket-us/combos/settings') { try{return json(res,{ok:true,settings:setUSComboSettings(b)})}catch(e){return comboFail(e)} }
         if (u.pathname === '/api/polymarket-us/combos/settle') { try{return json(res,{ok:true,...await settleUSCombos({force:true})})}catch(e){return comboFail(e)} }
         if (u.pathname === '/api/polymarket-us/combos/forget') { try{return json(res,forgetUSCombo({id:b.id,confirmation:b.confirmation}))}catch(e){return comboFail(e)} }
@@ -586,9 +594,11 @@ export function startDashboard() {
   server.on('clientError', (_, socket) => socket.end('HTTP/1.1 400 Bad Request\r\n\r\n'));
   // The combo loop only settles journalled combos; it never places anything.
   try { startUSComboLoops(); } catch { /* combo loops are optional */ }
+  // Paper combos: the virtual book's autopilot and public-data settlement.
+  try { startPaperLoops(); } catch { /* paper loops are optional */ }
   startRobinhoodLoops();
   startPracticeLoop({ dataDir: DATA_DIR });
-  server.on('close',()=>{ clearInterval(labSyncTimer); stopRobinhoodLoops(); stopPracticeLoop(); closeMarketPlatform(); });
+  server.on('close',()=>{ clearInterval(labSyncTimer); stopPaperLoops(); stopRobinhoodLoops(); stopPracticeLoop(); closeMarketPlatform(); });
   startRobinhoodEquitiesLoop();
   // The Lab reads <data>/lab-link/fitness/*.json; refresh it every minute (first write shortly after start).
   const writeFitness = () => fitnessNow().then(snap => writeFitnessFiles(DATA_DIR, snap)).catch(() => {});

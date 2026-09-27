@@ -544,7 +544,7 @@ async function paperPass(initial){
  return withPaperLock(async()=>{
   const ex=exploreEnabled()?explore(initial):null;
   const wanted=[...new Set([...(collectAlways()?robinhoodSymbols():[]),...initial.autopilot.symbols,...initial.positions.map(p=>p.symbol),...(ex?[...ex.autopilot.symbols,...ex.positions.map(p=>p.symbol)]:[]),...(J.loadJournal().autopilot.enabled?J.loadJournal().autopilot.symbols:[])])];
-  await refreshFeed(wanted,true);const p=clone(paper());assertPaper(p);p.autopilot.skipped=[];let changed=false;
+  await refreshFeed(wanted,true);const p=clone(paper());assertPaper(p);const priorEvaluations=p.paperEvaluations;p.autopilot.skipped=[];let changed=false;
   for(const symbol of primaryFirst([...new Set([robinhoodPrimary().symbol,...wanted,...openSymbolsReal()])])){const q=quotes.get(symbol);if(fresh(q)){J.appendTape(p,symbol,{...q,quoteSource:q.source});T.bufferTape(symbol,{t:q.at,bid:q.bid,ask:q.ask,src:tapeSrc(q)})}}
   for(const position of [...p.positions]){
    const q=quotes.get(position.symbol);if(!fresh(q))continue;const params=position.params||p.params;
@@ -556,12 +556,20 @@ async function paperPass(initial){
   const trialGuard=labTrialRisk(p,loadLabTrial(),now());
   if(trialGuard.blocked)p.autopilot.skipped.push({symbol:'ALL',reason:trialGuard.reason});
   if(p.autopilot.enabled&&!trialGuard.blocked){const rows=featureRows(p,[...p.autopilot.symbols,...p.positions.map(x=>x.symbol)]),eligible=Object.fromEntries(Object.entries(rows).filter(([,r])=>r.signal.enter));
+   const at=now();p.paperEvaluations={at,paramsHash:p.paramsHash,bySymbol:Object.fromEntries(Object.entries(rows).map(([symbol,row])=>{const q=quotes.get(symbol);
+    const reason=!row.signal.enter?row.signal.reason:p.positions.some(x=>x.symbol===symbol)?'positionOpen':Number(p.cooldowns?.[symbol]||0)>at?'cooldown':'eligible';
+    return [symbol,{at,action:reason==='eligible'?'ELIGIBLE':'REJECTED',reason,quoteSource:q?.source||null,quoteAt:q?.at||null,quoteAgeMs:q?.at==null?null:at-q.at,
+     bid:q?.bid??null,ask:q?.ask??null,feeRatio:fee(),spreadPct:row.features.spreadPct??null,costPct:row.costPct,
+     expectedMovePct:row.features.expectedMovePct??null,requiredMovePct:row.signal.requiredMovePct??null,samples:row.features.n??0}]}))};
    for(const [symbol,row]of Object.entries(rows))if(!row.signal.enter)p.autopilot.skipped.push({symbol,reason:row.signal.reason});
    for(const symbol of S.pickCandidates(eligible,p.positions.map(p=>p.symbol),p.cooldowns,Math.min(p.autopilot.maxOpen,robinhoodLimits().maxOpen),now(),primaryWeights())){
-    try{openPaperAt(p,symbol,p.autopilot.orderUsd,'paper-autopilot');changed=true;p.autopilot.lastAction={action:'buy',symbol,at:now()}}catch(e){p.autopilot.skipped.push({symbol,reason:e.code||safeMessage(e)})}
+    try{openPaperAt(p,symbol,p.autopilot.orderUsd,'paper-autopilot');changed=true;p.autopilot.lastAction={action:'buy',symbol,at:now()};p.paperEvaluations.bySymbol[symbol].action='PAPER_ENTRY';p.paperEvaluations.bySymbol[symbol].reason='valid signal and risk gates passed'}
+    catch(e){const reason=e.code||safeMessage(e);p.autopilot.skipped.push({symbol,reason});p.paperEvaluations.bySymbol[symbol].action='REJECTED';p.paperEvaluations.bySymbol[symbol].reason=reason}
    }
   }
-  p.autopilot.lastRunAt=now();commitPaper(p,changed);
+  const signature=e=>JSON.stringify(Object.entries(e?.bySymbol||{}).map(([symbol,row])=>[symbol,row.action,row.reason,row.quoteSource]));
+  const decisionsChanged=signature(priorEvaluations)!==signature(p.paperEvaluations);
+  p.autopilot.lastRunAt=now();commitPaper(p,changed||decisionsChanged);
   let exploreOut={ran:false,reason:'disabled'};if(exploreEnabled()){try{exploreOut=explorePass(p)}catch(e){note('explore-loop',e);exploreOut={ran:false,reason:e.code||'unknown',error:safeMessage(e)}}}
   return {ran:true,changed,open:p.positions.length,skipped:clone(p.autopilot.skipped),explore:exploreOut};
  });
@@ -879,12 +887,12 @@ function snapshotView(){
  const exPositions=ex.positions.map(position=>{const q=quotes.get(position.symbol),known=fresh(q);return {...position,markBid:known?q.bid:null,unrealizedUsd:known?S.markToMarket(position,q.bid,fee()):null,unrealizedPct:known?q.bid/position.fillPrice-1:null,ageMs:now()-position.openedAt}});
  const exKnown=exPositions.every(x=>x.unrealizedUsd!==null);
  const exploreView={label:EXPLORE_LABEL,enabled:exploreEnabled()&&!!ex.autopilot.enabled,countsTowardQualification:false,cashUsd:ex.cashUsd,startUsd:ex.startUsd,equityUsd:exKnown?ex.cashUsd+exPositions.reduce((s,x)=>s+x.costUsd+x.unrealizedUsd,0):null,unrealizedUsd:exKnown?exPositions.reduce((s,x)=>s+x.unrealizedUsd,0):null,positions:exPositions,history:ex.history.slice(0,8),stats:ex.stats,params:ex.params,paramsHash:ex.paramsHash,overrides:{...EXPLORE_OVERRIDES},autopilot:ex.autopilot,qualification:ex.qualification,recoveryRequired:!!ex.recoveryRequired};
- const tape=Object.fromEntries(Object.entries(rows).map(([s,r])=>[s,{n:r.features.n,ageMs:r.features.ageMs,expectedMovePct:r.features.expectedMovePct,costPct:r.costPct,requiredMovePct:r.signal.requiredMovePct,signal:signalEnum(s,r,p,j),reason:signalText(r,p),primary:s===primary.symbol,spark:J.tapeFor(p,s).slice(-60).map(x=>x.mid)}]));
+ const tape=Object.fromEntries(Object.entries(rows).map(([s,r])=>[s,{n:r.features.n,ageMs:r.features.ageMs,quoteSource:quotes.get(s)?.source||null,quoteAgeMs:quotes.get(s)?.at==null?null:now()-quotes.get(s).at,expectedMovePct:r.features.expectedMovePct,costPct:r.costPct,requiredMovePct:r.signal.requiredMovePct,signal:signalEnum(s,r,p,j),reason:signalText(r,p),primary:s===primary.symbol,spark:J.tapeFor(p,s).slice(-60).map(x=>x.mid)}]));
  const entry=e=>{const q=quotes.get(e.symbol),known=fresh(q)&&e.status==='OPEN'&&e.fillVerified;return {id:e.id,symbol:e.symbol,side:e.side,status:e.status,placedBy:e.placedBy,orderType:e.orderType,orderId:e.orderId,requestedUsd:e.requestedUsd,requestedQty:e.requestedQty,filledQty:e.filledQty,avgPrice:e.avgPrice,costUsd:e.costUsd,feeUsd:e.feeUsd,fillVerified:e.fillVerified,markBid:known?q.bid:e.markBid,unrealizedUsd:known?e.filledQty*q.bid*(1-fee())-e.costUsd:e.unrealizedUsd,pnlUsd:e.pnlUsd,exitReason:e.exit?.reason||null,stopPct:e.stopPct,takePct:e.takePct,at:e.at,openedAt:e.openedAt,closedAt:e.closedAt,ageMs:now()-(e.openedAt||e.at),lastNote:e.notes?.length?e.notes[e.notes.length-1].text:null}};
  if(p.qualification.profitFactor===Infinity)p.qualification.profitFactor='infinity';
  const stats={...j.stats};if(stats.profitFactor===Infinity)stats.profitFactor='infinity';
  return {at:now(),readiness:robinhoodReadiness(),outbound:rhCallStats(),account:account?{...account,accountNumber:'****'+String(account.accountNumber).slice(-4)}:null,pairs:[...pairs.values()].map(x=>({symbol:x.symbol,assetIncrement:x.assetIncrement,quoteIncrement:x.quoteIncrement,minOrderAmountUsd:x.minOrderAmountUsd,isApiTradable:x.isApiTradable})),quotes:[...quotes.values()].map(q=>({...q,spreadPct:(q.ask-q.bid)/((q.ask+q.bid)/2)})),tape,
-  paper:{cashUsd:p.cashUsd,startUsd:p.startUsd,equityUsd:known?p.cashUsd+positions.reduce((s,x)=>s+x.costUsd+x.unrealizedUsd,0):null,unrealizedUsd,positions,history:p.history.slice(0,8),stats:p.stats,autopilot:p.autopilot,params:p.params,paramsHash:p.paramsHash,qualification:p.qualification,recoveryRequired:!!p.recoveryRequired,recoveryError:p.recoveryError||null,fillModel:'Conservative simulated fills with spread, slippage and estimated fees; not actual executions'},
+  paper:{cashUsd:p.cashUsd,startUsd:p.startUsd,equityUsd:known?p.cashUsd+positions.reduce((s,x)=>s+x.costUsd+x.unrealizedUsd,0):null,unrealizedUsd,positions,history:p.history.slice(0,8),stats:p.stats,autopilot:p.autopilot,evaluations:p.paperEvaluations||null,params:p.params,paramsHash:p.paramsHash,qualification:p.qualification,recoveryRequired:!!p.recoveryRequired,recoveryError:p.recoveryError||null,fillModel:'Conservative simulated fills with spread, slippage and estimated fees; not actual executions'},
   practice:RP.practiceSnapshot({dataDir:DATA_DIR,now:now()}),
   daily:RD.dailySnapshot({dataDir:DATA_DIR,now:now()}),
   journal:{open:j.open.map(entry),history:j.history.slice(0,12).map(entry),stats,autopilot:clone(j.autopilot),cooldowns:clone(j.cooldowns),realizedTodayUsd:J.realizedTodayUsd(j,now()),lastReconcileAt:j.lastReconcileAt,recoveryRequired:!!j.recoveryRequired,recoveryError:j.recoveryError||null},limits:robinhoodLimits(),qualificationThresholds:J.qualificationThresholds(),strategy:{params:p.params,paramsHash:p.paramsHash,requiredHitRate:p.qualification.requiredHitRate,primary:{symbol:primary.symbol,weight:primary.weight,orderMult:primary.orderMult}},loop:{running:!!timer,tickMs:TICK_MS,lastTickAt,needsQuotes:needsQuotes(p,j),alwaysOn:collectAlways(),warmStart:warmStatus?clone(warmStatus):null},equities:{automated:false,route:'Agentic Trading MCP',url:'https://agent.robinhood.com/mcp/trading',note:'Separate integration; no stock or option orders from this app'},evolve:robinhoodEvolveView(p),explore:exploreView,gauges,lastError};

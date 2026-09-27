@@ -1,6 +1,6 @@
 {
   "name": "money-printer-os",
-  "version": "0.5.0-alpha.61",
+  "version": "0.5.0-alpha.62",
   "description": "Money Printer OS â€” native retro trading workstation with continuous research, monitoring, and desktop supervision.",
   "type": "module",
   "dependencies": {
@@ -27,7 +27,7 @@
     "test:updater": "node --test tests/update-channel.test.cjs tests/update-fetch.test.cjs tests/sign-manifest.test.mjs tests/release-tools.test.mjs",
     "test:settlement": "node --test tests/polymarket-settlement.test.mjs",
     "test:polymarket-us": "node --test tests/polymarket-us-safety.test.mjs tests/polymarket-us-evidence.test.mjs",
-    "test:combos": "node --test tests/polymarket-us-combos.test.mjs",
+    "test:combos": "node --test tests/polymarket-us-combos.test.mjs tests/polymarket-us-paper.test.mjs",
     "replay": "node src/replayLab.js",
     "forensics": "node src/tradeForensics.js",
     "alpha-validate": "node src/alphaValidate.js",

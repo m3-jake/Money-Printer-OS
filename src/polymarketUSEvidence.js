@@ -352,8 +352,8 @@ export function evidenceSummary(state=loadEvidenceState()){
 
 // ------------------------------------------------------------ Lab proposal
 // The Lab publishes <data>/lab-link/polymarket-combo-champion.json (paper-only).
-// Only its window/priceMin/maxLegs/rankWeights are read, and setUSComboSettings
-// re-validates them against the trader's own bounds before anything changes.
+// Only its bounded paper parameters are considered. The trader independently validates
+// them; a Lab proposal never changes the real combo journal's settings.
 export const LAB_PROPOSAL_FILE=path.join(DATA_DIR,'lab-link','polymarket-combo-champion.json');
 export function labComboProposal(file=LAB_PROPOSAL_FILE){
  let doc;try{doc=JSON.parse(fs.readFileSync(file,'utf8'))}catch{return null}
@@ -361,6 +361,7 @@ export function labComboProposal(file=LAB_PROPOSAL_FILE){
  if(doc.liveActivationAllowed!==false)return {valid:false,reason:'proposal claims live authority; ignored'};
  const p=doc.candidate?.params||{};
  const params={window:p.window,priceMin:Number(p.priceMin),maxLegs:Number(p.maxLegs),rankWeights:p.rankWeights};
- return {valid:true,paperAllowed:championPaperAllowed(doc),championState:championState(doc).state,publishedAt:doc.publishedAt||null,stage:doc.qualificationStage||null,id:doc.candidate?.id||null,params,
+ return {valid:true,paperAllowed:championPaperAllowed(doc),championState:championState(doc).state,publishedAt:doc.publishedAt||null,stage:doc.qualificationStage||null,id:doc.candidate?.id||null,
+  proposedHash:doc.candidate?.paramsHash||null,datasetHash:doc.evidence?.datasetHash||null,evaluatorVersion:doc.evidence?.evaluatorVersion||null,independentOutcomes:doc.evidence?.independentOutcomes??null,params,
   train:doc.candidate?.train||null,holdout:doc.candidate?.holdout||null,positiveEdge:!!doc.evidence?.positiveEdge,markup:doc.evidence?.markup||null,trials:doc.evidence?.trials??null};
 }

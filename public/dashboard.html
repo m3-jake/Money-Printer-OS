@@ -361,8 +361,8 @@ function renderRobinhood(force=false){
  <details><summary>Strategy parameters</summary><textarea id="rhParams" rows="5" style="width:100%">${polyEscape(rhVal('rhParams',JSON.stringify(p.params,null,2)))}</textarea><p>Changing parameters invalidates qualification for the old strategy. Sampling interval follows the actual loop.</p></details>
  <p>Sampling every ${fmt(rhState.loop.tickMs/1000,0)} seconds. Warm-up requires ${Math.max(p.params?.warmupSamples||120,p.params?.minSamples||120)} observations. ${a.lastAction?polyEscape('Last action: '+a.lastAction.action+' '+a.lastAction.symbol):'No strategy action yet.'}</p>
  </fieldset></div>
-<div data-rh-part="signals"> <fieldset class="mpo-fieldset"><legend>Signals and costs</legend><table class="mpo-table"><thead><tr><th>Pair</th><th>Bid / ask</th><th>Samples</th><th>Move estimate</th><th>Round-trip cost</th><th>Signal</th><th>Why</th></tr></thead><tbody>
- ${Object.entries(rhState.tape||{}).map(([s,t])=>`<tr><td>${polyEscape(s)}${t.primary?' <span class="mpo-badge">PRIMARY x'+polyEscape(String(prim.weight||1))+'</span>':''}</td><td>${rhMoney(quoteMap[s]?.bid)} / ${rhMoney(quoteMap[s]?.ask)}</td><td>${t.n}</td><td>${rhPct(t.expectedMovePct)}</td><td>${rhPct(t.costPct)}</td><td><span class="mpo-badge">${polyEscape(t.signal||'--')}</span></td><td>${polyEscape(t.reason||'--')}</td></tr>`).join('')}
+<div data-rh-part="signals"> <fieldset class="mpo-fieldset"><legend>Signals and costs</legend><table class="mpo-table"><thead><tr><th>Pair</th><th>Bid / ask</th><th>Quote source / age</th><th>Samples</th><th>Move estimate</th><th>Round-trip cost</th><th>Signal</th><th>Why</th></tr></thead><tbody>
+ ${Object.entries(rhState.tape||{}).map(([s,t])=>`<tr><td>${polyEscape(s)}${t.primary?' <span class="mpo-badge">PRIMARY x'+polyEscape(String(prim.weight||1))+'</span>':''}</td><td>${rhMoney(quoteMap[s]?.bid)} / ${rhMoney(quoteMap[s]?.ask)}</td><td>${polyEscape(t.quoteSource||'unknown')} / ${t.quoteAgeMs==null?'--':fmt(t.quoteAgeMs/1000,1)+'s'}</td><td>${t.n}</td><td>${rhPct(t.expectedMovePct)}</td><td>${rhPct(t.costPct)}</td><td><span class="mpo-badge">${polyEscape(t.signal||'--')}</span></td><td>${polyEscape(t.reason||'--')}</td></tr>`).join('')}
  </tbody></table><p>The move estimate measures volatility, not predicted profit. Fees and fill costs are modeled, not verified.</p></fieldset></div>
 <div data-rh-part="charts"> ${rhChartSection(rhState)}</div>
 <div data-rh-part="gauges"> ${rhGaugeSection(rhState)}</div>
@@ -1137,12 +1137,12 @@ function polyShadowHeadline(ev,windowName='NEAR_END'){
 }
 
 // Any input the operator can be typing into must suppress the 5s re-render.
-const POLY_FOCUS_IDS=['usKeyId','usSecret','usComboStake','usSetFloor','usSetMinutes','usSetLegs'];
+const POLY_FOCUS_IDS=['usKeyId','usSecret','usComboStake','usSetFloor','usSetMinutes','usSetLegs','usPaperStake','usPaperOpen'];
 // ---- Polymarket: one module. Live games near the end -> tick up to maxLegs -> one confirmed combo.
 const POLY_MODS=['combos'];
 let polyModuleSig='';
 function polyShellHtml(){
- return `<div class="poly-strip" id="polyStatus"></div><section class="poly-mod" data-mod="combos"><header><span>POLYMARKET US · LIVE COMBOS · REAL MONEY</span></header><div class="poly-body" id="poly-combos" data-scroll="poly-combos"></div></section>`;
+ return `<div class="poly-strip" id="polyStatus"></div><section class="poly-mod" data-mod="combos"><header><span>POLYMARKET US · COMBOS · PAPER + REAL</span></header><div class="poly-body" id="poly-combos" data-scroll="poly-combos"></div></section>`;
 }
 function renderSportsbook(){
  const body=$('#body-sportsbook');if(!body)return;
@@ -1209,7 +1209,8 @@ function renderPolyCombos(box){
  };
  const openRows=open.map(e=>entryRow(e,true)).join('')||'<tr><td colspan=6>No open combos.</td></tr>';
  const histRows=hist.slice(0,8).map(e=>entryRow(e,false)).join('')||'<tr><td colspan=5>No settled combos yet.</td></tr>';
- box.innerHTML=`<div class="dark terminal" style="padding:8px"><fieldset class="mpo-danger-fieldset" style="margin-top:6px"><legend>LIVE COMBOS · POLYMARKET US · REAL</legend>
+ const paperBox=usPaperHtml(ucs.paper,chosen,bOk);
+ box.innerHTML=`<div class="dark terminal" style="padding:8px">${paperBox}<fieldset class="mpo-danger-fieldset" style="margin-top:6px"><legend>LIVE COMBOS · POLYMARKET US · REAL</legend>
   ${status}<div class="mpo-split"><div class="poly-left">${usBoardViz(ucs,boardRows,st,chosen)}${keyForm}${(()=>{const bw=stats.byWindow||{},ks=Object.keys(bw);return `<div class="muted" style="font-size:10px;margin:3px 0">Window rule: ${polyEscape((ucs.windowRules||{})[st.window||'NEAR_END']||'—')}${ks.length?' · Record by window: '+ks.map(k=>{const r=bw[k];return `${polyEscape(k)} ${Number(r.won)}W-${Number(r.lost)}L${r.open?' ('+Number(r.open)+' open)':''}${r.roi==null?'':' ROI '+(Number(r.roi)*100).toFixed(0)+'%'}`}).join(' · '):''}</div>`})()}${err?`<div class="mpo-error"><b>Polymarket US</b> — ${polyEscape(err)}</div>`:''}${settings}
   <div data-scroll="combo-cands" style="overflow:auto;max-height:240px"><table class="table terminal"><thead><tr><th>Event</th><th>Clock / score</th><th>Side</th><th>Win %</th><th>Spread</th><th>Left</th><th>Status</th><th></th></tr></thead><tbody>${rows||`<tr><td colspan=8>${empty}</td></tr>`}</tbody></table></div>${sgLine}
   <div class="muted" style="font-size:10px;margin:3px 0">Feed: ${Number(fd.total??fd.eventsInPlay??0)} sports events scanned${fd.pages?' over '+Number(fd.pages)+' pages':''}${fd.capped?' (CAPPED)':''} · ${Number(fd.eventsLive||0)} live · ${fd.comboLive==null?'—':Number(fd.comboLive)} combo-enabled live · ${Number(fd.candidates||0)} eligible${rej?' · Filtered: '+rej:''}</div></div>
@@ -1223,10 +1224,11 @@ function renderPolyCombos(box){
  $$('.usComboLeg').forEach(el=>el.onchange=()=>{const k=el.dataset.key;if(!k)return;if(el.checked&&usComboSelected.size>=maxLegs){el.checked=false;return}if(el.checked)usComboSelected.add(k);else usComboSelected.delete(k);scheduleUSComboBuild();rerender()});
  $('#usUseSuggested')?.addEventListener('click',()=>{const sgl=(ucs.suggested&&ucs.suggested.legs)||[];usComboSelected=new Set(sgl.slice(0,maxLegs));scheduleUSComboBuild();rerender()});
  bindUSAuto(ucs.autopilot);
+ bindUSPaper(ucs.paper,chosen);
  $('#usApplyLab')?.addEventListener('click',async()=>{
   const r=await post('/api/polymarket-us/combos/apply-lab',{}).catch(e=>({ok:false,error:e.message}));
   if(!r?.ok)return showDialog('Polymarket US','Lab proposal not applied',r?.error||'The server refused the proposal.');
-  usComboSettingsDraft={};scheduleUSComboBuild();await refreshUSComboSnapshot();
+  await refreshUSComboSnapshot();
  });
  $('#usComboStake')?.addEventListener('input',e=>{usComboStakeValue=e.target.value;scheduleUSComboBuild()});
  const draft=(id,k,conv)=>$('#'+id)?.addEventListener(id==='usSetLegs'?'change':'input',e=>{usComboSettingsDraft[k]=conv(e.target.value);const b=$('#usSetSave');if(b)b.disabled=false});
@@ -1620,6 +1622,52 @@ function scheduleUSComboBuild(){
  },300);
 }
 // AUTO COMBO (real money, opt-in). The server enforces every guard; this only shows them.
+// Paper book: virtual bankroll, same board and pricing as the real panel plus the RFQ markup; never sends an order.
+let usPaperBusy=false,usPaperDraft={};
+function usPaperHtml(p,chosen,bOk){
+ if(!p)return '<fieldset class="mpo-fieldset" style="border-color:#00c8ff"><legend>PAPER BOOK · VIRTUAL MONEY</legend><p class="muted">Loading the paper book…</p></fieldset>';
+ if(p.error)return '<fieldset class="mpo-fieldset" style="border-color:#00c8ff"><legend>PAPER BOOK · VIRTUAL MONEY</legend><div class="mpo-error">'+polyEscape(p.error)+'</div></fieldset>';
+ const s=p.stats||{},ap={...(p.autopilot||{}),...usPaperDraft},b=p.bounds||{},eq=Number(p.equityUsd||0),start=Number(p.startUsd||100),ret=start?(eq-start)/start*100:0,pnl=Number(s.pnlUsd||0);
+ const hit=s.hitRate==null?'—':(Number(s.hitRate)*100).toFixed(1)+'%',roi=s.roi==null?'—':(Number(s.roi)*100).toFixed(1)+'%';
+ const stake=Number(usComboStakeValue||5),canPaper=chosen.length>=2&&!!bOk&&!usPaperBusy;
+ const last=(p.decisions||[])[0],lastTxt=last?`${polyTime(last.lastAt||last.at)} · ${polyEscape(last.action)}${last.reason?' · '+polyEscape(last.reason):''}${last.status?' · '+polyEscape(last.status):''}${last.repeats?' (×'+(Number(last.repeats)+1)+')':''}`:'no activity yet';
+ const evaluation=p.evaluation||{},evalRows=(evaluation.rows||[]).slice(0,40).map(r=>`<tr><td>${polyEscape(r.eventSlug||r.symbol||'—')}</td><td>${r.price==null?'—':polyCents(r.price)}</td><td class="${r.decision==='SELECTED'?'green':'muted'}">${polyEscape(r.decision||'—')}</td><td style="white-space:normal">${polyEscape(r.reason||'candidate selected')}</td></tr>`).join('')||'<tr><td colspan=4>No candidate scan yet.</td></tr>';
+ const policy=p.policy,policyLine=policy?`<div class="inset" style="padding:5px;margin:5px 0"><b>Lab paper ${polyEscape(policy.status)}</b> · proposed ${polyEscape(policy.proposedHash)} · applied ${polyEscape(policy.appliedHash)} · dataset ${polyEscape(policy.datasetHash)} · evaluator ${polyEscape(policy.evaluatorVersion)} · ${Number(policy.independentOutcomes)} independent outcomes · trial ${Number(policy.requiredCloses)} closes, ${Number(policy.maxLossPct)}% loss budget <button class="btn" id="usPaperRollbackLab">Roll back paper policy</button></div>`:`<div class="muted" style="font-size:10px">Lab paper policy: base settings${(p.policyHistory||[]).length?' · last '+polyEscape(p.policyHistory[0].status)+' '+polyEscape(p.policyHistory[0].rollbackReason||''):''}</div>`;
+ const m=(l,v,c='')=>`<div class="metric"><label>${l}</label><b class="${c}">${v}</b></div>`;
+ const row=(e,isOpen)=>{const names=(e.legs||[]).map(l=>polyEscape(l.outcome||l.event||l.symbol||'leg')).join(' + ')||'—',st=String(e.status||'OPEN'),cls=st==='WON'?'green':st==='LOST'?'red':st==='VOID'?'muted':'amber',v=polyNum(e.pnlUsd);
+  return `<tr><td style="white-space:normal;min-width:150px">${names}${e.placedBy==='paper-autopilot'?' <span class="cyan" style="font-size:10px">auto</span>':''}${e.settlementReason?' <small>'+polyEscape(e.settlementReason)+'</small>':''}</td><td>${polyCents(e.price)} × ${fmt(e.quantity,2)}<small> fee ${polyUsd(e.feeUsd)}</small></td><td>${polyUsd(e.costUsd)}</td><td><b class="${cls}">${polyEscape(st)}</b></td><td class="${v==null||isOpen?'':v>=0?'green':'red'}">${isOpen||v==null?'unmarked':(v>=0?'+':'')+'$'+fmt(v,2)}</td></tr>`};
+ const openRows=(p.open||[]).map(e=>row(e,true)).join('')||'<tr><td colspan=5>No open paper combos.</td></tr>';
+ const histRows=(p.history||[]).slice(0,10).map(e=>row(e,false)).join('')||'<tr><td colspan=5>No settled paper combos yet.</td></tr>';
+ const legsOpt=[2,3,4].filter(n=>n>=(b.maxLegs?.min??2)&&n<=(b.maxLegs?.max??4)).map(n=>`<option value="${n}" ${Number(ap.maxLegs)===n?'selected':''}>${n}</option>`).join('');
+ return `<fieldset class="mpo-fieldset" style="margin-top:6px;border-color:#00c8ff"><legend>PAPER BOOK · VIRTUAL MONEY · NO ORDERS SENT</legend>
+ <div class="metric-grid">${m('CASH + RESERVED AT COST','$'+fmt(eq,2),ret>=0?'green':'red')}${m('REALIZED RETURN',(ret>=0?'+':'')+fmt(ret,1)+'%',ret>=0?'green':'red')}${m('CASH','$'+fmt(p.cashUsd,2))}${m('RESERVED','$'+fmt(p.openCostUsd,2))}${m('RECORD',Number(s.won||0)+'W-'+Number(s.lost||0)+'L'+(s.voided?' · '+Number(s.voided)+' void':''))}${m('HIT / ROI',hit+' / '+roi,s.roi==null?'':Number(s.roi)>=0?'green':'red')}${m('SETTLED P/L','$'+fmt(pnl,2),pnl>=0?'green':'red')}</div><small>Open combos have no executable joint quote, so open P/L is unmarked; return reflects settled results only.</small>
+ <div class="toolbar" style="margin:6px 0;flex-wrap:wrap;gap:8px"><button class="btn" id="usPaperPlace" ${canPaper&&!p.recoveryRequired?'':'disabled'}>Place paper combo ($${fmt(stake,2)})</button><span class="muted" style="font-size:10px">${chosen.length<2?'Tick 2+ games in the board below, then place on paper.':bOk?'Uses the stake box below · estimated price = leg asks + '+(Number(p.markup||0)*100).toFixed(1)+'¢ '+polyEscape(p.markupEvidence?.kind||'assumed')+' RFQ markup + fees. No actual combo quote or fill.':'Fix the combo below first.'}</span></div>
+ ${p.recoveryError?`<div class="mpo-error">${polyEscape(p.recoveryError)}</div>`:''}${p.lastLoopError?`<div class="mpo-error">Paper loop: ${polyEscape(p.lastLoopError)}</div>`:''}${p.lastSettlementError?`<div class="mpo-error">Settlement lookup: ${polyEscape(p.lastSettlementError)}</div>`:''}
+ <div class="toolbar" style="margin:4px 0;flex-wrap:wrap;gap:8px"><b class="${ap.enabled?'green':'muted'}">PAPER AUTO ${ap.enabled?'ON':'OFF'}</b><button class="btn" id="usPaperAutoToggle">${ap.enabled?'Turn off':'Turn on'}</button><label>Stake $ <input class="field" id="usPaperStake" type="number" min="${b.stakeUsd?.min??1}" max="${b.stakeUsd?.max??50}" step="0.5" value="${polyEscape(String(ap.stakeUsd??5))}" style="width:60px"></label><label>Legs <select class="field" id="usPaperLegs">${legsOpt}</select></label><label>Max open <input class="field" id="usPaperOpen" type="number" min="${b.maxOpen?.min??1}" max="${b.maxOpen?.max??10}" step="1" value="${polyEscape(String(ap.maxOpen??3))}" style="width:50px"></label><button class="btn" id="usPaperSave" ${Object.keys(usPaperDraft).length?'':'disabled'}>Save</button></div>
+ <div class="muted" style="font-size:10px">Paper epoch ${polyEscape(p.epochId||'—')} · ${Number((p.priorEpochs||[]).length)} archived epoch(s) · ${polyEscape(p.strategyVersion||'—')} · Auto scans every 30 s. Last: ${lastTxt}</div>
+ ${policyLine}
+ <div data-scroll="paper-evaluations" style="overflow:auto;max-height:170px;margin:5px 0"><table class="table terminal"><thead><tr><th>Evaluated game</th><th>Ask</th><th>Decision</th><th>Exact reason</th></tr></thead><tbody>${evalRows}</tbody></table></div>
+ <div class="grid2" style="margin-top:6px"><fieldset><legend>Open paper · ${(p.open||[]).length}</legend><div data-scroll="paper-open" style="overflow:auto;max-height:150px"><table class="table terminal"><thead><tr><th>Legs</th><th>Price × Qty</th><th>Cost</th><th>Status</th><th>P/L</th></tr></thead><tbody>${openRows}</tbody></table></div><div class="toolbar" style="margin-top:4px"><button class="btn" id="usPaperSettle">Check settlement</button><button class="btn" id="usPaperReset">Reset book…</button></div></fieldset><fieldset><legend>Settled paper</legend><div data-scroll="paper-hist" style="overflow:auto;max-height:150px"><table class="table terminal"><thead><tr><th>Legs</th><th>Price × Qty</th><th>Cost</th><th>Status</th><th>P/L</th></tr></thead><tbody>${histRows}</tbody></table></div></fieldset></div>
+ </fieldset>`;
+}
+function bindUSPaper(p,chosen){
+ if(!p||p.error)return;
+ const dirty=()=>{const b=$('#usPaperSave');if(b)b.disabled=false};
+ $('#usPaperStake')?.addEventListener('input',e=>{usPaperDraft.stakeUsd=Number(e.target.value);dirty()});
+ $('#usPaperOpen')?.addEventListener('input',e=>{usPaperDraft.maxOpen=Number(e.target.value);dirty()});
+ $('#usPaperLegs')?.addEventListener('change',e=>{usPaperDraft.maxLegs=Number(e.target.value);dirty()});
+ const paperPost=async(url,body,title)=>{usPaperBusy=true;try{const r=await post(url,body).catch(e=>({ok:false,error:e.message}));if(!r?.ok)showDialog('Polymarket US paper',title,r?.error||'The server refused.');return r}finally{usPaperBusy=false;await refreshUSComboSnapshot()}};
+ $('#usPaperSave')?.addEventListener('click',async()=>{const r=await paperPost('/api/polymarket-us/combos/paper/autopilot',{...usPaperDraft},'Paper settings not saved');if(r?.ok)usPaperDraft={}});
+ $('#usPaperAutoToggle')?.addEventListener('click',()=>paperPost('/api/polymarket-us/combos/paper/autopilot',{enabled:!(p.autopilot||{}).enabled},'Paper auto not changed'));
+ $('#usPaperPlace')?.addEventListener('click',()=>paperPost('/api/polymarket-us/combos/paper/place',{legKeys:chosen,stakeUsd:Number(usComboStakeValue||5)},'Paper combo not placed'));
+ $('#usPaperSettle')?.addEventListener('click',()=>paperPost('/api/polymarket-us/combos/paper/settle',{},'Paper settlement failed'));
+ $('#usPaperRollbackLab')?.addEventListener('click',()=>paperPost('/api/polymarket-us/combos/paper/rollback-lab',{},'Paper policy rollback failed'));
+ $('#usPaperReset')?.addEventListener('click',async()=>{
+  const typed=await polyConfirm({title:'Polymarket US paper',head:'Reset the paper book',phrase:'RESET PAPER',confirmLabel:'Reset',html:'<p>Archives the current paper epoch, including open and settled combos, then starts a new $100 virtual bankroll. Real combos are not touched.</p>'});
+  if(typed==null)return;
+  await paperPost('/api/polymarket-us/combos/paper/reset',{confirmation:typed},'Paper book not reset');
+ });
+}
 function usAutoHtml(ap){
  if(!ap)return '';
  const d={...ap,...usAutoDraft},b=ap.bounds||{},blockers=Array.isArray(ap.blockers)?ap.blockers:[],gate=ap.gate||{},sz=ap.sizing;
@@ -1690,7 +1738,7 @@ function usResearchHtml(ev){
  const pct=v=>v==null?'—':(Number(v)*100).toFixed(1)+'%';
  const shRows=Object.entries(sh).map(([w,r])=>{const ld=r.lastDecision;return `<tr><td>${polyEscape(w.replace('_',' '))}</td><td>${Number(r.settled)} (${Number(r.won)}W/${Number(r.lost)}L)</td><td>${Number(r.open)}</td><td>${pct(r.winRate)}</td><td class="${r.roi==null?'':Number(r.roi)>=0?'green':'red'}">${pct(r.roi)}</td><td class="${Number(r.pnlUsd)>=0?'green':'red'}">${polyUsd(r.pnlUsd)}</td><td style="font-size:10px;white-space:normal">${ld?polyEscape(ld.action+(ld.reason?' · '+ld.reason:'')+(ld.repeats?' ×'+(Number(ld.repeats)+1):'')):'—'}</td></tr>`}).join('');
  const calRows=cal.filter(c=>Number(c.n)>0).sort((a,b)=>Number(b.n)-Number(a.n)).slice(0,8).map(c=>`<tr><td>${polyEscape(c.window)}</td><td>${polyEscape(c.sport)}</td><td>${polyEscape(c.bucket)}</td><td>${Number(c.n)}</td><td>${pct(c.winRate)} vs ${pct(c.implied)}</td><td class="${Number(c.edgeAfterFee)>=0?'green':'red'}">${c.edgeAfterFee==null?'—':(Number(c.edgeAfterFee)*100).toFixed(1)+' pts'}</td></tr>`).join('');
- const labLine=p&&p.valid?`<div class="inset" style="padding:6px;margin-top:6px"><b>Lab proposal</b> <span class="${p.positiveEdge?'green':'amber'}">${polyEscape(p.stage||'')}</span> <span class="muted" style="font-size:11px">${polyEscape(p.params.window||'')} · from ${pct(p.params.priceMin)} · ${Number(p.params.maxLegs)} legs · train ${p.train?Number(p.train.combos)+' combos ROI '+pct(p.train.roi):'—'} · holdout ${p.holdout?Number(p.holdout.combos)+' combos ROI '+pct(p.holdout.roi):'—'} · ${Number(p.trials||0)} trials</span> <button class="btn" id="usApplyLab" style="font-size:10px">Apply to shadow + auto settings</button></div>`
+ const labLine=p&&p.valid?`<div class="inset" style="padding:6px;margin-top:6px"><b>Lab proposal</b> <span class="${p.positiveEdge?'green':'amber'}">${polyEscape(p.stage||'')}</span> <span class="muted" style="font-size:11px">${polyEscape(p.params.window||'')} · from ${pct(p.params.priceMin)} · ${Number(p.params.maxLegs)} legs · train ${p.train?Number(p.train.combos)+' combos ROI '+pct(p.train.roi):'—'} · holdout ${p.holdout?Number(p.holdout.combos)+' combos ROI '+pct(p.holdout.roi):'—'} · ${Number(p.trials||0)} trials · ${polyEscape(p.proposedHash||'no hash')} · ${polyEscape(p.evaluatorVersion||'no evaluator')} · ${Number(p.independentOutcomes||0)} independent outcomes</span> <button class="btn" id="usApplyLab" style="font-size:10px" ${p.paperAllowed?'':'disabled'}>Apply to paper trial</button>${p.paperAllowed?'':' <small>Not cleared for paper</small>'}</div>`
   :`<div class="muted" style="font-size:10px;margin-top:6px">Lab: ${polyEscape(lab.status?.note||(p&&!p.valid?p.reason:'no combo proposal yet'))}</div>`;
  return `<fieldset style="margin-top:6px"><legend>Research · shadow auto (virtual $${2} stakes, no orders)</legend>
   <div class="muted" style="font-size:10px">Tape: ${Number(ev.stats?.legRows||0)} leg rows · ${Number(ev.stats?.scans||0)} scans · ${Number(ev.tracked||0)} legs awaiting settlement · ${Number(ev.stats?.resolved||0)} resolved · ${Number(ev.stats?.unknown||0)} unknown · RFQ markup ${mk.conservative?'assumed '+polyCents(mk.used)+' (no real quotes yet)':polyCents(mk.median)+' median of '+Number(mk.samples)}</div>

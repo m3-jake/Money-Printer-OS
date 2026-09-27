@@ -120,6 +120,21 @@ test('snapshot: pinned key list, signal enum values, never throws on a dead feed
  mock.state.time+=600000;const s3=await RH.robinhoodSnapshot({force:true});assert.equal(s3.tape['BTC-USD'].signal,'STALE');
  mock.state.network='down';const s4=await RH.robinhoodSnapshot({force:true});assert.ok(s4.lastError);assert.equal(s4.lastError.stage,'snapshot');assert.equal(JSON.stringify(s4).includes(KEYS.seed),false);
 });
+test('paper loop records source, cost and rejection across restart when there is no trade',async()=>{
+ reset();RH.setRobinhoodPaperAutopilot({enabled:true,symbols:['BTC-USD','ETH-USD']});
+ const run=await RH.runRobinhoodPaperOnce();assert.equal(run.ran,true,JSON.stringify(run));
+ assert.equal(J.loadPaper().positions.length,0);
+ const seen=J.loadPaper().paperEvaluations;
+ assert.ok(seen?.bySymbol['BTC-USD']);
+ assert.equal(seen.bySymbol['BTC-USD'].action,'REJECTED');
+ assert.ok(seen.bySymbol['BTC-USD'].reason);
+ assert.ok(Number.isFinite(seen.bySymbol['BTC-USD'].costPct));
+ assert.equal(mock.writes().length,0);
+ J.__testing.resetPaper();
+ const recovered=J.loadPaper().paperEvaluations;
+ assert.deepEqual(recovered,seen);
+ assert.equal((await RH.robinhoodSnapshot()).paper.evaluations.bySymbol['BTC-USD'].reason,seen.bySymbol['BTC-USD'].reason);
+});
 test('configure validates the key, writes USER_ROOT/.env with mode 0600 and disarms',()=>{
  reset();RH.armRobinhood(true);
  assert.throws(()=>RH.configureRobinhood({apiKey:'short',privateKey:KEYS.seed}),e=>e.code==='validation');

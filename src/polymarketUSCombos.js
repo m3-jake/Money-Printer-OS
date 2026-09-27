@@ -521,10 +521,8 @@ function realizedTodayUsd(j=loadJournal(),now=Date.now()){
 // Read-only journal view for the core's legacy coverage (no feed or signed calls).
 export function usComboJournalView({historyLimit=0}={}){const j=loadJournal();return {open:j.open.map(x=>({...x})),history:j.history.slice(0,Math.max(0,Math.min(1000,Number(historyLimit)||0))).map(x=>({...x})),stats:{...j.stats},recoveryRequired:!!j.recoveryRequired,recoveryError:j.recoveryError||null}}
 export function usComboSettings(){return {...loadJournal().settings}}
-export function setUSComboSettings(patch={}){
- const j=loadJournal();
- if(j.recoveryRequired)fail('stateRecovery','Local combo journal is corrupt; refusing to overwrite it until recovered');
- const next={...j.settings};
+export function validateUSComboSettings(patch={},base=usComboSettings()){
+ const next={...base};
  for(const [k,b] of Object.entries(SETTINGS_BOUNDS)){
   if(patch?.[k]===undefined)continue;
   const v=Number(patch[k]);
@@ -543,6 +541,12 @@ export function setUSComboSettings(patch={}){
   }
   next.rankWeights=normalizeWeights({...next.rankWeights,...w});
  }
+ return next;
+}
+export function setUSComboSettings(patch={}){
+ const j=loadJournal();
+ if(j.recoveryRequired)fail('stateRecovery','Local combo journal is corrupt; refusing to overwrite it until recovered');
+ const next=validateUSComboSettings(patch,j.settings);
  j.settings=next;
  saveJournal(j);
  snapCache={at:0,data:null};
@@ -1144,6 +1148,23 @@ async function refreshCandidates(settings=usComboSettings()){
  const enriched=String(process.env.POLYMARKET_US_COMBO_BBO||'true').toLowerCase()==='false'?candidates:await enrichBBO(candidates);
  lastCandidates=withManualRows(enriched,board);
  return lastCandidates;
+}
+
+// Fresh candidate pool for the paper book's autopilot (public feed only).
+export async function usComboPool(settings=usComboSettings()){return refreshCandidates(settings)}
+
+// Public-only scanner for the paper lane. Include rejected board rows and feed health so
+// an empty candidate set has an auditable explanation. No account or order call occurs.
+export async function usComboPoolReport(settings=usComboSettings()){
+ const f=await usLiveEvents();
+ if(!f.ok)return {candidates:[],board:[],rejections:{},feed:{ok:false,error:f.error,at:f.at,live:f.live}};
+ const built=usCandidatesFromEvents(f.events,Date.now(),settings);
+ const candidates=String(process.env.POLYMARKET_US_COMBO_BBO||'true').toLowerCase()==='false'
+  ?built.candidates:await enrichBBO(built.candidates);
+ const byKey=new Map(candidates.map(c=>[c.key,c]));
+ const board=built.board.map(c=>byKey.get(c.key)||(c.eligible?{...c,eligible:false,addable:false,reason:'bbo-filter'}:c));
+ lastCandidates=withManualRows(candidates,built.board);
+ return {candidates,board,rejections:built.rejections,feed:{ok:true,at:f.at,live:f.live,total:f.total,capped:f.capped}};
 }
 
 let snapCache={at:0,data:null},snapBusy=null;
