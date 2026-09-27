@@ -2,6 +2,33 @@
 
 Authority: `MASTER-UPGRADE-PROMPT-2026-09-26.md`, explicitly requested by the owner. Earlier retirement notes, stop-after-batch instructions and historical build prohibitions are superseded. The subsequent owner request explicitly authorizes installing and launching Money Printer OS on Windows and Mac. Live orders and publishing remain outside this work.
 
+## September 27 follow-up: 2D logo and Windows installations
+
+The owner preferred the original 2D corner artwork over the rotating model. Commit
+`bcfc234350f84b182526b24dfb64479224dc9422` removes the 3D script from the desktop
+and its canvas-only styles. The original `mpo-logo-3d.webp` remains the visible corner image.
+All 63 visual tests pass. The clean committed-source package is
+`W:/upgrade-release-20260926/trader-logo-2d/app.asar`, SHA256
+`7238f24611c0665ab7c1a628593e542a9f5c1e9cec3edc990619f085327aa920`.
+Its isolated Electron-as-Node smoke returned dashboard and health HTTP 200 with the exact
+source commit. It is installed on Windows; the previous 3D archive is preserved as
+`resources/app.asar.pre-2d-20260926`. The running API reports that commit, clean source,
+HEALTHY and paper mode. The served dashboard includes the 2D image and no 3D script.
+
+The prepared Evolution Lab alpha.7 archive (`abc16cec35bb8957d7fb6f7b8a4791c0bad0fbdb`,
+SHA256 `59f1fc61a2922bfb4a2079be5453f7ed9b267cabddd4b55f4a873e7faa9b83de`)
+was also installed on Windows after a stopped, SHA256-verified backup of 150 data files and
+the private `.env`. Its old archive is preserved as `resources/app.asar.pre-alpha7-20260926`;
+the data backup is `%APPDATA%/Money Printer Evolution Lab/backups/upgrade-alpha7-20260926-2039`.
+The live Lab API reports alpha.7, exact clean source, `RUNNING`, one throttled worker,
+health `ok:true`, and live activation disabled. The trader and Lab data views pass agent
+preflight against their running APIs. This is a short post-install check, not a long soak.
+
+Mac installation remains pending. The Lab feed identifies a MacBook Neo on the local network,
+but `bangbowbings-MacBook-Neo.local:22` is closed from this Windows host. No authenticated
+connection or Mac installation was made. The owner has been asked for its SSH username and
+reachable host details.
+
 ## Current installation status — September 26 evening
 
 Windows Money Printer OS is installed and launched at alpha.61, source
