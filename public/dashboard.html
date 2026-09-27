@@ -1439,9 +1439,11 @@ function glance({title,pill,hero,heroUnit,heroSub,heroText=false,stats=[],visual
   `<div class="g-visual">${visual}</div>`+(foot||action?`<footer class="g-foot">${foot}${action}</footer>`:'')+`</div>`;
 }
 function glanceTrade(){
- const s=state||{},p=s.portfolio||{},b=s.solanaBook||{},sys=s.system||{},sol=Number(s.market?.solUsd)||0,eq=Number(p.equitySol);
+ const s=state||{},p=s.portfolio||{},b=s.solanaBook||{},sys=s.system||{},sol=Number(s.market?.solUsd)||0,eq=Number(p.equitySol),f=sys.opportunityFunnel||{};
  const killed=!!sys.killSwitch,paused=!!sys.paused,wl=s.watchlist||[],ready=wl.filter(x=>String(x.stage||'').toUpperCase()==='READY').length;
  const h=s.walletIntel?.holderRpc,gen=Number(s.evolutionLoop?.generation);
+ const entryBlocks=Object.entries(f.entryRejectionReasons||{}).sort((a,b)=>Number(b[1])-Number(a[1])).slice(0,3).map(([k,n])=>`${k} ${n}`).join(', ');
+ const lastEntryBlock=f.lastEntryReject?.reason||'';
  const pill=!state?{label:'Connecting',tone:'warn'}:killed?{label:'Kill switch',tone:'bad'}:paused?{label:'Paused',tone:'warn'}:sys.health==='DEGRADED'?{label:'Degraded',tone:'bad'}:sys.health==='CAUTION'?{label:'Trading · caution',tone:'warn'}:{label:'Trading',tone:'ok'};
  // tradeViz registers the live visuals (ticker, meme gauge, opportunity map, funnel); the glance shows them without the tables.
  const viz=window.MPOViz?(tradeViz(s),`${MPOViz.canvas('pf-ticker',20)}<div class="g-fill"><canvas class="g-graph" id="glanceChart" aria-label="Equity this session"></canvas></div><div class="g-row3">${MPOViz.canvas('pf-meme',104,'meme market')}${MPOViz.canvas('pf-map',104,'opportunity map')}${MPOViz.canvas('pf-funnel',104,'entry funnel')}</div>`):'<div class="g-fill"><canvas class="g-graph" id="glanceChart"></canvas></div>';
@@ -1449,7 +1451,7 @@ function glanceTrade(){
   hero:Number.isFinite(eq)?eq.toFixed(4):'—',heroUnit:'SOL',heroSub:sol&&Number.isFinite(eq)?`≈ ${money(eq*sol)} equity`:'Equity',
   stats:[{label:'Today',value:gSigned(s.dailyPnlSol,4),tone:gTone(s.dailyPnlSol)},{label:'Open trades',value:String((s.positions||[]).length)},{label:'Hit rate',value:gPct(b.hitRate)}],
   visual:viz,
-  foot:gFoot([`${wl.length} watching`,`${ready} ready`,h&&`holder data ${h.status==='OK'?'ok':String(h.status||'').toLowerCase().replace('_',' ')}`,Number.isFinite(gen)&&gen>0&&`lab gen ${gen.toLocaleString()}`]),
+  foot:gFoot([`${wl.length} watching`,`${ready} ready`,Number.isFinite(Number(f.approved))&&`${Number(f.approved)||0} approved / ${Number(f.opened)||0} opened`,entryBlocks&&`entry blocks: ${entryBlocks}`,!entryBlocks&&lastEntryBlock&&`last entry block: ${lastEntryBlock}`,h&&`holder data ${h.status==='OK'?'ok':String(h.status||'').toLowerCase().replace('_',' ')}`,Number.isFinite(gen)&&gen>0&&`lab gen ${gen.toLocaleString()}`]),
   action:paused||killed?'<button class="g-action" id="gResume">Resume trading</button>':''}));
  $('#gResume')?.addEventListener('click',async()=>{const sys=state?.system||{};if(sys.killSwitch)await post('/api/kill',{});if(sys.paused)await post('/api/pause',{});showDialog('Money Printer OS','Resuming','Pump.fun trading will resume on the next engine cycle.')});
  drawGlanceChart();
