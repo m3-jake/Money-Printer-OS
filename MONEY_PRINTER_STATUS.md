@@ -2,6 +2,14 @@
 
 ## Current entry point — 2026-09-26 master upgrade
 
+**Ops note (2026-09-26 21:10, Claude session):** the installed Lab alpha.7 was killed externally
+at 20:28 and 21:05 (exit 0x40010004), and each time it was relaunched by a now-exited process that
+passed `MPO_LAB_MODULES=robinhood,polymarket`. That overrode the alpha.7 default and left Kalshi,
+stocks/ETFs and combos OFF. It was quit cleanly from its menu and relaunched with
+`MPO_LAB_MODULES=robinhood,robinhood-equities,kalshi,polymarket,polymarket-combo` (this process
+only; nothing persistent was set). The throttle stays on: Solana is PARK, and there are 3 unclean
+boots (5:21 PM, 5:35 PM, 8:38 PM on 09-26) that age out on 10-03.
+
 Trader source alpha.61 on `codex/master-upgrade-20260926`; Evolution Lab source alpha.7 at
 `W:/money-printer-evolution-lab`. Lab is an active research owner. The prior main/runtime work was
 merged through `3eef954`; replay, HUD/trial and equities integration commits are recorded in
