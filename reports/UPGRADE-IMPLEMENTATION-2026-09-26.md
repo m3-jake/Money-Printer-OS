@@ -191,3 +191,16 @@ the Lab payload above is unchanged. This follow-up archive was built once and pa
 Electron-as-Node boot with dashboard/health HTTP 200, health ok:true, and exact clean source provenance.
 Its directory includes the build manifest, hash, smoke result, `desktop-interaction-verification.json`,
 and screenshots `desktop-icons-1536.png` and `desktop-icons-960.png`. Neither app was installed or restarted.
+
+### Larger lower-right event feed
+
+The next owner follow-up is committed as `340eaef2f3074e9973c515ca68eb4013eea07105`:
+event text increases from 11px to 13px, line height from 1.25 to 1.4, row gap from 2px to 3px,
+and maximum feed height from 150px to 180px. Native Electron fixture checks at both viewport sizes
+above passed: wrapped newest messages remained fully visible with 10px clearance above the taskbar.
+Evidence and screenshots are in `W:/upgrade-release-20260926/trader-event-feed`.
+
+Its `app.asar` is the latest trader payload, including both desktop follow-ups, with SHA256
+`d8daade140701c0a7e5378b5a0dd1bfbfbbc52152372d0014aeb991a6e2b9ecd`.
+The archive was built once and passed isolated startup with dashboard/health HTTP 200 and exact
+clean source provenance. Installation remains pending; the Lab payload is unchanged.
