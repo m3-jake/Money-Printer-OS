@@ -38,7 +38,7 @@ test('combo slots depend on settled profits and current bankroll, not deposits o
  assert.equal(comboCapacity({...p,cashUsd:30,lastAutoResetAt:10,history:[won(2),won(3)]}).comboLimit,1);
  assert.equal(comboCapacity({...p,cashUsd:30,history:[{status:'WON',pnlUsd:2,settledAt:2,settlementSource:'early-exit'}]}).comboLimit,1);
 });
-test('autopilot requires calibrated positive EV before filling earned combo slots',async()=>{
+test('baseline autopilot requires calibrated positive EV while paper exploration can bootstrap earned combo slots',async()=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'mpo-turnover-')),savedFetch=globalThis.fetch;
  process.env.MONEY_PRINTER_DATA_DIR=dir;process.env.POLYMARKET_AUTOSTART='false';
  const events=Array.from({length:8},(_,i)=>({id:'e'+i,gameId:'g'+i,title:'Soccer '+i,live:true,ended:false,period:i===7?'Bot 3rd':'2H',elapsed:i===7?'95':'90',score:'2-0',sport:{sport:i===7?'mlb':'soccer'},markets:[{id:'m'+i,sportsMarketType:'moneyline',outcomes:['Yes','No'],outcomePrices:[.9,.1],clobTokenIds:['t'+i,'n'+i],bestAsk:.9,bestBid:.89,liquidity:10000,acceptingOrders:true}]}));
@@ -54,9 +54,13 @@ test('autopilot requires calibrated positive EV before filling earned combo slot
  const read=()=>JSON.parse(fs.readFileSync(file,'utf8'));
  const calibration=(pnl=.05)=>Array.from({length:20},(_,i)=>({id:'cal'+i,kind:'single',status:'WON',stakeUsd:1,pnlUsd:pnl,createdAt:Date.now()-100000-i*1000,settledAt:Date.now()-50000-i*1000,settlementSource:'gamma-market',potentialPayoutUsd:1.1,legs:[{result:'won',price:.9,fillPrice:.9,feesEnabled:false}]}));
  try{
-  api.resetPolymarketPaper(25);api.setAutopilot({mode:'combos'});
+  api.resetPolymarketPaper(25);api.setAutopilot({mode:'combos',bootstrapExploration:false});
   let r=await api.runAutopilotOnce();assert.equal(r.placed,0);assert.ok(r.skipped.some(x=>x.reason==='ev-uncalibrated'));
-  let s=read();s.createdAt=Date.now()-300000;s.history=calibration(.15);s.cashUsd=25;fs.writeFileSync(file,JSON.stringify(s));
+  api.setAutopilot({bootstrapExploration:true});
+  r=await api.runAutopilotOnce();assert.equal(r.placed,1,'explicit PAPER exploration may bootstrap calibration evidence');
+  let s=read();assert.equal(s.positions[0].legs.length,2);assert.equal(s.autopilot.bootstrapExploration,true);
+  api.resetPolymarketPaper(25);api.setAutopilot({mode:'combos',bootstrapExploration:false});
+  s=read();s.createdAt=Date.now()-300000;s.history=calibration(.15);s.cashUsd=25;fs.writeFileSync(file,JSON.stringify(s));
   r=await api.runAutopilotOnce();assert.equal(r.placed,1);
   assert.equal((await api.runAutopilotOnce()).placed,0);
   s=read();assert.equal(s.positions.length,1);assert.equal(s.positions[0].legs.length,2);assert.ok(s.positions[0].research.expectedRoi>0);
