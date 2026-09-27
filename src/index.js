@@ -144,10 +144,17 @@ async function liveSell(s, p, fraction, reason) {
   return true;
 }
 
+function noteEntryReject(s, reason, details = {}) {
+  s.stats.skipped++;
+  s.stats.entryRejectReasons = { ...(s.stats.entryRejectReasons || {}), [reason]: Number(s.stats.entryRejectReasons?.[reason] || 0) + 1 };
+  s.stats.lastEntryReject = { at: Date.now(), reason, ...details };
+}
+
 async function enter(s, pick, manual = false) {
   if (!pick || s.runtime.blacklist.includes(pick.mint) || s.positions.some(p => p.mint === pick.mint)) return;
   if(!(Number(pick.priceUsd)>0)||!Number.isFinite(Number(pick.priceUsd))||Date.now()-Number(pick.priceObservedAt||0)>30000){
-    s.stats.skipped++;return;
+    noteEntryReject(s, 'price-stale-or-invalid', { mint: pick.mint, symbol: pick.symbol, priceUsd: pick.priceUsd, priceObservedAt: pick.priceObservedAt });
+    return;
   }
   const ap = aggressionParams(s.runtime.aggression);
   const isPaper = cfg.mode === 'paper';
@@ -159,13 +166,16 @@ async function enter(s, pick, manual = false) {
     state: s, config: cfg, sizeFactor: ap.sizeFactor, aggression: s.runtime.aggression,
     stopPct: preset(s).stop, paper: isPaper, sprint: sprintPaper,
   });
-  if (size < 0.005) return;
+  if (size < 0.005) {
+    noteEntryReject(s, 'size-too-small', { mint: pick.mint, symbol: pick.symbol, sizeSol: size });
+    return;
+  }
 
   // Cost gate: tp1 must clear COST_GATE_MULTIPLE x the modeled round trip (both fees plus entry
   // and exit simulated slippage) for this pick at this size. Refusing is never less safe.
   const gate = solanaCostGate({ pick, sizeSol: size, solUsd: Number(s.market?.solUsd || 0), tp1: exitPolicy(s).tp1, config: cfg });
   if (!gate.ok) {
-    s.stats.skipped++;
+    noteEntryReject(s, 'cost-gate', { mint: pick.mint, symbol: pick.symbol, tp1: gate.tp1, roundTripPct: gate.roundTripPct, requiredTp1Pct: gate.requiredTp1Pct });
     s.stats.skipReasons = { ...(s.stats.skipReasons || {}), costGate: Number(s.stats.skipReasons?.costGate || 0) + 1 };
     s.stats.lastCostGate = { at: Date.now(), symbol: pick.symbol, tp1: gate.tp1, roundTripPct: gate.roundTripPct, requiredTp1Pct: gate.requiredTp1Pct };
     appendJournal({ type: 'entry-skip', reason: 'costGate', mint: pick.mint, symbol: pick.symbol, tp1: gate.tp1, roundTripPct: gate.roundTripPct, requiredTp1Pct: gate.requiredTp1Pct });
@@ -179,13 +189,14 @@ async function enter(s, pick, manual = false) {
     const liq = Number(pick.liq || pick.liquidity?.usd || 0);
     const execution = Number(pick.executionScore || 0);
     if (liq < 15_000 || execution < 40) {
-      s.stats.skipped++;
+      const reason=liq<15_000?'sprint-liquidity':'sprint-execution';
+      noteEntryReject(s, reason, { mint: pick.mint, symbol: pick.symbol, liquidityUsd: liq, executionScore: execution });
       appendJournal({type:'sprint-entry-reject',mint:pick.mint,symbol:pick.symbol,reason:liq<15_000?'liquidity':'execution',liquidityUsd:liq,executionScore:execution});
       return;
     }
     sprintPreview = estimatePaperExecution(pick, size, Number(s.market?.solUsd || 0), cfg.simulatedSlippageBps, cfg.simulatedFeeBps);
     if (Number(sprintPreview.slippageBps || 0) > 250 || Number(sprintPreview.failurePct || 0) > 40) {
-      s.stats.skipped++;
+      noteEntryReject(s, 'sprint-friction', { mint: pick.mint, symbol: pick.symbol, slippageBps: sprintPreview.slippageBps, failurePct: sprintPreview.failurePct });
       appendJournal({type:'sprint-entry-reject',mint:pick.mint,symbol:pick.symbol,reason:'friction',slippageBps:sprintPreview.slippageBps,failurePct:sprintPreview.failurePct});
       return;
     }
@@ -202,15 +213,18 @@ async function enter(s, pick, manual = false) {
     // pairAddress from the first accepted tick, which can latch onto the wrong pool for good.
     const entryReject = paperEntryRejection(pick);
     if (entryReject) {
-      s.stats.skipped++;
+      noteEntryReject(s, 'paper-integrity', { mint: pick.mint, symbol: pick.symbol, detail: entryReject });
       appendJournal({ type: 'paper-entry-reject', mint: pick.mint, symbol: pick.symbol, reason: entryReject });
       return;
     }
     const sim = sprintPreview || estimatePaperExecution(pick, size, Number(s.market?.solUsd || 0), cfg.simulatedSlippageBps, cfg.simulatedFeeBps);
     const entryFee = size * sim.feeBps / 10_000;
-    if (s.cashSol < size + entryFee) return;
+    if (s.cashSol < size + entryFee) {
+      noteEntryReject(s, 'insufficient-paper-cash', { mint: pick.mint, symbol: pick.symbol, sizeSol: size, entryFeeSol: entryFee, cashSol: s.cashSol });
+      return;
+    }
     if (!deterministicFillAllowed(pick.mint, Date.now(), sim.failurePct)) {
-      s.stats.skipped++;
+      noteEntryReject(s, 'simulated-fill-failure', { mint: pick.mint, symbol: pick.symbol, sizeSol: size, simulatedFailurePct: sim.failurePct, slippageBps: sim.slippageBps });
       appendJournal({ type:'paper-fill-failed', mint:pick.mint, symbol:pick.symbol, sizeSol:size, simulatedFailurePct:sim.failurePct, slippageBps:sim.slippageBps });
       return;
     }
@@ -651,7 +665,7 @@ async function cycle() {
   const picks = ranked.filter(x => x.eligible && Number(x.executionScore||0) >= 15 && !cooldownActive(s, x.mint) && !s.positions.some(p => p.mint === x.mint) && !s.runtime.blacklist.includes(x.mint));
   const sprintPaper=cfg.mode==='paper'&&s.runtime.profile==='SPRINT';
   const entryBurst=sprintPaper?5:(cfg.mode==='paper'&&s.runtime.entryFrequency==='max'?2:1);
-  const signalsBefore=Number(s.stats.signals||0);let approved=0;
+  const signalsBefore=Number(s.stats.signals||0),entryRejectBefore={...(s.stats.entryRejectReasons||{})};let approved=0;
   // Rejected top candidates must not starve the fillable candidates below them.
   const attemptLimit=sprintPaper?Math.min(30,picks.length):entryBurst;
   if(!block.blocked){for(const pick of picks.slice(0,attemptLimit)){
@@ -660,11 +674,12 @@ async function cycle() {
   }}
   updatePortfolio(s);
   const postBlock=blockStatus(s),eqNow=Math.max(.000001,equity(s));
+  const entryRejectionReasons=Object.fromEntries(Object.entries(s.stats.entryRejectReasons||{}).map(([k,v])=>[k,Number(v)-Number(entryRejectBefore[k]||0)]).filter(([,v])=>v>0));
   const funnel={ts:Date.now(),discovered:pairs.length,parsed:ranked.length,riskSampled:ranked.filter(x=>x.riskVerification!=='UNSAMPLED').length,
     scorePassed:ranked.filter(x=>Number(x.fastEdgeScore||0)>=Number(x.entryThreshold||0)).length,eligible:ranked.filter(x=>x.eligible).length,
     executionPassed:ranked.filter(x=>x.eligible&&Number(x.executionScore||0)>=15).length,approved,
-    opened:Number(s.stats.signals||0)-signalsBefore,blocked:postBlock.blocked,blockReasons:postBlock.reasons,rejectionReasons,
-    openPositions:s.positions.length,openLimit:postBlock.openLimit,capitalDeploymentPct:exposure(s)/eqNow*100,cashPct:Number(s.cashSol||0)/eqNow*100};
+    opened:Number(s.stats.signals||0)-signalsBefore,blocked:postBlock.blocked,blockReasons:postBlock.reasons,rejectionReasons,entryRejectionReasons,
+    lastEntryReject:s.stats.lastEntryReject||null,openPositions:s.positions.length,openLimit:postBlock.openLimit,capitalDeploymentPct:exposure(s)/eqNow*100,cashPct:Number(s.cashSol||0)/eqNow*100};
   s.system.opportunityFunnel=funnel;
   s.research.improvementLoop ||= {iteration:0,funnelHistory:[]};
   s.research.improvementLoop.iteration=Number(s.research.improvementLoop.iteration||0)+1;
