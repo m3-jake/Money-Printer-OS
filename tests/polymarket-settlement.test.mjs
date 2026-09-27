@@ -312,6 +312,18 @@ test('paper bootstrap exploration breaks the fresh-book calibration deadlock wit
  assert.equal(bootstrap.lane,'EXPLORATION');
 });
 
+test('desktop lifecycle starts and exposes the global Polymarket paper lane',()=>{
+ const dash=fs.readFileSync(new URL('../src/dashboard.js',import.meta.url),'utf8');
+ const ui=fs.readFileSync(new URL('../public/js/mpo-polymarket.js',import.meta.url),'utf8');
+ assert.match(dash,/globalPolymarket = \(\) =>/);
+ assert.match(dash,/POLYMARKET_AUTOSTART/);
+ assert.match(dash,/\/api\/polymarket\/global/);
+ assert.match(dash,/stopPolymarketLoops/);
+ assert.match(ui,/fetch\('\/api\/polymarket\/global'/);
+ assert.match(ui,/GLOBAL POLYMARKET · PAPER/);
+ assert.match(ui,/BASELINE \+ EXPLORATION/);
+});
+
 test('real-money gate stays locked and settlement never uses API-key auth',()=>{
  const r=poly.realPolymarketReadiness();
  assert.equal(r.enabled,false);
