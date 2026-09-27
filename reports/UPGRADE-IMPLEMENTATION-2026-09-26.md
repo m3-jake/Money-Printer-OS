@@ -204,3 +204,36 @@ Its `app.asar` is the latest trader payload, including both desktop follow-ups, 
 `d8daade140701c0a7e5378b5a0dd1bfbfbbc52152372d0014aeb991a6e2b9ecd`.
 The archive was built once and passed isolated startup with dashboard/health HTTP 200 and exact
 clean source provenance. Installation remains pending; the Lab payload is unchanged.
+
+### Rotating 3D logo
+
+The next owner request is implemented in model commit `8cd1f18` and packaged runtime commit
+`f0e049b772984b3549475c474b068d8b82f2c718`. The original artwork was traced locally into real
+extruded lettering with bevels, green faces, dark sides and a back. No generation credits or
+external model service were used. The model is 77,568 bytes, 1,740 vertices and 2,072 triangles;
+its five real letter counters remain open. Generator checks establish closed oriented topology;
+Khronos glTF Validator returned zero issues. Repeated generation produced identical SHA256
+`78d8897f1fe2f9b89ec5be0664d6594d59a67cd6150c772c613cd3acf097ed73`.
+
+The corner renderer uses two draw calls, a 40-second revolution, a 30 FPS draw cap and DPR cap 2.
+It pauses while hidden, shows a still front for OS/app reduced motion, and retains the source image
+on unsupported graphics, loading failure or context loss. The image role retains its accessible
+name and cannot intercept pointer input. See `docs/3D-LOGO.md` for implementation and rebuild notes.
+
+Verification: **63 visual tests passed**, including malformed-model rejection, bounded downloads,
+the final model's camera fit throughout 360 degrees, failure cleanup and motion lifecycle.
+The synchronized Robinhood panel check and diff whitespace check also passed. Native Electron
+38.8.6 testing found and fixed an actual shader precision linking incompatibility. The corrected
+renderer completed a measured 40.051-second turn; native hide, app low-motion, forced Chromium
+reduced-motion, graphics context loss, blocked loading and desktop selection checks passed.
+That complete lifecycle run used the earlier model, retained under `preliminary/` with its hash.
+The final cleaned model was then separately checked in the same renderer at 1536x1024 and 960x720
+(DPR 1.5), including visible front/oblique rotation, correct bounds and zero renderer errors.
+The hash-specific JSON and final screenshots distinguish the two checks.
+
+Latest reviewed trader payload: `W:/upgrade-release-20260926/trader-logo-3d/app.asar`, alpha.61,
+SHA256 `89faf20cf34bb09347dde5e005a00589721df13b532b34a4d09a4eb39a4497af`.
+It includes the enlarged icons, enlarged event feed and rotating model. This archive was built
+once and passed isolated Electron-as-Node startup: dashboard/health HTTP 200, health ok:true,
+and exact clean source provenance. Build manifest, smoke results, model validation and native
+evidence are beside the archive. Neither installed app was replaced or restarted; Lab is unchanged.
