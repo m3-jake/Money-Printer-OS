@@ -171,15 +171,23 @@ async function enter(s, pick, manual = false) {
     return;
   }
 
-  // Cost gate: tp1 must clear COST_GATE_MULTIPLE x the modeled round trip (both fees plus entry
-  // and exit simulated slippage) for this pick at this size. Refusing is never less safe.
+  // Baseline lane: tp1 must clear COST_GATE_MULTIPLE x the fully modeled round trip.
+  // SPRINT is explicitly a PAPER exploration lane: it may test a trade that fails this profitability
+  // gate, but it still pays the exact same simulated fees/slippage/failure model below. This creates
+  // evidence without making execution accounting optimistic.
   const gate = solanaCostGate({ pick, sizeSol: size, solUsd: Number(s.market?.solUsd || 0), tp1: exitPolicy(s).tp1, config: cfg });
-  if (!gate.ok) {
+  const explorationCostBypass = sprintPaper && !gate.ok;
+  if (!gate.ok && !explorationCostBypass) {
     noteEntryReject(s, 'cost-gate', { mint: pick.mint, symbol: pick.symbol, tp1: gate.tp1, roundTripPct: gate.roundTripPct, requiredTp1Pct: gate.requiredTp1Pct });
     s.stats.skipReasons = { ...(s.stats.skipReasons || {}), costGate: Number(s.stats.skipReasons?.costGate || 0) + 1 };
     s.stats.lastCostGate = { at: Date.now(), symbol: pick.symbol, tp1: gate.tp1, roundTripPct: gate.roundTripPct, requiredTp1Pct: gate.requiredTp1Pct };
     appendJournal({ type: 'entry-skip', reason: 'costGate', mint: pick.mint, symbol: pick.symbol, tp1: gate.tp1, roundTripPct: gate.roundTripPct, requiredTp1Pct: gate.requiredTp1Pct });
     return;
+  }
+  if (explorationCostBypass) {
+    s.stats.explorationCostGateBypasses = Number(s.stats.explorationCostGateBypasses || 0) + 1;
+    s.stats.lastCostGateBypass = { at: Date.now(), symbol: pick.symbol, tp1: gate.tp1, roundTripPct: gate.roundTripPct, requiredTp1Pct: gate.requiredTp1Pct };
+    appendJournal({ type:'sprint-cost-gate-bypass', mode:'paper', lane:'EXPLORATION', mint:pick.mint, symbol:pick.symbol, tp1:gate.tp1, roundTripPct:gate.roundTripPct, requiredTp1Pct:gate.requiredTp1Pct });
   }
 
   // History review: weak-liquidity / high-friction SPRINT fills produced the largest avoidable losses.
@@ -238,9 +246,11 @@ async function enter(s, pick, manual = false) {
       maxFavorablePct: 0, maxAdversePct: 0, entrySlippageBps:sim.slippageBps, simulatedLatencyMs:sim.latencyMs,
       lastLiquidityUsd:pick.liq, lastMicro:pick.micro, lastPriceAccel:pick.priceAccel,
       profile: s.runtime.profile || null, exitPreset: s.runtime.exitPreset || null, championId: s.runtime.activeEvolutionChampionId || 'BASE',
+      paperLane: sprintPaper ? 'EXPLORATION' : 'BASELINE',
+      costGate: { ok: gate.ok, bypassedForExploration: explorationCostBypass, tp1: gate.tp1, roundTripPct: gate.roundTripPct, requiredTp1Pct: gate.requiredTp1Pct },
     });
     s.stats.signals++;
-    appendJournal({ type: 'trade-open', mode: 'paper', mint: pick.mint, symbol: pick.symbol, sizeSol: size, score: pick.score, fastEdgeScore:pick.fastEdgeScore||pick.score, strategy, manual, slippageBps:sim.slippageBps, simulatedFailurePct:sim.failurePct });
+    appendJournal({ type: 'trade-open', mode: 'paper', lane:sprintPaper?'EXPLORATION':'BASELINE', mint: pick.mint, symbol: pick.symbol, sizeSol: size, score: pick.score, fastEdgeScore:pick.fastEdgeScore||pick.score, strategy, manual, slippageBps:sim.slippageBps, simulatedFailurePct:sim.failurePct, costGateBypassed:explorationCostBypass, modeledRoundTripPct:gate.roundTripPct });
     return;
   }
 
