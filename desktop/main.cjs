@@ -53,7 +53,7 @@ const UPDATE_REQUEST = path.join(DATA, 'update-request.json');
 // so the engine and collector keep recording. startWithWindows: login item, launched hidden to the tray.
 const DESKTOP_PREFS = path.join(DATA, 'desktop-prefs.json');
 const LAUNCHED_HIDDEN = process.argv.includes('--hidden');
-let tray = null, prefsSeen = '', trayHintShown = false;
+let tray = null, prefsSeen = null, trayHintShown = false;
 function readDesktopPrefs(){try{return {runInBackground:true,startWithWindows:true,autoStartLab:true,...JSON.parse(fs.readFileSync(DESKTOP_PREFS,'utf8'))}}catch{return {runInBackground:true,startWithWindows:true,autoStartLab:true}}}
 function showWindow(){ if (!win) createWindow(); else { if (win.isMinimized()) win.restore(); win.show(); win.focus(); } }
 function installTray(){

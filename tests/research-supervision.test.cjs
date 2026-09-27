@@ -26,6 +26,7 @@ test('desktop supervisor starts the collector and nothing research-heavy',()=>{
   const main=fs.readFileSync(path.join(__dirname,'..','desktop','main.cjs'),'utf8');
   assert.match(main,/if \(procs\.researchCollector\) start\('researchCollector'\)/);
   assert.ok(main.indexOf("if (procs.researchCollector) start('researchCollector')")>main.indexOf('boot: adopting an engine'), 'adopted engines also get a supervised collector');
+  assert.match(main,/prefsSeen = null/, 'the first launch applies default login preferences even without a saved file');
   assert.doesNotMatch(main,/researchAudit|evolutionLoop|clusterHub|clusterWorker/);
 });
 
