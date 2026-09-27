@@ -1,5 +1,7 @@
 # Rotating corner logo
 
+The rotating model was retired on September 26, 2026 after owner review. The desktop now displays the original 2D `public/assets/mpo-logo-3d.webp` image directly. The notes below describe the retained model and renderer for historical reference; the dashboard no longer loads the renderer.
+
 The desktop renders `public/assets/mpo-logo-model.glb` in the upper-right corner.
 It is a real extruded letter mesh traced from `public/assets/mpo-logo-3d.webp`.
 The front outlines come from the supplied artwork; the bevel, sides, and back are

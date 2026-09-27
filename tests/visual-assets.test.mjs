@@ -139,6 +139,9 @@ test('desktop chrome uses cohesive assets and has no fire leftover', () => {
   assert.match(shellCss,/#3a91e8/i);
   assert.match(shellCss,/@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.sky-cloud\s*\{\s*animation-play-state: paused/);
   assert.match(html,/class="brand-logo"/);
+  assert.match(html, /class="brand-logo" src="\/assets\/mpo-logo-3d\.webp"/);
+  assert.doesNotMatch(html, /mpo-logo-3d\.js|mpo-logo-model\.glb/);
+  assert.doesNotMatch(shellCss, /\.brand-model|\.mpo-logo\.has-3d/);
   assert.match(html, /ahead=known&&pnlSol>1e-6&&pnlPct>0/);
   assert.match(html, /trackComboProfitBurst/);
   assert.match(html, /triggerMoneyBurst/);
