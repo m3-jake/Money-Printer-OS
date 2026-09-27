@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import vm from 'node:vm';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ASSETS = path.join(ROOT, 'public', 'assets');
@@ -84,6 +85,23 @@ im = Image.open(${JSON.stringify(file)}).convert('RGBA')
 print(len(im.getcolors(maxcolors=200000) or []))
 `));
     assert.ok(unique >= 200, `${name} has ${unique} colors; restored icons have hundreds`);
+  }
+});
+
+test('every desktop item has a 96px RGBA icon', () => {
+  const html = fs.readFileSync(DASH, 'utf8');
+  const map = html.match(/const ICON_PNG=\{[^;]+\};/);
+  const ids = html.match(/const DESKTOP_ICONS=\[[^;]+\];/);
+  assert.ok(map && ids, 'desktop icon declarations exist');
+  const { ICON_PNG, DESKTOP_ICONS } = vm.runInNewContext(`${map[0]}\n${ids[0]}\n({ICON_PNG,DESKTOP_ICONS})`);
+  for (const id of DESKTOP_ICONS) {
+    const file = ICON_PNG[id];
+    assert.ok(file, `${id} uses an image icon`);
+    const info = pngInfo(path.join(ASSETS, 'icons', file));
+    assert.equal(info.width, 96, `${id} width`);
+    assert.equal(info.height, 96, `${id} height`);
+    assert.equal(info.color, 6, `${id} RGBA`);
+    assert.ok(info.bytes >= 2000, `${id} is not placeholder art`);
   }
 });
 
