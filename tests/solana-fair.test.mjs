@@ -107,7 +107,7 @@ test('HUD contract: Solana card, one-click FAIR/SPRINT switch and SPRINT warning
   const dash = read('src/dashboard.js');
   assert.match(dash, /solanaBook: solanaBookView\(s, cfg\)/);
   for (const needle of ['id="solanaBook"', 'BREAK-EVEN HIT RATE', 'COSTGATE SKIPS', 'NET P/L AFTER COSTS', 'PROFIT FACTOR', 'HIT RATE',
-    'data-profile="FAIR"', 'data-profile="SPRINT"', 'id="solSprintWarn"', "post('/api/profile',{profile:b.dataset.profile})"]) {
+    'data-profile="FAIR"', 'data-profile="SPRINT"', 'id="solSprintWarn"', 'entry blocks:', 'approved / ', "post('/api/profile',{profile:b.dataset.profile})"]) {
     assert.ok(html.includes(needle), needle);
   }
   assert.match(html, /\['FAIR','CALM','FAST','DEGEN','MAX','SPRINT','RESEARCH'\]/);
