@@ -257,6 +257,11 @@ img.sky-cloud,
    logo at all times (same asset as the boot mark, Money and Updater panels). */
 .mpo-logo{position:relative;animation:mpoFloat 6s ease-in-out infinite}
 .brand-logo{display:block;width:240px;height:auto;animation:mpoBreathe 4.5s ease-in-out infinite}
+.brand-model{position:absolute;inset:0;width:100%;height:100%;visibility:hidden;pointer-events:none}
+.mpo-logo.has-3d{animation:none}
+.mpo-logo.has-3d .brand-model{visibility:visible}
+.mpo-logo.has-3d .brand-logo{visibility:hidden;animation:none}
+.mpo-logo.has-3d .shine{display:none}
 .shine{position:absolute;inset:0;overflow:hidden;mask:url('/assets/mpo-logo-3d.webp') center/100% 100% no-repeat;-webkit-mask:url('/assets/mpo-logo-3d.webp') center/100% 100% no-repeat}
 .shine::before{content:'';position:absolute;inset:0 auto 0 0;width:28%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.55),transparent);mix-blend-mode:screen;animation:mpoShine 9s linear infinite}
 @keyframes mpoFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
@@ -839,6 +844,8 @@ textarea:focus-visible,
   .dark.mpo-surface-dark { background: #030603; }
   .mpo-surface-light { background: #efefef; }
 }
+.mpo-low-motion .mpo-logo,.mpo-low-motion .brand-logo,.mpo-low-motion .shine::before{animation:none}
+.mpo-low-motion .shine{display:none}
 
 /* Integrated profit FX lane: use the approved bill sprite while retaining the
    shared shell's positioning, accessibility, and reduced-motion behavior. */

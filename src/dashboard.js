@@ -430,7 +430,7 @@ export function startDashboard() {
           res.writeHead(404); return res.end('not found');
         }
         const ext = path.extname(file).toLowerCase();
-        const types = {'.jpg':'image/jpeg','.jpeg':'image/jpeg','.png':'image/png','.webp':'image/webp','.gif':'image/gif','.svg':'image/svg+xml'};
+        const types = {'.jpg':'image/jpeg','.jpeg':'image/jpeg','.png':'image/png','.webp':'image/webp','.gif':'image/gif','.svg':'image/svg+xml','.glb':'model/gltf-binary'};
         res.writeHead(200, {'content-type': types[ext] || 'application/octet-stream','cache-control':'public, max-age=3600','x-content-type-options':'nosniff'});
         return fs.createReadStream(file).pipe(res);
       }
