@@ -2,6 +2,34 @@
 
 Authority: `MASTER-UPGRADE-PROMPT-2026-09-26.md`, explicitly requested by the owner. Earlier retirement notes, stop-after-batch instructions and historical build prohibitions are superseded. The subsequent owner request explicitly authorizes installing and launching Money Printer OS on Windows and Mac. Live orders and publishing remain outside this work.
 
+## September 27 follow-up: complete desktop icons
+
+The desktop previously had artwork for only five of its sixteen shortcuts; eleven
+fell back to text glyphs. Commit `2cc09e89c382f5b71339937e40a84943de3e12f0`
+adds transparent 96px PNGs for Command Center, Kalshi, Arbitrage, Wire, Stocks,
+Market Lab, Macro, EDGAR, Weather, Sports and Journal. All desktop shortcuts now
+use image icons in the desktop, taskbar and Start menu. The review sheet and
+generation prompts are in `artifacts/icon-review-20260926.png` and
+`docs/DESKTOP-ICONS.md`. The visual suite passes **64/64**, including a new
+complete icon-map assertion.
+
+The clean committed-source Windows archive is
+`W:/upgrade-release-20260926/trader-icons/app.asar`, SHA256
+`985857dcbc94af439a2a4483e978b39d5d30de2163706c55534a49ded982611c`.
+Its isolated engine smoke returned dashboard/health HTTP 200 and the exact commit.
+It is installed and running on Windows; the previous 2D-logo archive remains at
+`resources/app.asar.pre-icons-20260926`. The live API reports HEALTHY paper mode,
+clean source and the exact new commit. All eleven new icon URLs returned PNG 200;
+the original 2D corner image remains and the 3D script is absent. Trader and Lab
+disk/API preflight passes. The Lab remains alpha.7 and RUNNING.
+
+Remaining operating items: the Mac's SSH port 22 is still closed, so its upgrade
+cannot be installed from this host. SEC EDGAR remains NOT CONFIGURED pending a
+declared contact User-Agent. The Risk Governor remains RED/UNKNOWN_LOSS_STATE
+because two Robinhood practice positions lack liquidation marks; SOL paper value
+is still excluded without verified FX conversion. A 24-hour unattended soak and
+Mac verification have not been claimed.
+
 ## September 27 follow-up: 2D logo and Windows installations
 
 The owner preferred the original 2D corner artwork over the rotating model. Commit
