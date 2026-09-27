@@ -269,14 +269,14 @@ img.sky-cloud,
   bottom: calc(var(--task) + 10px);
   z-index: 7;
   width: min(520px, calc(100vw - 128px));
-  max-height: 150px;
+  max-height: 180px;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  gap: 2px;
+  gap: 3px;
   overflow: hidden;
   pointer-events: none;
-  font: 700 11px/1.25 Consolas, "Courier New", monospace;
+  font: 700 13px/1.4 Consolas, "Courier New", monospace;
   color: #e8ffe0;
   text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 0 0 4px #000;
 }
