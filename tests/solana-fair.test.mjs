@@ -65,6 +65,17 @@ test('cost gate is wired into the Solana entry path and records costGate skips',
   assert.ok(enter.indexOf('solanaCostGate') < enter.indexOf('sprintPaper) {'), 'the gate runs before the SPRINT gates');
 });
 
+test('entry funnel exposes post-selection paper blockers instead of hiding approved-but-unfilled attempts', () => {
+  const src = read('src/index.js');
+  const enter = src.slice(src.indexOf('function noteEntryReject('), src.indexOf('async function actions('));
+  for (const reason of ['price-stale-or-invalid','size-too-small','cost-gate','sprint-liquidity','sprint-execution','sprint-friction','paper-integrity','insufficient-paper-cash','simulated-fill-failure']) {
+    assert.ok(enter.includes(reason), reason);
+  }
+  assert.match(src, /entryRejectionReasons=Object\.fromEntries/);
+  assert.match(src, /rejectionReasons,entryRejectionReasons/);
+  assert.match(src, /lastEntryReject:s\.stats\.lastEntryReject/);
+});
+
 test('book stats and view: hit rate, profit factor, net after costs, costGate skips', () => {
   const history = [
     { pnlSol: 0.01, feesSol: 0.001, entrySlippageBps: 90, exitSlippageBps: 110 },
