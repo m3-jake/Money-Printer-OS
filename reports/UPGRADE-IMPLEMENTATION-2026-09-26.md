@@ -1,6 +1,37 @@
 # Upgrade implementation ledger
 
-Authority: `MASTER-UPGRADE-PROMPT-2026-09-26.md`, explicitly requested by the owner. Earlier retirement notes, stop-after-batch instructions and historical build prohibitions are superseded. No live orders, installation, publishing, or installed-data mutation are authorized here.
+Authority: `MASTER-UPGRADE-PROMPT-2026-09-26.md`, explicitly requested by the owner. Earlier retirement notes, stop-after-batch instructions and historical build prohibitions are superseded. The subsequent owner request explicitly authorizes installing and launching Money Printer OS on Windows and Mac. Live orders and publishing remain outside this work.
+
+## Current installation status — September 26 evening
+
+Windows Money Printer OS is installed and launched at alpha.61, source
+`f0e049b772984b3549475c474b068d8b82f2c718`, from the exact reviewed
+`W:/upgrade-release-20260926/trader-logo-3d/app.asar` (SHA256
+`89faf20cf34bb09347dde5e005a00589721df13b532b34a4d09a4eb39a4497af`).
+The installed archive hash and running API provenance agree. The visible desktop shows the
+larger icons and rotating model; the served model hash matches its validated artifact.
+
+The alpha.60 app was quit through its native Exit menu. A stopped backup of the previous archive,
+all canonical data, credentials and desktop preferences is retained at
+`C:/Users/jakem/AppData/Roaming/Money Printer OS/backups/upgrade-alpha61-20260926-202127`.
+All 203 copied user files (3,688,430,569 bytes) were verified against the originals by SHA256;
+credentials remain unchanged and private on this machine. The first launch inherited a closed
+shell stdout pipe and raised EPIPE; its supervisor was stopped, all its children exited, and the
+same package was relaunched with persistent local stdout/stderr files.
+
+Verification on September 27 at 00:23 UTC: one supervisor (PID 39360), engine PID 46480,
+Electron 38.8.6, health HEALTHY/ok:true, paper mode, live execution disabled and session unarmed.
+The updated risk governor reports UNKNOWN_LOSS_STATE because two existing Robinhood practice
+positions lack liquidation marks; the SOL account remains explicitly excluded without verified
+FX conversion. These limitations were not cleared or bypassed. Evolution Lab was not updated
+or restarted; its existing supervisor PID 6548 remains running. Evidence:
+`W:/upgrade-release-20260926/trader-logo-3d/WINDOWS-INSTALL.json`.
+
+Mac installation is pending an authenticated connection. No saved SSH host, connected Mac host,
+or Mac peer in the trader mesh is available in this session. The owner has been asked for its
+hostname/address and username; no Mac installation or launch is claimed.
+
+The implementation and packaging entries below describe their state at the time they were written.
 
 ## Verified starting point
 
