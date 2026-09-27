@@ -27,7 +27,7 @@ test('legacy dashboard mutations refuse foreign origins, rebinding hosts and non
    assert.equal(status,403,route+' '+JSON.stringify(patch));
   }
  }
- const ok=await fetch(base+'/api/desktop-prefs',{method:'POST',headers:{'content-type':'application/json',origin:base},body:JSON.stringify({runInBackground:false})});
- assert.equal(ok.status,200);assert.equal((await ok.json()).prefs.runInBackground,false);assert.equal(outbound,0);
+ const ok=await fetch(base+'/api/desktop-prefs',{method:'POST',headers:{'content-type':'application/json',origin:base},body:JSON.stringify({runInBackground:false,autoStartLab:false})});
+ assert.equal(ok.status,200);const prefs=(await ok.json()).prefs;assert.equal(prefs.runInBackground,false);assert.equal(prefs.autoStartLab,false);assert.equal(outbound,0);
  assert.equal(fs.existsSync(path.join(dir,'update-request.json')),false);
 });

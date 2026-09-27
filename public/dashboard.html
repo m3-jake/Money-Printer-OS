@@ -1408,12 +1408,13 @@ function paintBackgroundSettings(){
  const rows=c.map(x=>`<tr><td>${polyEscape(x.source)}</td><td><b class="mpo-badge ${badge[x.status]||''}">${polyEscape(x.status.replace('_',' '))}</b></td><td>${covAge(x.ageMs)}</td><td>${Number(x.rows).toLocaleString()}</td><td style="font-family:monospace;font-size:10px">${x.perDay.map(d=>`<span title="${d.day}: ${d.rows}">${d.rows?'█':'·'}</span>`).join('')}</td><td>${x.rows?covAge(x.maxGapMs):'—'}</td></tr>`).join('');
  host.innerHTML=`<fieldset class="mpo-fieldset" style="margin-top:10px"><legend>Background &amp; data</legend>
  <label><input type="checkbox" id="setRunBg" ${p.runInBackground!==false?'checked':''}> Keep trading and collecting data when the window is closed (tray icon; right-click it to quit)</label><br>
- <label><input type="checkbox" id="setStartWin" ${p.startWithWindows?'checked':''}> Start with Windows (opens hidden in the tray)</label>
+ <label><input type="checkbox" id="setStartWin" ${p.startWithWindows?'checked':''}> Start with Windows (opens hidden in the tray)</label><br>
+ <label><input type="checkbox" id="setAutoLab" ${p.autoStartLab!==false?'checked':''}> Keep the locally installed Evolution Lab running (Windows; up to three restart attempts per hour)</label>
  <p class="muted" style="font-size:10px">Every Lab result is only as good as the tape under it. Gaps below are hours the Lab has nothing to learn from.</p>
  <table class="table mpo-table"><thead><tr><th>Source</th><th>Status</th><th>Last row</th><th>Rows (7d)</th><th>Per day</th><th>Largest gap</th></tr></thead><tbody>${rows||'<tr><td colspan="6">Scanning…</td></tr>'}</tbody></table>
  <button class="btn" id="setCovRefresh">Rescan</button></fieldset>`;
- const save=async()=>{bgPrefs=(await post('/api/desktop-prefs',{runInBackground:$('#setRunBg').checked,startWithWindows:$('#setStartWin').checked}))?.prefs||bgPrefs};
- $('#setRunBg').onchange=save;$('#setStartWin').onchange=save;$('#setCovRefresh').onclick=()=>loadBackgroundSettings(true);
+ const save=async()=>{bgPrefs=(await post('/api/desktop-prefs',{runInBackground:$('#setRunBg').checked,startWithWindows:$('#setStartWin').checked,autoStartLab:$('#setAutoLab').checked}))?.prefs||bgPrefs};
+ $('#setRunBg').onchange=save;$('#setStartWin').onchange=save;$('#setAutoLab').onchange=save;$('#setCovRefresh').onclick=()=>loadBackgroundSettings(true);
 }
 function renderBackgroundSettings(){
  const body=$('#body-settings');if(!body)return;

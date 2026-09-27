@@ -11,6 +11,7 @@ const { resolveUpdateChannel, resolveUpdateToken } = require('./update-channel.c
 const { httpBuffer, fetchChannelManifest } = require('./update-fetch.cjs');
 const { updateSafety } = require('./release-gate.cjs');
 const { researchServicePolicy } = require('./research-supervision.cjs');
+const { localLabStartDecision } = require('./local-lab-supervision.cjs');
 const path = require('node:path');
 const fs = require('node:fs');
 const http = require('node:http');
@@ -53,7 +54,7 @@ const UPDATE_REQUEST = path.join(DATA, 'update-request.json');
 const DESKTOP_PREFS = path.join(DATA, 'desktop-prefs.json');
 const LAUNCHED_HIDDEN = process.argv.includes('--hidden');
 let tray = null, prefsSeen = '', trayHintShown = false;
-function readDesktopPrefs(){try{return {runInBackground:true,startWithWindows:false,...JSON.parse(fs.readFileSync(DESKTOP_PREFS,'utf8'))}}catch{return {runInBackground:true,startWithWindows:false}}}
+function readDesktopPrefs(){try{return {runInBackground:true,startWithWindows:true,autoStartLab:true,...JSON.parse(fs.readFileSync(DESKTOP_PREFS,'utf8'))}}catch{return {runInBackground:true,startWithWindows:true,autoStartLab:true}}}
 function showWindow(){ if (!win) createWindow(); else { if (win.isMinimized()) win.restore(); win.show(); win.focus(); } }
 function installTray(){
   if (tray) return;
@@ -349,8 +350,10 @@ async function boot() {
   } else {
     ownsEngine = true;
     start('engine');
-    if (procs.researchCollector) start('researchCollector');
   }
+  // The collector has its own per-data-dir lock. Keep it supervised even when an
+  // already running engine was adopted, so paper evidence does not silently stop.
+  if (procs.researchCollector) start('researchCollector');
   const ready = await waitForReady();
   if (ready) await showDashboard();
   else showRecovery(`The trading engine did not answer on ${BASE} within ${READY_TIMEOUT_MS / 1000} s.`);
@@ -366,6 +369,30 @@ function monitorTick() {
 
 const LAB_PORT = Number(process.env.MPO_LAB_PORT || 8793);
 const LAB_EXE = path.join(process.env.LOCALAPPDATA || '', 'Programs', 'money-printer-evolution-lab', 'Money Printer Evolution Lab.exe');
+let labProbeBusy = false, labAttempts = [];
+function localLabPortBusy() {
+  return new Promise(resolve => {
+    const socket = net.connect({ host: HOST, port: LAB_PORT });
+    socket.once('connect', () => { socket.destroy(); resolve(true); });
+    socket.once('error', () => resolve(false));
+    socket.setTimeout(1500, () => { socket.destroy(); resolve(true); });
+  });
+}
+async function ensureLocalLab() {
+  if (labProbeBusy || quitting || process.platform !== 'win32' || readDesktopPrefs().autoStartLab !== true || !fs.existsSync(LAB_EXE)) return;
+  labProbeBusy = true;
+  try {
+    const decision = localLabStartDecision({ enabled: true, installed: true, portBusy: await localLabPortBusy(), attempts: labAttempts });
+    labAttempts = decision.attempts;
+    if (!decision.launch) return;
+    try {
+      const child = spawn(LAB_EXE, [], { detached: true, stdio: 'ignore', cwd: path.dirname(LAB_EXE), windowsHide: true });
+      child.once('error', e => log(`lab: launch failed: ${e.message || e}`));
+      child.unref();
+      log(`lab: local service absent, launching installed Evolution Lab (${labAttempts.length}/3 this hour)`);
+    } catch (e) { log(`lab: launch failed: ${e.message || e}`); }
+  } finally { labProbeBusy = false; }
+}
 function openEvolutionLab() {
   const probe = http.get({ host: HOST, port: LAB_PORT, path: '/', timeout: 1500 }, (res) => {
     res.resume();
@@ -419,6 +446,8 @@ else {
     applyDesktopPrefs();
     if (LAUNCHED_HIDDEN && readDesktopPrefs().runInBackground === true) installTray(); else createWindow();
     boot().catch(e => { log(`boot: ${e.stack || e}`); showRecovery(String(e.message || e)); });
+    setTimeout(() => ensureLocalLab().catch(e => log(`lab: ${e.message || e}`)), 10000);
+    setInterval(() => ensureLocalLab().catch(e => log(`lab: ${e.message || e}`)), 60000);
     setInterval(monitorTick, HEALTH_INTERVAL_MS);
     setTimeout(() => checkForClusterUpdate(false), 15000);
     setInterval(() => checkForClusterUpdate(false), UPDATE_INTERVAL_MS);

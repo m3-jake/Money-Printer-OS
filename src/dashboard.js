@@ -43,10 +43,10 @@ const MAX_BODY = 32 * 1024;
 const DATA_DIR = path.resolve(process.env.MONEY_PRINTER_DATA_DIR || path.join(ROOT,'data'));
 const UPDATE_STATUS_FILE = path.join(DATA_DIR,'update-status.json');
 const UPDATE_REQUEST_FILE = path.join(DATA_DIR,'update-request.json');
-// Desktop-shell preferences (read by desktop/main.cjs every ~1 s): keep collecting when the window is
-// closed, and start with Windows. The shell owns applying them; this only stores the user's choice.
+// Desktop-shell preferences (read by desktop/main.cjs every ~1 s): background operation,
+// login startup, and local Lab recovery. The shell owns applying them; this stores the choice.
 const DESKTOP_PREFS_FILE = path.join(DATA_DIR,'desktop-prefs.json');
-const DESKTOP_PREF_DEFAULTS = { runInBackground: true, startWithWindows: false };
+const DESKTOP_PREF_DEFAULTS = { runInBackground: true, startWithWindows: true, autoStartLab: true };
 function readDesktopPrefs(){try{const v=JSON.parse(fs.readFileSync(DESKTOP_PREFS_FILE,'utf8'));return {...DESKTOP_PREF_DEFAULTS,...(v&&typeof v==='object'?v:{})}}catch{return {...DESKTOP_PREF_DEFAULTS}}}
 function writeDesktopPrefs(patch={}){const next={...readDesktopPrefs()};for(const k of Object.keys(DESKTOP_PREF_DEFAULTS))if(typeof patch[k]==='boolean')next[k]=patch[k];next.updatedAt=Date.now();const tmp=DESKTOP_PREFS_FILE+'.tmp';fs.writeFileSync(tmp,JSON.stringify(next,null,2));fs.renameSync(tmp,DESKTOP_PREFS_FILE);return next}
 const RESEARCH_MONITOR_FILE = path.join(DATA_DIR,'research-monitor.json');
