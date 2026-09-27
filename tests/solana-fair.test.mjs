@@ -116,20 +116,22 @@ test('HUD contract: Solana card, one-click FAIR/SPRINT switch and SPRINT warning
   assert.doesNotThrow(() => new vm.Script(html.slice(start, end)));
 });
 
-test('paper auto-demote: SPRINT fails the cost gate at the floor round trip and drops to FAIR, never back', async () => {
+test('SPRINT is an explicit paper exploration lane; baseline profiles can still auto-demote', async () => {
   const { paperProfileDemotion } = await import('../src/solanaEconomics.js');
   const sprint = { profile: 'SPRINT', ...operatingProfiles.SPRINT };
-  const d = paperProfileDemotion({ mode: 'paper', runtime: sprint, config });
-  assert.equal(d.from, 'SPRINT'); assert.equal(d.to, 'FAIR');
-  assert.equal(d.tp1, 4); assert.ok(Math.abs(d.requiredTp1Pct - 6.3) < 1e-9);
+  assert.equal(paperProfileDemotion({ mode: 'paper', runtime: sprint, config }), null, 'SPRINT exploration must not silently collapse back to FAIR');
   assert.equal(paperProfileDemotion({ mode: 'live', runtime: sprint, config }), null, 'live is never touched');
   assert.equal(paperProfileDemotion({ mode: 'paper', runtime: { profile: 'FAIR', ...operatingProfiles.FAIR }, config }), null);
   assert.equal(paperProfileDemotion({ mode: 'paper', runtime: { profile: 'RESEARCH', ...operatingProfiles.RESEARCH }, config }), null, 'runner tp1 15 passes');
-  // If even FAIR would fail the gate, do not churn profiles.
-  assert.equal(paperProfileDemotion({ mode: 'paper', runtime: sprint, config: { simulatedSlippageBps: 400, simulatedFeeBps: 100 } }), null);
+  const weakBaseline={profile:'FAST',...operatingProfiles.FAST,exitPreset:'ultraScalp'};
+  const d=paperProfileDemotion({mode:'paper',runtime:weakBaseline,config});
+  assert.equal(d.from,'FAST'); assert.equal(d.to,'FAIR');
+  assert.equal(d.tp1,3); assert.ok(Math.abs(d.requiredTp1Pct-6.3)<1e-9);
   const src = read('src/index.js');
-  assert.match(src, /paperProfileDemotion\(\{ mode: cfg\.mode, runtime: s\.runtime, config: cfg \}\)/);
-  assert.match(src, /type: 'profile-auto-demote'/);
+  assert.match(src, /explorationCostBypass = sprintPaper && !gate\.ok/);
+  assert.match(src, /type:'sprint-cost-gate-bypass'.*lane:'EXPLORATION'/);
+  assert.match(src, /paperLane: sprintPaper \? 'EXPLORATION' : 'BASELINE'/);
+  assert.match(src, /costGateBypassed:explorationCostBypass/);
   assert.doesNotMatch(src, /profile = 'SPRINT'/, 'nothing promotes to SPRINT automatically');
 });
 
