@@ -168,3 +168,26 @@ replaced. Trader pre-existing `.claude/launch.json` and the untracked owner mast
 Lab checkout is clean. Subsequent commit(s) only add release verification/docs and the Lab smoke helper;
 the packaged runtime source remains pinned to the commits above. These local unsigned payloads are ready
 for owner review, with installation/signing/publication and the unobserved24-hour gate still outstanding.
+
+## Desktop artwork and selection follow-up
+
+The owner's subsequent desktop request is implemented in source commit
+`328ce70d64a373949ce3eb24e5d0127406eaf127`. Desktop artwork grows from 38 to 56 CSS pixels,
+with wider cells and 13px labels. The upper-right logo grows from 160 to 240px (120 to 180px
+on narrow windows). The desktop suppresses native selection and decorative image dragging;
+app windows and dialogs retain selectable text. Custom money pointer handlers are unchanged.
+
+Verification: all 55 existing visual tests and both money-physics tests passed. An isolated
+Electron 38.8.6 source fixture at 1536x1024 and 960x720, both DPR 1.5, passed actual pointer
+drag checks: background/icon/logo selection stayed empty; app text and input selection worked;
+each bill drag recorded one grab, twelve moves while grabbed, and one release, with zero native
+image drags or renderer errors. All sixteen icons and the logo fit both viewports. The fixture
+used synthetic positive profit and a fixture-only burst to provide a large draggable bill.
+
+The updated trader payload is `W:/upgrade-release-20260926/trader-desktop/app.asar`, alpha.61,
+SHA256 `21ec40db10c36829a1a2e6c650eefd5d3de03d125fb4ab2470608ec25120bfbd`.
+It contains the committed CSS change and supersedes the earlier trader payload for this request;
+the Lab payload above is unchanged. This follow-up archive was built once and passed an isolated
+Electron-as-Node boot with dashboard/health HTTP 200, health ok:true, and exact clean source provenance.
+Its directory includes the build manifest, hash, smoke result, `desktop-interaction-verification.json`,
+and screenshots `desktop-icons-1536.png` and `desktop-icons-960.png`. Neither app was installed or restarted.
