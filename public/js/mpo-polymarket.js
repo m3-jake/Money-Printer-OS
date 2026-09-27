@@ -9,31 +9,42 @@
   const when = v => v ? new Date(v).toLocaleString() : '—';
   const tone = v => Number(v) > 0 ? 'pm-up' : Number(v) < 0 ? 'pm-down' : '';
   const IDS = ['pmpositions', 'pmhistory', 'pmperformance'];
-  let journal = null, core = null, error = '', lastFetch = 0, busy = false, stamp = 0;
+  let journal = null, core = null, globalPaper = null, error = '', lastFetch = 0, busy = false, stamp = 0;
   const drawn = {};
 
   const table = (head, rows, empty) => `<div class="core-table-wrap"><table class="table"><thead><tr>${head.map(h => `<th>${escape(h)}</th>`).join('')}</tr></thead><tbody>${rows || `<tr><td colspan="${head.length}">${escape(empty)}</td></tr>`}</tbody></table></div>`;
-  const legs = x => Array.isArray(x.legs) ? x.legs.map(l => l.title || l.name || l.key || l.symbol || '').filter(Boolean).join(' + ') || `${x.legs.length} legs` : escape(x.symbol || '—');
+  const legs = x => Array.isArray(x.legs) ? x.legs.map(l => l.title || l.name || l.key || l.symbol || [l.outcome,l.event||l.question||l.marketId].filter(Boolean).join(' · ') || '').filter(Boolean).join(' + ') || `${x.legs.length} legs` : escape(x.symbol || '—');
   const corePoly = () => (core?.portfolio?.accounts || []).filter(a => a.venue === 'polymarket');
+  function globalSummary() {
+    const g=globalPaper||{},p=g.paper||{},a=g.autopilot||{},r=g.research||{},d=g.strategy?.candidateDiagnostics||{};
+    const blocker=a.pausedForSettlement?'settlement backlog':!g.feed?.ok?(g.feed?.error||'feed unavailable'):a.enabled?'none':'autopilot off';
+    return `<div class="core-notice"><b>GLOBAL POLYMARKET · PAPER</b> · ${a.enabled?'AUTOPILOT ON':'AUTOPILOT OFF'} · equity ${usd(r.equityUsd)} · ${(p.positions||[]).length} open · ${(p.history||[]).length} settled · candidates ${Number(d.accepted||g.candidates?.length||0)} · blocker ${escape(blocker)} · lane ${a.bootstrapExploration?'BASELINE + EXPLORATION':'BASELINE ONLY'}</div>`;
+  }
 
   function positions() {
-    const open = journal?.open || [], paper = corePoly().flatMap(a => a.positions.map(p => ({ ...p, account: a.account })));
+    const open = journal?.open || [], paper = corePoly().flatMap(a => a.positions.map(p => ({ ...p, account: a.account }))), gp=globalPaper?.paper?.positions||[];
     return `<div class="core-heading"><h2>POSITIONS</h2><span class="mpo-badge">READ ONLY</span></div>
+      ${globalSummary()}
+      <h3>Global paper <small>Autonomous legacy paper lane · migration target: shared core ledger</small></h3>
+      ${table(['Opened','Selection','Kind','Stake','Status'],gp.map(x=>`<tr><td>${when(x.createdAt)}</td><td>${escape(legs(x))}</td><td>${escape(x.kind||'combo')}</td><td>${usd(x.stakeUsd)}</td><td>${escape(x.status||'OPEN')}</td></tr>`).join(''),'No open global paper positions.')}
       <h3>US combos <small>Real venue orders placed from Live combos · not reconciled with the venue</small></h3>
       ${table(['Opened', 'Legs', 'Fill price', 'Qty', 'Cost', 'Status', 'Fill'], open.map(x => `<tr><td>${when(x.at)}</td><td>${escape(legs(x))}</td><td>${pct(x.fillPrice)}</td><td>${escape(x.quantity)}</td><td>${usd(x.costUsd)}</td><td>${escape(x.status)}</td><td>${x.fillVerified === true ? 'verified' : '<b>unverified</b>'}</td></tr>`).join(''), 'No open US combos.')}
       <h3>Core paper positions <small>Simulated fills in the common ledger</small></h3>
       ${table(['Instrument', 'Strategy', 'Quantity', 'Cost basis'], paper.map(p => `<tr><td>${escape(p.instrumentId)}</td><td>${escape(p.strategyId)}</td><td>${escape(p.quantity)}</td><td>${usd(p.costBasis)}</td></tr>`).join(''), 'No core paper positions on Polymarket.')}`;
   }
   function history() {
-    const rows = journal?.history || [], ledger = (core?.ledger || []).filter(e => e.venue === 'polymarket');
+    const rows = journal?.history || [], ledger = (core?.ledger || []).filter(e => e.venue === 'polymarket'), gh=globalPaper?.paper?.history||[];
     return `<div class="core-heading"><h2>HISTORY</h2><span class="mpo-badge">LAST ${rows.length}</span></div>
+      ${globalSummary()}
+      <h3>Global paper</h3>
+      ${table(['Settled','Selection','Kind','Stake','P/L','Result'],gh.slice(0,100).map(x=>`<tr><td>${when(x.settledAt||x.createdAt)}</td><td>${escape(legs(x))}</td><td>${escape(x.kind||'combo')}</td><td>${usd(x.stakeUsd)}</td><td class="${tone(x.pnlUsd)}">${usd(x.pnlUsd)}</td><td>${escape(x.status||'—')}</td></tr>`).join(''),'No settled global paper trades yet.')}
       <h3>US combos</h3>
       ${table(['Settled', 'Legs', 'Fill price', 'Cost', 'Payout', 'P/L', 'Result'], rows.map(x => `<tr><td>${when(x.settledAt || x.at)}</td><td>${escape(legs(x))}</td><td>${pct(x.fillPrice)}</td><td>${usd(x.costUsd)}</td><td>${usd(x.payoutUsd)}</td><td class="${tone(x.pnlUsd)}">${usd(x.pnlUsd)}</td><td>${escape(x.status)}</td></tr>`).join(''), 'No settled US combos yet.')}
       <h3>Core paper ledger <small>Polymarket entries</small></h3>
       ${table(['Time', 'Kind', 'Quantity', 'Gross', 'Fee', 'Reference'], ledger.map(e => `<tr><td>${when(e.at)}</td><td>${escape(e.kind)}</td><td>${escape(e.quantity)}</td><td>${usd(e.gross)}</td><td>${usd(e.fee)}</td><td>${escape(e.reference)}</td></tr>`).join(''), 'No core ledger entries for Polymarket.')}`;
   }
   function performance() {
-    const p = journal?.performance;
+    const p = journal?.performance, gr=globalPaper?.research||{};
     if (!p) return '<p>Loading performance…</p>';
     const ci = p.winRateCi95 ? `${pct(p.winRateCi95.low)}–${pct(p.winRateCi95.high)}` : '—';
     const tile = (label, value, cls = '') => `<div class="pm-tile"><small>${escape(label)}</small><b class="${cls}">${value}</b></div>`;
@@ -42,6 +53,9 @@
       MPOViz.set('pm-perf-cal', 'scatter', { lo: 0.5, hi: 1, points: p.calibration.map(c => ({ x: c.implied, y: c.winRate, n: c.n })), empty: 'Calibration fills in as combos settle' });
     }
     return `<div class="core-heading"><h2>PERFORMANCE</h2><span class="mpo-badge">US COMBOS · SETTLED ONLY</span></div>
+      ${globalSummary()}
+      <h3>Global paper research</h3>
+      <div class="pm-tiles">${tile('Equity',usd(gr.equityUsd))}${tile('Exposure-adjusted',usd(gr.exposureAdjustedEquityUsd))}${tile('Closed',String(gr.closed??0))}${tile('Won / lost',`${gr.wins??0} / ${gr.losses??0}`)}${tile('Realized ROI',gr.realizedRoi==null?'—':pct(gr.realizedRoi),tone(gr.realizedRoi))}${tile('Conservative ROI',gr.conservativeRoi==null?'—':pct(gr.conservativeRoi),tone(gr.conservativeRoi))}${tile('Verdict',escape(gr.verdict||'COLLECTING'))}</div>
       ${p.sampleNote ? `<p class="core-notice">${escape(p.sampleNote)}</p>` : ''}
       <div class="pm-tiles">${tile('Net P/L', usd(p.netPnlUsd), tone(p.netPnlUsd))}${tile('ROI on cost', p.roiPct === null ? '—' : p.roiPct.toFixed(1) + '%', tone(p.roiPct))}${tile('Settled / placed', `${p.settled} / ${p.placed}`)}${tile('Won / lost', `${p.won} / ${p.lost}`)}
         ${tile('Win rate', pct(p.winRate))}${tile('95% interval', ci)}${tile('Avg implied', pct(p.avgImplied))}${tile('Realized − implied', p.edge === null ? '—' : (p.edge * 100).toFixed(1) + ' pts', tone(p.edge))}
@@ -65,9 +79,10 @@
     if (busy || (!force && Date.now() - lastFetch < 10000) || !IDS.some(visible)) return;
     busy = true; lastFetch = Date.now();
     try {
-      const [j, c] = await Promise.all([fetch('/api/polymarket-us/combos/journal', { cache: 'no-store' }), fetch('/api/platform/status', { cache: 'no-store' })]);
+      const [j, c, g] = await Promise.all([fetch('/api/polymarket-us/combos/journal', { cache: 'no-store' }), fetch('/api/platform/status', { cache: 'no-store' }), fetch('/api/polymarket/global', { cache: 'no-store' })]);
       if (!j.ok) throw new Error(`Combo journal unavailable (HTTP ${j.status})`);
-      journal = await j.json(); core = c.ok ? await c.json() : null; error = journal.recoveryRequired ? journal.recoveryError || 'Combo journal needs recovery' : '';
+      journal = await j.json(); core = c.ok ? await c.json() : null; globalPaper = g.ok ? await g.json() : null;
+      error = journal.recoveryRequired ? journal.recoveryError || 'Combo journal needs recovery' : !g.ok ? `Global paper unavailable (HTTP ${g.status})` : '';
     } catch (e) { error = e.message; }
     finally { busy = false; stamp++; IDS.forEach(draw); }
   }
