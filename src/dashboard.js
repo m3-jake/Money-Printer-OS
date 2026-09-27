@@ -43,6 +43,8 @@ const packageMeta = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 
 const MAX_BODY = 32 * 1024;
 const DATA_DIR = path.resolve(process.env.MONEY_PRINTER_DATA_DIR || path.join(ROOT,'data'));
 const UPDATE_STATUS_FILE = path.join(DATA_DIR,'update-status.json');
+let globalPolymarketPromise = null;
+const globalPolymarket = () => globalPolymarketPromise || (globalPolymarketPromise = import('./polymarket.js'));
 const UPDATE_REQUEST_FILE = path.join(DATA_DIR,'update-request.json');
 // Desktop-shell preferences (read by desktop/main.cjs every ~1 s): background operation,
 // login startup, and local Lab recovery. The shell owns applying them; this stores the choice.
@@ -495,6 +497,10 @@ export function startDashboard() {
         if (!productReadAuthorized(req)) return json(res, {ok:false,error:'Product reporting requires localhost or a server token'}, 403);
         return json(res, productEconomics().summary());
       }
+      if (req.method === 'GET' && u.pathname === '/api/polymarket/global') {
+        try { const pm=await globalPolymarket(); return json(res,{ok:true,...await pm.polymarketSnapshot()}); }
+        catch(e){ return json(res,{ok:false,error:String(e.message||e)},502); }
+      }
       if (req.method === 'GET' && u.pathname === '/api/polymarket-us/readiness') return json(res, usReadiness());
       if (req.method === 'GET' && u.pathname === '/api/polymarket-us/evidence') { const ev=await import('./polymarketUSEvidence.js'); return json(res, {...ev.evidenceSummary(),lab:{proposal:ev.labComboProposal(),status:labModuleStatuses()['polymarket-combo']||null}}); }
       if (req.method === 'GET' && u.pathname === '/api/polymarket-us/account') return json(res, await polymarketUSAccount());
@@ -537,7 +543,21 @@ export function startDashboard() {
       if (u.pathname === '/api/clear-error') { queue('clear-error'); return json(res, { ok: true }); }
       if (u.pathname === '/api/resources') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); return json(res,{ok:true,policy:saveResourcePolicy({cpuPercent:b.cpuPercent,memoryGB:b.memoryGB,diskGB:b.diskGB},'manual')}); }
       if (u.pathname === '/api/resources/sync') return json(res,{ok:true,policy:saveResourcePolicy({},'hive')});
-      if (u.pathname === '/api/polymarket-us/config') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); try{return json(res,{ok:true,readiness:configurePolymarketUS(b)})}catch(e){return json(res,{ok:false,error:String(e.message||e)},400)} }
+      if (u.pathname.startsWith('/api/polymarket/global/')) {
+        const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400);
+        try{
+          const pm=await globalPolymarket();
+          if(u.pathname==='/api/polymarket/global/autopilot') return json(res,{ok:true,autopilot:pm.setAutopilot(b),snapshot:await pm.polymarketSnapshot()});
+          if(u.pathname==='/api/polymarket/global/run') return json(res,{ok:true,result:await pm.runAutopilotOnce(),snapshot:await pm.polymarketSnapshot()});
+          if(u.pathname==='/api/polymarket/global/settle') return json(res,{ok:true,result:await pm.settlePaperPositions(),snapshot:await pm.polymarketSnapshot()});
+          if(u.pathname==='/api/polymarket/global/reset'){
+            if(b.confirmation!=='RESET GLOBAL PAPER')return json(res,{ok:false,error:'Type RESET GLOBAL PAPER to reset the global Polymarket paper book'},400);
+            pm.resetPolymarketPaper(b.amountUsd);return json(res,{ok:true,snapshot:await pm.polymarketSnapshot()});
+          }
+          return json(res,{ok:false,error:'Unknown global Polymarket paper action'},404);
+        }catch(e){return json(res,{ok:false,error:String(e.message||e)},400)}
+      }
+            if (u.pathname === '/api/polymarket-us/config') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); try{return json(res,{ok:true,readiness:configurePolymarketUS(b)})}catch(e){return json(res,{ok:false,error:String(e.message||e)},400)} }
       if (u.pathname === '/api/polymarket-us/arm') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); try{return json(res,{ok:true,readiness:armPolymarketUS(!!b.armed)})}catch(e){return json(res,{ok:false,error:String(e.message||e)},400)} }
       if (u.pathname.startsWith('/api/polymarket-us/combos/')) {
         const b = await body(req); if (b.__error) return json(res, { ok:false, error:b.__error }, 400);
@@ -596,9 +616,12 @@ export function startDashboard() {
   try { startUSComboLoops(); } catch { /* combo loops are optional */ }
   // Paper combos: the virtual book's autopilot and public-data settlement.
   try { startPaperLoops(); } catch { /* paper loops are optional */ }
+  // Global Polymarket paper: load the legacy paper engine into the desktop lifecycle.
+  // The module's own POLYMARKET_AUTOSTART=false switch still disables its loops.
+  if(String(process.env.POLYMARKET_AUTOSTART??'true').toLowerCase()!=='false')globalPolymarket().catch(()=>{});
   startRobinhoodLoops();
   startPracticeLoop({ dataDir: DATA_DIR });
-  server.on('close',()=>{ clearInterval(labSyncTimer); stopPaperLoops(); stopRobinhoodLoops(); stopPracticeLoop(); closeMarketPlatform(); });
+  server.on('close',()=>{ clearInterval(labSyncTimer); stopPaperLoops(); if(globalPolymarketPromise)globalPolymarketPromise.then(m=>m.stopPolymarketLoops()).catch(()=>{}); stopRobinhoodLoops(); stopPracticeLoop(); closeMarketPlatform(); });
   startRobinhoodEquitiesLoop();
   // The Lab reads <data>/lab-link/fitness/*.json; refresh it every minute (first write shortly after start).
   const writeFitness = () => fitnessNow().then(snap => writeFitnessFiles(DATA_DIR, snap)).catch(() => {});
