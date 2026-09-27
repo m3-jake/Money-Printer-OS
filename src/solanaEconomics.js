@@ -34,11 +34,11 @@ export function baselineRoundTripPct(config = {}) {
   return roundTripCostPct({ feeBps: fee, entrySlippageBps: slip, exitSlippageBps: slip });
 }
 
-// Paper-only auto-demote: a profile whose own preset tp1 cannot clear the cost gate even at the
-// config-floor round trip refuses every entry, so it produces no fills and no evidence. Returns the
-// switch to FAIR, or null. Never promotes: FAIR (or any profile that passes) is left alone.
+// Paper-only auto-demote for baseline profiles whose own preset tp1 cannot clear the cost gate even
+// at the config-floor round trip. SPRINT is excluded: it is an explicit exploration lane and may
+// collect evidence despite failing the profitability gate while still paying modeled execution costs.
 export function paperProfileDemotion({ mode, runtime = {}, config = {}, multiple = COST_GATE_MULTIPLE } = {}) {
-  if (mode !== 'paper' || runtime.profile === 'FAIR') return null;
+  if (mode !== 'paper' || runtime.profile === 'FAIR' || runtime.profile === 'SPRINT') return null;
   const tp1 = Number(activeExitPreset(runtime, config).tp1);
   const requiredTp1Pct = baselineRoundTripPct(config) * multiple;
   if (tp1 >= requiredTp1Pct) return null;
