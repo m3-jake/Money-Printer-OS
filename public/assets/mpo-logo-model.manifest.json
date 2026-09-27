@@ -1,0 +1,64 @@
+{
+  "schema": "mpo.logo-model.v1",
+  "source": "mpo-logo-3d.webp",
+  "sourceSha256": "f1ccedf88ce2f136e54d3dd2f749b55b286735b6119b36f8d6abcc8f90aa80ec",
+  "model": "mpo-logo-model.glb",
+  "modelSha256": "78d8897f1fe2f9b89ec5be0664d6594d59a67cd6150c772c613cd3acf097ed73",
+  "sourcePixels": [
+    960,
+    591
+  ],
+  "geometry": {
+    "letterGroups": 9,
+    "counters": 5,
+    "pixelBounds": [
+      50,
+      62,
+      838,
+      501
+    ],
+    "worldBounds": {
+      "min": [
+        -1.005136539944662,
+        -0.5634161522268442,
+        -0.09
+      ],
+      "max": [
+        1.0059164093962178,
+        0.5634167039003405,
+        0.09
+      ]
+    },
+    "bevelPixels": 2.5,
+    "topology": {
+      "watertight": true,
+      "consistentWinding": true,
+      "geometricEdges": 3108,
+      "triangles": 2072
+    }
+  },
+  "glb": {
+    "bytes": 77568,
+    "frontVertices": 348,
+    "frontTriangles": 340,
+    "shellVertices": 1392,
+    "shellTriangles": 1732,
+    "primitives": 2,
+    "accessorComponentTypes": [
+      5126,
+      5126,
+      5126,
+      5123,
+      5126,
+      5126,
+      5126,
+      5123
+    ]
+  },
+  "buildDependencies": {
+    "Pillow": "12.3.0",
+    "numpy": "2.3.5",
+    "opencv-python-headless": "5.0.0.93",
+    "mapbox-earcut": "2.1.0"
+  }
+}
