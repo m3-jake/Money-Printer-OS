@@ -292,6 +292,38 @@ test('2026-09-16 paper journal is 42 early-exit wins; closed Gamma books four lo
  assert.ok(after.realizedRoi<0);assert.equal(after.wins,43);assert.equal(after.losses,4);
 });
 
+test('paper bootstrap exploration breaks the fresh-book calibration deadlock without weakening calibrated EV gates',()=>{
+ const fresh={calibrationSamples:0,edgeAfterFriction:-0.01,expectedRoi:-0.01,fairProbability:.90,netPrice:.91,fillPrice:.90,price:.90,rank:100};
+ assert.equal(poly.candidateEvGate(fresh).ok,false);
+ const exploratory=poly.candidateAutopilotGate(fresh,{bootstrapExploration:true});
+ assert.equal(exploratory.ok,true);
+ assert.equal(exploratory.lane,'EXPLORATION');
+ assert.equal(exploratory.evidenceQuality,'UNCALIBRATED');
+ assert.equal(poly.candidateAutopilotGate(fresh,{bootstrapExploration:false}).ok,false);
+
+ const calibratedBad={...fresh,calibrationSamples:20};
+ assert.equal(poly.candidateAutopilotGate(calibratedBad,{bootstrapExploration:true}).ok,false,'known negative calibrated EV must remain blocked');
+
+ const a={...fresh,marketId:'a',gameId:'ga'},b={...fresh,marketId:'b',gameId:'gb',rank:90};
+ const baseline=poly.comboExpectedValue([a,b]);
+ const bootstrap=poly.comboExpectedValue([a,b],{bootstrapExploration:true});
+ assert.equal(baseline.ok,false);
+ assert.equal(bootstrap.ok,true);
+ assert.equal(bootstrap.lane,'EXPLORATION');
+});
+
+test('desktop lifecycle starts and exposes the global Polymarket paper lane',()=>{
+ const dash=fs.readFileSync(new URL('../src/dashboard.js',import.meta.url),'utf8');
+ const ui=fs.readFileSync(new URL('../public/js/mpo-polymarket.js',import.meta.url),'utf8');
+ assert.match(dash,/globalPolymarket = \(\) =>/);
+ assert.match(dash,/POLYMARKET_AUTOSTART/);
+ assert.match(dash,/\/api\/polymarket\/global/);
+ assert.match(dash,/stopPolymarketLoops/);
+ assert.match(ui,/fetch\('\/api\/polymarket\/global'/);
+ assert.match(ui,/GLOBAL POLYMARKET · PAPER/);
+ assert.match(ui,/BASELINE \+ EXPLORATION/);
+});
+
 test('real-money gate stays locked and settlement never uses API-key auth',()=>{
  const r=poly.realPolymarketReadiness();
  assert.equal(r.enabled,false);
