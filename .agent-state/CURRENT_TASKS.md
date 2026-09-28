@@ -1,13 +1,18 @@
-# Current tasks — 2026-09-27 alpha.64 / Lab alpha.8
+# Current tasks — 2026-09-27 alpha.66 / Lab alpha.10
 
-The Windows repair/install is complete at the application level: canonical tests pass, clean
-archives are installed, runtime provenance matches the packaged releases, PAPER/live locks remain
-intact, and all five configured Lab research adapters now run. `polymarket-combo` is currently
-`NO_EDGE`, not broken. Remaining non-internal boundaries are: publish/sign a real GitHub updater
-release (and configure a read-only update token if the repo stays private), verify/install the same
-canonical release on the Mac when it is online, let the deterministic soak run long enough to make
-a literal 24-hour observation, and accumulate authentic executable-price/tape evidence rather than
-weakening qualification gates.
+The final Windows release pair for this repair is alpha.66 / Lab alpha.10. Internal completion means
+both full source suites pass, both packaged builds identify their exact clean commits, the paired
+updater or equivalent verified install proves those exact builds are running, PAPER/live locks stay
+intact, and the post-install soak records no invariant failures. The five Lab research adapters stay
+active; `polymarket-combo` and other lanes may legitimately remain `NO_EDGE`/blocked when the
+after-cost evidence does not justify paper promotion.
+
+Remaining external/time boundaries are unchanged: publish/sign a real GitHub updater release (and
+configure a read-only update token if the repo remains private), verify/install the canonical
+release on the Mac when it is online, accumulate a literal 24-hour observation window, and collect
+authentic executable-price/tape evidence rather than weakening qualification gates. Small custom
+paper-bankroll resets and the requested desktop/logo polish are part of this release, not follow-up
+tasks.
 
 ## Profit Lab queue — 2026-09-27
 
@@ -15,8 +20,8 @@ Highest-leverage unfinished profitability task: Research Pro monetization v1. Re
 
 Implementation and verification of the September 26 upgrade remain recorded in
 `reports/UPGRADE-IMPLEMENTATION-2026-09-26.md`; current operator documentation is
-`docs/UPGRADE-OPERATIONS.md`. The alpha.64/alpha.8 Windows install now supersedes the old prepared
-alpha.61/alpha.7 review archives. No module is newly claimed profitable. No speculative chain
+`docs/UPGRADE-OPERATIONS.md`. The alpha.66/alpha.10 paired Windows release supersedes the old prepared
+alpha.61/alpha.7 review archives and the intermediate alpha.64/alpha.8 repair. No module is newly claimed profitable. No speculative chain
 connector or unbenchmarked GPU path was activated. Physical multi-monitor transitions, Mac
 installation, signed updater publication and the full 24-hour observation remain unverified.
 Earlier tasks below are historical context; they do not override the current entry above.

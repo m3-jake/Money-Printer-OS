@@ -1,23 +1,28 @@
 # Current project state — 2026-09-27
 
 Authoritative working repositories are `W:/money-printer-os` on `main` at version
-`0.5.0-alpha.64` and `W:/money-printer-evolution-lab` on `master` at version `0.1.0-alpha.8`.
-Windows/WITCHDOCTOR is installed and running those releases from clean packaged archives; runtime
-`/api/state` and Lab `/api/health` expose the exact packaged commits and must be used as the
-provenance authority. Money Printer OS is PAPER and reports HEALTHY. Real Robinhood execution is
-code-locked; Lab live activation and automatic live promotion are false.
+`0.5.0-alpha.66` and `W:/money-printer-evolution-lab` on `master` at version
+`0.1.0-alpha.10`. Runtime `/api/state` and Lab `/api/health`, plus the paired release receipt,
+are the provenance authority after installation; package labels alone are not accepted as proof.
+Money Printer OS remains PAPER-only, with real execution/code paths locked, and Lab live activation
+and automatic live promotion remain false.
 
-Evolution Lab is RUNNING with Robinhood, Robinhood equities, Kalshi, Polymarket and
-`polymarket-combo` active. The combo worker is operating but currently reports `NO_EDGE`; it is
-not promoted merely to create activity. The Lab is compute-throttled because Solana lacks
-executable-price evidence and its crash/maintenance history contains unclean boots. The trader
-remains authoritative for paper accounting, risk, policy admission and rollback.
+Evolution Lab runs Robinhood, Robinhood equities, Kalshi, Polymarket and `polymarket-combo`.
+Research may generate candidates, but the trader alone owns paper admission, accounting, risk and
+rollback. Lanes with negative after-cost holdout, insufficient authentic tape, missing executable
+prices or venue/API restrictions remain visible as correctly blocked/no-edge rather than being made
+optimistic.
 
-Full canonical source suites passed on Windows before packaging (`npm run test:all` in both repos).
-Mac verification is not claimed because the Mac is offline. Updater code/tests pass, but the
-installed updater currently receives a GitHub latest-release 404 and the installed `.env` has no
-`MONEY_PRINTER_UPDATE_TOKEN`; signed/public release publication remains an external owner boundary.
-A literal 24-hour soak has not been claimed in this repair session.
+Paper-wallet testing is deliberately configurable for small-bankroll experiments: arbitrary
+fractional SOL (including 0.15/0.25 SOL), small Robinhood USD books and custom Polymarket US paper
+epochs. These resets affect simulated books only and do not rewrite historical losses or real
+balances. The desktop also carries the transient icon interaction and grab/stretch spring logo.
+
+The paired updater now refuses dirty/diverged sources, verifies both build records, swaps the pair
+transactionally, rolls both back on failure, and validates both running commits plus the PAPER safety
+state. The GitHub release updater remains externally blocked by a latest-release 404/private-repo
+token boundary. Mac verification is not claimed because the Mac is offline, and a literal 24-hour
+soak is not claimed in this repair session.
 
 # Historical project state (2026-09-20, alpha53 integrated)
 

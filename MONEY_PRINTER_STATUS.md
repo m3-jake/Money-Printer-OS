@@ -1,32 +1,40 @@
 # Money Printer OS: status ledger
 
-## Current entry point — 2026-09-27 alpha.64 / Lab alpha.8 repair
+## Current entry point — 2026-09-27 alpha.66 / Lab alpha.10 paired release
 
-Windows/WITCHDOCTOR now runs Money Printer OS `0.5.0-alpha.64` in PAPER mode and Money Printer
-Evolution Lab `0.1.0-alpha.8`. Both installed archives were built from clean committed source and
-verified through their running APIs. The trader reports HEALTHY and its packaged provenance is
-visible in `/api/state`; the Lab reports RUNNING and exposes its packaged provenance in
-`/api/health`. Real-money authority remains locked throughout.
+The canonical release pair for this pass is Money Printer OS `0.5.0-alpha.66` plus Evolution Lab
+`0.1.0-alpha.10` on Windows/WITCHDOCTOR. The release process is fail-closed: both repositories must
+be clean, both archives carry source provenance, the pair is backed up and swapped transactionally,
+and the updater verifies the exact running trader version/commit, exact Lab version/commit, clean
+packaged provenance, PAPER-only safety switches and the Lab service identity before writing the
+shared `PAIRED-RELEASE.json` receipt. User AppData, P/L, journals, credentials and evidence are not
+reset by the release process.
 
-The Lab's persistent module roster now includes `robinhood`, `robinhood-equities`, `kalshi`,
-`polymarket` and `polymarket-combo`. The combo researcher is actually running and currently reports
-`NO_EDGE` with a negative holdout, so it remains research/shadow rather than being promoted just to
-create trades. The Lab is throttled because Solana still lacks executable-price evidence and the
-run ledger contains unclean boots; this is reported rather than erased.
+This pair also closes the current product polish requests. Pump.fun/Solana paper testing accepts an
+arbitrary positive starting SOL bankroll down to `0.001` plus `0.15` and `0.25 SOL` presets;
+Robinhood paper/practice accepts small custom USD bankrolls from `$1`; Polymarket US paper epochs
+accept a custom `$1+` starting bankroll. Desktop app icons use a brief press response instead of a
+persistent blue selection box, and the top-right Money Printer OS logo can be grabbed, stretched and
+released with a reduced-motion-aware elastic snap-back.
 
-Both full source test suites passed before packaging. The Windows trader archive also passed its
-isolated Electron engine smoke. Rollback archives from the previously installed builds are stored
-under `W:/money-printer-release-backups/2026-09-27-pre-alpha64-alpha8/` and AppData/user trading
-history was preserved. The updater itself is tested, but the running update check currently hits a
-GitHub latest-release HTTP 404 and the installed `.env` has no update token. Signed/public release
-publication, signing-key work, a literal 24-hour soak, and Mac verification remain unclaimed
-external/time boundaries. Historical entries below are retained.
+The Lab roster includes `robinhood`, `robinhood-equities`, `kalshi`, `polymarket` and
+`polymarket-combo`. The combo and Robinhood lanes remain honest when there is no qualified edge:
+negative holdout/cost economics, incomplete authentic tape or missing executable venue evidence are
+reported as `NO_EDGE`/blocked rather than bypassed. Evolution Lab remains research-only and the
+trader remains authoritative for paper admission, accounting, risk and rollback.
+
+Both full source suites must pass before packaging, followed by isolated packaged runtime smoke and
+a post-install paper/research soak. The GitHub updater's signed/public release path remains an
+external boundary: the installed update check currently receives GitHub latest-release HTTP 404 and
+the private repository has no configured `MONEY_PRINTER_UPDATE_TOKEN`. Mac verification is not
+claimed while the Mac is offline, and no literal 24-hour soak is claimed from this repair session.
+Historical entries below are retained.
 
 **Read this first.** It is the entry point for each new session. Deeper history lives in `.agent-state/`
 (`CURRENT_TASKS.md`, `KNOWN_BUGS.md`, `PROJECT_STATE.md`, `RELEASE_STATUS.md`) and in `reports/NEXT-STEPS-2026-09-25.md`.
 Don't re-inventory the repo. Update this file at the end of every batch.
 
-Last updated: 2026-09-27, alpha.64 / Evolution Lab alpha.8 Windows repair and deployment. Version `0.5.0-alpha.64`.
+Last updated: 2026-09-27, alpha.66 / Evolution Lab alpha.10 paired Windows release. Version `0.5.0-alpha.66`.
 
 ## Architecture (inventoried once)
 

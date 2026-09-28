@@ -1,21 +1,27 @@
-# Current Windows release — alpha.64 trader / alpha.8 Lab (2026-09-27)
+# Current Windows release — alpha.66 trader / alpha.10 Lab (2026-09-27)
 
-WITCHDOCTOR is installed and running Money Printer OS `0.5.0-alpha.64` and Evolution Lab
-`0.1.0-alpha.8`. The release archives are built from clean committed source and carry `BUILD.json`
-provenance; the running HTTP APIs were checked after installation rather than trusting build logs.
-Money Printer OS also passed the isolated Windows engine smoke against a throwaway data directory.
+The canonical Windows pair is Money Printer OS `0.5.0-alpha.66` and Evolution Lab
+`0.1.0-alpha.10`. Packaging is accepted only from clean committed source. The local paired updater
+builds both archives, smoke-tests the trader archive, validates both build-provenance records, stops
+the two apps, backs up and swaps both archives as one transaction, then verifies the exact running
+trader version/commit, Lab version/commit, clean packaged provenance and PAPER/live-lock state. A
+failure in either half restores the previous pair.
 
-Release working directories are `W:/mpo-alpha64-release/` and `W:/lab-alpha8-release/`; their
-`BUILD-INFO.json`, SHA256 files/build records and smoke record are the artifact-level authority.
-The pre-install rollback archives are preserved under
-`W:/money-printer-release-backups/2026-09-27-pre-alpha64-alpha8/`. User AppData, paper history,
-P/L, journals, credentials and research evidence were not reset or replaced.
+Release working directories for direct inspection are `W:/mpo-alpha66-release/` and
+`W:/lab-alpha10-release/`. The installed app roots receive identical `PAIRED-RELEASE.json`
+receipts plus their build-info sidecars. User AppData, paper books/history, P/L, journals,
+credentials and research evidence remain outside the packaged archive and are preserved.
 
-The updater implementation and signature tests pass, but the installed update check currently
-fails at the GitHub Releases boundary with HTTP 404; `MONEY_PRINTER_UPDATE_TOKEN` is absent from
-the installed trader `.env`. No signed/public GitHub release or signing-key success is claimed.
-Mac packaging/install is also not claimed while that machine is offline. Earlier release entries
-below are historical and do not identify the current Windows runtime.
+This release includes flexible small-bankroll paper reset controls, transient desktop-icon feedback,
+the elastic grab/stretch logo interaction, Windows atomic-write hardening in the Lab, stricter Lab
+service health ownership, Polymarket research scheduler lanes, and a clean `--quit-for-update`
+Lab shutdown handshake for future paired updates. Full source suites and packaged runtime smoke are
+release gates; the post-install soak record is written beside the trader artifact.
+
+The GitHub signed updater path remains a legitimate external boundary: the installed check currently
+returns HTTP 404 for the latest GitHub release and no private-repository
+`MONEY_PRINTER_UPDATE_TOKEN` is configured. No signing-key/publication success is claimed. Mac
+installation is not claimed while the Mac is offline. Earlier entries below are historical.
 
 # Historical Windows build — 0.5.0-alpha.54+windows.aa32002 (2026-09-24, WITCHDOCTOR, **not installed**)
 
