@@ -20,6 +20,8 @@ import { indexedFlowSnapshot } from './onchainFlow.js';
 import { startTrackedWalletStream, smartWallets, copySignalForMint } from './walletTracker.js';
 import { copyTradeSignals } from './copyTrade.js';
 import { simulateAggressivePaperExecution } from './executionSimAggressive.js';
+import { parsePumpfunLaunch, PUMPFUN_PROGRAM_ID } from './pumpfun.js';
+import { createSniper } from './pumpfunSniper.js';
 import { aggressionParams, exitPresets, operatingProfiles, customExitPolicy, sanitizeCustomExit, openLimitFor, MAX_OPEN_OVERRIDE, isAggressivePaper } from './runtime.js';
 import { recordUniverse, postmortemTrade } from './research.js';
 import { supervisorTick } from './supervisor.js';
@@ -803,7 +805,14 @@ async function main() {
   const dashboard = once ? null : startDashboard();
   if (!once && cfg.alphaWorkerEnabled) startAlphaWorker();
   if (!once) openBrowser();
-  const stream = once ? null : startProgramStream(event => appendJournal(event));
+  const sniper=createSniper();
+  const stream = once ? null : startProgramStream(event => {
+    appendJournal(event);
+    if(!event.programHints?.includes(PUMPFUN_PROGRAM_ID))return;
+    const launch=parsePumpfunLaunch(event.logs,{signature:event.signature,ts:event.ts});if(!launch)return;
+    const runtime=loadState().runtime,decision=sniper({...launch,slot:event.slot},{runtime,mode:cfg.mode,block:event.slot});
+    appendJournal({type:'pumpfun-sniper-signal',mode:cfg.mode.toUpperCase(),...launch,...decision,source:'pumpfun:sniper',orderSubmitted:false});
+  });
   const walletStream = once ? null : startTrackedWalletStream(event=>copyTradeSignals([event],{mode:cfg.mode,wallets:smartWallets(),log:appendJournal}));
   let shuttingDown = false;
   const shutdown = () => {
