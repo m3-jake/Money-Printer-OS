@@ -44,6 +44,7 @@ export function updatePortfolio(s,{now=Date.now()}={}){
   ensurePnlLedger(s);
   const solUsd=n(s.market?.solUsd),cash=n(s.cashSol),positions=markedPositionsValue(s),eq=equity(s),unrealized=unrealizedPnl(s);
   const day=dailyPnl(s,now),life=n(s.realizedLifetimePnlSol);
+  s.portfolioPeakSol=Math.max(Number(s.portfolioPeakSol||0),eq);
   const pnlMode=String(s.pnlMode||s.mode||'PAPER').toUpperCase()==='LIVE'?'LIVE':'PAPER';
   s.portfolio={mode:pnlMode,pnlMode,cashSol:cash,cashUsd:cash*solUsd,positionsValueSol:positions,positionsValueUsd:positions*solUsd,unrealizedPnlSol:unrealized,unrealizedPnlUsd:unrealized*solUsd,realizedDayPnlSol:day,realizedLifetimePnlSol:life,realizedSessionPnlSol:day,equitySol:eq,equityUsd:eq*solUsd,solUsd,updatedAt:now};
   s.portfolioSeries=Array.isArray(s.portfolioSeries)?s.portfolioSeries:[];

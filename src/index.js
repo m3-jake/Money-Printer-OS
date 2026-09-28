@@ -38,6 +38,7 @@ import { solanaCostGate, paperProfileDemotion } from './solanaEconomics.js';
 import { latestJupiterQuote } from './jupiterEvidence.js';
 import { exitSimulation, simulatePaperExit, paperExitQuote, reviewPositionPrice, entrySizing, paperEntryRejection } from './positionExecution.js';
 import { apiUnitEconomicsSnapshot, persistApiUnitEconomics, attributeScanCycle, strategyNetPnlAfterDataCost } from './apiUnitEconomics.js';
+import { assessPortfolioRisk } from './portfolioRisk.js';
 
 const once = process.argv.includes('--once');
 const dashboardOnly = process.argv.includes('--dashboard-only');
@@ -167,8 +168,11 @@ async function enter(s, pick, manual = false) {
     stopPct: preset(s).stop, paper: isPaper, sprint: sprintPaper,
   });
   const decision = isPaper ? recordPumpDecision(s, pumpSizingDecision(s, cfg, pick, legacySizing), pick) : null;
-  const size = decision ? decision.sizeSol : legacySizing.size;
+  let size = decision ? decision.sizeSol : legacySizing.size;
   if (size < 0.005) { if(decision) decision.rejected='uneconomic-or-sizing-budget'; return; }
+  const portfolioRisk=assessPortfolioRisk(s,pick);
+  if(portfolioRisk.enabled&&!portfolioRisk.allowed){appendJournal({type:'entry-skip',mode:'PAPER',reason:'portfolio-risk',mint:pick.mint,symbol:pick.symbol,portfolioRisk});return;}
+  if(portfolioRisk.enabled&&portfolioRisk.sizeMultiplier<1)size*=portfolioRisk.sizeMultiplier;
 
   // Cost gate: in paper mode a fresh Jupiter round-trip quote may only make the simulator stricter.
   // This keeps toxic / effectively unsellable Pump.fun tokens out of the evidence the Lab learns from.
@@ -691,6 +695,10 @@ async function cycle() {
   const lead=ranked[0];
   s.system.lastCycle = Date.now();
   supervisorTick(s, ranked);
+  if(cfg.mode==='paper'&&s.runtime?.profile==='AGGRESSIVE_PAPER'&&s.system.portfolioRisk?.some(x=>x.flatten)){
+    for(const p of [...s.positions])paperSell(s,p,1,Number(p.lastPrice||p.entryPrice),'portfolio-drawdown-tier3',true);
+    appendJournal({type:'portfolio-risk-flatten',mode:'PAPER',reason:'drawdown-tier3'});
+  }
   const missingPrices=s.positions.filter(p=>p.priceStatus&&p.priceStatus!=='FRESH');
   if(missingPrices.length){s.system.diagnostics.push({level:'WARN',code:'HELD_PRICE_UNVERIFIED',message:`${missingPrices.length} held positions await a verified price`});if(s.system.health==='HEALTHY')s.system.health='CAUTION';}
   const requestHealth=discoveryHealth().marketRequests;
