@@ -1,14 +1,14 @@
-# Current Windows release — alpha.66 trader / alpha.10 Lab (2026-09-27)
+# Current Windows release — alpha.67 trader / alpha.11 Lab (2026-09-27)
 
-The canonical Windows pair is Money Printer OS `0.5.0-alpha.66` and Evolution Lab
-`0.1.0-alpha.10`. Packaging is accepted only from clean committed source. The local paired updater
+The canonical Windows pair is Money Printer OS `0.5.0-alpha.67` and Evolution Lab
+`0.1.0-alpha.11`. Packaging is accepted only from clean committed source. The local paired updater
 builds both archives, smoke-tests the trader archive, validates both build-provenance records, stops
 the two apps, backs up and swaps both archives as one transaction, then verifies the exact running
 trader version/commit, Lab version/commit, clean packaged provenance and PAPER/live-lock state. A
 failure in either half restores the previous pair.
 
-Release working directories for direct inspection are `W:/mpo-alpha66-release/` and
-`W:/lab-alpha10-release/`. The installed app roots receive identical `PAIRED-RELEASE.json`
+Release working directories for direct inspection are `W:/mpo-alpha67-release/` and
+`W:/lab-alpha11-release/`. The installed app roots receive identical `PAIRED-RELEASE.json`
 receipts plus their build-info sidecars. User AppData, paper books/history, P/L, journals,
 credentials and research evidence remain outside the packaged archive and are preserved.
 

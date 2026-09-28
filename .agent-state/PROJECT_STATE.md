@@ -1,8 +1,8 @@
 # Current project state — 2026-09-27
 
 Authoritative working repositories are `W:/money-printer-os` on `main` at version
-`0.5.0-alpha.66` and `W:/money-printer-evolution-lab` on `master` at version
-`0.1.0-alpha.10`. Runtime `/api/state` and Lab `/api/health`, plus the paired release receipt,
+`0.5.0-alpha.67` and `W:/money-printer-evolution-lab` on `master` at version
+`0.1.0-alpha.11`. Runtime `/api/state` and Lab `/api/health`, plus the paired release receipt,
 are the provenance authority after installation; package labels alone are not accepted as proof.
 Money Printer OS remains PAPER-only, with real execution/code paths locked, and Lab live activation
 and automatic live promotion remain false.

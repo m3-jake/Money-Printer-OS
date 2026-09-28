@@ -1,9 +1,9 @@
 # Money Printer OS: status ledger
 
-## Current entry point — 2026-09-27 alpha.66 / Lab alpha.10 paired release
+## Current entry point — 2026-09-27 alpha.67 / Lab alpha.11 paired release
 
-The canonical release pair for this pass is Money Printer OS `0.5.0-alpha.66` plus Evolution Lab
-`0.1.0-alpha.10` on Windows/WITCHDOCTOR. The release process is fail-closed: both repositories must
+The canonical release pair for this pass is Money Printer OS `0.5.0-alpha.67` plus Evolution Lab
+`0.1.0-alpha.11` on Windows/WITCHDOCTOR. The release process is fail-closed: both repositories must
 be clean, both archives carry source provenance, the pair is backed up and swapped transactionally,
 and the updater verifies the exact running trader version/commit, exact Lab version/commit, clean
 packaged provenance, PAPER-only safety switches and the Lab service identity before writing the
@@ -34,7 +34,7 @@ Historical entries below are retained.
 (`CURRENT_TASKS.md`, `KNOWN_BUGS.md`, `PROJECT_STATE.md`, `RELEASE_STATUS.md`) and in `reports/NEXT-STEPS-2026-09-25.md`.
 Don't re-inventory the repo. Update this file at the end of every batch.
 
-Last updated: 2026-09-27, alpha.66 / Evolution Lab alpha.10 paired Windows release. Version `0.5.0-alpha.66`.
+Last updated: 2026-09-27, alpha.67 / Evolution Lab alpha.11 paired Windows release. Version `0.5.0-alpha.67`.
 
 ## Architecture (inventoried once)
 
