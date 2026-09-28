@@ -3,6 +3,7 @@ import { pathToFileURL, fileURLToPath } from 'node:url';
 import fs from 'node:fs';
 import path from 'node:path';
 import { cfg } from './config.js';
+import { assertLiveConfig } from './liveConfig.js';
 import { discoverCandidates, refreshPair, refreshPositionPairs, discoveryHealth, discoveryFanout, setCycleSignal, solUsdPrice, batchTokenPrices } from './dexscreener.js';
 import { analyze, explain, marketRegime } from './strategy.js';
 import { mintRisk, benchmarkRpcs } from './rpc.js';
@@ -752,6 +753,12 @@ async function cycle(budget = null) {
 }
 
 async function main() {
+  // P4.2: refuse a live configuration that could never dispatch, before any provider work (the
+  // message names the env var to fix; main()'s catch reports it and exits 1). A coherent but inert
+  // live config is reported line by line instead -- the default (paper, gate off) prints nothing.
+  // Fail-closed only: this cannot arm anything, and the execution boundary still locks dispatch.
+  const liveConfig = assertLiveConfig(cfg);
+  for (const w of liveConfig.warnings) console.warn(`[MPOS][LIVE] ${w.code}: ${w.message}`);
   console.info(`[MPOS][MODE] BING PUMPO=${String(cfg.mode).toUpperCase()} | P&L=${cfg.mode==='live'?'LIVE':'PAPER'} | live signing/risk switch unchanged`);
   marketPlatform();
   // A one-shot scan must actually terminate; do not leave servers/workers alive.

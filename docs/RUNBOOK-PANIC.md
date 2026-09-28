@@ -105,6 +105,9 @@ visible:
 | Variable | Default | Why you would change it |
 |---|---|---|
 | `MODE`, `ENABLE_LIVE_TRADING` | `paper`, `false` | Keep both as they are during an incident |
+| A `MODE` the loop does not implement (including an empty `MODE=`) | — | The engine refuses to start with exit `1` *before* any provider work, and `doctor` exits non-zero: the loop branches on `paper`/`live` only, so any other value used to run a loop that counted signals, entered nothing and managed no held position |
+| `MODE=live` without `BS58_PRIVATE_KEY` | — | Same refusal (`LIVE_WITHOUT_SIGNER`): the Jupiter path cannot sign, so every dispatch would fail at the moment it is attempted. A live lane that is coherent but inert (gate armed in paper mode, live with the gate off, no `JUPITER_API_KEY`) is reported as a `WARN` and boots |
+| Live dispatch itself | refused while the account is not reconciled | Every real order path consults the execution boundary first: once a runtime has booted (or the data dir holds `mpos-core.sqlite`), submission is refused with `LIVE_ACCOUNT_NOT_RECONCILED` whatever `MODE`, `ENABLE_LIVE_TRADING` and `BS58_PRIVATE_KEY` say. Cancels and read-only reads stay available. This is fail-closed by design — it is not a switch and no environment variable bypasses it |
 | `MONEY_PRINTER_DATA_DIR` | `data` | Point at a copy to inspect a suspect book without touching the live one |
 | `MARKET_REQUESTS_PER_MINUTE` | `120` | The discovery fan-out is sized from this; raising it widens the universe, lowering it narrows the fan-out |
 | `CYCLE_BUDGET_MS` | `45000` | A cycle past its budget is abandoned (and recorded as `cycle-budget`), never left hanging |
@@ -116,6 +119,9 @@ visible:
 - `0` — clean stop (`shutdown()`), including a one-shot run (`--once`).
 - `1` — a fatal error escaped `main()` (for example `STATE_RECOVERY_REQUIRED`); the message is on
   stderr and `process.exitCode = 1`.
+- `1` — a refused live configuration (`LIVE_CONFIG_REFUSED`, i.e. `MODE_UNKNOWN` or
+  `LIVE_WITHOUT_SIGNER`). It is thrown as `main()`'s first statement, so nothing is written and no
+  provider is contacted. `doctor` exits `1` on the same verdict.
 
 The append-only truth is `data/market.ndjson` (`GET /api/journal` reads its tail). Row types that
 matter here: `error`, `error-persist-failed`, `cycle-budget`.

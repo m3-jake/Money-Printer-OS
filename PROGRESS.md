@@ -634,7 +634,7 @@ P3.4 — done — ~180 ms and a 9.4 MB module graph off every process that boots
       Sweep after P3.4: **30 targets, 964 pass, 0 fail, 2 `# SKIP`** (stderr file empty) — the P3.2/P3.3 baseline of 963
       plus exactly the one new test, so the pin is counted by the suite and nothing else moved.
 
-## P4 status: started (P4.1 measured and declined; P4.2 = exec #4 live-lane gate asymmetry and P4.3 = exec #5 `index.js` extraction remain open)
+## P4 status: in progress (P4.1 measured and declined; P4.2 done — exec #4 held up only on its loud half; P4.3 = exec #5 `index.js` extraction remains open)
 
 P4.1 — skipped on measurement — — `system.diagnostics`: there is nothing to dedupe and nothing to cap, because the array is not a log; it is the current cycle's condition board, and a history here would be the bug
       The claim under test (executive summary #3): "`system.diagnostics` is appended every cycle with no dedupe and no cap,
@@ -687,3 +687,83 @@ P4.1 — skipped on measurement — — `system.diagnostics`: there is nothing t
       `tests/cycle-recovery.test.mjs`, `AUDIT.md` (executive row #3 marked disproven, one §0 row); no `src/` change, and the tree was
       checked clean of the bite-proof edits before the sweep.
 
+P4.2 — done (dispatch lock pinned, refused live configs are loud) — — the Solana live lane: exec #4's safety claim is false at HEAD, and the half that was true — nothing checked the flags, and `doctor` exited 0 — is now a refusal
+      The claim under test (executive summary #4): "`MODE=live` + `ENABLE_LIVE_TRADING=true` + `BS58_PRIVATE_KEY` is enough for
+      the Jupiter path, and `doctor` only prints a `WARN` if live mode has no key. The Robinhood lane, by contrast, is hard-locked
+      (`PAPER_ONLY_BUILD=true`). Safety asymmetry across two venues" — cited to `config.js:6,23,25`, `doctor.js:50`,
+      `robinhoodAutoTrader.js:52`, `robinhoodTransport.js:102`.
+      The dispatch half is false, and false by one module: every real order path calls `assertLiveDispatchAllowed()` from
+      `core/executionBoundary.js`, whose entire rule is `if(active||fs.existsSync(file))throw …'LIVE_ACCOUNT_NOT_RECONCILED'` —
+      `active` is set by `platform.js:594` inside `marketPlatform()`, which `main()` calls as its first statement, and the second
+      clause is the durable half: `mpos-core.sqlite` in the data dir, re-checked on every dispatch "including from a different
+      process" (the module's own comment). The call sites are `jupiter.js:14` (first statement of `signExecute`, before signing and
+      before either submit route), `providers.js:4` (first statement of `jitoSendTransaction`), `polymarketUS.js:143-144`
+      (immediately before `orders.create`/`closePosition`), `polymarketUSCombos.js:116` (any `POST /v1/orders`,
+      `PUT …/accept|confirm`) and `robinhoodTransport.js:103` (the mutation branch, after the `PAPER_ONLY_BUILD` const). The two
+      Polymarket US *cancels* deliberately skip it, so the asymmetry the finding describes is between entering and exiting, not
+      between venues.
+      Measured (`%TEMP%\mpo-p42-gateprobe2.mjs`): with the finding's own env (`MODE=live ENABLE_LIVE_TRADING=true JITO_ENABLED=true`,
+      a well-formed 64-byte `BS58_PRIVATE_KEY`, a `JUPITER_API_KEY`, Jito pointed at a dead local port), `jitoSendTransaction('AAAA')`
+      threw `LIVE_ACCOUNT_NOT_RECONCILED` — "Risk Governor: live accounts are not reconciled into the common ledger; live submission
+      is locked" — both in a process that booted `marketPlatform()` and in a standalone process with no activation at all, pointed
+      at that data dir (the sqlite clause alone is sufficient). Both threw before any network write. Three env vars are therefore
+      never enough.
+      One trap in the measurement is worth keeping, because it is exactly how this finding gets mistaken for true: the first probe
+      used `node --input-type=module -e`, and the lock did *not* fire — the eval module's URL resolved a **second instance** of
+      `executionBoundary.js`, so the `activateExecutionBoundary()` the probe called was invisible to the `providers.js` the eval
+      module imported, and the call went out to live Jito and came back `-32602` "could not deserialize". That is a probe artefact,
+      not a hole (the engine has one module graph); the committed probe imports real files by absolute URL and asserts the shared
+      instance before asserting the refusal, so a future split graph fails the test instead of quietly disarming it.
+      The loud half was real: `grep` over `config.js`/`doctor.js` found no comparison between `mode` and `enableLiveTrading`, and
+      `node src/doctor.js --offline` with `MODE=live` and no key printed `WARN: MODE=live but BS58_PRIVATE_KEY is missing` (and the
+      gate `WARN`) and **exited 0** — a config that can never dispatch, reported as healthy to any script that only reads `$?`.
+      A second, unadvertised trap surfaced while writing the test: `MODE=` (empty) does not fall back to `paper` — `str('MODE','paper')`
+      returns `''` — and the loop branches on `paper`/`live` only, so an empty `MODE` ran a full cycle loop that counted signals,
+      entered nothing and managed no held position, silently.
+      The fix is one verdict, read in two places, and it can only refuse. `src/liveConfig.js` (new, 62 lines) exports
+      `liveConfigVerdict(config)` → `{mode, ok, fatal[], warnings[]}` and `assertLiveConfig(config)` (throws one
+      `LIVE_CONFIG_REFUSED` error carrying the `fatal` rows). Fatal: `MODE_UNKNOWN` (any `mode` outside `['paper','live']`,
+      empty included) and `LIVE_WITHOUT_SIGNER` (`MODE=live` with no `BS58_PRIVATE_KEY`). Warnings, reported but not refused,
+      because each is a coherent config that simply cannot fire or need not: `LIVE_GATE_OUTSIDE_LIVE_MODE`,
+      `LIVE_PROPOSALS_ONLY`, `LIVE_WITHOUT_JUPITER_KEY`, `LIVE_DISPATCH_STILL_LOCKED` (live + armed + signer — the one an
+      operator arming the lane most needs to read, and the only place the boundary's lock is stated to a human at boot).
+      `index.js`: `const liveConfig = assertLiveConfig(cfg);` is `main()`'s first statement, before `marketPlatform()`, so a
+      refusal happens before the boundary is activated, before the store is opened and before any provider is contacted; the
+      warnings print as `[MPOS][LIVE] CODE: message`; `main()`'s existing catch reports it and sets `process.exitCode = 1`.
+      `doctor.js`: the same verdict, printing `REFUSED:`/`WARN:` rows and setting `process.exitCode = 1` when a fatal row
+      exists, so the two entry points cannot disagree. Nothing else moved: `MODE`/`ENABLE_LIVE_TRADING`/`BS58_PRIVATE_KEY`
+      defaults in `config.js`, every live gate, and `core/executionBoundary.js` are byte-identical — `str('MODE','paper')`
+      included, which `tests/panic-runbook.test.mjs:75` asserts against the runbook. The default config (paper, gate off,
+      empty warnings) boots with no new output, so the change is invisible until a config is actually wrong.
+      Pinned by `tests/live-gate.test.mjs` (new, 5 tests, added to `test:solana`): (1) the verdict matrix — 11 reason-code
+      assertions incl. `MODE=` and `MODE=staging`; (2) a drift guard asserting all five order paths still call
+      `assertLiveDispatchAllowed()` first and that the boundary reads no env var other than `MONEY_PRINTER_DATA_DIR` — the
+      asymmetry is now a recorded decision, so a new order path must opt in; (3) a booted-runtime probe that imports
+      `platform.js`/`providers.js` by absolute URL, boots `marketPlatform()`, asserts it shares the boundary instance, and
+      requires `LIVE_ACCOUNT_NOT_RECONCILED` with live env set and Jito pointed at a dead port; (4) `index.js --once` spawned
+      with a temp data dir under a refused config — exit 1, the refusal on stderr, and **the data dir still empty** (proof
+      nothing ran); (5) `doctor` exit codes — 1 for `MODE=staging`, 1 for `MODE=live` with no signer, 0 with a warning present
+      (`MODE=live` + signer + gate armed, which must still boot), 0 for the default config. Bite-proof, each reverted after:
+      the boundary's `if(active||fs.existsSync(file))` → `if(false)` turns test 2 *and* test 3 red; deleting `doctor.js`'s
+      `process.exitCode = 1` turns test 5 red (`actual: 0`); moving `assertLiveDispatchAllowed()` out of `signExecute`'s
+      first statement turns test 2 red. Restoring that second bite-proof cost a lesson worth keeping: `git checkout --
+      src/doctor.js` also discarded *this pass's uncommitted* edit to the file, and the gate suite caught it on the very next
+      run (`doctor must fail a live config that could never dispatch … 0 !== 1`, four of five green) — which is the argument
+      for the pin, so the change was rebuilt from the test's contract and re-measured with `git diff --stat` (+10/-2) rather
+      than from memory. A bite-proof must back up the file it edits; `git checkout` restores HEAD, not the working tree.
+      Variants rejected: a `PAPER_ONLY_BUILD`-style const mirroring the Robinhood lock — it would have to *disable* a lane the
+      boundary already locks, i.e. change live behaviour for a legitimately armed deployment, to fix a documentation problem
+      (the lock belongs in the runbook, and now is); making the paper+gate contradiction fatal — refused, a `.env` that
+      pre-arms the lane while running paper is coherent, and a start-up refusal for it would be an operator-hostile way to
+      teach one line of config; coercing empty `MODE` to `paper` inside `config.js` — refused, it would hide the typo
+      (the point is to be told) and leave `doctor` disagreeing with `cfg.mode`; fixing only `doctor` — refused, the finding
+      asks for a hard-fail startup, and `doctor` is advisory (nothing in this repo runs it automatically).
+      Sweep after P4.2: `npm run test:all` exit 0 — 30 targets, **973 tests / 971 pass / 0 fail / 2 SKIP**, against the P4.1 baseline of
+      968/966/0/2, i.e. exactly +5 (the new file) and no other movement. `npm run test:unattended` re-run after the
+      `docs/RUNBOOK-PANIC.md` rows were added (the runbook is asserted against source, so it is the one doc that can break
+      the suite): still 0.
+      Files: `src/liveConfig.js` (new), `src/index.js` (+7), `src/doctor.js` (+10/-2: the verdict block replaces its two
+      ad-hoc live `WARN`s), `tests/live-gate.test.mjs` (new, 212 lines),
+      `package.json` (1 line, `test:solana`), `docs/RUNBOOK-PANIC.md` (three rows: unimplemented `MODE`, live-without-signer,
+      and the dispatch lock itself, plus the second `1` exit code), `AUDIT.md` (exec #4 annotated disproven-in-part, §0
+      *Live-config verdict* row), this entry.
