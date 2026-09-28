@@ -3,9 +3,9 @@
 3 — done — 5338e98 — Added bounded tracked-wallet websocket ingestion, Pump.fun buy parsing, paper-only source signals, scanner attribution, and trailing-scorecard demotion.
 4 — partial — 0c62542 — Added Polymarket/Kalshi book normalizers, executable bid/ask dislocation math, and atomic paired paper proposal metadata; public venue polling and paired paper fill settlement remain unwired.
 5 — done — dc5c9d7 — Connected TTL-cached SOL and mint flow derivation to indexed transaction rows, candidate signals, and the paper journal without extra RPC calls.
-6 — done — PENDING — Wired half-Kelly sizing to aggressive paper entries after two closes, logged warm-up inputs, reserved staged exposure, and scheduled 2–4 paper clips with cash and sizing guards.
+6 — done — bafbb66 — Wired half-Kelly sizing to aggressive paper entries after two closes, logged warm-up inputs, reserved staged exposure, and scheduled 2–4 paper clips with cash and sizing guards.
 7 — done — 6749f84 — Added correlation/narrative exposure gates, persistent equity peak tracking, tiered paper cuts, entry halts, and flatten handling.
-8 — partial — ed4677c — Added AGGRESSIVE_PAPER profile overrides and gated estimate routing; the shared fill simulator still applies generic impact and speed/thin penalties.
+8 — partial — ed4677c — Resuming: add a fully separate AGGRESSIVE_PAPER fill simulator and route entry and tranche fills through it.
 9 — partial — 77ffc73 — Added launch parsing and paper-only sniper gates; native transaction builder, Jito integration, and order submission remain unavailable.
 10 — partial — 32efe35 — Raised Polymarket paper bounds and added category filters; single-order paper routes and the mode-specific parked guard are not present in this checkout.
 11 — done — 6a0fbd1 — Added signed Kalshi API facade with exact demo-host enforcement, required weather/sports series, and bounded paper book.
