@@ -44,8 +44,9 @@ function Assert-CleanRepo($repo, $label) {
 function Update-Repo($repo, $label) {
   Assert-CleanRepo $repo $label
   $branch = (git -C $repo branch --show-current).Trim()
-  $origin = git -C $repo remote get-url origin 2>$null
-  if ($LASTEXITCODE -ne 0 -or -not $origin) { Say "$label has no origin remote; using the clean local commit on $branch." Yellow; return }
+  $remotes = @(git -C $repo remote)
+  if ($remotes -notcontains 'origin') { Say "$label has no origin remote; using the clean local commit on $branch." Yellow; return }
+  $origin = (git -C $repo remote get-url origin).Trim()
   Run "Fetching latest $label source" { git -C $repo fetch origin $branch --prune }
   $behind = [int](git -C $repo rev-list --count "HEAD..origin/$branch")
   $ahead  = [int](git -C $repo rev-list --count "origin/$branch..HEAD")
@@ -146,18 +147,33 @@ function Wait-Health($url, $seconds = 35) {
   }
   return $null
 }
+function Wait-Json($url, $seconds = 35) {
+  $deadline = (Get-Date).AddSeconds($seconds)
+  while ((Get-Date) -lt $deadline) {
+    try { return Invoke-RestMethod -Uri $url -TimeoutSec 2 } catch {}
+    Start-Sleep -Milliseconds 500
+  }
+  return $null
+}
 Say "`n== Starting and verifying paired release" Cyan
 Start-Process (Join-Path $labApp 'Money Printer Evolution Lab.exe')
 Start-Process (Join-Path $mpoApp 'Money Printer OS.exe')
 $mpoHealth = Wait-Health 'http://127.0.0.1:8792/api/health'
+$mpoState = Wait-Json 'http://127.0.0.1:8792/api/state'
 $labHealth = Wait-Health 'http://127.0.0.1:8793/api/health'
 $healthError = $null
 if (-not $mpoHealth) { $healthError = 'Money Printer OS health endpoint did not recover' }
-elseif ($mpoHealth.switches.paperOnlyBuild -ne $true -or $mpoHealth.switches.realEnabled -eq $true) { $healthError = 'Money Printer OS did not come back in the expected paper-only safety state' }
+elseif (-not $mpoState) { $healthError = 'Money Printer OS state endpoint did not recover' }
+elseif ($mpoHealth.switches.paperOnlyBuild -ne $true -or $mpoHealth.switches.realEnabled -eq $true -or $mpoHealth.switches.sessionArmed -eq $true -or $mpoHealth.switches.liveActivationAllowed -eq $true -or $mpoHealth.switches.automaticLivePromotionAllowed -eq $true) { $healthError = 'Money Printer OS did not come back in the expected paper-only safety state' }
+elseif ($mpoState.build.version -ne $mpoBuild.packageVersion) { $healthError = "Money Printer OS version mismatch: expected $($mpoBuild.packageVersion), got $($mpoState.build.version)" }
+elseif ($mpoState.build.provenance.sourceCommit -ne $mpoCommit) { $healthError = "Money Printer OS commit mismatch: expected $mpoCommit, got $($mpoState.build.provenance.sourceCommit)" }
+elseif ($mpoState.build.provenance.sourceDirty -eq $true) { $healthError = 'Money Printer OS reports a dirty packaged source' }
 elseif (-not $labHealth) { $healthError = 'Evolution Lab health endpoint did not recover' }
 elseif ($labHealth.service -ne 'money-printer-evolution-lab') { $healthError = 'port 8793 answered, but it was not Evolution Lab' }
 elseif ($labHealth.version -ne $labBuild.packageVersion) { $healthError = "Evolution Lab version mismatch: expected $($labBuild.packageVersion), got $($labHealth.version)" }
 elseif ($labHealth.build.commit -ne $labCommit) { $healthError = "Evolution Lab commit mismatch: expected $labCommit, got $($labHealth.build.commit)" }
+elseif ($labHealth.build.sourceDirty -eq $true) { $healthError = 'Evolution Lab reports a dirty packaged source' }
+elseif ($labHealth.switches.liveActivationAllowed -eq $true -or $labHealth.switches.automaticLivePromotionAllowed -eq $true) { $healthError = 'Evolution Lab came back with forbidden live authority enabled' }
 
 if ($healthError) {
   Say $healthError Red
