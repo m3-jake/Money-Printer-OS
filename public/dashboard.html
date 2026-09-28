@@ -1051,14 +1051,14 @@ function renderControl(){
   <div class="mpo-status control-bay__status"><b>CONTROL BAY</b><b class="mpo-badge ${mode==='LIVE'?'mpo-badge--armed':'mpo-badge--paper'}">${polyEscape(mode)}</b><b class="mpo-badge ${sourceClass}">${sourceLabel}</b><span class="muted">${s.evolutionLoop?.status?`Evolution ${polyEscape(s.evolutionLoop.status)}`:'Pump.fun / Solana controls'}</span></div>
   <div class="control-source-grid">
    <section class="control-source-card ${following?'is-active':''}">
-    <div class="control-source-card__head"><div><b>Evolution Lab Best</b><div class="muted">Use the current validated champion and automatically follow future winners.</div></div><b class="mpo-badge ${lab?'mpo-badge--live':'mpo-badge--degraded'}">${lab?'READY':'WAITING'}</b></div>
+    <div class="control-source-card__head"><div><b>Evolution Lab Best</b><div class="muted">One click makes the validated Lab champion the active Pump.fun paper policy and keeps following future winners.</div></div><b class="mpo-badge ${lab?'mpo-badge--live':'mpo-badge--degraded'}">${lab?'READY':'WAITING'}</b></div>
     <div class="control-source-card__champ"><b>${labMeta}</b><span>${labRules}</span></div>
-    <button class="btn control-primary" id="ctlLabSync" ${mode!=='PAPER'?'disabled':''}>${following?(lab?'Following Lab Best ✓':'Waiting for Lab Best ✓'):(lab?'Sync + Auto-Follow Best':'Auto-Follow Next Lab Best')}</button>
+    <button class="btn control-primary control-lab-sync" id="ctlLabSync" ${mode!=='PAPER'?'disabled':''}>${following?(lab?'USING LAB BEST + AUTO-SYNC ✓':'AUTO-SYNC ARMED · WAITING ✓'):(lab?'USE EVOLUTION LAB BEST + AUTO-SYNC':'AUTO-SYNC NEXT VALIDATED LAB BEST')}</button>
    </section>
    <section class="control-source-card ${!following?'is-active':''}">
-    <div class="control-source-card__head"><div><b>Manual Tuning</b><div class="muted">Choose a preset as a starting point, then override anything below.</div></div><b class="mpo-badge ${!following?'mpo-badge--armed':'mpo-badge--degraded'}">${!following?'ACTIVE':'STANDBY'}</b></div>
+    <div class="control-source-card__head"><div><b>Manual Tuning</b><div class="muted">Every change auto-saves. The moment you edit a control, Pump.fun switches to Manual and stops Lab auto-follow.</div></div><b class="mpo-badge ${!following?'mpo-badge--armed':'mpo-badge--degraded'}">${!following?'ACTIVE':'FALLBACK'}</b></div>
     <div class="control-source-card__champ"><b>${polyEscape(r.profile||'FAIR')} base</b><span>Aggression ${fmt(r.aggression,0)} · ${polyEscape(r.entryFrequency||'normal')} entries · ${polyEscape(r.exitPreset||'fair')} exits</span></div>
-    <div class="muted">Applying manual settings pauses Lab auto-follow until you turn the Lab source back on.</div>
+    <div class="muted">${following?'These are saved fallback values until you change one.':'Manual settings are controlling Pump.fun now.'}</div>
    </section>
   </div>
 
@@ -1073,7 +1073,7 @@ function renderControl(){
     <div class="control-subhead"><b>Exit behavior</b><span class="muted">Editing a value switches to Custom.</span></div>
     <div class="formrow"><label>Exit preset</label><select class="field ctl-manual-field" id="ctlPreset">${presets.map(v=>`<option value="${v}" ${(r.exitPreset||'fair')===v?'selected':''}>${v==='custom'?'Custom':v}</option>`).join('')}</select></div>
     <div class="control-exit-grid">${[['tp1','Take profit 1 %'],['tp2','Take profit 2 %'],['stop','Stop loss %'],['trail','Trailing stop %'],['maxHold','Max hold min']].map(([k,l])=>`<label><span>${l}</span><input class="field ctlExit ctl-manual-field" data-k="${k}" type="number" min="${eb[k]?.[0]??1}" max="${eb[k]?.[1]??500}" step="${k==='maxHold'?1:.5}" value="${ex[k]??''}"></label>`).join('')}</div>
-    <div class="control-actions"><button class="btn control-primary" id="applyCtl">Apply Manual Settings</button><button class="btn" id="revertCtl">Revert Draft</button><span id="ctlStatus" class="control-save-status">${controlPendingActionId?'Waiting for engine…':'Saved values shown above'}</span></div>
+    <div class="control-actions"><button class="btn control-primary" id="applyCtl">Save Now</button><button class="btn" id="revertCtl">Reload Saved</button><span id="ctlStatus" class="control-save-status">${controlPendingActionId?'Waiting for engine…':'AUTO-SAVE ON · saved values shown'}</span></div>
    </div></section>
 
    <aside class="control-side">
@@ -1086,7 +1086,7 @@ function renderControl(){
       <div><span>Stop / trail</span><b>${fmt(eff.stop,1)} / ${fmt(eff.trail,1)}%</b></div>
       <div><span>Max hold</span><b>${fmt(eff.maxHold,0)}m</b></div>
      </div>
-     ${lab&&following?`<div class="control-note control-note--lab"><b>Lab override active.</b> The champion’s learned weights, threshold and exit rules are the effective paper policy. Manual values remain saved as your fallback.</div>`:following?`<div class="control-note control-note--lab"><b>Lab auto-follow armed.</b> No champion currently clears the paper evidence gates, so the saved manual policy remains the fallback until one qualifies.</div>`:`<div class="control-note"><b>Manual policy active.</b> The values in the left panel are what Pump.fun will use after Apply.</div>`}
+     ${lab&&following?`<div class="control-note control-note--lab"><b>Lab override active.</b> The champion’s learned weights, threshold and exit rules are the effective paper policy. Manual values remain saved as your fallback.</div>`:following?`<div class="control-note control-note--lab"><b>Lab auto-follow armed.</b> No champion currently clears the paper evidence gates, so the saved manual policy remains the fallback until one qualifies.</div>`:String(r.profile)==='SPRINT'?`<div class="control-note"><b>Manual SPRINT stays selected.</b> The engine will not rewrite your controls, but individual entries can still be rejected by the modeled fee/slippage cost gate.</div>`:`<div class="control-note"><b>Manual policy active.</b> The values in the left panel are what Pump.fun will use after Apply.</div>`}
     </div></section>
 
     <section class="mpo-module"><header><span>Paper bankroll</span></header><div class="mpo-module-body">
@@ -1105,31 +1105,46 @@ function renderControl(){
  </div>`);
 
  const setCtlStatus=(text,kind='')=>{const el=$('#ctlStatus');if(el){el.textContent=text;el.className=`control-save-status ${kind}`.trim();}};
- const markDirty=()=>{controlDraftDirty=true;setCtlStatus('Unsaved manual changes','is-dirty')};
+ let controlAutosaveTimer=null,controlSaveBusy=false,controlSaveQueued=false;
+ const markDirty=()=>{controlDraftDirty=true;setCtlStatus('AUTO-SAVE · pending changes','is-dirty')};
  const fillExitInputs=preset=>{
   const vals=preset==='custom'?(ec.customExit||{}):(ec.presetValues?.[preset]||{});
   $$('.ctlExit').forEach(i=>{if(vals[i.dataset.k]!=null)i.value=vals[i.dataset.k]});
  };
+ const controlPayload=()=>{
+  const preset=$('#ctlPreset').value,customExit={};
+  if(preset==='custom')$$('.ctlExit').forEach(i=>{if(i.value!=='')customExit[i.dataset.k]=Number(i.value)});
+  return {profile:$('#profile').value,aggression:Number($('#aggr').value),entryFrequency:$('#ctlFreq').value,maxCandidates:Number($('#ctlCand').value),maxOpenPositions:$('#ctlMaxOpen').value===''?null:Number($('#ctlMaxOpen').value),exitPreset:preset,...(preset==='custom'?{customExit}:{})};
+ };
+ const saveManualControls=async()=>{
+  if(controlSaveBusy){controlSaveQueued=true;return}
+  controlSaveBusy=true;controlSaveQueued=false;clearTimeout(controlAutosaveTimer);controlAutosaveTimer=null;
+  setCtlStatus('AUTO-SAVE · saving + switching to Manual…','is-pending');
+  const out=await post('/api/control-settings',controlPayload());
+  controlSaveBusy=false;
+  if(out?.ok===false){controlDraftDirty=true;setCtlStatus(out.error||'Settings rejected','is-error');return}
+  controlDraftDirty=false;controlPendingActionId=out?.actionId||null;controlPendingKind='manual';controlPendingSince=Date.now();
+  setCtlStatus('AUTO-SAVE · queued, waiting for engine…','is-pending');
+  if(controlSaveQueued){controlSaveQueued=false;controlAutosaveTimer=setTimeout(saveManualControls,120)}
+ };
+ const scheduleManualSave=(delay=420)=>{clearTimeout(controlAutosaveTimer);controlAutosaveTimer=setTimeout(saveManualControls,delay)};
  $('#profile')?.addEventListener('change',e=>{
   const p=CONTROL_PROFILE_PRESETS[e.target.value];
   if(p){$('#aggr').value=p.aggression;$('#aggrValue').textContent=p.aggression;$('#ctlFreq').value=p.entryFrequency;$('#ctlPreset').value=p.exitPreset;fillExitInputs(p.exitPreset);}
-  markDirty();
+  markDirty();scheduleManualSave(120);
  });
- $('#aggr')?.addEventListener('input',e=>{const v=$('#aggrValue');if(v)v.textContent=e.target.value;markDirty()});
- $('#ctlPreset')?.addEventListener('change',e=>{fillExitInputs(e.target.value);markDirty()});
- $$('.ctl-manual-field').filter(i=>!['profile','aggr','ctlPreset'].includes(i.id)).forEach(i=>i.addEventListener('input',markDirty));
- $$('.ctlExit').forEach(i=>i.addEventListener('input',()=>{const p=$('#ctlPreset');if(p&&p.value!=='custom')p.value='custom';markDirty()}));
+ $('#aggr')?.addEventListener('input',e=>{const v=$('#aggrValue');if(v)v.textContent=e.target.value;markDirty();scheduleManualSave(500)});
+ $('#ctlPreset')?.addEventListener('change',e=>{fillExitInputs(e.target.value);markDirty();scheduleManualSave(120)});
+ $$('.ctl-manual-field').filter(i=>!['profile','aggr','ctlPreset'].includes(i.id)&&!i.classList.contains('ctlExit')).forEach(i=>{
+  i.addEventListener('input',markDirty);i.addEventListener('change',()=>scheduleManualSave(120));
+ });
+ $$('.ctlExit').forEach(i=>{
+  i.addEventListener('input',()=>{const p=$('#ctlPreset');if(p&&p.value!=='custom')p.value='custom';markDirty()});
+  i.addEventListener('change',()=>scheduleManualSave(120));
+ });
 
- $('#revertCtl')?.addEventListener('click',()=>{controlDraftDirty=false;controlPendingActionId=null;controlPendingKind='';controlPendingSince=0;document.activeElement?.blur?.();renderControl(true)});
- $('#applyCtl')?.addEventListener('click',async()=>{
-  const preset=$('#ctlPreset').value,customExit={};
-  if(preset==='custom')$$('.ctlExit').forEach(i=>{if(i.value!=='')customExit[i.dataset.k]=Number(i.value)});
-  const payload={profile:$('#profile').value,aggression:Number($('#aggr').value),entryFrequency:$('#ctlFreq').value,maxCandidates:Number($('#ctlCand').value),maxOpenPositions:$('#ctlMaxOpen').value===''?null:Number($('#ctlMaxOpen').value),exitPreset:preset,...(preset==='custom'?{customExit}:{})};
-  setCtlStatus('Applying manual settings…','is-pending');
-  const out=await post('/api/control-settings',payload);
-  if(out?.ok===false){controlDraftDirty=true;return setCtlStatus(out.error||'Settings rejected','is-error')}
-  controlDraftDirty=false;controlPendingActionId=out?.actionId||null;controlPendingKind='manual';controlPendingSince=Date.now();setCtlStatus('Queued — waiting for engine acknowledgement…','is-pending');
- });
+ $('#revertCtl')?.addEventListener('click',()=>{clearTimeout(controlAutosaveTimer);controlAutosaveTimer=null;controlDraftDirty=false;controlPendingActionId=null;controlPendingKind='';controlPendingSince=0;document.activeElement?.blur?.();renderControl(true)});
+ $('#applyCtl')?.addEventListener('click',saveManualControls);
  $('#ctlLabSync')?.addEventListener('click',async()=>{
   setCtlStatus('Enabling Lab auto-follow…','is-pending');
   const out=await post('/api/lab-sync',{});

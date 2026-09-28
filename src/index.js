@@ -481,9 +481,10 @@ async function cycle() {
   s.system.lastError = null;
   s.stats.cycles++;
   await actions(s);
-  // Paper only: a profile the cost gate refuses at the config-floor round trip is demoted to FAIR
-  // through the same path as the profile action. Nothing promotes back to SPRINT automatically.
-  const demotion = paperProfileDemotion({ mode: cfg.mode, runtime: s.runtime, config: cfg });
+  // In Lab-auto mode, an impossible fallback profile may still demote to FAIR so the engine keeps
+  // producing evidence. Explicit Manual mode is never rewritten behind the user's back; its
+  // per-trade cost gate can still reject entries that cannot cover modeled fees/slippage.
+  const demotion = s.runtime.followLabBest===false ? null : paperProfileDemotion({ mode: cfg.mode, runtime: s.runtime, config: cfg });
   if (demotion) {
     Object.assign(s.runtime, operatingProfiles.FAIR); s.runtime.profile = 'FAIR';
     appendJournal({ type: 'profile-auto-demote', ...demotion, reason: 'costGate' });
