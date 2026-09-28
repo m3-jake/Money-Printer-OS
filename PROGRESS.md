@@ -5,7 +5,7 @@
 5 — done — dc5c9d7 — Connected TTL-cached SOL and mint flow derivation to indexed transaction rows, candidate signals, and the paper journal without extra RPC calls.
 6 — done — bafbb66 — Wired half-Kelly sizing to aggressive paper entries after two closes, logged warm-up inputs, reserved staged exposure, and scheduled 2–4 paper clips with cash and sizing guards.
 7 — done — 6749f84 — Added correlation/narrative exposure gates, persistent equity peak tracking, tiered paper cuts, entry halts, and flatten handling.
-8 — partial — ed4677c — Resuming: add a fully separate AGGRESSIVE_PAPER fill simulator and route entry and tranche fills through it.
+8 — done — PENDING — Added a separate 20 bps plus impact, 10 bps fee, 150 ms, 5% max-failure fill model and gated initial and staged fills to AGGRESSIVE_PAPER; journal rows retain both estimates and delta.
 9 — partial — 77ffc73 — Added launch parsing and paper-only sniper gates; native transaction builder, Jito integration, and order submission remain unavailable.
 10 — partial — 32efe35 — Raised Polymarket paper bounds and added category filters; single-order paper routes and the mode-specific parked guard are not present in this checkout.
 11 — done — 6a0fbd1 — Added signed Kalshi API facade with exact demo-host enforcement, required weather/sports series, and bounded paper book.

@@ -19,6 +19,7 @@ import { startProgramStream } from './stream.js';
 import { indexedFlowSnapshot } from './onchainFlow.js';
 import { startTrackedWalletStream, smartWallets, copySignalForMint } from './walletTracker.js';
 import { copyTradeSignals } from './copyTrade.js';
+import { simulateAggressivePaperExecution } from './executionSimAggressive.js';
 import { aggressionParams, exitPresets, operatingProfiles, customExitPolicy, sanitizeCustomExit, openLimitFor, MAX_OPEN_OVERRIDE, isAggressivePaper } from './runtime.js';
 import { recordUniverse, postmortemTrade } from './research.js';
 import { supervisorTick } from './supervisor.js';
@@ -247,7 +248,7 @@ async function enter(s, pick, manual = false) {
     }
     const now=Date.now(),clips=isAggressivePaper(s.runtime)?splitTranches(size,{threshold:.25,clips:3,intervalMs:5000}):[{sizeSol:size,delayMs:0}],initialSize=clips[0].sizeSol;
     const routedExecution=estimateRoutedPaperExecution(pick,initialSize,Number(s.market?.solUsd||0),s.runtime,cfg.mode,(c,z,usd)=>estimatePaperExecution(c,z,usd,cfg.simulatedSlippageBps,cfg.simulatedFeeBps)),execModel=routedExecution.selected;
-    const sim=simulatePumpPaperExecution(pick,initialSize,Number(s.market?.solUsd||0),execModel.slippageBps,execModel.feeBps,{side:'BUY',now,seed:`pump-entry:${pick.mint}:${Math.floor(now/8000)}`});
+    const sim=isAggressivePaper(s.runtime)?simulateAggressivePaperExecution(pick,initialSize,Number(s.market?.solUsd||0),{side:'BUY',now,seed:`pump-entry:${pick.mint}:${Math.floor(now/8000)}`}):simulatePumpPaperExecution(pick,initialSize,Number(s.market?.solUsd||0),execModel.slippageBps,execModel.feeBps,{side:'BUY',now,seed:`pump-entry:${pick.mint}:${Math.floor(now/8000)}`});
     if(sim.status==='REJECTED'||!(Number(sim.gross)>0)){
       if(decision) { decision.rejected=sim.reason||'modeled-no-fill'; decision.failedTransactionCostEvidence='UNKNOWN_NOT_CHARGED_AS_A_REAL_TRANSACTION'; }
       s.stats.skipped++;
@@ -274,7 +275,7 @@ async function enter(s, pick, manual = false) {
       profile: s.runtime.profile || null, exitPreset: s.runtime.exitPreset || null, championId: s.runtime.activeEvolutionChampionId || 'BASE',
     });
     s.stats.signals++;
-    appendJournal({type:'trade-open',mode:'PAPER',pnlMode:'PAPER',mint:pick.mint,symbol:pick.symbol,sizeSol:filledBasis,requestedSizeSol:size,stagedTranches:clips.length-1,score:pick.score,fastEdgeScore:pick.fastEdgeScore||pick.score,strategy,signalSource:copySignal?.source||pick.signalSource||'scanner',manual,fillStatus:sim.status,fillRatio:sim.fillRatio,slippageBps:sim.slippageBps,simulatedFailurePct:sim.failurePct,latencyMs:sim.latencyMs});
+    appendJournal({type:'trade-open',mode:'PAPER',pnlMode:'PAPER',mint:pick.mint,symbol:pick.symbol,sizeSol:filledBasis,requestedSizeSol:size,stagedTranches:clips.length-1,score:pick.score,fastEdgeScore:pick.fastEdgeScore||pick.score,strategy,signalSource:copySignal?.source||pick.signalSource||'scanner',executionModel:sim.executionModel,executionEstimates:routedExecution,manual,fillStatus:sim.status,fillRatio:sim.fillRatio,slippageBps:sim.slippageBps,simulatedFailurePct:sim.failurePct,latencyMs:sim.latencyMs});
     return;
   }
 
@@ -481,7 +482,7 @@ async function updatePositions(s) {
     if(!action&&cfg.mode==='paper'&&Array.isArray(p.stagedTranches)&&p.stagedTranches.length&&Date.now()>=Number(p.stagedTranches[0].dueAt||0)){
       const clip=p.stagedTranches.shift(),clipSize=Math.max(0,Number(clip.sizeSol||0));
       const candidate={mint:p.mint,symbol:p.symbol,priceUsd:price,priceObservedAt:review.at,liq:Number(pair.liquidity?.usd||p.lastLiquidityUsd||0),executionScore:p.executionScore};
-      const sim=simulatePumpPaperExecution(candidate,clipSize,Number(s.market?.solUsd||0),cfg.simulatedSlippageBps,cfg.simulatedFeeBps,{side:'BUY',now:Date.now(),seed:`paper-tranche:${p.id}:${p.stagedTranches.length}`});
+      const trancheNow=Date.now(),sim=isAggressivePaper(s.runtime)?simulateAggressivePaperExecution(candidate,clipSize,Number(s.market?.solUsd||0),{side:'BUY',now:trancheNow,seed:`paper-tranche:${p.id}:${p.stagedTranches.length}`}):simulatePumpPaperExecution(candidate,clipSize,Number(s.market?.solUsd||0),cfg.simulatedSlippageBps,cfg.simulatedFeeBps,{side:'BUY',now:trancheNow,seed:`paper-tranche:${p.id}:${p.stagedTranches.length}`});
       const basis=Math.max(0,Number(sim.gross||0)),fee=Math.max(0,Number(sim.feeSol||0)),debit=basis+fee,reserve=Number(p.pumpSizing?.reserveSol||cfg.minSolReserve);
       p.stagedRemainingSol=Math.max(0,Number(p.stagedRemainingSol||0)-clipSize);
       if(sim.status!=='REJECTED'&&basis>0&&s.cashSol-reserve+1e-9>=debit&&Number(p.sizeSol||0)+basis<=Number(p.pumpSizing?.allowedSol||p.requestedSizeSol)+1e-8){

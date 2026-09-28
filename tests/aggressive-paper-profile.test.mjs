@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { aggressionParams, isAggressivePaper, openLimitFor, operatingProfiles } from '../src/runtime.js';
-import { estimateAggressivePaperExecution, estimateRoutedPaperExecution } from '../src/executionSimAggressive.js';
+import { estimateAggressivePaperExecution, estimateRoutedPaperExecution, simulateAggressivePaperExecution } from '../src/executionSimAggressive.js';
 import { learnerThresholds } from '../src/learner.js';
 
 test('profile constants and all risk overrides only activate in paper', () => {
@@ -26,6 +26,14 @@ test('aggressive estimator is not routed unless explicit aggressive paper mode i
   assert.equal(paper.selected.executionModel, 'AGGRESSIVE_PAPER'); assert.equal(paper.deltaBps, -49);
   const source = fs.readFileSync(new URL('../src/index.js', import.meta.url), 'utf8');
   assert.match(source, /isAggressivePaper/); assert.match(source, /estimateRoutedPaperExecution/);
+});
+
+test('separate aggressive fill model omits speed and thin-pool penalties and remains a simulated fill',()=>{
+ const now=100000,c={mint:'mint',priceUsd:.01,priceObservedAt:now,liq:100000,executionScore:90,micro:{p10:99},priceAccel:80};
+ const a=simulateAggressivePaperExecution(c,1,200,{now,seed:'fixed'}),b=simulateAggressivePaperExecution({...c,micro:{p10:0},priceAccel:0},1,200,{now,seed:'fixed'});
+ assert.equal(a.executionModel,'AGGRESSIVE_PAPER_V1');assert.equal(a.mode,'PAPER');assert.equal(a.feeBps,10);assert.ok(a.failurePct<=5);assert.equal(a.slippageBps,b.slippageBps);
+ const source=fs.readFileSync(new URL('../src/index.js',import.meta.url),'utf8');
+ assert.match(source,/isAggressivePaper\(s\.runtime\)\?simulateAggressivePaperExecution/);
 });
 
 test('strict learner thresholds are byte-identical by default and relaxed only by opt-in', () => {
