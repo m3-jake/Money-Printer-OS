@@ -12,5 +12,5 @@
 12 — done — 8c2bf97 — Added a paper-only equities/ETF order adapter using the shared paper book and aggressive estimator behind its profile gate.
 13 — done — 60307cd — Added per-asset market regime classification, strategy/regime gates, and route decisions for requested classes.
 14 — done — d2abb80 — Added separate shadow fill modeling, JSONL output, divergence report, and static assertion that the path has no order transport.
-15 — pending — — Paper qualification dashboard.
-16 — pending — — README updates.
+15 — partial — f63a6c9 — Added rolling strategy qualification math and a read-only badge payload; dashboard endpoint integration remains outstanding.
+16 — done — PENDING — Added a concise AGGRESSIVE_PAPER enablement note, journal locations, Kalshi demo environment names, LIVE IS STILL LOCKED callout, and progress ledger pointer.
