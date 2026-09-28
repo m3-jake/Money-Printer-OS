@@ -27,6 +27,7 @@ import { recordUniverse, postmortemTrade } from './research.js';
 import { supervisorTick } from './supervisor.js';
 import { proposeTrade, proposeExit, resolveProposal, expireProposals } from './proposals.js';
 import { runArbitragePaperTick } from './arbitragePoller.js';
+import { routePaperProposal } from './paperRouting.js';
 import { memeIndex } from './indexer.js';
 import { mapLimit, sleep, compactError } from './utils.js';
 import { fastEdgeScore, queueOutcomeSamples, settleOutcomeSamples, dueOutcomeMints, learnerSnapshot, evolutionChampionPolicy, evolutionChampionScore } from './learner.js';
@@ -240,6 +241,10 @@ async function enter(s, pick, manual = false) {
   if (manual) s.stats.manualEntries++;
   const paperProposal=cfg.mode==='paper'?proposeTrade(s,pick,size):null;
   if(paperProposal){paperProposal.signalSource=pick.signalSource||copySignal?.source||'scanner';paperProposal.routeDecision=pick.routeDecision||null;}
+  if(paperProposal) {
+    const routed=routePaperProposal({state:s,existingProposal:paperProposal,pick,assetClass:pick.assetClass||'memecoin',sizeSol:size,mode:cfg.mode});
+    if(!routed.proposal){paperProposal.status='REJECTED';return;}
+  }
   const resolvePaperProposal=status=>{if(paperProposal){paperProposal.status=status;paperProposal.resolvedAt=Date.now();}};
 
   if (cfg.mode === 'paper') {

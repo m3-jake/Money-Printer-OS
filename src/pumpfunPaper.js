@@ -5,7 +5,7 @@ import { isAggressivePaper } from './runtime.js';
 import { createSniper } from './pumpfunSniper.js';
 import { createNativePaperAdapter } from './pumpfunNativePaper.js';
 import { simulateAggressivePaperExecution } from './executionSimAggressive.js';
-import { proposeTrade } from './proposals.js';
+import { routePaperProposal } from './paperRouting.js';
 import { appendJournal } from './store.js';
 
 export function createPumpfunPaperLane({ adapter = createNativePaperAdapter(), dataDir = process.env.MONEY_PRINTER_DATA_DIR || 'data', now = Date.now, logger = appendJournal, simulator = simulateAggressivePaperExecution } = {}) {
@@ -34,7 +34,8 @@ export function createPumpfunPaperLane({ adapter = createNativePaperAdapter(), d
       if (book.open.length >= 25 || size < .005 || book.open.some(p => p.mint === event.mint)) return { accepted: false, reason: 'paper-budget-or-open-cap', orderSubmitted: false };
       const quote = await adapter.quote({ mint: event.mint, user: event.user, action: 'BUY', sizeSol: size, runtime, mode });
       const at = now(), candidate = { ...event, priceUsd: quote.priceSolPerRaw * solUsd, priceObservedAt: quote.observedAt, liq: quote.liquiditySol * solUsd, executionScore: 90 };
-      const proposal = proposeTrade(book, { ...candidate, symbol: event.symbol || 'NEW', dominantSignal: 'pumpfun:sniper' }, size);
+      const { proposal } = routePaperProposal({ state: book, pick: { ...candidate, symbol: event.symbol || 'NEW', dominantSignal: 'pumpfun:sniper', source: 'pumpfun:sniper' }, assetClass: 'memecoin', sizeSol: size, runtime, mode, automatic: true, logger });
+      if (!proposal) return { accepted: false, reason: 'central-route-blocked', orderSubmitted: false };
       const sim = simulator(candidate, size, solUsd, { now: at, seed: `native-paper:${event.mint}:${event.slot}` });
       const cost = Number(sim.gross || 0) + Number(sim.feeSol || 0) + networkCost(quote);
       const raw = Math.floor(Number(sim.filledQuantity || 0));

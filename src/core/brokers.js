@@ -1,9 +1,10 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { validateBroker } from './provider.js';
 import { stableId } from './model.js';
 import { SYMBOL_RE } from '../robinhoodEquitiesData.js';
 import { FEES, sellFees } from '../robinhoodEquitiesBook.js';
 import { marketState } from '../robinhoodEquitiesCalendar.js';
+import { routePaperProposal } from '../paperRouting.js';
 
 // Equities through the BrokerProvider contract (provider.js BROKER_METHODS). The only broker here is
 // PAPER: fills are simulated against a fresh quote and booked in the unified ledger through the Risk
@@ -96,6 +97,10 @@ export class PaperBroker {
       quantity: Number(qty.toFixed(6)), price: px, feeUsd, gross: gross.toFixed(6), fee: feeUsd.toFixed(6), slippageBps: 0, liquidityUsd: size === null ? 0 : size * px,
       quoteAt: Math.min(q.quoteAt ?? 0, q.receivedAt), bookFingerprint: createHash('sha256').update(JSON.stringify(q)).digest('hex'), feeModel: { ...EQUITY_FEE_MODEL, sec: f.sec, taf: f.taf },
       quote: { bid: q.bid, ask: q.ask, source: q.source, quoteAt: q.quoteAt }, orderType: type, simulated: true };
+    payload.id ||= randomUUID();
+    const routed=routePaperProposal({state:this.platform.paperRouteState||=( {mode:'PAPER',proposals:[]} ),pick:{symbol:sym,instrumentKey:`equity:${sym}`},assetClass:'equity',platform:'robinhood',stakeUsd:Number(payload.gross)+Number(payload.fee),proposalId:payload.id,logger:row=>this.platform.store.record('CENTRAL_ROUTE_DECISION',row)});
+    if(!routed.proposal)throw new Error('Central paper route refused the equity proposal');
+    payload.centralRoute=routed.decision;
     return this.platform.risk.propose(payload);
   }
   submit(id) { return this.platform.executePaper(id, 'EXECUTE PAPER ORDER'); }

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 const PROPOSAL_TTL_MS = 90_000;
 
 export function expireProposals(s) {
@@ -13,7 +14,7 @@ export function proposeTrade(s, pick, sizeSol) {
   s.proposals ||= []; expireProposals(s);
   const existing = s.proposals.find(x => x.kind === 'ENTRY' && x.mint === pick.mint && x.status === 'PENDING');
   if (existing) { existing.updatedAt=Date.now();existing.score=pick.fastEdgeScore||pick.score;existing.sizeSol=sizeSol;return existing; }
-  const p={id:`proposal-entry-${Date.now()}-${pick.mint.slice(0,5)}`,kind:'ENTRY',status:'PENDING',createdAt:Date.now(),updatedAt:Date.now(),expiresAt:Date.now()+PROPOSAL_TTL_MS,mint:pick.mint,symbol:pick.symbol,name:pick.name,sizeSol,score:pick.fastEdgeScore||pick.score,explosionScore:pick.explosionScore,moonScore:pick.moonScore,rugScore:pick.rugScore,riskScore:pick.risk?.score,executionScore:pick.executionScore,engine:'UNIFIED_EDGE',dominantSignal:pick.dominantSignal,warnings:pick.warnings||[],reasons:pick.reasons||[]};
+  const p={id:`proposal-entry-${Date.now()}-${randomUUID()}`,kind:'ENTRY',status:'PENDING',createdAt:Date.now(),updatedAt:Date.now(),expiresAt:Date.now()+PROPOSAL_TTL_MS,mint:pick.mint,symbol:pick.symbol,name:pick.name,sizeSol,score:pick.fastEdgeScore||pick.score,explosionScore:pick.explosionScore,moonScore:pick.moonScore,rugScore:pick.rugScore,riskScore:pick.risk?.score,executionScore:pick.executionScore,engine:'UNIFIED_EDGE',dominantSignal:pick.dominantSignal,warnings:pick.warnings||[],reasons:pick.reasons||[]};
   s.proposals.unshift(p);s.proposals=s.proposals.slice(0,100);return p;
 }
 

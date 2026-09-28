@@ -12,6 +12,18 @@ export function regimeSnapshot(input = {}) {
   return out;
 }
 
+export function regimesForTick(ranked = [], input = {}) {
+  const classes = ['memecoin', 'weather', 'sports', 'politics', 'culture', 'crypto', 'equity', 'etf'], observations = { ...input }, out = {};
+  for (const key of classes) {
+    if (!observations[key]) {
+      const rows = ranked.filter(x => String(x.assetClass || 'memecoin').toLowerCase() === key), returns = rows.map(x => n(x.pc5 ?? x.returnPct));
+      if (rows.length) observations[key] = { returnPct: returns.reduce((a,b) => a+b, 0) / returns.length, volatilityPct: returns.reduce((a,b) => a+Math.abs(b), 0) / returns.length, breadthPct: returns.filter(x => x > 0).length / returns.length * 100 };
+    }
+    out[key] = observations[key] ? marketRegime(observations[key]) : { regime: 'unknown', reason: 'no-observations' };
+  }
+  return out;
+}
+
 const STRATEGY_REGIMES = Object.freeze({ momentum: ['trending'], 'mean-reversion': ['choppy'], breakout: ['trending', 'risk-on'], carry: ['risk-on', 'choppy'], defensive: ['risk-off'] });
 export function strategyAllowedInRegime(strategy, regime) { return (STRATEGY_REGIMES[String(strategy).toLowerCase()] || ['trending', 'choppy', 'risk-on']).includes(String(regime).toLowerCase()); }
 

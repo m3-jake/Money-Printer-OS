@@ -8,6 +8,7 @@ import { MarketEventBus } from './eventBus.js';
 import { RiskGovernor } from './risk.js';
 import { ProviderRegistry } from './provider.js';
 import { KalshiProvider,PolymarketProvider } from './predictionProviders.js';
+import { routePaperProposal } from '../paperRouting.js';
 import { arbitrageQuote,walkBook } from './contracts.js';
 import { decimal,finite,fingerprint,stableId,units } from './model.js';
 import { appendProjectJournal } from '../projectJournal.js';
@@ -136,6 +137,9 @@ export class MarketPlatform {
       contractId:contract.id,sourceId:input.sourceId,outcome:input.outcome,eventId:contract.data.eventId||contract.id,strategyId:'manual',side:input.side,quantity:filledQuantity,requestedQuantity:quantity,price,feeUsd:Number(fee),gross,fee,
       slippageBps,liquidityUsd:sim.liquidityUsd,quoteAt,bookFingerprint:fingerprint(book),feeModel,simulated:true,simulation:{mode:'PAPER',status:sim.status,reason:sim.reason,latencyMs:sim.latencyMs,fillAt:sim.fillAt,fillRatio:sim.fillRatio,bookSlippageBps:sim.bookSlippageBps,extraSlippageBps:sim.extraSlippageBps}};
     this.captureRiskMarks(input.venue,input.sourceId,book,venueModel,input.outcome,filledQuantity,feeBps);
+    const routed=routePaperProposal({state:this.paperRouteState||=( {mode:'PAPER',proposals:[]} ),pick:{instrumentKey:`prediction:${input.venue}:${input.sourceId}:${input.outcome}`,name:contract.data.title},assetClass:input.assetClass||String(contract.data.category||'prediction').toLowerCase(),platform:input.venue,stakeUsd:Number(gross)+Number(fee),proposalId:payload.id,logger:row=>this.store.record('CENTRAL_ROUTE_DECISION',row)});
+    if(!routed.proposal)throw new Error('Central paper route refused the proposal');
+    payload.centralRoute=routed.decision;
     const result=this.risk.propose(payload);this.bus.publish(result.status==='REJECTED'?'ORDER_REJECTED':'ORDER_PROPOSED',{id:result.id,status:result.status});return result;
   }
   executePaper(id,confirmation){

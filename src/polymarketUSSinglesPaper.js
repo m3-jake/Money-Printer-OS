@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { cfg } from './config.js';
 import { PAPER_BOUNDS } from './polymarketUSPaper.js';
+import { routePaperProposal, bookRouteLogger } from './paperRouting.js';
 
 export const SINGLE_PAPER_FILE=path.resolve(process.env.MONEY_PRINTER_DATA_DIR||'data','polymarket-us-singles-paper.json');
 const round=x=>Math.round(Number(x||0)*100)/100;
@@ -20,6 +21,9 @@ export function placePaperSingle({market={},stakeUsd,outcome='Yes',mode=cfg.mode
  const feePerContract=.05*ask*(1-ask),quantity=Math.floor(stake/(ask+feePerContract));if(quantity<1)throw Object.assign(new Error('stake is too small for one contract'),{code:'stake-too-small'});
  const fee=round(quantity*feePerContract),cost=round(quantity*ask+fee);if(cost>book.cashUsd)throw Object.assign(new Error('insufficient paper cash'),{code:'insufficient-paper-cash'});
  const entry={id:`ps-${now.toString(36)}-${Math.random().toString(36).slice(2,7)}`,marketId:id,title:String(market.eventTitle||market.question||market.title||id),category:market.category||null,outcome:label,ask,bid,quantity,stakeUsd:stake,costUsd:cost,feeUsd:fee,status:'OPEN',openedAt:now,source:'public-market-snapshot'};
+ const routed=routePaperProposal({state:book,pick:{marketId:id,instrumentKey:`polymarket-us:${id}:${label}`,name:entry.title},assetClass:String(entry.category||'prediction').toLowerCase(),platform:'polymarket',stakeUsd:cost,mode,proposalId:entry.id,logger:bookRouteLogger(book)});
+ if(!routed.proposal)throw new Error('Central paper route refused the Polymarket proposal');
+ entry.proposalId=routed.proposal.id;
  book.cashUsd=round(book.cashUsd-cost);book.open.unshift(entry);write(book,file);return entry;
 }
 export function markPaperSingles(markets=[],{file=SINGLE_PAPER_FILE}={}){
