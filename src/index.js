@@ -16,6 +16,7 @@ import { alert } from './alerts.js';
 import { pushTick, microFeatures, explosionScore, moonScore, buildCandles, narrative, walletSignals } from './intelligence.js';
 import { socialSignals } from './providers.js';
 import { startProgramStream } from './stream.js';
+import { indexedFlowSnapshot } from './onchainFlow.js';
 import { startTrackedWalletStream, smartWallets, copySignalForMint } from './walletTracker.js';
 import { copyTradeSignals } from './copyTrade.js';
 import { aggressionParams, exitPresets, operatingProfiles, customExitPolicy, sanitizeCustomExit, openLimitFor, MAX_OPEN_OVERRIDE, isAggressivePaper } from './runtime.js';
@@ -614,6 +615,13 @@ async function cycle() {
     if (s.runtime.favorites.includes(mint)) a.score = Math.min(100, a.score + 8);
     if (s.runtime.pinned.includes(mint)) a.pinned = true;
     ranked.push(a);
+  }
+  const flowSnapshot=await indexedFlowSnapshot().catch(()=>null);
+  if(flowSnapshot){
+    const flows=flowSnapshot.value||[];s.system.onchainFlow={at:flowSnapshot.at,cached:flowSnapshot.cached,assets:flows.length,signals:flows.reduce((n,x)=>n+(x.signals||[]).length,0)};
+    const byMint=new Map(flows.filter(x=>x.asset!=='SOL').map(x=>[x.asset,x]));
+    for(const a of ranked){const flow=byMint.get(a.mint);if(!flow)continue;a.onchainSignals=flow.signals||[];if(a.onchainSignals.length)a.signalSource=a.onchainSignals[0].source;}
+    for(const f of flows)for(const signal of f.signals||[])appendJournal({type:'onchain-flow-signal',mode:'PAPER',asset:f.asset,...signal,at:flowSnapshot.at,cached:flowSnapshot.cached});
   }
   ranked.sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || b.fastEdgeScore - a.fastEdgeScore || b.explosionScore - a.explosionScore || b.executionScore - a.executionScore);
   s.system.metrics.analysisMs = Math.round(performance.now() - analysisStart);

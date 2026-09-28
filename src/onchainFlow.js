@@ -1,4 +1,5 @@
 const cache = new Map();
+import { alphaDb } from './alphaDb.js';
 export const FLOW_CACHE_MS = 60_000;
 const num = x => Number.isFinite(Number(x)) ? Number(x) : 0;
 
@@ -28,3 +29,18 @@ export async function cachedFlowSnapshot(key, loader, { now = Date.now(), ttlMs 
 }
 
 export function clearFlowCache() { cache.clear(); }
+
+export function readIndexedFlowRows({now=Date.now(),windowMs=60*60_000,maxRows=5000,db=alphaDb()}={}){
+  const rows=db.prepare('SELECT ts,mint,side,sol_delta solDelta FROM tx_events WHERE ts>=? AND ts<=? ORDER BY ts DESC LIMIT ?').all(now-windowMs,now,Math.max(1,Math.min(20000,Math.floor(maxRows))));
+  const out=[];
+  for(const row of rows){
+    const amount=Math.abs(Number(row.solDelta)||0);if(!amount)continue;
+    out.push({ts:Number(row.ts),asset:String(row.mint||'unknown'),side:String(row.side||'').toUpperCase(),amountSol:amount,source:row.source||'indexed-solana-swap'});
+    out.push({ts:Number(row.ts),asset:'SOL',side:Number(row.solDelta)<0?'SELL':'BUY',direction:Number(row.solDelta)<0?'OUTFLOW':'INFLOW',amountSol:amount,source:row.source||'indexed-solana-swap'});
+  }
+  return out;
+}
+
+export async function indexedFlowSnapshot({now=Date.now(),windowMs=60*60_000,maxRows=5000,loader=readIndexedFlowRows,whaleSol=10,ttlMs=FLOW_CACHE_MS}={}){
+  return cachedFlowSnapshot('indexed-solana-flow',async()=>deriveFlowSignals(await loader({now,windowMs,maxRows}),{windowMs,now,whaleSol}),{now,ttlMs});
+}
