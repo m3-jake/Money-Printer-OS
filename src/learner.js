@@ -14,7 +14,7 @@ function norm(a) {
     priceAccel: clamp((Number(a.priceAccel || 0) + 20) / 60),
   };
 }
-export function evolutionChampionPolicy(s,{ignoreFollowSetting=false}={}){
+export function evolutionChampionPolicy(s,{ignoreFollowSetting=false,paperAggressive=false}={}){
   if(!ignoreFollowSetting && s?.runtime?.followLabBest===false)return null;
   if(s?.labLink && (!s.labLink.connected||s.labLink.paperPromotionAllowed!==true))return null;
   if(s?.evolutionLoop?.source==='evolution-lab'&&s.evolutionLoop.paperPromotionAllowed!==true)return null;
@@ -23,7 +23,8 @@ export function evolutionChampionPolicy(s,{ignoreFollowSetting=false}={}){
   if(!['heldOutN','samples','activityPct','monteCarloPassPct','stressAvgPct','consistencyPct'].every(k=>m[k]!=null&&Number.isFinite(Number(m[k]))))return null;
   if(['threshold','stopPct','takePct','maxHoldMin'].some(k=>v[k]!=null&&(!Number.isFinite(Number(v[k]))||Number(v[k])<=0)))return null;
   if(v.weights && (typeof v.weights!=='object'||!FEATURES.every(k=>Number.isFinite(Number(v.weights[k]??0))&&Number(v.weights[k]??0)>=0)||!FEATURES.some(k=>Number(v.weights[k])>0)))return null;
-  if(Number(m.heldOutN||0)<12||Number(m.samples||0)<40||Number(m.activityPct||0)<8||Number(m.monteCarloPassPct||0)<70||Number(m.stressAvgPct||0)<-2||Number(m.consistencyPct||0)<50)return null;
+  const thresholds=learnerThresholds({paperAggressive});
+  if(Number(m.heldOutN||0)<thresholds.heldOutN||Number(m.samples||0)<thresholds.samples||Number(m.activityPct||0)<thresholds.activityPct||Number(m.monteCarloPassPct||0)<thresholds.monteCarloPassPct||Number(m.stressAvgPct||0)<-2||Number(m.consistencyPct||0)<thresholds.consistencyPct)return null;
   return{id:c.id,sourceStage:c.stage,threshold:Math.max(20,Math.min(95,Number(v.threshold||60))),stopPct:Math.max(.5,Number(v.stopPct||8)),takePct:Math.max(1,Number(v.takePct||16)),maxHoldMin:Math.max(1,Number(v.maxHoldMin||30)),weights:v.weights||DEFAULT_WEIGHTS,promotedAt:Number(c.promotedAt||0)};
 }
 export function evolutionChampionScore(s,a){const p=evolutionChampionPolicy(s);if(!p)return null;const f=norm(a),score=FEATURES.reduce((q,k)=>q+Number(p.weights[k]||0)*Number(f[k]||0),0)*100;return{...p,score:Math.round(clamp(score/100)*100)}}
@@ -49,6 +50,7 @@ function rawScore(weights,features={}){let q=0;for(const k of FEATURES)q+=Number
 function refreshValidation(l, horizon){const hs=l.horizons[horizon];const rows=l.outcomes.filter(x=>x.isValidation&&x.horizonMin===horizon).slice(0,500);hs.validationSamples=rows.length;if(rows.length<30){hs.validated=false;hs.validationSpreadPct=0;return;}const scored=rows.map(x=>({...x,modelScore:rawScore(hs.weights,x.features)})).sort((a,b)=>b.modelScore-a.modelScore);const n=Math.max(5,Math.floor(scored.length*.25));const avg=xs=>xs.length?xs.reduce((q,x)=>q+Number(x.returnPct||0),0)/xs.length:0;hs.validationSpreadPct=avg(scored.slice(0,n))-avg(scored.slice(-n));hs.validated=hs.validationSpreadPct>1.0;}
 
 export function fastEdgeScore(s,a){const l=ensureLearner(s),x=norm(a);let baseline=Number(a.edgeScore??a.score??0);const gate=loadEdgeGate();if(!gate.productionLearningUnlocked)return Math.round(baseline);const approved=new Set(gate.approvedHorizons||[]);const validated=HORIZONS.filter(h=>approved.has(h)&&l.horizons[h]?.validated&&l.horizons[h]?.trainingSamples>=MIN_SAMPLES);if(!validated.length)return Math.round(baseline);let learned=0,total=0;for(const h of validated){const weight=h===5?.50:h===30?.32:.18;learned+=rawScore(l.horizons[h].weights,x)*weight;total+=weight;}learned/=total||1;const sample=Math.min(...validated.map(h=>l.horizons[h].trainingSamples));const blend=Math.min(.42,.10+(sample-MIN_SAMPLES)/1600);return Math.round(clamp((baseline*(1-blend)+learned*blend)/100)*100);}
+export function learnerThresholds({paperAggressive=false}={}){return paperAggressive?{heldOutN:6,samples:15,activityPct:3,monteCarloPassPct:45,consistencyPct:30}:{heldOutN:12,samples:40,activityPct:8,monteCarloPassPct:70,consistencyPct:50};}
 
 export function queueOutcomeSamples(s,ranked=[]){const l=ensureLearner(s),now=Date.now(),existing=new Set(l.pending.map(x=>x.key)),bucket=Math.floor(now/300_000),recentMint=new Map();for(const x of [...l.pending,...l.outcomes.slice(0,1000)]){recentMint.set(x.mint,Math.max(recentMint.get(x.mint)||0,Number(x.ts||x.entryTs||0)))}for(const a of ranked.slice(0,30)){if(!a?.mint||!(Number(a.priceUsd)>0))continue;if(now-(recentMint.get(a.mint)||0)<4*60_000)continue;const key=`${a.mint}:${bucket}`;if(existing.has(key))continue;l.pending.push({key,mint:a.mint,symbol:a.symbol,ts:now,price:Number(a.priceUsd),features:norm(a),fastEdge:Number(a.fastEdgeScore||a.edgeScore||a.score||0),stage:a.stage,entryThreshold:Number(a.entryThreshold||60),context:{regime:a.regime||'UNKNOWN',liquidity:Number(a.liq||0),execution:Number(a.executionScore||0),clusterId:a.risk?.mintAuthority||null},horizons:HORIZONS.map(min=>({min,dueAt:now+min*60_000,settled:false}))});}if(l.pending.length>3000)l.pending=l.pending.slice(-3000);}
 export function dueOutcomeMints(s,ranked=[],limit=90){const l=ensureLearner(s),now=Date.now(),seen=new Set((ranked||[]).map(a=>a?.mint).filter(Boolean));return[...new Set(l.pending.filter(p=>(p.horizons||[]).some(h=>!h.settled&&h.dueAt<=now)&&!seen.has(p.mint)).map(p=>p.mint))].slice(0,limit);}

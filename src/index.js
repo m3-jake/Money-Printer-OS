@@ -16,7 +16,7 @@ import { alert } from './alerts.js';
 import { pushTick, microFeatures, explosionScore, moonScore, buildCandles, narrative, walletSignals } from './intelligence.js';
 import { socialSignals } from './providers.js';
 import { startProgramStream } from './stream.js';
-import { aggressionParams, exitPresets, operatingProfiles, customExitPolicy, sanitizeCustomExit, openLimitFor, MAX_OPEN_OVERRIDE } from './runtime.js';
+import { aggressionParams, exitPresets, operatingProfiles, customExitPolicy, sanitizeCustomExit, openLimitFor, MAX_OPEN_OVERRIDE, isAggressivePaper } from './runtime.js';
 import { recordUniverse, postmortemTrade } from './research.js';
 import { supervisorTick } from './supervisor.js';
 import { proposeTrade, proposeExit, resolveProposal, expireProposals } from './proposals.js';
@@ -39,6 +39,7 @@ import { latestJupiterQuote } from './jupiterEvidence.js';
 import { exitSimulation, simulatePaperExit, paperExitQuote, reviewPositionPrice, entrySizing, paperEntryRejection } from './positionExecution.js';
 import { apiUnitEconomicsSnapshot, persistApiUnitEconomics, attributeScanCycle, strategyNetPnlAfterDataCost } from './apiUnitEconomics.js';
 import { assessPortfolioRisk } from './portfolioRisk.js';
+import { estimateRoutedPaperExecution } from './executionSimAggressive.js';
 
 const once = process.argv.includes('--once');
 const dashboardOnly = process.argv.includes('--dashboard-only');
@@ -83,7 +84,7 @@ function recordClosed(s, trade) {
 
 // The exit policy updatePositions actually uses: the preset, overridden by a paper champion.
 function exitPolicy(s) {
-  const basePr=preset(s),evolutionExit=cfg.mode==='paper'?evolutionChampionPolicy(s):null;
+  const basePr=preset(s),evolutionExit=cfg.mode==='paper'?evolutionChampionPolicy(s,{paperAggressive:isAggressivePaper(s.runtime)}):null;
   return evolutionExit?{...basePr,tp1:evolutionExit.takePct,tp2:evolutionExit.takePct,stop:evolutionExit.stopPct,maxHold:evolutionExit.maxHoldMin}:basePr;
 }
 
@@ -160,14 +161,15 @@ async function enter(s, pick, manual = false) {
   const ap = aggressionParams(s.runtime.aggression);
   const isPaper = cfg.mode === 'paper';
   const sprintPaper = isPaper && s.runtime.profile === 'SPRINT';
+  const effectiveConfig=isAggressivePaper(s.runtime)?{...cfg,...s.runtime.paperOverrides}:cfg;
   // F8 (ACCOUNTING-AUDIT §4 RC-C): identical arithmetic to before, except that PAPER sizing is now
   // levered off min(marked equity, cash + cost basis). Live keeps cfg.maxPositionSol /
   // cfg.maxTotalExposureSol exactly as before. See src/positionExecution.js.
   const legacySizing = entrySizing({
-    state: s, config: cfg, sizeFactor: ap.sizeFactor, aggression: s.runtime.aggression,
+    state: s, config: effectiveConfig, sizeFactor: ap.sizeFactor, aggression: s.runtime.aggression,
     stopPct: preset(s).stop, paper: isPaper, sprint: sprintPaper,
   });
-  const decision = isPaper ? recordPumpDecision(s, pumpSizingDecision(s, cfg, pick, legacySizing), pick) : null;
+  const decision = isPaper ? recordPumpDecision(s, pumpSizingDecision(s, effectiveConfig, pick, legacySizing), pick) : null;
   let size = decision ? decision.sizeSol : legacySizing.size;
   if (size < 0.005) { if(decision) decision.rejected='uneconomic-or-sizing-budget'; return; }
   const portfolioRisk=assessPortfolioRisk(s,pick);
@@ -223,7 +225,8 @@ async function enter(s, pick, manual = false) {
       appendJournal({ type: 'paper-entry-reject', mint: pick.mint, symbol: pick.symbol, reason: entryReject });
       return;
     }
-    const now=Date.now(),sim=simulatePumpPaperExecution(pick,size,Number(s.market?.solUsd||0),cfg.simulatedSlippageBps,cfg.simulatedFeeBps,{side:'BUY',now,seed:`pump-entry:${pick.mint}:${Math.floor(now/8000)}`});
+    const now=Date.now(),routedExecution=estimateRoutedPaperExecution(pick,size,Number(s.market?.solUsd||0),s.runtime,cfg.mode,(c,z,usd)=>estimatePaperExecution(c,z,usd,cfg.simulatedSlippageBps,cfg.simulatedFeeBps)),execModel=routedExecution.selected;
+    const sim=simulatePumpPaperExecution(pick,size,Number(s.market?.solUsd||0),execModel.slippageBps,execModel.feeBps,{side:'BUY',now,seed:`pump-entry:${pick.mint}:${Math.floor(now/8000)}`});
     if(sim.status==='REJECTED'||!(Number(sim.gross)>0)){
       if(decision) { decision.rejected=sim.reason||'modeled-no-fill'; decision.failedTransactionCostEvidence='UNKNOWN_NOT_CHARGED_AS_A_REAL_TRANSACTION'; }
       s.stats.skipped++;
@@ -243,6 +246,7 @@ async function enter(s, pick, manual = false) {
       sizeSol:filledBasis,remainingSol:filledBasis,requestedSizeSol:size,entryPrice:ep,lastPrice:pick.priceUsd,highPrice:pick.priceUsd,pairAddress:pick.pairAddress||null,
       openedAt:now,score:pick.score,fastEdgeScore:pick.fastEdgeScore||pick.edgeScore||pick.score,riskScore:pick.risk?.score,executionScore:pick.executionScore,strategy,reasons:explain(pick),
       tp1Done:false,tp2Done:false,breakEvenArmed:false,realizedSol:-entryFee,feesSol:entryFee,manual,
+      executionEstimates:{pessimistic:routedExecution.pessimistic,aggressive:routedExecution.aggressive,deltaBps:routedExecution.deltaBps},
       maxFavorablePct:0,maxAdversePct:0,entrySlippageBps:sim.slippageBps,simulatedLatencyMs:sim.latencyMs,
       paperExecution:{mode:'PAPER',status:sim.status,fillRatio:sim.fillRatio,requestedSizeSol:size,filledBasisSol:filledBasis,latencyMs:sim.latencyMs,slippageBps:sim.slippageBps,feeSol:entryFee,fillAt:sim.fillAt,model:sim.executionModel},
       lastLiquidityUsd:pick.liq,lastMicro:pick.micro,lastPriceAccel:pick.priceAccel,
