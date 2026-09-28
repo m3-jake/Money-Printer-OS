@@ -396,7 +396,7 @@ Regression sweep after P2.4: `npm run test:all` exit 0 — 30 targets, 961 pass,
       sibling-freeze pair in `test:robinhood-equities` and the trader→Lab Kalshi handoff in `test:upgrade` — both
       untouched here); counts identical to the P2.3 baseline. This entry is docs-only and no target reads `PROGRESS.md`.
 
-## P3 status: 1 of 5 closed (P3.1 skipped on measurement; P3.2–P3.4 pending; P3.5 added by P3.1)
+## P3 status: 2 of 5 closed (P3.1 skipped on measurement, P3.5 done; P3.2–P3.4 pending)
 P3.1 — skipped on measurement — — logo PNG → webp: refused by the PNG/colorType-6 contract, and recompression has 0 bytes of headroom
       Both halves of the item were measured against the file and its consumers. `public/assets/money-printer-logo.png`
       is 1024×1024 RGBA, 1,290,441 bytes, 9.85 bpp (30.8 % of raw), 348,696 unique RGBA colors, alpha 0–255, and has
@@ -419,7 +419,9 @@ P3.1 — skipped on measurement — — logo PNG → webp: refused by the PNG/co
       a compression item: a 1024 px RGBA render is drawn in 64–120 px slots. Derivatives measured from the same
       pixels, RGBA, `optimize=True`: 512 px 370,015 B (−71.3 %), 256 px 103,916 B (−91.9 %), 128 px 29,954 B
       (−97.7 %) — a 256 px derivative still covers the widest slot (108 px) at ≥2× and would take ≈1.19 MB off the
-      boot path. That is one new asset plus five reference edits and an art check, so it is a separate item.
+      boot path. That is one new asset plus five reference edits and an art check, so it is a separate item. P3.5
+      revisited that size after measuring every drawn box (the widest is the 120 px stacked-bill sprite, so the item
+      shipped 512 px — see P3.5 below); this paragraph keeps the numbers as measured at the time.
 
 Regression sweep after P3.1: `npm run test:all` exit 0 — 30 targets, 961 pass, 0 fail, 0 cancelled, every target ran
       (963 tests, of which the only two not passing are the standing `# SKIP` integration placeholders — the Jupiter
@@ -429,4 +431,46 @@ Regression sweep after P3.1: `npm run test:all` exit 0 — 30 targets, 961 pass,
 P3.2 — pending — — stateVersion field + migration stub
 P3.3 — pending — — npm audit in CI as non-blocking telemetry
 P3.4 — pending — — review @anthropic-ai/sdk (aiSummary) off the cycle hot path
-P3.5 — pending — — sized logo derivative (256 px RGBA PNG) for the ≤120 px dashboard slots, keeping the 1024 px original (from P3.1: ≈1.19 MB of the boot path)
+P3.5 — done — 1,290,441 → 369,134 bytes (−71.4 % / 921,307 B) off every drawn slot — sized logo derivative (512 px RGBA PNG) for the ≤120 px dashboard slots, 1024 px master kept
+      Queued by P3.1 as "a 256 px derivative"; measuring the boxes first moved it to 512 px. The five places the
+      desktop draws the master are all smaller than the queue-time note assumed, and the widest is 120 px, not 108:
+      `public/dashboard.html` :52 boot mark (64 px via `mpo-shell.css:749 .bootmark`), :816 the stacked-bill FX sprite
+      (`stack` → w = 120, h = w/ar = 120), :1509 updater brand mark (72 px), :1518 money-surface brand mark (108 px),
+      :1679 glance brand mark (80 px via `mpo-glance.css:238 .g-brand img`). Nothing scales those boxes up, so the
+      largest device box is 120 px × DPR, and the repo already has a sizing rule for assets: `scripts/make-logo-cutout.py`
+      sizes the 3D logo "~320 CSS px at DPR 1.5-3", i.e. 3 × the slot. 3 × 120 = 360 px, which 256 px does not reach
+      (2.13×) but 512 px does (4.3×) — so the 256 px figure from P3.1 would have gone soft on the widest slots above
+      DPR 2.1 and was revised rather than shipped. Straight-RGBA 512 measured 370,015 B in P3.1; the shipped
+      premultiplied file is 369,134 B (0.286 of the master, 900 KiB off the boot path, P3.1's ≈1.19 MB figure assumed
+      the smaller derivative).
+      `scripts/make-logo-derivative.py` generates it: LANCZOS resize, then assert 8-bit RGBA / 512×512 / under a
+      420,000 B budget, and it refuses a non-RGBA or non-square master. It filters *premultiplied* (colour × alpha →
+      resize → divide back out) because the artwork's transparent pixels are black, so a straight-RGBA resize drags
+      that black into the glow rim: measured, the naive resize differs on the rim by up to 255 levels (mean 0.076 over
+      the soft-alpha rim, 0 at p99, i.e. only the rim moves — and it is the wrong direction there).
+      Art check, measured two ways. (a) The file on disk is bit-exact the alpha-correct 512 downscale of the master —
+      max delta 0 on the alpha channel and 0 on premultiplied RGB — so this is the same artwork, resampled once, not a
+      re-render. (b) What the GPU draws per slot at DPR 1 / 1.5 / 2, master→device-box vs derivative→device-box,
+      composited over the black boot terminal, a light window surface and the sky: mean ≤ 0.21/255, max ≤ 18/255 on
+      single pixels, alpha mean ≤ 0.037 and max ≤ 7; the derivative's own smooth-downscale error is 0.36–0.41 RMS.
+      The one non-standard path is the boot mark: `.bootmark` sets `image-rendering: pixelated` (`mpo-shell.css:755`,
+      nothing later overrides it — the other `image-rendering: auto` rules target different selectors), so it is a
+      nearest sample and its aliasing pattern does change (mean 5.5/255 vs today's). That is not a downgrade: against
+      the ideal alpha-correct render the 512 source is *closer* than the 1024 master at every device box (RMS 31.46 vs
+      33.85 at 64 px, 28.28 vs 26.70 at 96 px, 23.13 vs 25.06 at 128 px), because a nearest sample of the derivative
+      lands on an already-prefiltered pixel. So each slot either draws the exact same pixels (smooth path) or a truer
+      sample (pixelated path) — nothing was traded for the 900 KiB.
+      Contract: the master stays where it was — it is the packaging source (`desktop/main.cjs:62,295` tray + window
+      icon, `build/icon.icns`) and what the screenshots reference — and `tests/visual-assets.test.mjs` now pins the
+      derivative as well: colorType 6, exactly 512×512, ≥ 3 × 120 px, under a third of the master's bytes, all five
+      references pointing at it, and the bare `money-printer-logo.png` regex absent from `public/dashboard.html`, so a
+      sixth drawn slot cannot quietly reintroduce the 1.29 MB file. Files touched: `public/dashboard.html` (5 src
+      strings), `public/assets/money-printer-logo-512.png` (new), `scripts/make-logo-derivative.py` (new),
+      `tests/visual-assets.test.mjs` (+1 test). The generator is deterministic — two runs give the same sha256
+      (`4f4f0ae99180d19a…`) — and the output has no ancillary chunks (IHDR/IDAT/IEND only).
+
+Regression sweep after P3.5: `npm run test:all` exit 0 — 30 targets, 962 pass, 0 fail, 0 cancelled, every target ran
+      (964 tests, of which the only two not passing are the standing `# SKIP` placeholders — the Jupiter sibling-freeze
+      pair in `test:robinhood-equities` and the trader→Lab Kalshi handoff in `test:upgrade` — both untouched here);
+      that is the P3.1 baseline (963 tests, 961 pass) plus exactly the one new `visual-assets` test. `test:visual` — the
+      target that pins the logo contract — ran 72/72.
