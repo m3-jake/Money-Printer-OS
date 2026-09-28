@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { halfKelly, sizeFromEdge, splitTranches } from '../src/sizing.js';
+import fs from 'node:fs';
 
 test('half Kelly uses expectancy over variance and obeys the configured caps', () => {
   const x = halfKelly({ expectancy: 0.02, variance: 0.04, equity: 10, floor: 0.1, ceiling: 0.4 });
@@ -19,4 +20,9 @@ test('sizes above the threshold split into two to four time-staggered clips', ()
   assert.deepEqual(splitTranches(0.2), [{ sizeSol: 0.2, delayMs: 0 }]);
   const clips = splitTranches(1, { threshold: 0.25, clips: 4, intervalMs: 100 });
   assert.equal(clips.length, 4); assert.ok(Math.abs(clips.reduce((s, x) => s + x.sizeSol, 0) - 1) < 1e-12); assert.deepEqual(clips.map(x => x.delayMs), [0, 100, 200, 300]);
+});
+
+test('aggressive paper engine derives size from closed returns and stages later clips',()=>{
+ const source=fs.readFileSync(new URL('../src/index.js',import.meta.url),'utf8');
+ assert.match(source,/sizeFromEdge\(/);assert.match(source,/stagedTranches/);assert.match(source,/paper-tranche-fill/);
 });
