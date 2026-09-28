@@ -56,10 +56,20 @@ test('cost gate: SPRINT is refused, FAIR passes on a deep pool and fails on a th
   assert.ok(thin.exitSlippageBps >= thin.entrySlippageBps, 'exit is modeled at the take-profit notional');
 });
 
+test('fresh Jupiter friction can only tighten the PAPER cost gate', () => {
+  const venue = solanaCostGate({ pick: deep, sizeSol: 0.05, solUsd: 150, tp1: 12, config, venueRoundTripPct: 3.5 });
+  assert.equal(venue.ok, true); assert.equal(venue.roundTripPct, 3.5); assert.equal(venue.costSource, 'jupiter-quote'); assert.equal(venue.requiredTp1Pct, 10.5);
+  const toxic = solanaCostGate({ pick: deep, sizeSol: 0.05, solUsd: 150, tp1: 12, config, venueRoundTripPct: 99 });
+  assert.equal(toxic.ok, false); assert.equal(toxic.roundTripPct, 99); assert.equal(toxic.requiredTp1Pct, 297);
+  const cheaper = solanaCostGate({ pick: deep, sizeSol: 0.05, solUsd: 150, tp1: 12, config, venueRoundTripPct: 1 });
+  assert.ok(cheaper.roundTripPct >= 2.1); assert.equal(cheaper.costSource, 'paper-model', 'venue evidence never makes the simulator more optimistic');
+});
+
 test('cost gate is wired into the Solana entry path and records costGate skips', () => {
   const src = read('src/index.js');
   const enter = src.slice(src.indexOf('async function enter('), src.indexOf('const strategy = \'UNIFIED_EDGE\''));
-  assert.match(enter, /solanaCostGate\(\{ pick, sizeSol: size,.*tp1: exitPolicy\(s\)\.tp1/);
+  assert.match(enter, /latestJupiterQuote\(/);
+  assert.match(enter, /solanaCostGate\(\{ pick, sizeSol: size,.*tp1: exitPolicy\(s\)\.tp1.*venueRoundTripPct/);
   assert.match(enter, /skipReasons.*costGate/);
   assert.match(enter, /reason: 'costGate'/);
   assert.ok(enter.indexOf('solanaCostGate') < enter.indexOf('sprintPaper) {'), 'the gate runs before the SPRINT gates');
@@ -117,7 +127,7 @@ test('paper auto-demote: SPRINT fails the cost gate at the floor round trip and 
   // If even FAIR would fail the gate, do not churn profiles.
   assert.equal(paperProfileDemotion({ mode: 'paper', runtime: sprint, config: { simulatedSlippageBps: 400, simulatedFeeBps: 100 } }), null);
   const src = read('src/index.js');
-  assert.match(src, /paperProfileDemotion\(\{ mode: cfg\.mode, runtime: s\.runtime, config: cfg \}\)/);
+  assert.match(src, /followLabBest===false \? null : paperProfileDemotion\(\{ mode: cfg\.mode, runtime: s\.runtime, config: cfg \}\)/, 'manual mode must not be rewritten behind the operator');
   assert.match(src, /type: 'profile-auto-demote'/);
   assert.doesNotMatch(src, /profile = 'SPRINT'/, 'nothing promotes to SPRINT automatically');
 });

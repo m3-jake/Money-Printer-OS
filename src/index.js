@@ -33,6 +33,7 @@ const enqueueAlphaEvent = row => { if (cfg.alphaWorkerEnabled) enqueueAlphaRaw(r
 // champions are still re-validated locally and can only affect paper mode. Set MPO_LAB_LINK=false to isolate it.
 const LAB_LINK = String(process.env.MPO_LAB_LINK ?? 'true').toLowerCase() === 'true';
 import { solanaCostGate, paperProfileDemotion } from './solanaEconomics.js';
+import { latestJupiterQuote } from './jupiterEvidence.js';
 import { exitSimulation, simulatePaperExit, paperExitQuote, reviewPositionPrice, entrySizing, paperEntryRejection } from './positionExecution.js';
 import { apiUnitEconomicsSnapshot, persistApiUnitEconomics, attributeScanCycle, strategyNetPnlAfterDataCost } from './apiUnitEconomics.js';
 
@@ -162,14 +163,15 @@ async function enter(s, pick, manual = false) {
   });
   if (size < 0.005) return;
 
-  // Cost gate: tp1 must clear COST_GATE_MULTIPLE x the modeled round trip (both fees plus entry
-  // and exit simulated slippage) for this pick at this size. Refusing is never less safe.
-  const gate = solanaCostGate({ pick, sizeSol: size, solUsd: Number(s.market?.solUsd || 0), tp1: exitPolicy(s).tp1, config: cfg });
+  // Cost gate: in paper mode a fresh Jupiter round-trip quote may only make the simulator stricter.
+  // This keeps toxic / effectively unsellable Pump.fun tokens out of the evidence the Lab learns from.
+  const venueQuote = isPaper ? latestJupiterQuote(path.resolve(process.env.MONEY_PRINTER_DATA_DIR || 'data'), pick.mint) : null;
+  const gate = solanaCostGate({ pick, sizeSol: size, solUsd: Number(s.market?.solUsd || 0), tp1: exitPolicy(s).tp1, config: cfg, venueRoundTripPct: venueQuote?.roundTripPct });
   if (!gate.ok) {
     s.stats.skipped++;
     s.stats.skipReasons = { ...(s.stats.skipReasons || {}), costGate: Number(s.stats.skipReasons?.costGate || 0) + 1 };
-    s.stats.lastCostGate = { at: Date.now(), symbol: pick.symbol, tp1: gate.tp1, roundTripPct: gate.roundTripPct, requiredTp1Pct: gate.requiredTp1Pct };
-    appendJournal({ type: 'entry-skip', reason: 'costGate', mint: pick.mint, symbol: pick.symbol, tp1: gate.tp1, roundTripPct: gate.roundTripPct, requiredTp1Pct: gate.requiredTp1Pct });
+    s.stats.lastCostGate = { at: Date.now(), symbol: pick.symbol, tp1: gate.tp1, roundTripPct: gate.roundTripPct, modeledRoundTripPct: gate.modeledRoundTripPct, venueRoundTripPct: gate.venueRoundTripPct, costSource: gate.costSource, requiredTp1Pct: gate.requiredTp1Pct };
+    appendJournal({ type: 'entry-skip', reason: 'costGate', mint: pick.mint, symbol: pick.symbol, tp1: gate.tp1, roundTripPct: gate.roundTripPct, modeledRoundTripPct: gate.modeledRoundTripPct, venueRoundTripPct: gate.venueRoundTripPct, quoteAgeMs: venueQuote?.ageMs ?? null, costSource: gate.costSource, requiredTp1Pct: gate.requiredTp1Pct });
     return;
   }
 

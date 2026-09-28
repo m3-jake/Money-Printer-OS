@@ -49,15 +49,18 @@ export function paperProfileDemotion({ mode, runtime = {}, config = {}, multiple
 
 // Refuse an entry unless tp1 >= multiple x the modeled round trip for this pick at this size.
 // Exit slippage is modeled at the take-profit notional, the leg that has to pay for the win.
-export function solanaCostGate({ pick, sizeSol, solUsd = 0, tp1, config = {}, multiple = COST_GATE_MULTIPLE } = {}) {
+export function solanaCostGate({ pick, sizeSol, solUsd = 0, tp1, config = {}, multiple = COST_GATE_MULTIPLE, venueRoundTripPct = null } = {}) {
   const slip = Number(config.simulatedSlippageBps ?? 80), fee = Number(config.simulatedFeeBps ?? 25);
   const entry = estimatePaperExecution(pick, sizeSol, solUsd, slip, fee);
   const exit = estimatePaperExecution(pick, Number(sizeSol || 0) * (1 + Math.max(0, Number(tp1) || 0) / 100), solUsd, slip, fee);
-  const roundTripPct = roundTripCostPct({ feeBps: fee, entrySlippageBps: entry.slippageBps, exitSlippageBps: exit.slippageBps });
+  const modeledRoundTripPct = roundTripCostPct({ feeBps: fee, entrySlippageBps: entry.slippageBps, exitSlippageBps: exit.slippageBps });
+  const venue = Number(venueRoundTripPct), hasVenue = Number.isFinite(venue) && venue >= 0;
+  // A fresh executable Jupiter quote may only make the paper gate stricter, never looser than the simulator.
+  const roundTripPct = hasVenue ? Math.max(modeledRoundTripPct, venue) : modeledRoundTripPct;
   const requiredTp1Pct = roundTripPct * multiple;
   return {
     ok: Number(tp1) >= requiredTp1Pct, reason: Number(tp1) >= requiredTp1Pct ? null : 'costGate',
-    tp1: Number(tp1), roundTripPct, requiredTp1Pct, multiple,
+    tp1: Number(tp1), roundTripPct, modeledRoundTripPct, venueRoundTripPct: hasVenue ? venue : null, costSource: hasVenue && venue > modeledRoundTripPct ? 'jupiter-quote' : 'paper-model', requiredTp1Pct, multiple,
     entrySlippageBps: entry.slippageBps, exitSlippageBps: exit.slippageBps, feeBps: fee, entry,
   };
 }
