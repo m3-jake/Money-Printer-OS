@@ -1,29 +1,32 @@
 # Money Printer OS: status ledger
 
-## Current entry point — 2026-09-26 master upgrade
+## Current entry point — 2026-09-27 alpha.64 / Lab alpha.8 repair
 
-**Ops note (2026-09-26 21:10, Claude session):** the installed Lab alpha.7 was killed externally
-at 20:28 and 21:05 (exit 0x40010004), and each time it was relaunched by a now-exited process that
-passed `MPO_LAB_MODULES=robinhood,polymarket`. That overrode the alpha.7 default and left Kalshi,
-stocks/ETFs and combos OFF. It was quit cleanly from its menu and relaunched with
-`MPO_LAB_MODULES=robinhood,robinhood-equities,kalshi,polymarket,polymarket-combo` (this process
-only; nothing persistent was set). The throttle stays on: Solana is PARK, and there are 3 unclean
-boots (5:21 PM, 5:35 PM, 8:38 PM on 09-26) that age out on 10-03.
+Windows/WITCHDOCTOR now runs Money Printer OS `0.5.0-alpha.64` in PAPER mode and Money Printer
+Evolution Lab `0.1.0-alpha.8`. Both installed archives were built from clean committed source and
+verified through their running APIs. The trader reports HEALTHY and its packaged provenance is
+visible in `/api/state`; the Lab reports RUNNING and exposes its packaged provenance in
+`/api/health`. Real-money authority remains locked throughout.
 
-Trader source alpha.61 on `codex/master-upgrade-20260926`; Evolution Lab source alpha.7 at
-`W:/money-printer-evolution-lab`. Lab is an active research owner. The prior main/runtime work was
-merged through `3eef954`; replay, HUD/trial and equities integration commits are recorded in
-`reports/UPGRADE-IMPLEMENTATION-2026-09-26.md`. Installed apps remain alpha.60 / alpha.6.
-No live orders, installation, restart or public release occurred. Preserve `.claude/launch.json`
-and the owner's master brief. Use `docs/UPGRADE-OPERATIONS.md` for current configuration,
-capabilities, build/rollback procedure and evidence limits. Exact archive provenance lives beside
-the review payloads under `W:/upgrade-release-20260926/`. Historical entries below are retained.
+The Lab's persistent module roster now includes `robinhood`, `robinhood-equities`, `kalshi`,
+`polymarket` and `polymarket-combo`. The combo researcher is actually running and currently reports
+`NO_EDGE` with a negative holdout, so it remains research/shadow rather than being promoted just to
+create trades. The Lab is throttled because Solana still lacks executable-price evidence and the
+run ledger contains unclean boots; this is reported rather than erased.
+
+Both full source test suites passed before packaging. The Windows trader archive also passed its
+isolated Electron engine smoke. Rollback archives from the previously installed builds are stored
+under `W:/money-printer-release-backups/2026-09-27-pre-alpha64-alpha8/` and AppData/user trading
+history was preserved. The updater itself is tested, but the running update check currently hits a
+GitHub latest-release HTTP 404 and the installed `.env` has no update token. Signed/public release
+publication, signing-key work, a literal 24-hour soak, and Mac verification remain unclaimed
+external/time boundaries. Historical entries below are retained.
 
 **Read this first.** It is the entry point for each new session. Deeper history lives in `.agent-state/`
 (`CURRENT_TASKS.md`, `KNOWN_BUGS.md`, `PROJECT_STATE.md`, `RELEASE_STATUS.md`) and in `reports/NEXT-STEPS-2026-09-25.md`.
 Don't re-inventory the repo. Update this file at the end of every batch.
 
-Last updated: 2026-09-26, batch LOOP (self-improving-loop plan, trader + Lab) and batches R–W (Arbitrage, Stocks, Market Lab, Macro). Version `0.5.0-alpha.60`.
+Last updated: 2026-09-27, alpha.64 / Evolution Lab alpha.8 Windows repair and deployment. Version `0.5.0-alpha.64`.
 
 ## Architecture (inventoried once)
 

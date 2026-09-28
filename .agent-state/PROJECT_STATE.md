@@ -1,12 +1,23 @@
-# Current project state — 2026-09-26
+# Current project state — 2026-09-27
 
-Authoritative working repositories: `W:/money-printer-os` (alpha.61,
-`codex/master-upgrade-20260926`) and `W:/money-printer-evolution-lab` (alpha.7).
-Installed runtime remains trader alpha.60 and Lab alpha.6; source fixes are not installed.
-Evolution Lab is active, owns bounded evidence-driven research, and cannot own live execution.
-The trader owns paper accounting, risk, applied policy and admission/rollback. See
-`docs/UPGRADE-OPERATIONS.md` and `reports/UPGRADE-IMPLEMENTATION-2026-09-26.md` for verified
-current architecture, versions, data paths, tests, artifacts and remaining qualification limits.
+Authoritative working repositories are `W:/money-printer-os` on `main` at version
+`0.5.0-alpha.64` and `W:/money-printer-evolution-lab` on `master` at version `0.1.0-alpha.8`.
+Windows/WITCHDOCTOR is installed and running those releases from clean packaged archives; runtime
+`/api/state` and Lab `/api/health` expose the exact packaged commits and must be used as the
+provenance authority. Money Printer OS is PAPER and reports HEALTHY. Real Robinhood execution is
+code-locked; Lab live activation and automatic live promotion are false.
+
+Evolution Lab is RUNNING with Robinhood, Robinhood equities, Kalshi, Polymarket and
+`polymarket-combo` active. The combo worker is operating but currently reports `NO_EDGE`; it is
+not promoted merely to create activity. The Lab is compute-throttled because Solana lacks
+executable-price evidence and its crash/maintenance history contains unclean boots. The trader
+remains authoritative for paper accounting, risk, policy admission and rollback.
+
+Full canonical source suites passed on Windows before packaging (`npm run test:all` in both repos).
+Mac verification is not claimed because the Mac is offline. Updater code/tests pass, but the
+installed updater currently receives a GitHub latest-release 404 and the installed `.env` has no
+`MONEY_PRINTER_UPDATE_TOKEN`; signed/public release publication remains an external owner boundary.
+A literal 24-hour soak has not been claimed in this repair session.
 
 # Historical project state (2026-09-20, alpha53 integrated)
 

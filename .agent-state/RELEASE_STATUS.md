@@ -1,12 +1,21 @@
-# Current review release — alpha.61 trader / alpha.7 Lab (2026-09-26)
+# Current Windows release — alpha.64 trader / alpha.8 Lab (2026-09-27)
 
-Review artifacts: `W:/upgrade-release-20260926/trader/app.asar` and
-`W:/upgrade-release-20260926/lab/app.asar`. Exact packaged commits, SHA256 values and smoke
-results are in adjacent manifests and `reports/UPGRADE-IMPLEMENTATION-2026-09-26.md`.
-Installed apps remain alpha.60/alpha.6. These are unsigned local archive payloads for the existing
-Windows Electron runtime; no install, restart, signed updater publication or Mac package is claimed.
-Use `docs/UPGRADE-OPERATIONS.md` for build, backup, verification and rollback. Earlier release
-entries below are historical and do not identify the current runtime.
+WITCHDOCTOR is installed and running Money Printer OS `0.5.0-alpha.64` and Evolution Lab
+`0.1.0-alpha.8`. The release archives are built from clean committed source and carry `BUILD.json`
+provenance; the running HTTP APIs were checked after installation rather than trusting build logs.
+Money Printer OS also passed the isolated Windows engine smoke against a throwaway data directory.
+
+Release working directories are `W:/mpo-alpha64-release/` and `W:/lab-alpha8-release/`; their
+`BUILD-INFO.json`, SHA256 files/build records and smoke record are the artifact-level authority.
+The pre-install rollback archives are preserved under
+`W:/money-printer-release-backups/2026-09-27-pre-alpha64-alpha8/`. User AppData, paper history,
+P/L, journals, credentials and research evidence were not reset or replaced.
+
+The updater implementation and signature tests pass, but the installed update check currently
+fails at the GitHub Releases boundary with HTTP 404; `MONEY_PRINTER_UPDATE_TOKEN` is absent from
+the installed trader `.env`. No signed/public GitHub release or signing-key success is claimed.
+Mac packaging/install is also not claimed while that machine is offline. Earlier release entries
+below are historical and do not identify the current Windows runtime.
 
 # Historical Windows build — 0.5.0-alpha.54+windows.aa32002 (2026-09-24, WITCHDOCTOR, **not installed**)
 
