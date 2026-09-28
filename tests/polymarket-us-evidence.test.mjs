@@ -120,7 +120,7 @@ test('shadow auto: places with the auto logic at ask-product + markup, settles o
 test('evidenceTick appends the legs tape (newline-safe after a NUL tail) and persists state',async()=>{
  const now=Date.now(),raw=path.join(DIR,'raw-test'),stateFile=path.join(DIR,'ev-state.json');
  fs.mkdirSync(raw,{recursive:true});
- const d=new Date(now),day=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+ const day=new Date(now).toISOString().slice(0,10); // raw tape filenames are UTC-day keyed
  const tape=path.join(raw,`polymarket-us-legs-${day}.ndjson`);
  fs.writeFileSync(tape,'{"old":1}\n\0\0\0');
  const r=await ev.evidenceTick({now,events:[soccer('g1',88,now),soccer('g2',89,now)],settings,rawDir:raw,stateFile,state:ev.defaultEvidenceState(),fetchImpl:async()=>res({markets:[]})});
