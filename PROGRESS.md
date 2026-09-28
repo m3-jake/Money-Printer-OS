@@ -4,7 +4,7 @@
 4 — done — b2eb928 — Added event/outcome matcher, fee/slippage hurdle, opportunity journaling, and paper paired proposal record.
 5 — done — bb89a09 — Added rolling netflow/whale signal derivation and a shared TTL cache with fixture tests.
 6 — done — 27e1936 — Added half-Kelly sizing gated by the aggressive paper profile and deterministic 2–4 clip planning.
-7 — pending — — Correlation-aware exposure and drawdown de-risking.
+7 — done — PENDING — Added correlation and narrative exposure gates, persistent equity peak tracking, tiered paper size cuts, entry halts, and flatten handling.
 8 — pending — — Aggressive paper profile and execution model.
 9 — pending — — Pump.fun native integration, sniper and MEV protection.
 10 — pending — — Polymarket singles and category filters.
