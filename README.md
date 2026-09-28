@@ -61,6 +61,15 @@ prints it as a `PAPER IDENTITY` line. Live user data (when the packaged app is i
 under `~/Library/Application Support/Money Printer OS/` and is never touched by anything in this
 source tree directly — only read-only copies are used for analysis.
 
+## AGGRESSIVE_PAPER research
+
+Set the paper profile to `AGGRESSIVE_PAPER` to enable its paper-only overrides. Reports read
+`data/market.ndjson`; shadow measurements write to `data/shadow-live.ndjson`. Kalshi demo credentials
+use `KALSHI_API_KEY` and `KALSHI_PRIVATE_KEY`, with the demo host enforced in paper mode.
+
+**LIVE IS STILL LOCKED.** Live execution remains manual and automatic promotion remains disabled.
+Task checkpoints and limitations are tracked in [`PROGRESS.md`](PROGRESS.md).
+
 ## Robinhood Auto Trader
 
 A self-contained crypto venue module (`src/robinhoodAutoTrader.js`, spec in `docs/ROBINHOOD-AUTO-TRADER.md`)
@@ -77,6 +86,9 @@ the suite touches the network.
 
 ## More
 
+- Quant research library: open the link in Research Monitor to search 5,907 pinned strategy
+  documents and review ten candidate mappings. All entries remain unvalidated research inputs.
+  See `docs/QUANT-RESEARCH-INTEGRATION-2026-09-28.md` for source findings and implementation priorities.
 - `.agent-state/PROJECT_STATE.md` — authoritative architecture/version snapshot.
 - `.agent-state/CURRENT_TASKS.md` — active work.
 - `.agent-state/KNOWN_BUGS.md`, `.agent-state/RELEASE_STATUS.md` — open issues and packaging

@@ -13,4 +13,4 @@
 13 — done — 60307cd — Added per-asset market regime classification, strategy/regime gates, and route decisions for requested classes.
 14 — done — d2abb80 — Added separate shadow fill modeling, JSONL output, divergence report, and static assertion that the path has no order transport.
 15 — partial — f63a6c9 — Added rolling strategy qualification math and a read-only badge payload; dashboard endpoint integration remains outstanding.
-16 — done — PENDING — Added a concise AGGRESSIVE_PAPER enablement note, journal locations, Kalshi demo environment names, LIVE IS STILL LOCKED callout, and progress ledger pointer.
+16 — done — b204d3e — Added a concise AGGRESSIVE_PAPER enablement note, journal locations, Kalshi demo environment names, LIVE IS STILL LOCKED callout, and progress ledger pointer.
