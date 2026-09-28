@@ -162,6 +162,7 @@ async function liveSell(s, p, fraction, reason) {
 }
 
 async function enter(s, pick, manual = false) {
+  if(pick?.routeDecision?.decision==='BLOCK'){appendJournal({type:'entry-skip',mode:cfg.mode.toUpperCase(),reason:'strategy-regime-route',mint:pick.mint,symbol:pick.symbol,routeDecision:pick.routeDecision});s.stats.skipped++;return;}
   const copySignal=cfg.mode==='paper'?copySignalForMint(pick?.mint):null;
   if(copySignal){pick={...pick,signalSource:copySignal.source,dominantSignal:'copy-trade'};}
   if (!pick || s.runtime.blacklist.includes(pick.mint) || s.positions.some(p => p.mint === pick.mint)) return;
@@ -236,6 +237,9 @@ async function enter(s, pick, manual = false) {
   enqueueAlphaEvent({type:'latency-stage',mint:pick.mint,kind:'PROPOSAL',ts:Date.now()});
   stat(s, strategy).signals++;
   if (manual) s.stats.manualEntries++;
+  const paperProposal=cfg.mode==='paper'?proposeTrade(s,pick,size):null;
+  if(paperProposal){paperProposal.signalSource=pick.signalSource||copySignal?.source||'scanner';paperProposal.routeDecision=pick.routeDecision||null;}
+  const resolvePaperProposal=status=>{if(paperProposal){paperProposal.status=status;paperProposal.resolvedAt=Date.now();}};
 
   if (cfg.mode === 'paper') {
     // F7 (ACCOUNTING-AUDIT §4 RC-B): bind the position to a pool at entry. Without it
@@ -244,6 +248,7 @@ async function enter(s, pick, manual = false) {
     const entryReject = paperEntryRejection(pick);
     if (entryReject) {
       if(decision) decision.rejected=entryReject;
+      resolvePaperProposal('REJECTED');
       s.stats.skipped++;
       appendJournal({ type: 'paper-entry-reject', mint: pick.mint, symbol: pick.symbol, reason: entryReject });
       return;
@@ -253,12 +258,13 @@ async function enter(s, pick, manual = false) {
     const sim=isAggressivePaper(s.runtime)?simulateAggressivePaperExecution(pick,initialSize,Number(s.market?.solUsd||0),{side:'BUY',now,seed:`pump-entry:${pick.mint}:${Math.floor(now/8000)}`}):simulatePumpPaperExecution(pick,initialSize,Number(s.market?.solUsd||0),execModel.slippageBps,execModel.feeBps,{side:'BUY',now,seed:`pump-entry:${pick.mint}:${Math.floor(now/8000)}`});
     if(sim.status==='REJECTED'||!(Number(sim.gross)>0)){
       if(decision) { decision.rejected=sim.reason||'modeled-no-fill'; decision.failedTransactionCostEvidence='UNKNOWN_NOT_CHARGED_AS_A_REAL_TRANSACTION'; }
+      resolvePaperProposal('REJECTED');
       s.stats.skipped++;
       appendJournal({type:'paper-fill-failed',mode:'PAPER',pnlMode:'PAPER',mint:pick.mint,symbol:pick.symbol,requestedSizeSol:size,fillReason:sim.reason,simulatedFailurePct:sim.failurePct,slippageBps:sim.slippageBps??null,latencyMs:sim.latencyMs??null});
       return;
     }
     const filledBasis=Math.max(0,Number(sim.gross||0)),entryFee=Math.max(0,Number(sim.feeSol||0)),debit=filledBasis+entryFee;
-    if(!(debit>0)||s.cashSol-decision.reserveSol+1e-9<debit||filledBasis>decision.allowedSol+1e-9){decision.rejected='execution-budget-or-reserve';return;}
+    if(!(debit>0)||s.cashSol-decision.reserveSol+1e-9<debit||filledBasis>decision.allowedSol+1e-9){decision.rejected='execution-budget-or-reserve';resolvePaperProposal('REJECTED');return;}
     decision.filledSol=filledBasis;decision.actualEntryFeeSol=entryFee;decision.executionModel=sim.executionModel;
     const cashReceipt=paperCashReceipt({positionId:`${now}-${pick.mint.slice(0,6)}`,sequence:0,side:'BUY',postedAt:now,modeledFillAt:sim.fillAt,basisSol:filledBasis,grossSol:filledBasis,feeSol:entryFee,cashBeforeSol:s.cashSol,cashAfterSol:s.cashSol-debit});
     s.cashSol-=debit;
@@ -277,6 +283,7 @@ async function enter(s, pick, manual = false) {
       profile: s.runtime.profile || null, exitPreset: s.runtime.exitPreset || null, championId: s.runtime.activeEvolutionChampionId || 'BASE',
     });
     s.stats.signals++;
+    resolvePaperProposal('PAPER_SIMULATED');
     appendJournal({type:'trade-open',mode:'PAPER',pnlMode:'PAPER',mint:pick.mint,symbol:pick.symbol,sizeSol:filledBasis,requestedSizeSol:size,stagedTranches:clips.length-1,score:pick.score,fastEdgeScore:pick.fastEdgeScore||pick.score,strategy,signalSource:copySignal?.source||pick.signalSource||'scanner',executionModel:sim.executionModel,executionEstimates:routedExecution,manual,fillStatus:sim.status,fillRatio:sim.fillRatio,slippageBps:sim.slippageBps,simulatedFailurePct:sim.failurePct,latencyMs:sim.latencyMs});
     return;
   }
@@ -755,9 +762,10 @@ async function cycle() {
   if(requestHealth&&!requestHealth.ok){s.system.diagnostics.push({level:'WARN',code:'MARKET_RATE_LIMIT',message:'Market provider rate-limited; retry backoff is active'});if(s.system.health==='HEALTHY')s.system.health='CAUTION';}
 
   const block = blockStatus(s);
-  const rejectionReasons={score:0,invalidMarket:0,riskUnverified:0,execution:0,cooldown:0,alreadyOpen:0,blacklist:0};
+  const rejectionReasons={score:0,invalidMarket:0,riskUnverified:0,execution:0,regime:0,cooldown:0,alreadyOpen:0,blacklist:0};
   for (const x of ranked) {
-    if ((x.critical||[]).length) rejectionReasons.invalidMarket++;
+    if (x.routeDecision?.decision==='BLOCK') rejectionReasons.regime++;
+    else if ((x.critical||[]).length) rejectionReasons.invalidMarket++;
     else if (Number(x.fastEdgeScore||0) < Number(x.entryThreshold||0)) rejectionReasons.score++;
     else if (cfg.mode !== 'paper' && x.riskVerification !== 'VERIFIED') rejectionReasons.riskUnverified++;
     else if (Number(x.executionScore||0) < 15) rejectionReasons.execution++;
@@ -765,7 +773,7 @@ async function cycle() {
     else if (s.positions.some(p=>p.mint===x.mint)) rejectionReasons.alreadyOpen++;
     else if (s.runtime.blacklist.includes(x.mint)) rejectionReasons.blacklist++;
   }
-  const picks = ranked.filter(x => x.eligible && Number(x.executionScore||0) >= 15 && !cooldownActive(s, x.mint) && !s.positions.some(p => p.mint === x.mint) && !s.runtime.blacklist.includes(x.mint));
+  const picks = ranked.filter(x => x.eligible && x.routeDecision?.decision!=='BLOCK' && Number(x.executionScore||0) >= 15 && !cooldownActive(s, x.mint) && !s.positions.some(p => p.mint === x.mint) && !s.runtime.blacklist.includes(x.mint));
   const sprintPaper=cfg.mode==='paper'&&s.runtime.profile==='SPRINT';
   const entryBurst=sprintPaper?5:(cfg.mode==='paper'&&s.runtime.entryFrequency==='max'?2:1);
   const signalsBefore=Number(s.stats.signals||0);let approved=0;

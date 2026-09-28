@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { marketRegime, regimeSnapshot, routeAssetClass, routeDecision, strategyAllowedInRegime } from '../src/regime.js';
 
 test('market regimes classify trending, choppy and risk-off conditions per class', () => {
@@ -15,4 +16,9 @@ test('strategy gate and asset routing cover all requested route classes', () => 
   assert.deepEqual({ memecoin: routeAssetClass('memecoin'), weather: routeAssetClass('weather'), sports: routeAssetClass('sports'), politics: routeAssetClass('politics'), crypto: routeAssetClass('crypto'), equity: routeAssetClass('equity') },
     { memecoin: 'pumpfun', weather: 'kalshi', sports: 'kalshi', politics: 'polymarket', crypto: 'robinhood', equity: 'robinhood' });
   assert.equal(routeDecision({ assetClass: 'weather', strategy: 'momentum', regimes: { weather: { regime: 'choppy' } } }).decision, 'BLOCK');
+});
+
+test('supervisor records per-candidate route decisions and engine paper entries pass through proposals',()=>{
+ const supervisor=fs.readFileSync(new URL('../src/supervisor.js',import.meta.url),'utf8'),engine=fs.readFileSync(new URL('../src/index.js',import.meta.url),'utf8');
+ assert.match(supervisor,/routeDecision\(/);assert.match(supervisor,/central-route-decision/);assert.match(engine,/cfg\.mode==='paper'\?proposeTrade\(s,pick,size\)/);assert.match(engine,/strategy-regime-route/);
 });
