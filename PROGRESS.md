@@ -1,6 +1,9 @@
 # PROGRESS — Money-Printer-OS remediation pass
 
 Format: `P<n>.<m> — done|partial|blocked — <sha> — <note>` (one line per item).
+The `<sha>` column is deliberately empty: each item's commit subject is the key
+(`P0.1: …`, `P0.2: …`), and `git log --oneline main` resolves them. A commit cannot print its own
+hash, and a ledger that guesses one is worse than one that points at `git log`.
 Mode: **paper-only**. Live gates untouched. `src/executionSim.js` never modified.
 
 ## Baseline (before any change)
