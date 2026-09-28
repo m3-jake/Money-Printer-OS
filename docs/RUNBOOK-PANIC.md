@@ -68,6 +68,30 @@ Do not delete `state.json` to "fix" it. Keep the trio — `state.json`, `state.b
 `market.ndjson` — copy them somewhere else before touching anything, and compare them: the journal
 tells you what the last cycle tried to do, the state file tells you what was last published.
 
+### The research side: `research-state.json` + `research-state.backup.json`
+
+The heavy research sections (`learner`, `universe`, `walletProfiles`, `deployerProfiles`, `alpha`, …)
+live in `research-state.json`, with `research-state.backup.json` beside it (published from validated
+bytes, same 120 s bound as the account backup). The asymmetry with the account is deliberate and
+visible:
+
+- **A damaged account file stops trading loudly**; a damaged research file does not, because research is
+  not money (`paused`/`killSwitch` stay untouched, and `system.recovery` is never raised for it).
+- It is **refused** instead. If `research-state.json` exists but cannot be read back — truncated JSON, or
+  a file that parses but is not the section object we write — *and* there is no valid backup, the
+  sections stay inline in `state.json` (no `research.externalized` key), publication is refused, and
+  `system.researchRecovery.status = RESEARCH_UNREADABLE` names the reason with `reviewRequired: true`.
+  The unreadable file is left exactly as it is: it is the last copy, and rebuilt-empty sections must
+  never replace it.
+- With a valid backup the sections are restored, republished over the damaged file, and marked
+  `RESEARCH_BACKUP_RECOVERED` (a rollback of at most ~3 minutes: 60 s research cadence + 120 s backup).
+- **Repairing is enough.** A readable `research-state.json` is authoritative over inline sections that
+  only exist because publication was refused, so restoring the file (or deleting it to start the
+  sections from empty) resumes publication on the next save. Until then, the marker stays: nothing
+  clears it silently.
+- `doctor` prints `research present/fresh`, `research backup present/none` and, when set, the
+  `researchRecovery` marker with its `observedAt` and reason.
+
 ## 4. Reset (paper only)
 
 | Action | How | Note |

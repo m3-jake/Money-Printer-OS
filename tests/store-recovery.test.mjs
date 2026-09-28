@@ -317,3 +317,125 @@ test('research-state.json is rewritten at most every RESEARCH_SAVE_MS; state.jso
   assert.equal(JSON.parse(f.read('research-state.json')).learner.outcomes[0].ts, 1, 'throttled: at most a minute of research can be lost');
   assert.equal(f.RESEARCH_SAVE_MS, 60000);
 });
+
+// ----------------------------------------------------------------------------------------------
+// P2.1: research-state.json gets the account's backup/validate treatment, without the account's pause.
+// Evidence for the item (measured, before this code existed): with the heavy sections in research-state.json
+// and a torn file on disk, loadState() returned learner.outcomes [] / universe {} with NO marker anywhere, and
+// the next save published those rebuilt-empty sections over the only copy of the dataset. No backup existed.
+const externalized = ['learner', 'universe'];
+const researchOnlyState = cashSol => ({ cashSol, paperStartSol: 10, positions: [], history: [], research: { autonomyLevel: 1, externalized } });
+const sections = { learner: { outcomes: [{ ts: 9, horizonMin: 5 }] }, universe: { m1: { mint: 'm1', lastSeen: 3 } } };
+
+test('P2.1 the validated section map and the backup bound cannot drift from the account side', async () => {
+  const f = await fixture();
+  assert.deepEqual(Object.keys(f.RESEARCH_SECTIONS).sort(), [...f.RESEARCH_HEAVY].sort(), 'every externalized section is validated');
+  assert.equal(f.RESEARCH_BACKUP_MS, f.STATE_BACKUP_MS, 'research keeps the same recovery window as the account');
+});
+
+test('P2.1 a torn research file is reported, and rebuilt-empty sections never replace it', async () => {
+  const f = await fixture(researchOnlyState(4));
+  fs.writeFileSync(path.join(f.dir, 'research-state.json'), '{"learner":');
+  const damaged = f.read('research-state.json');
+  const s = f.loadState();
+  assert.equal(s.cashSol, 4, 'the account still loads');
+  assert.equal(s.system.researchRecovery.status, 'RESEARCH_UNREADABLE');
+  assert.equal(s.system.researchRecovery.reviewRequired, true);
+  assert.ok(String(s.system.researchRecovery.reason).length > 0, 'why it could not be read is recorded');
+  assert.ok(!s.system.paused && !s.system.killSwitch && !s.system.recovery, 'research damage is not dressed up as an account recovery');
+  f.saveState(s);
+  assert.equal(f.read('research-state.json'), damaged, 'the unreadable file is the last copy there is and is left in place');
+  const state = JSON.parse(f.read('state.json'));
+  assert.ok(!('externalized' in state.research), 'with publication refused, the sections travel inline in state.json');
+  assert.equal(state.system.researchRecovery.status, 'RESEARCH_UNREADABLE', 'the marker is durable: the next reader still sees it');
+  assert.ok(!fs.readdirSync(f.dir).some(n => n.endsWith('.tmp')));
+});
+
+test('P2.1 a damaged file that still parses is damaged too (JSON.parse alone would have emptied the dataset)', async () => {
+  const f = await fixture(researchOnlyState(4));
+  fs.writeFileSync(path.join(f.dir, 'research-state.json'), 'null');
+  const s = f.loadState();
+  assert.match(s.system.researchRecovery.reason, /expected a section object/);
+  const damaged = f.read('research-state.json');
+  f.saveState(s);
+  assert.equal(f.read('research-state.json'), damaged, 'a file we cannot read is never "repaired" by overwriting it');
+});
+
+test('P2.1 a torn research file with a valid backup recovers the sections and repairs itself', async () => {
+  const f = await fixture(researchOnlyState(4));
+  fs.writeFileSync(path.join(f.dir, 'research-state.backup.json'), JSON.stringify(sections));
+  fs.writeFileSync(path.join(f.dir, 'research-state.json'), '{"learner":');
+  const s = f.loadState();
+  assert.equal(s.research.learner.outcomes[0].ts, 9, 'the sections come back from the backup');
+  assert.equal(Object.keys(s.research.universe).length, 1);
+  assert.equal(s.system.researchRecovery.status, 'RESEARCH_BACKUP_RECOVERED');
+  assert.ok(!s.system.paused, 'no pause: a research rollback is not a reason to stop trading');
+  f.saveState(s);
+  assert.equal(JSON.parse(f.read('research-state.json')).learner.outcomes[0].ts, 9, 'the damaged primary is rewritten from the recovery copy');
+  assert.equal(JSON.parse(f.read('research-state.backup.json')).learner.outcomes[0].ts, 9, 'and the backup still holds the good copy');
+});
+
+test('P2.1 sections that would not read back are refused instead of published', async () => {
+  const f = await fixture();
+  const s = f.loadState();
+  s.research.learner = [];
+  s.research.universe = { m1: { mint: 'm1' } };
+  f.saveState(s);
+  assert.ok(!fs.existsSync(path.join(f.dir, 'research-state.json')), 'nothing was published');
+  const state = JSON.parse(f.read('state.json'));
+  assert.match(state.system.researchRecovery.reason, /learner must be an object/);
+  assert.ok(Number.isFinite(state.cashSol), 'the account save itself is unaffected');
+});
+
+test('P2.1 the preceding research file becomes a recoverable backup, and an unreadable one never does', async () => {
+  const f = await fixture();
+  const s = f.loadState();
+  s.research.learner = { ...(s.research.learner || {}), outcomes: [{ ts: 1, horizonMin: 5 }] };
+  f.saveState(s);
+  assert.ok(!fs.existsSync(path.join(f.dir, 'research-state.backup.json')), 'nothing to copy on the first publication');
+  const realNow = Date.now;
+  try {
+    let skew = f.RESEARCH_SAVE_MS + 1_000;
+    Date.now = () => realNow() + skew;
+    s.research.learner.outcomes = [{ ts: 2, horizonMin: 5 }];
+    f.saveState(s);
+    assert.equal(JSON.parse(f.read('research-state.backup.json')).learner.outcomes[0].ts, 1, 'the preceding publication is the backup');
+    assert.equal(JSON.parse(f.read('research-state.json')).learner.outcomes[0].ts, 2);
+    skew += f.RESEARCH_SAVE_MS + f.RESEARCH_BACKUP_MS + 1_000;
+    fs.writeFileSync(path.join(f.dir, 'research-state.json'), 'null'); // parses, so an unvalidated copy would be accepted
+    f.saveState(f.loadState());
+    assert.equal(JSON.parse(f.read('research-state.backup.json')).learner.outcomes[0].ts, 1, 'the unreadable primary never replaced the backup');
+  } finally { Date.now = realNow; }
+});
+
+test('P2.1 repairing the file resumes publication without hiding what happened', async () => {
+  const f = await fixture(researchOnlyState(4));
+  fs.writeFileSync(path.join(f.dir, 'research-state.json'), '{"learner":');
+  f.saveState(f.loadState());
+  fs.writeFileSync(path.join(f.dir, 'research-state.json'), JSON.stringify(sections));
+  const s = f.loadState();
+  assert.equal(s.research.learner.outcomes[0].ts, 9, 'the repaired file is read again');
+  s.research.learner.outcomes = [{ ts: 10, horizonMin: 5 }];
+  f.saveState(s);
+  const state = JSON.parse(f.read('state.json'));
+  assert.ok(Array.isArray(state.research.externalized), 'publication resumed');
+  assert.equal(JSON.parse(f.read('research-state.json')).learner.outcomes[0].ts, 10);
+  assert.equal(state.system.researchRecovery.status, 'RESEARCH_UNREADABLE', 'the marker stays until a human clears it');
+});
+
+test('P2.1 an empty-but-valid section never turns into an account recovery', async () => {
+  // Every section present and correctly typed, none of them populated: the shape a partially-written or
+  // pre-schema file has. Before this item, `learner: {}` threw inside ensureLearner -> loadState() read the
+  // research problem as an unreadable ACCOUNT and paused trading on the backup path.
+  const f = await fixture(researchOnlyState(4));
+  fs.writeFileSync(path.join(f.dir, 'research-state.json'), JSON.stringify({
+    learner: {}, universe: {}, postmortems: [], walletProfiles: {}, deployerProfiles: {},
+    alpha: {}, improvementLoop: {}, daily: [], experiments: [], lessons: [], challengers: [],
+  }));
+  const s = f.loadState();
+  assert.equal(s.cashSol, 4);
+  assert.ok(!s.system.paused && !s.system.killSwitch && !s.system.recovery, 'no account recovery and no pause');
+  assert.ok(!s.system.researchRecovery, 'the file is readable, so there is nothing to report');
+  assert.ok(Number(s.research.learner.weights.edge) > 0, 'the learner section is repaired in memory');
+});
+

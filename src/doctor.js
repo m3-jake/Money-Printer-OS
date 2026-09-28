@@ -11,6 +11,10 @@ import { paperIdentity } from './accounting.js';
 const dataDir = path.resolve(process.env.MONEY_PRINTER_DATA_DIR || 'data');
 const stateFile = path.join(dataDir, 'state.json');
 const backupFile = path.join(dataDir, 'state.backup.json');
+// P2.1: research-state.json now has the same pair of files, and its recovery marker is worth printing -- the
+// account recovers loudly (paused + killSwitch), research recovers quietly by design.
+const researchFile = path.join(dataDir, 'research-state.json');
+const researchBackupFile = path.join(dataDir, 'research-state.backup.json');
 const journalFile = path.join(dataDir, 'market.ndjson');
 
 // --offline (or DOCTOR_OFFLINE=1) skips the live RPC benchmark so doctor can be run with
@@ -23,7 +27,12 @@ console.log('MONEY PRINTER OS · EDGE PROVER DOCTOR');
 console.log('Node', process.versions.node, nodeMajor >= 22 ? 'OK' : 'UPDATE REQUIRED (22+)');
 console.log('mode', cfg.mode, 'live gate', cfg.enableLiveTrading, 'jito', cfg.jitoEnabled, 'direct stream', cfg.directStreamEnabled);
 console.log('autonomy level', s.research?.autonomyLevel, 'system health', s.system?.health || 'UNKNOWN');
-console.log('state', fs.existsSync(stateFile) ? 'present' : 'fresh', 'backup', fs.existsSync(backupFile) ? 'present' : 'none');
+console.log('state', fs.existsSync(stateFile) ? 'present' : 'fresh', 'backup', fs.existsSync(backupFile) ? 'present' : 'none',
+  'research', fs.existsSync(researchFile) ? 'present' : 'fresh', 'research backup', fs.existsSync(researchBackupFile) ? 'present' : 'none');
+if (s.system?.researchRecovery) {
+  const rr = s.system.researchRecovery;
+  console.log('research state', rr.status, 'since', new Date(rr.observedAt).toISOString(), '·', rr.reason, '· review', rr.reviewRequired ? 'required' : 'not required');
+}
 console.log('journal', fs.existsSync(journalFile) ? `${(fs.statSync(journalFile).size / 1024 / 1024).toFixed(1)} MB` : 'fresh');
 const id = paperIdentity(s);
 console.log('PAPER IDENTITY', 'start', id.start, 'life', id.life, 'unreal', id.unreal, 'openRz', id.openRz, 'equity', id.equity, 'holeExact', id.holeExact, 'okExact', id.okExact);

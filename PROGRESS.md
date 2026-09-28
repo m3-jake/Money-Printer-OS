@@ -252,7 +252,35 @@ Regression sweep after P1.5 (`npm run test:all`, exit 0, this machine — every 
 **30 targets, 947 tests, 0 failures.** Before P1.4 the same command died at `test:robinhood` and the
 five targets after it never ran.
 
-P2.1 — pending — — research-state.json backup/validate parity or documented asymmetry
+## P2 status: 1 of 4 done (P2.1)
+
+P2.1 — done — — research-state.json backup/validate parity, with the one asymmetry documented
+      Measured first, on a temp data dir: `state.json` listing `research.externalized`, the sections in
+      `research-state.json`, the file on disk torn. `loadState()` came back with `learner.outcomes []`
+      and `universe {}` and **no marker anywhere**, and the next `saveState()` published those
+      rebuilt-empty sections over the only copy of the dataset — no `research-state.backup.json`
+      existed. That is silent data loss, not an asymmetry worth documenting.
+      `src/store.js`: `validateResearch()` + `RESEARCH_SECTIONS` (the container each reader expects,
+      with a drift test against `RESEARCH_HEAVY`), `readResearchFile()`, a
+      `research-state.backup.json` published from validated bytes at the same bound as the account
+      (`STATE_BACKUP_MS`, now one shared constant), and `externalizeResearch()` refusing publication
+      while the file on disk cannot be read back — the sections then travel inline in `state.json`
+      (no `research.externalized`) rather than replacing the last copy. The read-back check is cached
+      per file stamp, so it costs one read per version of the file, not one per cycle.
+      The asymmetry that remains is deliberate: a damaged account file pauses trading (`paused`,
+      `killSwitch`, `system.recovery`), a damaged research file does not — research is not money. It is
+      marked instead (`system.researchRecovery`: `RESEARCH_UNREADABLE` / `RESEARCH_BACKUP_RECOVERED` /
+      `RESEARCH_UNPUBLISHABLE`, durable until a human clears it), refused rather than overwritten, and
+      `doctor` prints it.
+      `src/learner.js`: one real escalation found by the new tests — `learner: {}` (a section that
+      parses, is correctly typed, and is empty) threw inside `ensureLearner`, so `loadState()` read a
+      *research* problem as an unreadable *account* and paused trading on the backup path. Guarded.
+      Tests: `tests/store-recovery.test.mjs`, 8 new (48 pass in `test:recovery`): the section map and
+      backup bound cannot drift, a torn file is reported and left in place, a file that parses but is
+      the wrong shape counts as damaged, a valid backup recovers and repairs it, sections that would
+      not read back are refused, the preceding publication is the backup and an unreadable primary
+      never becomes it, repair resumes publication, and the account-vs-research asymmetry in one
+      assertion.
 P2.2 — pending — — async batched journal appends (state.json semantics byte-for-byte)
 P2.3 — pending — — split robinhoodAutoTrader.js by seam (behavior-preserving)
 P2.4 — pending — — split core/platform.js by seam if clean, else skip + note
