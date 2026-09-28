@@ -247,3 +247,75 @@ test('an abandoned cycle is counted apart from errors, and a streak of them degr
   assert.equal(persisted.system.health, 'HEALTHY');
 });
 
+
+// P4.1 (audit finding #3) measured false on 2026-09-28: `system.diagnostics` is *rebuilt* every cycle
+// by supervisorTick (supervisor.js:3 `s.system.diagnostics=[]`), not appended to, so it cannot grow with
+// uptime - and it must not be capped, because capping it would hide the current cycle's conditions. On
+// a real temp data dir with a real store.js, 12 cycles in which every diagnostic condition fires every
+// cycle leave 4 rows, an identical code set, one row per code, and a state.json that does not change
+// size (4,178 B -> 4,178 B). Under the audit's model the same 12 cycles would have left 48 rows, and an
+// 8 s cycle would leave 43,200 rows/day in a file fsynced every cycle.
+//
+// This test pins the mechanism, not those numbers: it goes red the moment `s.system.diagnostics=[]`
+// becomes `||= []` - a plausible "don't lose the diagnostics" edit - which is the only way the audit's
+// imagined growth can actually appear.
+test('diagnostics are per-cycle state, not a log: they cannot grow with uptime', async () => {
+  const { dir, store } = await fixture();
+  // supervisor.js resolves config.js (and with it the data dir) at import time, so import it against
+  // this fixture's directory, the same way the helper does for store.js/cycleRecovery.js above.
+  const { supervisorTick } = await import(new URL(`../src/supervisor.js?case=${path.basename(dir)}`, import.meta.url));
+
+  const state = store.loadState();
+  state.positions = [{ mint: 'mint1', priceStatus: 'UNVERIFIED' }]; // makes index.js:700 fire every cycle
+  state.research ||= {};
+  state.research.feedStats = { dexscreener: { seen: 5, lastSeen: 0 } }; // makes supervisor FEED_STALE fire every cycle
+
+  const CYCLES = 12;
+  let firstRows = 0, firstCodes = '', firstBytes = 0;
+  for (let cycle = 1; cycle <= CYCLES; cycle++) {
+    state.system.lastCycle = Date.now() - 120_000; // makes supervisor STALE_CYCLE fire every cycle
+    supervisorTick(state, []);
+    // The three index.js pushes, mirrored (index.js:700, 702, 706): each is condition-guarded and
+    // pushes at most one row per cycle. The drift guard below keeps that half true, since this test
+    // drives the real supervisor but has to reproduce index.js's own pushes by hand.
+    if (state.positions.some(p => p.priceStatus && p.priceStatus !== 'FRESH')) {
+      state.system.diagnostics.push({ level: 'WARN', code: 'HELD_PRICE_UNVERIFIED', message: `${state.positions.length} held positions await a verified price` });
+    }
+    state.system.diagnostics.push({ level: 'WARN', code: 'MARKET_RATE_LIMIT', message: 'Market provider rate-limited; retry backoff is active' });
+    state.system.marketBudget = { rejectsDelta: 3 };
+    state.system.diagnostics.push({ level: 'WARN', code: 'MARKET_BUDGET_REJECTED', message: '3 market request(s) refused by the 120/min budget' });
+    store.saveState(state);
+
+    const persisted = store.loadState();
+    const codes = persisted.system.diagnostics.map(d => d.code);
+    if (cycle === 1) {
+      firstRows = codes.length;
+      firstCodes = codes.join(',');
+      firstBytes = fs.statSync(path.join(dir, 'state.json')).size;
+    }
+    assert.equal(codes.length, firstRows, `cycle ${cycle}: the row count must not grow with uptime (${firstRows} rows x ${CYCLES} cycles = ${firstRows * CYCLES} rows only if these were appends)`);
+    assert.equal(new Set(codes).size, codes.length, `cycle ${cycle}: no diagnostic code may appear twice in one cycle`);
+    assert.equal(codes.join(','), firstCodes, `cycle ${cycle}: the same live conditions must yield the same board, not more of it`);
+    assert.equal(persisted.system.health, 'CAUTION', 'health is derived from the rebuilt board, not from history');
+  }
+
+  const bytes = fs.statSync(path.join(dir, 'state.json')).size;
+  assert.ok(bytes <= firstBytes + 200, `state.json grew by ${bytes - firstBytes} B over ${CYCLES} redundant cycles (one diagnostics row is ~110 B, so 44 extra rows would be ~5 KB)`);
+  assert.ok(firstRows * CYCLES > 40, 'sanity: the scenario really does fire a condition every cycle');
+});
+
+// The behavioural test above mirrors index.js's pushes, so it cannot notice if one of them becomes an
+// unguarded append - which is exactly how the audit's imagined growth would appear. This is the cheap
+// other half of the pin: every `diagnostics.push` in index.js must sit on a guarded line. It proves the
+// push is not a bare statement, not that the condition is a meaningful one; the supervisor's rebuild
+// and cycleRecovery's per-code guards are covered by the test above and by the streak tests.
+test('every per-cycle diagnostics push in index.js stays condition-guarded', () => {
+  const source = fs.readFileSync(new URL('../src/index.js', import.meta.url), 'utf8');
+  const pushes = source.split('\n')
+    .map((line, i) => ({ text: line.trim(), at: `index.js:${i + 1}` }))
+    .filter(l => l.text.includes('system.diagnostics.push('));
+  assert.ok(pushes.length >= 3, `the pushes this guard exists for are no longer found (${pushes.length}); re-check the test above`);
+  const unguarded = pushes.filter(l => !/^if\s*\(/.test(l.text)).map(l => l.at);
+  assert.deepEqual(unguarded, [], 'a per-cycle diagnostics push became unconditional');
+});
+

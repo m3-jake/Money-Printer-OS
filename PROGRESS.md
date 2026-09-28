@@ -633,3 +633,57 @@ P3.4 — done — ~180 ms and a 9.4 MB module graph off every process that boots
       (the load) and `tests/market-core.test.mjs` (the pin); no route, no storage, no other module.
       Sweep after P3.4: **30 targets, 964 pass, 0 fail, 2 `# SKIP`** (stderr file empty) — the P3.2/P3.3 baseline of 963
       plus exactly the one new test, so the pin is counted by the suite and nothing else moved.
+
+## P4 status: started (P4.1 measured and declined; P4.2 = exec #4 live-lane gate asymmetry and P4.3 = exec #5 `index.js` extraction remain open)
+
+P4.1 — skipped on measurement — — `system.diagnostics`: there is nothing to dedupe and nothing to cap, because the array is not a log; it is the current cycle's condition board, and a history here would be the bug
+      The claim under test (executive summary #3): "`system.diagnostics` is appended every cycle with no dedupe and no cap,
+      inside `state.json`, which is rewritten with `flush: true` (fsync) every cycle … unbounded growth in the file that is
+      fsynced ~7,500×/day" — cited to `index.js:673-675`, `store.js:336`.
+      The cite was right about *where* rows are pushed — at `416ded8`, `index.js:673` is the `HELD_PRICE_UNVERIFIED` push — and
+      wrong about the consequence, because the reset sits one function away: `supervisorTick` opens its diagnostics work with
+      `s.system.diagnostics=[]` (`supervisor.js:3`), i.e. it **rebuilds** the board, and derives `s.system.health` from that
+      fresh array in the same run. `git show 416ded8:src/supervisor.js` contains that reset once, exactly as HEAD does, so the
+      finding was false at the revision it was written against, not a behaviour that P0 changed.
+      The pushes are all once-per-code-per-cycle: `index.js:698` calls `supervisorTick` first (STALE_CYCLE, FEED_STALE, RPC_DOWN),
+      then `index.js:700/702/706` push HELD_PRICE_UNVERIFIED / MARKET_RATE_LIMIT / MARKET_BUDGET_REJECTED, each on a guarded line
+      (`if(missingPrices.length)`, `if(requestHealth&&!requestHealth.ok)`, `if(Number(marketBudget.rejectsDelta||0)>0)`), and
+      `cycleRecovery.js` adds CYCLE_ERROR_STREAK / CYCLE_BUDGET_EXCEEDED deduped by code (`:80-83` `.some`, `:134-138` `.find`) and
+      clears both on the first clean cycle (`:165`).
+      Measured (`%TEMP%\mpo-p34b-diagprobe.mjs`): 12 cycles of the audit's scenario pushed as hard as it can be — a real `store.js`
+      in a temp data dir with the production `flush: true` write and a real read-back per cycle, the real `supervisorTick`, and
+      *every* diagnostic condition true in *every* cycle (120 s-old `lastCycle` → STALE_CYCLE; one held position without a verified
+      price → HELD_PRICE_UNVERIFIED; one stale feed → FEED_STALE; plus MARKET_RATE_LIMIT and MARKET_BUDGET_REJECTED mirrored from
+      `index.js:702,706`). Rows per cycle: **4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4** (max 4, saved rows 4); distinct codes == rows in
+      every cycle, so no code repeats inside a cycle; the code set and its order are identical every cycle; `health` CAUTION on every
+      cycle, read from the rebuilt board; `state.json` **4,178 B → 4,178 B, delta 0**. The audit's model would have left 48 rows in
+      12 cycles and **43,200 rows/day** at an 8 s cycle; as built it stays at 4 rows for any uptime. Save cost in that run: 2–7 ms for
+      a 4 KB state. The `flush: true` rewrite per cycle (`store.js:436`) is real and is the save design — P2.2 measured the append
+      path and declined batching — so it is not a diagnostics cost, and the file size is flat precisely because this array cannot grow.
+      The one input that does scale is the FEED_STALE loop (one row per stale feed), and its keys are provider names
+      (`research.js:29` from `discovery.sources`, `index.js:544-546`), so it scales with the provider list in code, never with uptime.
+      Residue (the deliverable, since no source change is warranted): nothing in the suite asserted the non-accumulation, and the
+      plausible future edit that makes the audit's imagined failure real is turning `s.system.diagnostics=[]` into `||= []` — a
+      "don't lose the diagnostics" change that would silently turn every per-cycle WARN into growth in a file fsynced every cycle.
+      Two tests added to `tests/cycle-recovery.test.mjs` (+72 lines, 0 deletions; `test:recovery` 55 → 57): the first drives 12 of
+      those cycles through the real store and the real `supervisorTick` and asserts the row count cannot grow with uptime, that no
+      code repeats inside a cycle, that the same conditions yield the same board cycle to cycle, that `health` comes from the rebuilt
+      board, and that `state.json` grew by less than one row's worth of bytes; the second is the cheap other half — a drift guard that
+      every `system.diagnostics.push(` in `index.js` sits on a line that opens with a condition, because the behavioural test has to
+      mirror those three pushes by hand and therefore cannot notice if one of them becomes a bare append.
+      Proven to bite, both halves, in one run: with `s.system.diagnostics=[]` changed to `||= []`, the first fails on
+      `cycle 2: the row count must not grow with uptime (4 rows x 12 cycles = 48 rows only if these were appends)`; with a bare
+      `s.system.diagnostics.push({level:'WARN',code:'TEMP_BITE',…})` added to `index.js`, the second fails on
+      `a per-cycle diagnostics push became unconditional`. Exit 1 for both; `git checkout -- src/supervisor.js src/index.js` restored
+      the tree, leaving only the test file modified.
+      Two variants rejected. **Capping the array** (the literal ask) would drop the current cycle's conditions whenever many fire at
+      once — the FEED_STALE loop is exactly that many-row case, and `/api/health` escalates from this array, so a cap is a
+      health-reporting bug wearing a memory-bound costume. **Moving diagnostics into the journal** (the other way to "bound"
+      `state.json`) is where history already lives — `cycleErrors`, `lastError`, `lastErrorAt` in state plus `error` /
+      `error-persist-failed` / `cycle-budget` journal rows — and nothing reads the board as a log: the HUD and `doctor.js:70` read the
+      current picture.
+      Sweep after P4.1: `npm run test:all` exit 0 — **30 targets, 966 pass, 0 fail, 2 `# SKIP`** (968 tests) — the P3.4 baseline of 964
+      plus exactly the two new tests, so the pin is counted by the suite and nothing else moved. Files touched:
+      `tests/cycle-recovery.test.mjs`, `AUDIT.md` (executive row #3 marked disproven, one §0 row); no `src/` change, and the tree was
+      checked clean of the bite-proof edits before the sweep.
+
