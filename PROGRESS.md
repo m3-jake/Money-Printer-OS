@@ -28,7 +28,14 @@ Mode: **paper-only**. Live gates untouched. `src/executionSim.js` never modified
 
 ## Items
 
-P0.1 — pending — — cycle catch-path crash + lost error counter
+P0.1 — done — — cycle catch-path crash + lost error counter
+      `src/cycleRecovery.js` (new): journal row first, then state.json best effort, then an in-memory flag.
+      `index.js` catch no longer calls `saveState` unguarded, so a refused save can no longer end the loop.
+      `/api/health` exposes `cycleRecovery`. Tests: `tests/cycle-recovery.test.mjs` (+ helper
+      `tests/helpers/cycle-error-crash.mjs`) added to `test:recovery` — 27 pass, including a SIGKILL
+      mid-save-loop case that proves state.json is never torn and the journal row survives the restart.
+      Fixed while writing it: `now = Date.now` (function, not timestamp) made timestamps vanish from
+      journal rows via `JSON.stringify`.
 P0.2 — pending — — /api/health escalation after N consecutive cycle errors
 P0.3 — pending — — discovery rate budget reconciliation
 P0.4 — pending — — per-cycle abort signal

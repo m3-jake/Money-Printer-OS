@@ -13,6 +13,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadState, loadStateCached, stateStamp, readJournal, enqueueAction } from './store.js';
+import { cycleRecoveryView } from './cycleRecovery.js';
 import { cfg } from './config.js';
 import { readEvidenceMonitor } from './researchEvidenceStore.js';
 import { readResearchControlPlane, attachControlPlaneToMonitor, leaderboardRows, championPublicationView, controlPlaneFiles } from './researchControlPlane.js';
@@ -497,6 +498,9 @@ export function startDashboard() {
           lastCycle: s.system?.lastCycle || null,
           metrics: { ...(s.system?.metrics || {}), ...systemTelemetry() },
           diagnostics: s.system?.diagnostics || [],
+          // A cycle error whose recovery save was refused is invisible in state.json; this is where
+          // it becomes visible (in-memory flag + the journal rows that outlive the process).
+          cycleRecovery: cycleRecoveryView(),
           switches: traderSwitches({ readiness: (() => { try { return robinhoodReadiness(); } catch { return null; } })(), state: s }),
         });
       }

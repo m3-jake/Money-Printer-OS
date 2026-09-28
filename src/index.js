@@ -7,6 +7,7 @@ import { discoverCandidates, refreshPair, refreshPositionPairs, discoveryHealth,
 import { analyze, explain, marketRegime } from './strategy.js';
 import { mintRisk, benchmarkRpcs } from './rpc.js';
 import { loadState, saveState, appendJournal, appendJournalBatch, drainActions, resetPaper } from './store.js';
+import { recordCycleError } from './cycleRecovery.js';
 import { buyWithSol, sellTokenForSol, walletSolBalance } from './jupiter.js';
 import { startDashboard } from './dashboard.js';
 import { marketPlatform } from './core/platform.js';
@@ -749,12 +750,12 @@ async function main() {
     try {
       await cycle();
     } catch (error) {
-      const s = loadState();
-      s.system.lastError = compactError(error);
-      s.stats.errors++;
-      saveState(s);
-      appendJournal({ type: 'error', error: compactError(error) });
-      console.error(compactError(error));
+      // A refused recovery save must never end the loop: recordCycleError journals first, then
+      // tries state.json, then flags /api/health in memory (see cycleRecovery.js).
+      const recovery = recordCycleError({ error });
+      console.error(recovery.saveFailed
+        ? `${recovery.message} [recovery save refused at ${recovery.stage}: ${recovery.failure?.message}]`
+        : recovery.message);
     }
     if (once) { shutdown(); break; }
     const current = loadState();
