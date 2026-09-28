@@ -2,6 +2,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { CoreDatabase } from './database.js';
 import { solanaResetEvidence, solanaSourceIntegrity } from './legacyReset.js';
+import { practiceMirrorMarks } from './legacyMarks.js';
 import { UnifiedLedger } from './ledger.js';
 import { MarketEventBus } from './eventBus.js';
 import { RiskGovernor } from './risk.js';
@@ -52,7 +53,7 @@ const swapSides=book=>({...book,yes:book.no,no:book.yes});
 export class MarketPlatform {
   constructor({file=':memory:',dataDir=null,providers=null,stockQuotes=undefined,stockClock=undefined,stockSession=undefined,labWorkers=false}={}){
     this.labPool=labWorkers?new LabPool():null;
-    this.store=new CoreDatabase(file);this.ledger=new UnifiedLedger(this.store);this.bus=new MarketEventBus();this.risk=new RiskGovernor(this.store,this.ledger,this.bus);this.strategies=new StrategyRegistry(this.store);this.legacyReaders={};this.replays=new Map();this.fred=new FredSource();this.macroCache=null;this.edgar=new EdgarSource();this.summarize=args=>summarizeFiling(args);this.weather=new WeatherSource();this.weatherCache=null;this.sportsCache=null;this.sportsLive=new Map();this.sportsFetch=(url,opt)=>globalThis.fetch(url,opt);this.wireFetch=(url,opt)=>globalThis.fetch(url,opt);this.wireFeeds=new Map();this.whaleSeenTs=Date.now();this.eventsCache=null;
+    this.store=new CoreDatabase(file);this.ledger=new UnifiedLedger(this.store);this.bus=new MarketEventBus();this.risk=new RiskGovernor(this.store,this.ledger,this.bus,{beforeValuation:now=>this.syncPracticeMarks(now)});this.strategies=new StrategyRegistry(this.store);this.legacyReaders={};this.replays=new Map();this.fred=new FredSource();this.macroCache=null;this.edgar=new EdgarSource();this.summarize=args=>summarizeFiling(args);this.weather=new WeatherSource();this.weatherCache=null;this.sportsCache=null;this.sportsLive=new Map();this.sportsFetch=(url,opt)=>globalThis.fetch(url,opt);this.wireFetch=(url,opt)=>globalThis.fetch(url,opt);this.wireFeeds=new Map();this.whaleSeenTs=Date.now();this.eventsCache=null;
     this.store.db.exec(`CREATE TABLE IF NOT EXISTS wallet_labels(address TEXT PRIMARY KEY, label TEXT NOT NULL, note TEXT NOT NULL, at INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS venue_reconcile(venue TEXT PRIMARY KEY, at INTEGER NOT NULL, state TEXT NOT NULL, snapshot TEXT NOT NULL, result TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS ai_summaries(accession TEXT PRIMARY KEY, at INTEGER NOT NULL, model TEXT NOT NULL, status TEXT NOT NULL, chars INTEGER NOT NULL, result TEXT NOT NULL);
@@ -74,7 +75,7 @@ export class MarketPlatform {
   }
   snapshot(){
     return {at:Date.now(),build:BUILD_PROVENANCE,executionModes:{kalshi:'PAPER',polymarket:'PAPER',liveCore:'LOCKED'},pnlLabels:{portfolio:'PAPER',livePortfolio:'LIVE'},capabilities:moduleCapabilities(this.store,{dataDir:this.dataDir}),risk:this.risk.state(),providers:this.providers.status(),database:this.store.health(),eventBus:this.bus.snapshot(),journalError:this.journalError,
-      strategies:this.strategies.list(),venueAccounts:this.store.db.prepare('SELECT venue,at,state,result FROM venue_reconcile').all().map(r=>({...JSON.parse(r.result),at:r.at})),legacy:{...legacyCoverage(this.legacyReaders),mirror:this.store.db.prepare('SELECT * FROM legacy_sync').all().map(r=>({...r,detail:JSON.parse(r.detail)}))},labSync:this.labSync||null,portfolio:this.ledger.portfolio(),livePortfolio:this.ledger.portfolio('LIVE'),ledger:this.ledger.entries(),events:this.store.events(),
+      strategies:this.strategies.list(),venueAccounts:this.store.db.prepare('SELECT venue,at,state,result FROM venue_reconcile').all().map(r=>({...JSON.parse(r.result),at:r.at})),legacy:{...legacyCoverage(this.legacyReaders),mirror:this.store.db.prepare('SELECT * FROM legacy_sync').all().map(r=>({...r,detail:JSON.parse(r.detail)}))},practiceMarkSync:this.practiceMarkSync||null,labSync:this.labSync||null,portfolio:this.ledger.portfolio(),livePortfolio:this.ledger.portfolio('LIVE'),ledger:this.ledger.entries(),events:this.store.events(),
       watchlist:this.store.db.prepare('SELECT * FROM watchlist ORDER BY added_at DESC').all(),proposals:this.store.db.prepare('SELECT * FROM proposals ORDER BY created_at DESC LIMIT 100').all().map(r=>({...r,payload:JSON.parse(r.payload),decision:JSON.parse(r.decision)})),
       coverage:{legacyBooks:'MIRRORED_AND_RECONCILED_WHERE_POSSIBLE',liveAccounts:'NOT_RECONCILED',riskValuation:'USD_MARKED_EQUITY_WITH_CASH_FLOW_NEUTRAL_HIGH_WATER',note:'USD risk requires fresh liquidation depth and costs for every included open position. SOL and other currencies are reported separately without FX consolidation. Legacy books without fresh marks block new USD risk; US combos remain excluded without a reconciled account balance. High-water history begins at the first upgraded valuation; earlier intraperiod peaks are unknown.'}};
   }
@@ -274,6 +275,23 @@ export class MarketPlatform {
     return {venue,recorded:cash,positionsNotRecorded:(snap.positions||[]).filter(p=>Number(p.qty)).length};
   }
   // Sync, read-only accessors supplied by the host (dashboard). Keys: solana, robinhoodPractice, usCombos.
+  syncPracticeMarks(now=Date.now()){
+    if(!this.legacyReaders?.robinhoodPracticeBook)return;
+    let result;
+    try{
+      const book=this.legacyReaders.robinhoodPracticeBook();
+      const mirror=this.store.db.prepare('SELECT * FROM legacy_sync WHERE source=?').get('robinhood-practice');
+      result=practiceMirrorMarks(book,this.ledger.portfolio('PAPER'),mirror,{now,maxAgeMs:this.risk.control().limits.maxQuoteAgeMs});
+      const valid=new Set(result.marks.map(m=>JSON.stringify([m.account,m.instrumentId])));
+      for(const old of this.store.db.prepare('SELECT account,instrument_id FROM risk_marks WHERE venue=?').all('robinhood-practice'))
+        if(!valid.has(JSON.stringify([old.account,old.instrument_id])))this.risk.clearMark('robinhood-practice',old.account,old.instrument_id);
+      for(const mark of result.marks)this.risk.recordMark(mark);
+      this.practiceMarkSync={at:now,status:result.issues.length?'DEGRADED':'READY',marks:result.marks.length,issues:result.issues,additionalProviderCalls:0};
+    }catch(e){
+      for(const old of this.store.db.prepare('SELECT account,instrument_id FROM risk_marks WHERE venue=?').all('robinhood-practice'))this.risk.clearMark('robinhood-practice',old.account,old.instrument_id);
+      this.practiceMarkSync={at:now,status:'UNAVAILABLE',marks:0,issues:[{reason:String(e.message).slice(0,200)}],additionalProviderCalls:0};
+    }
+  }
   setLegacyReaders(readers={}){this.legacyReaders={...readers};}
   // Stocks (paper broker). Quotes are fetched per call; a missing key or failure is reported, never filled in.
   async stocksStatus(symbols=[]){

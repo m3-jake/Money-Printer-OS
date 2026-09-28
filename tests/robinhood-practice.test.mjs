@@ -116,3 +116,14 @@ test('a corrupt ledger is never overwritten; reset keeps a backup', async () => 
     assert.equal(fs.readdirSync(dir).filter(f => f.includes('.corrupt-')).length, 1);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('real-time practice uses receipt-time freshness instead of rejecting quotes fetched after cycle start',async()=>{
+  const dir=tmp();
+  const fetchMarket=async symbols=>{await new Promise(r=>setTimeout(r,20));return {source:'test-public',quotes:symbols.map(symbol=>({symbol,bid:100,ask:101,at:Date.now()}))};};
+  try{
+    const cycle=await RP.runPracticeCycle({dataDir:dir,fetchMarket});assert.equal(cycle.telemetry.lastCycle.freshQuotes,2);
+    const position=await RP.placePracticeOrder({dataDir:dir,symbol:'BTC-USD',fetchMarket});assert.equal(position.status,'OPEN');
+    const closed=await RP.closePracticeOrder({dataDir:dir,id:position.id,fetchMarket});assert.equal(closed.status,'CLOSED');
+    await assert.rejects(RP.placePracticeOrder({dataDir:dir,symbol:'BTC-USD',fetchMarket:async()=>({quotes:[{symbol:'BTC-USD',bid:100,ask:101,at:null}]})}),/fresh public quote/);
+  }finally{fs.rmSync(dir,{recursive:true,force:true,maxRetries:5,retryDelay:50});}
+});

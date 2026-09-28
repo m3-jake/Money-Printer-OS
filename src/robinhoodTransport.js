@@ -9,7 +9,7 @@ import { RobinhoodError, RH_CODES, fail } from './robinhoodErrors.js';
 import { RH_BASE_URL, loadRobinhoodPrivateKey, signRequest, buildPath } from './robinhoodSigner.js';
 export { RobinhoodError, RH_CODES, fail } from './robinhoodErrors.js';
 
-const APP_VERSION='0.5.0-alpha.72';
+const APP_VERSION='0.5.0-alpha.73';
 export const ROBINHOOD_LIVE_TRADING_ENABLED=false;
 export const ROBINHOOD_LIVE_CREDENTIAL_ENV=Object.freeze({apiKey:'ROBINHOOD_LIVE_API_KEY',privateKey:'ROBINHOOD_LIVE_PRIVATE_KEY'});
 const UA=()=>`MoneyPrinterOS/${APP_VERSION}`;

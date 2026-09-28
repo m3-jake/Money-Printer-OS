@@ -87,6 +87,7 @@ window.MPOSPlatform = (() => {
       ${scoreboardCard()}
       ${detailPanel('events','Cross-market events and supporting evidence',()=>eventsCard())}
       ${markedRiskCard(r.metrics)}
+      ${snapshot.practiceMarkSync?`<p class="core-muted">Practice valuation: ${escape(snapshot.practiceMarkSync.status)} / ${snapshot.practiceMarkSync.marks} observed-depth marks. Source: cached public Coinbase quotes with practice fee/slippage assumptions, not Robinhood execution. ${(snapshot.practiceMarkSync.issues||[]).map(i=>escape(i.reason)).join(' / ')}</p>`:''}
       ${detailPanel('capabilities','Module readiness and evidence coverage',()=>capabilityCard(snapshot.capabilities))}
       ${detailPanel("accounts","Paper accounts and historical mirrors",()=>`      <h3>Ledger accounts <small>PAPER simulated funds · P/L below is PAPER</small></h3>
       ${table(['Venue / account','Currency','PAPER Cash','PAPER Realized P/L','PAPER Fees','Positions'],accounts.map(a=>{const amt=v=>a.currency==='USD'?dollars(v):`${Number(v).toLocaleString(undefined,{maximumFractionDigits:6})} ${escape(a.currency)}`;return `<tr><td>${escape(a.venue)} / ${escape(a.account)}${String(a.account).startsWith('legacy-')?` <small>${escape(mirrorLabel(a))}</small>`:''}</td><td>${escape(a.currency)}</td><td>${amt(a.cash)}</td><td>${amt(a.realized)}</td><td>${amt(a.fees)}</td><td>${a.positions.length}</td></tr>`}).join(''),'No core accounts have been funded. Add an explicit simulated deposit in Markets to begin.')}

@@ -26,7 +26,7 @@ const SYMBOL_RE = /^[A-Z0-9]{2,10}-USD$/;
 const QTY_STEP = 1e-6;
 const r2 = n => Math.round(Number(n) * 100) / 100;
 const r6 = n => Math.floor(Number(n) / QTY_STEP + 1e-9) * QTY_STEP;
-const finite = (n, fallback = null) => Number.isFinite(Number(n)) ? Number(n) : fallback;
+const finite = (n, fallback = null) => n!==null&&n!==undefined&&n!==''&&typeof n!=='boolean'&&Number.isFinite(Number(n)) ? Number(n) : fallback;
 const utcDay = at => new Date(Number(at)).toISOString().slice(0, 10);
 
 export function practiceFile(dataDir) { return path.join(dataDir, 'robinhood-paper-practice.json'); }
@@ -116,10 +116,12 @@ export function savePracticeBook(dataDir, book) {
 
 function freshQuote(q, now, maxAgeMs) {
   const at = finite(q?.at);
-  return !!q && finite(q.bid, 0) > 0 && finite(q.ask, 0) >= finite(q.bid, 0) && at !== null && at <= now && now - at <= maxAgeMs;
+  return !!q && q.auctionMode!==true && q.timeQuality!=='FUTURE_VENUE_TIME' && finite(q.bid, 0) > 0 && finite(q.ask, 0) >= finite(q.bid, 0) && at !== null && at > 0 && at <= now && now - at <= maxAgeMs;
 }
 function quoteRecord(q, now) {
-  return { symbol: String(q.symbol).toUpperCase(), bid: finite(q.bid), ask: finite(q.ask), at: finite(q.at, now), source: String(q.source || 'public-observed') };
+  return { symbol: String(q.symbol).toUpperCase(), bid: finite(q.bid), ask: finite(q.ask), at: finite(q.at), source: String(q.source || 'public-observed'),
+    bidSize:finite(q.bidSize),askSize:finite(q.askSize),venueAt:finite(q.venueAt),receivedAt:finite(q.receivedAt),
+    timeQuality:q.timeQuality||'UNKNOWN',depthQuality:q.depthQuality||'UNKNOWN',auctionMode:q.auctionMode===true };
 }
 function dayLoss(book, now) {
   return book.history.filter(x => x.status === 'CLOSED' && utcDay(x.closedAt || x.at) === utcDay(now)).reduce((n, x) => n + Math.min(0, finite(x.pnlUsd, 0)), 0);
@@ -180,14 +182,15 @@ function enterPosition(book, quote, now, placedBy = 'practice-autopilot') {
   return { ok: true, position, fill };
 }
 
-export async function runPracticeCycle({ dataDir, now = Date.now(), settings = null, fetchMarket = publicMarket } = {}) {
+export async function runPracticeCycle({ dataDir, now = null, settings = null, fetchMarket = publicMarket } = {}) {
+  const realClock=now===null;now=realClock?Date.now():now;
   if (!dataDir) throw new Error('dataDir required');
   let book = loadPracticeBook(dataDir, { now });
   if (settings) { book.settings = normalizePracticeSettings(settings, book.settings); book.settingsHash = practiceSettingsHash(book.settings); }
   if (book.recoveryRequired) return practiceSnapshot({ dataDir, book, now });
   const s = book.settings, t = book.telemetry = { ...emptyTelemetry(now), ...(book.telemetry || {}), at: now, loopStatus: 'RUNNING', blockingReason: null, rejectionReasons: {}, candidatesChecked: [] };
   let market;
-  try { market = await fetchMarket(s.symbols, { now }); }
+  try { market = await fetchMarket(s.symbols, { now:realClock?undefined:now }); if(realClock){now=Date.now();t.at=now;} }
   catch (e) {
     t.loopStatus = 'BLOCKED'; t.blockingReason = `public quote source unavailable: ${String(e?.message || e).slice(0, 180)}`; book.lastError = t.blockingReason; savePracticeBook(dataDir, book); return practiceSnapshot({ dataDir, book, now });
   }
@@ -233,17 +236,18 @@ export async function runPracticeCycle({ dataDir, now = Date.now(), settings = n
 }
 
 async function withQuote(dataDir, symbol, now, fetchMarket) {
-  const book = loadPracticeBook(dataDir, { now }), s = book.settings;
-  const market = await fetchMarket([symbol], { now });
+  const book = loadPracticeBook(dataDir, { now:now??Date.now() }), s = book.settings;
+  const market = await fetchMarket([symbol], { now:now??undefined });
+  now=now??Date.now();
   const raw = (market?.quotes || []).find(q => String(q.symbol).toUpperCase() === symbol);
   const q = raw && quoteRecord(raw, now);
   if (!freshQuote(q, now, s.quoteMaxAgeMs)) throw Object.assign(new Error('a fresh public quote is required'), { code: 'staleQuote' });
-  return { book, quote: q };
+  return { book, quote: q, at:now };
 }
 
-export async function placePracticeOrder({ dataDir, symbol, now = Date.now(), fetchMarket = publicMarket } = {}) {
+export async function placePracticeOrder({ dataDir, symbol, now = null, fetchMarket = publicMarket } = {}) {
   const sym = String(symbol || '').trim().toUpperCase(); if (!SYMBOL_RE.test(sym)) throw new Error('invalid practice symbol');
-  const { book, quote } = await withQuote(dataDir, sym, now, fetchMarket);
+  const { book, quote, at } = await withQuote(dataDir, sym, now, fetchMarket);now=at;
   if (book.recoveryRequired) throw new Error('practice ledger requires recovery');
   if (!book.settings.symbols.includes(sym)) throw new Error('symbol is not in the isolated practice watchlist');
   if (book.settings.mode === 'OBSERVE_ONLY' || book.settings.mode === 'STRICT') throw new Error(`${book.settings.mode} mode blocks practice fills`);
@@ -253,9 +257,9 @@ export async function placePracticeOrder({ dataDir, symbol, now = Date.now(), fe
   book.reservedUsd = r2(book.positions.reduce((n, p) => n + p.costUsd, 0)); savePracticeBook(dataDir, book); return r.position;
 }
 
-export async function closePracticeOrder({ dataDir, id, now = Date.now(), fetchMarket = publicMarket } = {}) {
-  const book = loadPracticeBook(dataDir, { now }), index = book.positions.findIndex(p => p.id === id); if (index < 0) throw new Error('practice position not found');
-  const { quote } = await withQuote(dataDir, book.positions[index].symbol, now, fetchMarket);
+export async function closePracticeOrder({ dataDir, id, now = null, fetchMarket = publicMarket } = {}) {
+  const book = loadPracticeBook(dataDir, { now:now??Date.now() }), index = book.positions.findIndex(p => p.id === id); if (index < 0) throw new Error('practice position not found');
+  const { quote, at } = await withQuote(dataDir, book.positions[index].symbol, now, fetchMarket);now=at;
   const closed = closePosition(book, index, quote, 'manual', now);
   book.telemetry = { ...book.telemetry, lastTickAt: now, lastDecision: { at: now, action: 'SELL', symbol: closed.symbol, reason: 'manual', pnlUsd: closed.pnlUsd }, exits: Number(book.telemetry.exits || 0) + 1, fills: Number(book.telemetry.fills || 0) + 1 };
   book.reservedUsd = r2(book.positions.reduce((n, p) => n + p.costUsd, 0)); savePracticeBook(dataDir, book); return closed;

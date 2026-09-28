@@ -59,7 +59,7 @@ export function portfolioRiskState({dailyPnlUsd,drawdownPct},limits=DEFAULT_LIMI
 }
 
 export class RiskGovernor {
-  constructor(store,ledger,bus){this.store=store;this.ledger=ledger;this.bus=bus;
+  constructor(store,ledger,bus,{beforeValuation=null}={}){this.store=store;this.ledger=ledger;this.bus=bus;this.beforeValuation=beforeValuation;
     store.db.exec(`CREATE TABLE IF NOT EXISTS risk_marks(venue TEXT,account TEXT,instrument_id TEXT,at INTEGER,payload TEXT,PRIMARY KEY(venue,account,instrument_id));
       CREATE TABLE IF NOT EXISTS risk_valuation(mode TEXT PRIMARY KEY,payload TEXT NOT NULL);`);
   }
@@ -67,11 +67,12 @@ export class RiskGovernor {
     for(const [k,v] of Object.entries({venue,account,instrumentId,source}))requiredText(v,k);
     if(!timestamp(at)||finite(bid)===null||bid<0||finite(quantity)===null||quantity<=0||finite(liquidationFee)===null||liquidationFee<0)throw new Error('Verified price, depth, timestamp and liquidation fee required');
     const mark={bid,quantity,liquidationFee,at,source};
-    this.store.db.prepare(`INSERT INTO risk_marks VALUES(?,?,?,?,?) ON CONFLICT(venue,account,instrument_id) DO UPDATE SET at=excluded.at,payload=excluded.payload WHERE excluded.at>=risk_marks.at`).run(venue,account,instrumentId,at,JSON.stringify(mark));
+    this.store.db.prepare(`INSERT INTO risk_marks VALUES(?,?,?,?,?) ON CONFLICT(venue,account,instrument_id) DO UPDATE SET at=excluded.at,payload=excluded.payload WHERE excluded.at>=risk_marks.at AND excluded.payload<>risk_marks.payload`).run(venue,account,instrumentId,at,JSON.stringify(mark));
   }
   clearMark(venue,account,instrumentId){this.store.db.prepare('DELETE FROM risk_marks WHERE venue=? AND account=? AND instrument_id=?').run(venue,account,instrumentId);}
   control(){const r=this.store.db.prepare('SELECT * FROM risk_control WHERE id=1').get();return {halted:!!r.halted,reason:r.reason,changedAt:r.changed_at,limits:validateLimits(JSON.parse(r.limits_json))};}
   lossMetrics(mode='PAPER',now=Date.now()){
+    if(mode==='PAPER'&&this.beforeValuation)this.beforeValuation(now);
     const portfolio=this.ledger.portfolio(mode),day=new Date(now).toISOString().slice(0,10);
     const marks=new Map(this.store.db.prepare('SELECT * FROM risk_marks').all().map(r=>[JSON.stringify([r.venue,r.account,r.instrument_id]),JSON.parse(r.payload)]));
     const valuation=valuePortfolio(portfolio,marks,{now,maxAgeMs:this.control().limits.maxQuoteAgeMs});

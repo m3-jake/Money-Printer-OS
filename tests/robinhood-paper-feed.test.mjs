@@ -17,9 +17,9 @@ function mockFetch(calls){
  };
 }
 
-test('public paper quote is read-only, validates BBO and clamps a future venue timestamp',async()=>{
+test('public paper quote is read-only, validates BBO, preserves observed depth and exposes future venue time',async()=>{
  const calls=[],q=await fetchPublicPaperQuote('BTC-USD',{fetchFn:mockFetch(calls),now});
- assert.deepEqual(q,{symbol:'BTC-USD',bid:100,ask:100.1,at:now(),source:'coinbase-public-paper'});
+ assert.deepEqual(q,{symbol:'BTC-USD',bid:100,ask:100.1,bidSize:1,askSize:1,at:now()+10000,venueAt:now()+10000,receivedAt:now(),timeQuality:'FUTURE_VENUE_TIME',depthQuality:'OBSERVED_L1',auctionMode:false,source:'coinbase-public-paper'});
  assert.equal(calls.length,1);assert.match(calls[0].url,/\/book\?level=1$/);
 });
 test('public paper pair exposes only simulation sizing metadata',async()=>{

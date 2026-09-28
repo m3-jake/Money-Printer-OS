@@ -198,7 +198,7 @@ $labHash = (Get-FileHash (Join-Path $labApp 'resources\app.asar') -Algorithm SHA
 $pair = [ordered]@{
   schema = 'mpo.paired-release.v1'
   installedAt = (Get-Date).ToUniversalTime().ToString('o')
-  machine = $env:COMPUTERNAME
+  machine = [Environment]::MachineName
   moneyPrinterOS = [ordered]@{ version = $mpoBuild.packageVersion; commit = $mpoCommit; sha256 = $mpoHash }
   evolutionLab = [ordered]@{ version = $labBuild.packageVersion; commit = $labCommit; sha256 = $labHash }
   safety = [ordered]@{ paperOnlyBuild = $true; realEnabled = $false; liveActivationAllowed = $false; paidModelsEnabled = $false }

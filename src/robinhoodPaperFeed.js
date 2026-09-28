@@ -4,7 +4,7 @@
 const BASE='https://api.exchange.coinbase.com';
 const SYMBOL_RE=/^[A-Z0-9]{2,10}-USD$/;
 
-const finite=v=>{const n=Number(v);return Number.isFinite(n)?n:null};
+const finite=v=>{if(v===null||v===undefined||v===''||typeof v==='boolean')return null;const n=Number(v);return Number.isFinite(n)?n:null};
 const cleanSymbol=s=>{const v=String(s||'').trim().toUpperCase();if(!SYMBOL_RE.test(v))throw Error('invalid paper-feed symbol');return v};
 async function json(path,{fetchFn=globalThis.fetch,timeoutMs=5000}={}){
  const signal=typeof AbortSignal?.timeout==='function'?AbortSignal.timeout(timeoutMs):undefined;
@@ -15,8 +15,11 @@ async function json(path,{fetchFn=globalThis.fetch,timeoutMs=5000}={}){
 export async function fetchPublicPaperQuote(symbol,{fetchFn=globalThis.fetch,now=Date.now}={}){
  const s=cleanSymbol(symbol),body=await json('/products/'+encodeURIComponent(s)+'/book?level=1',{fetchFn});
  const bid=finite(body?.bids?.[0]?.[0]),ask=finite(body?.asks?.[0]?.[0]);if(!(bid>0)||!(ask>=bid))throw Error('public paper feed returned an invalid book');
- const parsed=Date.parse(body?.time);const t=Number.isFinite(parsed)?Math.min(parsed,now()):now();
- return {symbol:s,bid,ask,at:t,source:'coinbase-public-paper'};
+ const receivedAt=now(),parsed=Date.parse(body?.time),venueAt=Number.isFinite(parsed)?parsed:null;
+ const bidSize=finite(body?.bids?.[0]?.[1]),askSize=finite(body?.asks?.[0]?.[1]);
+ return {symbol:s,bid,ask,bidSize:bidSize!==null&&bidSize>=0?bidSize:null,askSize:askSize!==null&&askSize>=0?askSize:null,
+   at:venueAt??receivedAt,venueAt,receivedAt,timeQuality:venueAt===null?'LOCAL_RECEIPT':venueAt>receivedAt?'FUTURE_VENUE_TIME':'VENUE_TIME',
+   depthQuality:bidSize!==null&&bidSize>=0&&askSize!==null&&askSize>=0?'OBSERVED_L1':'UNKNOWN',auctionMode:body?.auction_mode===true,source:'coinbase-public-paper'};
 }
 export async function fetchPublicPaperPair(symbol,{fetchFn=globalThis.fetch}={}){
  const s=cleanSymbol(symbol),body=await json('/products/'+encodeURIComponent(s),{fetchFn});

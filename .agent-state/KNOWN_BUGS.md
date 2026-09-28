@@ -1,3 +1,9 @@
+# Resumed source checkpoint - alpha.73 / Lab alpha.14
+
+See reports/RESUMED-RECOVERY-2026-09-28.md for the Desktop Commander continuation, tests, observed-depth practice valuation repair and remaining historical/external boundaries. Exact installed commits and hashes are recorded in PAIRED-RELEASE.json in both install roots after verification. Historical records below do not override that receipt.
+
+---
+
 # Current recovery source - September 28, 2026
 
 Money Printer OS 0.5.0-alpha.72 / Evolution Lab 0.1.0-alpha.14 supersedes the historical source records below. See reports/ZERO-CREDIT-RECOVERY-2026-09-28.md for recovered work and test evidence. Runtime acceptance is recorded by the paired installer in PAIRED-RELEASE.json at both installation roots, with exact commits and archive hashes. Do not infer installed status from package versions alone. Both archive engines must pass smoke tests; paid model execution and real-money execution must remain disabled.
