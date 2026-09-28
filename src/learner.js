@@ -14,7 +14,8 @@ function norm(a) {
     priceAccel: clamp((Number(a.priceAccel || 0) + 20) / 60),
   };
 }
-export function evolutionChampionPolicy(s){
+export function evolutionChampionPolicy(s,{ignoreFollowSetting=false}={}){
+  if(!ignoreFollowSetting && s?.runtime?.followLabBest===false)return null;
   if(s?.labLink && (!s.labLink.connected||s.labLink.paperPromotionAllowed!==true))return null;
   if(s?.evolutionLoop?.source==='evolution-lab'&&s.evolutionLoop.paperPromotionAllowed!==true)return null;
   const c=s?.evolutionLoop?.champion,v=c?.variant,m=c?.metrics||{};

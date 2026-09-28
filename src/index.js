@@ -253,6 +253,30 @@ async function enter(s, pick, manual = false) {
   }
 }
 
+function applyRuntimeControlPatch(s,raw={},opts={}){
+  s.runtime ||= {};
+  const profile=String(opts.profile||'').toUpperCase();
+  if(profile && operatingProfiles[profile]){
+    s.runtime.profile=profile;
+    Object.assign(s.runtime,operatingProfiles[profile]);
+  }
+  const patch={};
+  if(raw.aggression!=null)patch.aggression=Math.max(0,Math.min(100,Number(raw.aggression)||0));
+  if(raw.maxCandidates!=null)patch.maxCandidates=Math.max(30,Math.min(600,Math.round(Number(raw.maxCandidates)||cfg.maxCandidates)));
+  if(raw.entryFrequency!=null&&['normal','high','max'].includes(String(raw.entryFrequency)))patch.entryFrequency=String(raw.entryFrequency);
+  if(raw.exitPreset!=null&&['ultraScalp','sprint','fair','scalper','runner','moonbag','yolo','custom'].includes(String(raw.exitPreset)))patch.exitPreset=String(raw.exitPreset);
+  if(raw.customExit!=null)patch.customExit={...(s.runtime.customExit||{}),...sanitizeCustomExit(raw.customExit)};
+  if(raw.maxOpenPositions!==undefined){const o=Math.round(Number(raw.maxOpenPositions));patch.maxOpenPositions=raw.maxOpenPositions===null||raw.maxOpenPositions===''||!Number.isFinite(o)?null:Math.max(MAX_OPEN_OVERRIDE[0],Math.min(MAX_OPEN_OVERRIDE[1],o));}
+  if(raw.visualIntensity!=null)patch.visualIntensity=Math.max(0,Math.min(100,Number(raw.visualIntensity)||0));
+  Object.assign(s.runtime,patch);
+  if(opts.manual){
+    s.runtime.followLabBest=false;
+    s.runtime.controlMode='MANUAL';
+    s.runtime.controlUpdatedAt=Date.now();
+  }
+  return patch;
+}
+
 async function actions(s) {
   const xs = [...(s.pendingActions || []), ...drainActions()];
   s.pendingActions = [];
@@ -300,21 +324,27 @@ async function actions(s) {
       const pick = s.watchlist.find(x => x.mint === a.mint);
       if (pick) await enter(s, pick, true);
     } else if (a.type === 'runtime') {
-      const raw = { ...(a.patch || {}) };
-      const patch = {};
-      if (raw.aggression != null) patch.aggression = Math.max(0, Math.min(100, Number(raw.aggression) || 0));
-      if (raw.maxCandidates != null) patch.maxCandidates = Math.max(30, Math.min(600, Math.round(Number(raw.maxCandidates) || cfg.maxCandidates)));
-      if (raw.entryFrequency != null && ['normal','high','max'].includes(String(raw.entryFrequency))) patch.entryFrequency = String(raw.entryFrequency);
-      if (raw.exitPreset != null && ['ultraScalp','sprint','fair','scalper','runner','moonbag','yolo','custom'].includes(String(raw.exitPreset))) patch.exitPreset = String(raw.exitPreset);
-      if (raw.customExit != null) { patch.customExit = { ...(s.runtime.customExit || {}), ...sanitizeCustomExit(raw.customExit) }; }
-      if (raw.maxOpenPositions !== undefined) { const o = Math.round(Number(raw.maxOpenPositions)); patch.maxOpenPositions = raw.maxOpenPositions === null || raw.maxOpenPositions === '' || !Number.isFinite(o) ? null : Math.max(MAX_OPEN_OVERRIDE[0], Math.min(MAX_OPEN_OVERRIDE[1], o)); }
-      if (raw.visualIntensity != null) patch.visualIntensity = Math.max(0, Math.min(100, Number(raw.visualIntensity) || 0));
-      Object.assign(s.runtime, patch);
+      applyRuntimeControlPatch(s,{...(a.patch||{})});
+    } else if (a.type === 'control-settings') {
+      const raw={...(a.patch||{})};
+      applyRuntimeControlPatch(s,raw,{profile:raw.profile,manual:true});
+      appendJournal({type:'control-settings',source:'MANUAL',profile:s.runtime.profile,aggression:s.runtime.aggression,entryFrequency:s.runtime.entryFrequency,exitPreset:s.runtime.exitPreset,maxCandidates:s.runtime.maxCandidates,maxOpenPositions:s.runtime.maxOpenPositions});
+    } else if (a.type === 'lab-sync') {
+      const champion=cfg.mode==='paper'?evolutionChampionPolicy(s,{ignoreFollowSetting:true}):null;
+      if(champion){
+        s.runtime.followLabBest=true;
+        s.runtime.controlMode='LAB_AUTO';
+        s.runtime.controlUpdatedAt=Date.now();
+        s.runtime.labSyncedChampionId=champion.id;
+        appendJournal({type:'control-settings',source:'EVOLUTION_LAB',championId:champion.id,threshold:champion.threshold,takePct:champion.takePct,stopPct:champion.stopPct,maxHoldMin:champion.maxHoldMin});
+      }else{
+        appendJournal({type:'action-rejected',actionType:a.type,reason:cfg.mode==='paper'?'No validated Evolution Lab champion is currently eligible for paper use.':'Lab champion sync is paper-only.'});
+      }
     } else if (a.type === 'evolution-sync') {
       appendJournal({ type: 'action-rejected', actionType: a.type, reason: 'Legacy evolution sync is retired; use the validated Lab link.' });
     } else if (a.type === 'profile') {
       const pr = operatingProfiles[a.profile];
-      if (pr) { s.runtime.profile = a.profile; Object.assign(s.runtime, pr); }
+      if (pr) { s.runtime.profile = a.profile; Object.assign(s.runtime, pr); s.runtime.followLabBest=false; s.runtime.controlMode='MANUAL'; s.runtime.controlUpdatedAt=Date.now(); }
     } else if (a.type === 'autonomy') {
       s.research.autonomyLevel = Math.max(0, Math.min(5, Number(a.level) || 0));
       s.runtime.autonomyLevel = s.research.autonomyLevel;

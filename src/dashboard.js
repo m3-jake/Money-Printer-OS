@@ -301,7 +301,7 @@ function proposalView(p = {}) {
 function systemView(s = {}, policy = null) {
   return {
     paused: !!s.paused, killSwitch: !!s.killSwitch, health: s.health, lastCycle: s.lastCycle,
-    lastError: s.lastError, startedAt: s.startedAt, streamEvents: s.streamEvents, learner: s.learner || null,
+    lastError: s.lastError, lastAction: s.lastAction || null, startedAt: s.startedAt, streamEvents: s.streamEvents, learner: s.learner || null,
     metrics: { ...(s.metrics || {}), ...systemTelemetry() }, resources: resourceSnapshot(), opportunityFunnel: s.opportunityFunnel || null, diagnostics: (s.diagnostics || []).slice(-20),
     activeEvolutionPolicy: policy || s.activeEvolutionPolicy || null,
   };
@@ -347,7 +347,21 @@ function snapshot() {
     market: s.market || {},
     memeIndex: s.memeIndex || {},
     runtime: s.runtime || {},
-    effectiveControls: (() => { const rt = s.runtime || {}, champ = cfg.mode === 'paper' ? evolutionChampionPolicy(s) : null; return { exit: exitPresets[rt.exitPreset] || customExitPolicy(rt), customExit: customExitPolicy(rt), labChampionExit: champ ? { takePct: champ.takePct, stopPct: champ.stopPct, maxHoldMin: champ.maxHoldMin } : null, openLimit: openLimitFor(rt), autoOpenLimit: aggressionParams(rt.aggression).maxOpenPositions, bounds: { ...customExitBounds, maxOpenPositions: MAX_OPEN_OVERRIDE }, presets: Object.keys(exitPresets) }; })(),
+    effectiveControls: (() => {
+      const rt=s.runtime||{},baseExit=exitPresets[rt.exitPreset]||customExitPolicy(rt);
+      const availableChamp=cfg.mode==='paper'?evolutionChampionPolicy(s,{ignoreFollowSetting:true}):null;
+      const activeChamp=cfg.mode==='paper'?evolutionChampionPolicy(s):null;
+      const effectiveExit=activeChamp?{...baseExit,tp1:activeChamp.takePct,tp2:activeChamp.takePct,stop:activeChamp.stopPct,maxHold:activeChamp.maxHoldMin}:baseExit;
+      return {
+        exit:baseExit,effectiveExit,customExit:customExitPolicy(rt),
+        labChampion:availableChamp?{id:availableChamp.id,sourceStage:availableChamp.sourceStage,threshold:availableChamp.threshold,takePct:availableChamp.takePct,stopPct:availableChamp.stopPct,maxHoldMin:availableChamp.maxHoldMin,promotedAt:availableChamp.promotedAt}:null,
+        labChampionExit:activeChamp?{takePct:activeChamp.takePct,stopPct:activeChamp.stopPct,maxHoldMin:activeChamp.maxHoldMin}:null,
+        labFollowing:rt.followLabBest!==false,
+        controlMode:activeChamp?'LAB_AUTO':rt.followLabBest===false?'MANUAL':'LAB_WAITING',
+        openLimit:openLimitFor(rt),autoOpenLimit:aggressionParams(rt.aggression).maxOpenPositions,
+        bounds:{...customExitBounds,maxOpenPositions:MAX_OPEN_OVERRIDE},presets:Object.keys(exitPresets),presetValues:exitPresets
+      };
+    })(),
     system: systemView(s.system, plane.activeEvolutionPolicy),
     stats: s.stats || {},
     solanaBook: solanaBookView(s, cfg),
@@ -584,6 +598,8 @@ export function startDashboard() {
       let action;
       if (u.pathname === '/api/favorite') action = queue('favorite', { mint: b.mint, kind: b.kind || 'favorite' });
       else if (u.pathname === '/api/runtime') action = queue('runtime', { patch: b });
+      else if (u.pathname === '/api/control-settings') action = queue('control-settings', { patch: b });
+      else if (u.pathname === '/api/lab-sync') action = queue('lab-sync', {});
       else if (u.pathname === '/api/profile') action = queue('profile', { profile: b.profile });
       else if (u.pathname === '/api/autonomy') action = queue('autonomy', { level: b.level });
       else if (u.pathname === '/api/proposal') action = queue(b.action === 'approve' ? 'approve-proposal' : 'reject-proposal', { proposalId: b.id });

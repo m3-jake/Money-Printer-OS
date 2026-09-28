@@ -2,7 +2,7 @@ import {cfg} from './config.js';
 // User-facing strategy zoo removed. The engine has one objective; individual signals are features.
 export const strategyNames=['UNIFIED_EDGE'];
 export const operatingProfiles={CALM:{aggression:55,exitPreset:'custom',entryFrequency:'normal'},FAST:{aggression:72,exitPreset:'scalper',entryFrequency:'high'},DEGEN:{aggression:86,exitPreset:'runner',entryFrequency:'high'},MAX:{aggression:96,exitPreset:'yolo',entryFrequency:'max'},FAIR:{aggression:72,exitPreset:'fair',entryFrequency:'normal'},SPRINT:{aggression:100,exitPreset:'sprint',entryFrequency:'max'},RESEARCH:{aggression:100,exitPreset:'runner',entryFrequency:'max'}};
-export function defaults(){return{profile:'FAIR',aggression:72,maxCandidates:cfg.maxCandidates,entryFrequency:'normal',exitPreset:'fair',strategies:{UNIFIED_EDGE:true},favorites:[],blacklist:[],pinned:[],visualIntensity:90,autonomyLevel:4,workspace:'TRADE'}}
+export function defaults(){return{profile:'FAIR',aggression:72,maxCandidates:cfg.maxCandidates,entryFrequency:'normal',exitPreset:'fair',followLabBest:true,controlMode:'LAB_AUTO',strategies:{UNIFIED_EDGE:true},favorites:[],blacklist:[],pinned:[],visualIntensity:90,autonomyLevel:4,workspace:'TRADE'}}
 export function aggressionParams(v){v=Math.max(0,Math.min(100,Number(v)||0));return{minScore:Math.round(70-v*.38),minStrategyScore:Math.round(68-v*.36),maxOpenPositions:Math.max(1,Math.round(1+v/15)),sizeFactor:.25+v/95,allowWarnings:v>=20}}
 // User-editable exits for exitPreset 'custom' and a manual open-position cap. Bounds are hard; anything else is dropped.
 export const customExitBounds={tp1:[1,200],tp2:[1,500],stop:[1,50],trail:[1,50],maxHold:[1,720]};

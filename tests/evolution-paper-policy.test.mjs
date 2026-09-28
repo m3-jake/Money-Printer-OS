@@ -24,6 +24,14 @@ test('weak or untrusted champion cannot become a paper policy',()=>{
  assert.equal(evolutionChampionPolicy({evolutionLoop:{champion:{...good,variant:{...good.variant,weights:{edge:'invalid'}}}}}),null);
 });
 
+test('manual Control Bay mode pauses Lab champion until auto-follow is re-enabled',()=>{
+ const s={runtime:{followLabBest:false},evolutionLoop:{champion:good}};
+ assert.equal(evolutionChampionPolicy(s),null);
+ assert.equal(evolutionChampionPolicy(s,{ignoreFollowSetting:true}).id,'CHAMP');
+ s.runtime.followLabBest=true;
+ assert.equal(evolutionChampionPolicy(s).id,'CHAMP');
+});
+
 test('engine applies evolution champion only behind paper-mode guards',()=>{
  const src=fs.readFileSync(path.join(ROOT,'src','index.js'),'utf8');
  assert.match(src,/cfg\.mode==='paper'\?evolutionChampionPolicy\(s\):null/);

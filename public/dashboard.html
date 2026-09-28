@@ -474,6 +474,8 @@ const money=n=>Number.isFinite(Number(n))?'$'+Number(n).toLocaleString(undefined
 const age=ts=>!ts?'—':Math.max(0,Math.round((Date.now()-ts)/1000))+'s';
 const fmtSol=v=>Number.isFinite(Number(v))?Number(v).toFixed(3)+' SOL':'—';
 let state=null,journal=[],projectJournal={rows:[]},networkState={peers:[],messages:[]},polyUSComboState={},updateState={status:'IDLE'},researchMonitor={status:'idle',running:[],leaderboard:[],rejections:{}},journalFilter='all',journalQuery='',z=20,selectedIcon=null;
+let controlDraftDirty=false,controlPendingActionId=null,controlPendingKind='',controlPendingSince=0;
+const CONTROL_PROFILE_PRESETS={FAIR:{aggression:72,exitPreset:'fair',entryFrequency:'normal'},CALM:{aggression:55,exitPreset:'custom',entryFrequency:'normal'},FAST:{aggression:72,exitPreset:'scalper',entryFrequency:'high'},DEGEN:{aggression:86,exitPreset:'runner',entryFrequency:'high'},MAX:{aggression:96,exitPreset:'yolo',entryFrequency:'max'},SPRINT:{aggression:100,exitPreset:'sprint',entryFrequency:'max'},RESEARCH:{aggression:100,exitPreset:'runner',entryFrequency:'max'}};
 // Pump.fun chart range and zoom survive restarts (pan/hover stay per-session).
 const readPrefEarly=k=>{try{return JSON.parse(localStorage.getItem(k))}catch{return null}};
 function saveChartView(){try{localStorage.setItem('mpo-chart-view',JSON.stringify({range:chartView.range,zoom:chartView.zoom}))}catch{}}
@@ -1025,32 +1027,121 @@ function renderWallet(){
  setBody('wallet',`<div class="mpo-surface-light" style="height:100%;display:flex;flex-direction:column;min-height:0;padding:8px;color:#111"><div class="mpo-status"><b>WALLET INTEL</b><span class="muted">${w.length} tracked</span>${w.length?`<b class="mpo-badge ${(w[0].recurrenceScore||0)>60?'mpo-badge--armed':'mpo-badge--degraded'}">${(w[0].recurrenceScore||0)>60?'HOT':'WARM'}</b>`:''}</div>${holderLine}${scoreLine}${gradedBlock}<div class="mpo-table-wrap" data-scroll="wallet-table"><table class="table mpo-table"><thead><tr><th>Wallet</th><th>Seen</th><th title="How many checked tokens list this wallet as a top-10 holder. Not profit.">Holder recurrence (not profit)</th><th>Status</th></tr></thead><tbody>${w.length?w.slice(0,16).map(x=>`<tr><td>${polyEscape(String(x.address||'').slice(0,6))}...${polyEscape(String(x.address||'').slice(-4))}</td><td>${x.seen||0}</td><td>${fmt(x.recurrenceScore,1)}<div class="mpo-meter-bar--sm ${(x.recurrenceScore||0)>60?'hot':''}"><i style="width:${Math.max(2,Math.min(100,Number(x.recurrenceScore)||0))}%"></i></div></td><td class="${(x.recurrenceScore||0)>60?'red':'amber'}">${(x.recurrenceScore||0)>60?'Hot':'Warm'}</td></tr>`).join(''):`<tr><td colspan="4" style="white-space:normal"><div class="mpo-empty" style="white-space:normal">${polyEscape(empty)}</div></td></tr>`}</tbody></table></div></div>`);
 }
 function renderControl(){
- const s=state||{},r=s.runtime||{},cfg=s.config||{},ec=s.effectiveControls||{},eb=ec.bounds||{},ex=r.exitPreset==='custom'?(ec.customExit||{}):(ec.exit||{});
+ const force=arguments[0]===true;
+ const s=state||{},r=s.runtime||{},cfg=s.config||{},ec=s.effectiveControls||{},eb=ec.bounds||{};
+ const lastAction=s.system?.lastAction||null;
+ if(controlPendingActionId&&lastAction?.id===controlPendingActionId){
+  controlPendingActionId=null;controlPendingKind='';controlPendingSince=0;controlDraftDirty=false;
+ }
+ if(controlPendingActionId&&controlPendingSince&&Date.now()-controlPendingSince>10000){
+  controlPendingActionId=null;controlPendingKind='';controlPendingSince=0;
+ }
  const bodyEl=$('#body-control');
- if(bodyEl&&document.activeElement&&bodyEl.contains(document.activeElement))return;
- const mode=String(s.mode||'paper').toUpperCase();
- setBody('control',`<div class="mpo-surface-light" style="padding:8px;color:#111;min-height:100%"><div class="mpo-status"><b>CONTROL BAY</b><b class="mpo-badge ${mode==='LIVE'?'mpo-badge--armed':'mpo-badge--paper'}">${polyEscape(mode)}</b>${r.profile?`<span class="muted">${polyEscape(r.profile)}</span>`:''}${s.evolutionLoop?.status?`<span class="muted">Evolution ${polyEscape(s.evolutionLoop.status)}</span>`:''}</div>
- <div class="controls-grid"><div>
- <div class="formrow"><label>Profile:</label><select class="field" id="profile">${['FAIR','CALM','FAST','DEGEN','MAX','SPRINT','RESEARCH'].map(v=>`<option value="${v}" ${String(r.profile)===v?'selected':''}>${v}</option>`).join('')}</select></div>
- <div class="formrow"><label>Aggression:</label><select class="field" id="aggr">${[55,72,86,96,100].map(v=>`<option value="${v}" ${Number(r.aggression)===v?'selected':''}>${v}</option>`).join('')}</select></div>
- <div class="formrow"><label>Entry frequency:</label><select class="field" id="ctlFreq">${['normal','high','max'].map(v=>`<option value="${v}" ${(r.entryFrequency||'normal')===v?'selected':''}>${v}</option>`).join('')}</select></div>
- <div class="formrow"><label>Candidates scanned:</label><input class="field" id="ctlCand" type="number" min="30" max="600" step="10" value="${Number(r.maxCandidates??240)}"></div>
- <div class="formrow"><label title="Blank = automatic from aggression">Max open positions:</label><input class="field" id="ctlMaxOpen" type="number" min="${eb.maxOpenPositions?.[0]??1}" max="${eb.maxOpenPositions?.[1]??30}" step="1" placeholder="auto (${ec.autoOpenLimit??'-'})" value="${r.maxOpenPositions??''}"></div>
- <div class="formrow"><label>Exit preset:</label><select class="field" id="ctlPreset">${(ec.presets||['fair','custom']).map(v=>`<option value="${v}" ${(r.exitPreset||'fair')===v?'selected':''}>${v}</option>`).join('')}</select></div>
- <fieldset class="mpo-fieldset" style="margin-top:6px"><legend>Exits · editing any box switches the preset to custom</legend>
- ${[['tp1','Take profit 1 %'],['tp2','Take profit 2 %'],['stop','Stop loss %'],['trail','Trailing stop %'],['maxHold','Max hold (min)']].map(([k,l])=>`<div class="formrow"><label>${l}:</label><input class="field ctlExit" data-k="${k}" type="number" min="${eb[k]?.[0]??1}" max="${eb[k]?.[1]??500}" step="${k==='maxHold'?1:.5}" value="${ex[k]??''}"></div>`).join('')}
- ${ec.labChampionExit?`<p class="muted" style="font-size:10px">A Lab paper champion is active and overrides these exits: take ${fmt(ec.labChampionExit.takePct,1)}% · stop ${fmt(ec.labChampionExit.stopPct,1)}% · hold ${ec.labChampionExit.maxHoldMin} min.</p>`:''}</fieldset>
- <p class="muted" style="font-size:10px">Live-mode hard limits (from .env, not editable here): max open ${cfg.maxOpenPositions??3} · exposure ${cfg.maxTotalExposureSol??.45} SOL · daily loss ${cfg.dailyLossLimitSol??'-'} SOL.</p>
- </div><div><div class="mpo-module"><header><span>Testing controls</span></header><div class="mpo-module-body"><div class="toolbar" style="flex-wrap:wrap"><label>Starting SOL <input class="field" id="testResetSol" type="number" min="0.001" max="1000000" step="0.001" value="${Number(s.paperStartSol??1)}" style="width:82px"></label><button class="btn" id="testResetCustom">Reset custom</button><button class="btn test-reset" data-sol="0.15">0.15 SOL</button><button class="btn test-reset" data-sol="0.25">0.25 SOL</button><button class="btn test-reset" data-sol="1">1 SOL</button><button class="btn test-reset" data-sol="5">5 SOL</button></div><div class="muted" style="font-size:10px;margin:2px 0 6px">Paper only. Use tiny bankrolls to measure whether sizing, fees and exits can grow realistic starting capital instead of depending on a large default wallet.</div><div class="toolbar" style="margin-top:6px"><button class="btn" id="testPause">${s.system?.paused?'Resume trading':'Pause trading'}</button>${s.system?.killSwitch?' <b class="mpo-badge mpo-badge--down">KILL SWITCH ON</b>':s.system?.paused?' <b class="mpo-badge mpo-badge--degraded">PAUSED</b>':''}<fieldset class="mpo-danger-fieldset" style="display:inline-block;margin:0;padding:2px 6px 3px;vertical-align:middle"><button class="btn" id="testKill">Kill Switch</button></fieldset></div></div></div><div class="mpo-module"><header><span>Safety boundary</span></header><div class="mpo-module-body"><b>${polyEscape(mode)}</b><p>Evolution may promote Research → Paper → Shadow only. Real-wallet activation remains explicit. Research runs in the separate Evolution Lab app; this machine only applies published champions.</p></div></div><button class="btn" id="applyCtl">Apply Runtime</button></div></div></div>`);
- const resetPaperWallet=async amount=>{const n=Number(amount);if(!Number.isFinite(n)||n<=0||n>1000000)return showDialog('Money Printer OS','Invalid paper bankroll','Enter a positive SOL amount up to 1,000,000.');const r=await post('/api/reset',{amountSol:n});if(r?.ok===false)return showDialog('Money Printer OS','Paper wallet not reset',r.error||'The reset was rejected.');showDialog('Money Printer OS','Paper wallet reset',`Testing bankroll queued at ${n} SOL.`)};
- $$('.test-reset').forEach(b=>b.onclick=()=>resetPaperWallet(b.dataset.sol));$('#testResetCustom')?.addEventListener('click',()=>resetPaperWallet($('#testResetSol')?.value)); $('#testPause')?.addEventListener('click',()=>post('/api/pause',{})); $('#testKill')?.addEventListener('click',()=>post('/api/kill',{})); $$('.ctlExit').forEach(i=>i.addEventListener('input',()=>{const p=$('#ctlPreset');if(p)p.value='custom'}));
+ if(!force&&bodyEl&&(controlDraftDirty||controlPendingActionId||(document.activeElement&&bodyEl.contains(document.activeElement))))return;
+ const mode=String(s.mode||'paper').toUpperCase(),lab=ec.labChampion||null,following=ec.labFollowing!==false;
+ const source=String(ec.controlMode||((following&&lab)?'LAB_AUTO':following?'LAB_WAITING':'MANUAL'));
+ const sourceLabel=source==='LAB_AUTO'?'LAB AUTO':source==='LAB_WAITING'?'LAB WAITING':'MANUAL';
+ const sourceClass=source==='LAB_AUTO'?'mpo-badge--live':source==='LAB_WAITING'?'mpo-badge--degraded':'mpo-badge--paper';
+ const ex=r.exitPreset==='custom'?(ec.customExit||{}):(ec.exit||{}),eff=ec.effectiveExit||ex;
+ const profiles=['FAIR','CALM','FAST','DEGEN','MAX','SPRINT','RESEARCH'];
+ const presets=ec.presets||['fair','scalper','runner','yolo','custom'];
+ const labMeta=lab?`${polyEscape(lab.id)} · ${polyEscape(lab.sourceStage||'PAPER')} · threshold ${fmt(lab.threshold,0)}`:'No validated paper champion is available right now.';
+ const labRules=lab?`Take ${fmt(lab.takePct,1)}% · stop ${fmt(lab.stopPct,1)}% · max hold ${fmt(lab.maxHoldMin,0)}m`:'Evolution Lab will keep researching; this control becomes available when a champion clears the paper evidence gates.';
+ setBody('control',`<div class="mpo-surface-light control-bay">
+  <div class="mpo-status control-bay__status"><b>CONTROL BAY</b><b class="mpo-badge ${mode==='LIVE'?'mpo-badge--armed':'mpo-badge--paper'}">${polyEscape(mode)}</b><b class="mpo-badge ${sourceClass}">${sourceLabel}</b><span class="muted">${s.evolutionLoop?.status?`Evolution ${polyEscape(s.evolutionLoop.status)}`:'Pump.fun / Solana controls'}</span></div>
+  <div class="control-source-grid">
+   <section class="control-source-card ${following?'is-active':''}">
+    <div class="control-source-card__head"><div><b>Evolution Lab Best</b><div class="muted">Use the current validated champion and automatically follow future winners.</div></div><b class="mpo-badge ${lab?'mpo-badge--live':'mpo-badge--degraded'}">${lab?'READY':'WAITING'}</b></div>
+    <div class="control-source-card__champ"><b>${labMeta}</b><span>${labRules}</span></div>
+    <button class="btn control-primary" id="ctlLabSync" ${!lab||mode!=='PAPER'?'disabled':''}>${following&&lab?'Following Lab Best ✓':'Sync + Auto-Follow Best'}</button>
+   </section>
+   <section class="control-source-card ${!following?'is-active':''}">
+    <div class="control-source-card__head"><div><b>Manual Tuning</b><div class="muted">Choose a preset as a starting point, then override anything below.</div></div><b class="mpo-badge ${!following?'mpo-badge--armed':'mpo-badge--degraded'}">${!following?'ACTIVE':'STANDBY'}</b></div>
+    <div class="control-source-card__champ"><b>${polyEscape(r.profile||'FAIR')} base</b><span>Aggression ${fmt(r.aggression,0)} · ${polyEscape(r.entryFrequency||'normal')} entries · ${polyEscape(r.exitPreset||'fair')} exits</span></div>
+    <div class="muted">Applying manual settings pauses Lab auto-follow until you press “Sync + Auto-Follow Best” again.</div>
+   </section>
+  </div>
+
+  <div class="control-layout">
+   <section class="mpo-module control-panel" id="controlManual"><header><span>Manual strategy controls</span><span class="muted">one atomic save</span></header><div class="mpo-module-body">
+    <div class="formrow"><label>Starting preset</label><select class="field ctl-manual-field" id="profile">${profiles.map(v=>`<option value="${v}" ${String(r.profile||'FAIR')===v?'selected':''}>${v}</option>`).join('')}</select></div>
+    <div class="formrow control-range-row"><label>Aggression <b id="aggrValue">${fmt(r.aggression,0)}</b></label><input class="ctl-manual-field control-range" id="aggr" type="range" min="0" max="100" step="1" value="${Number(r.aggression??72)}"></div>
+    <div class="formrow"><label>Entry frequency</label><select class="field ctl-manual-field" id="ctlFreq"><option value="normal" ${(r.entryFrequency||'normal')==='normal'?'selected':''}>Normal</option><option value="high" ${r.entryFrequency==='high'?'selected':''}>High</option><option value="max" ${r.entryFrequency==='max'?'selected':''}>Max</option></select></div>
+    <div class="formrow"><label>Candidates scanned</label><input class="field ctl-manual-field" id="ctlCand" type="number" min="30" max="600" step="10" value="${Number(r.maxCandidates??240)}"></div>
+    <div class="formrow"><label title="Blank lets aggression choose the cap">Max open positions</label><input class="field ctl-manual-field" id="ctlMaxOpen" type="number" min="${eb.maxOpenPositions?.[0]??1}" max="${eb.maxOpenPositions?.[1]??30}" step="1" placeholder="auto (${ec.autoOpenLimit??'-'})" value="${r.maxOpenPositions??''}"></div>
+
+    <div class="control-subhead"><b>Exit behavior</b><span class="muted">Editing a value switches to Custom.</span></div>
+    <div class="formrow"><label>Exit preset</label><select class="field ctl-manual-field" id="ctlPreset">${presets.map(v=>`<option value="${v}" ${(r.exitPreset||'fair')===v?'selected':''}>${v==='custom'?'Custom':v}</option>`).join('')}</select></div>
+    <div class="control-exit-grid">${[['tp1','Take profit 1 %'],['tp2','Take profit 2 %'],['stop','Stop loss %'],['trail','Trailing stop %'],['maxHold','Max hold min']].map(([k,l])=>`<label><span>${l}</span><input class="field ctlExit ctl-manual-field" data-k="${k}" type="number" min="${eb[k]?.[0]??1}" max="${eb[k]?.[1]??500}" step="${k==='maxHold'?1:.5}" value="${ex[k]??''}"></label>`).join('')}</div>
+    <div class="control-actions"><button class="btn control-primary" id="applyCtl">Apply Manual Settings</button><button class="btn" id="revertCtl">Revert Draft</button><span id="ctlStatus" class="control-save-status">${controlPendingActionId?'Waiting for engine…':'Saved values shown above'}</span></div>
+   </div></section>
+
+   <aside class="control-side">
+    <section class="mpo-module"><header><span>Effective right now</span></header><div class="mpo-module-body">
+     <div class="control-summary">
+      <div><span>Source</span><b>${sourceLabel}</b></div>
+      <div><span>Entry threshold</span><b>${lab&&following?fmt(lab.threshold,0):'aggression-based'}</b></div>
+      <div><span>Open cap</span><b>${ec.openLimit??'—'}</b></div>
+      <div><span>TP1 / TP2</span><b>${fmt(eff.tp1,1)} / ${fmt(eff.tp2,1)}%</b></div>
+      <div><span>Stop / trail</span><b>${fmt(eff.stop,1)} / ${fmt(eff.trail,1)}%</b></div>
+      <div><span>Max hold</span><b>${fmt(eff.maxHold,0)}m</b></div>
+     </div>
+     ${lab&&following?`<div class="control-note control-note--lab"><b>Lab override active.</b> The champion’s learned weights, threshold and exit rules are the effective paper policy. Manual values remain saved as your fallback.</div>`:`<div class="control-note"><b>Manual policy active.</b> The values in the left panel are what Pump.fun will use after Apply.</div>`}
+    </div></section>
+
+    <section class="mpo-module"><header><span>Paper bankroll</span></header><div class="mpo-module-body">
+     <div class="toolbar control-bankroll"><label>Starting SOL <input class="field" id="testResetSol" type="number" min="0.001" max="1000000" step="0.001" value="${Number(s.paperStartSol??1)}"></label><button class="btn" id="testResetCustom">Reset</button></div>
+     <div class="control-preset-buttons"><button class="btn test-reset" data-sol="0.15">0.15</button><button class="btn test-reset" data-sol="0.25">0.25</button><button class="btn test-reset" data-sol="1">1 SOL</button><button class="btn test-reset" data-sol="5">5 SOL</button></div>
+     <div class="muted">Paper only. Reset small bankrolls to see whether fees, sizing and exits can actually compound realistic capital.</div>
+    </div></section>
+
+    <section class="mpo-module"><header><span>Engine controls</span></header><div class="mpo-module-body">
+     <div class="toolbar"><button class="btn" id="testPause">${s.system?.paused?'Resume trading':'Pause trading'}</button>${s.system?.killSwitch?' <b class="mpo-badge mpo-badge--down">KILL SWITCH ON</b>':s.system?.paused?' <b class="mpo-badge mpo-badge--degraded">PAUSED</b>':''}</div>
+     <fieldset class="mpo-danger-fieldset control-kill"><button class="btn" id="testKill">Kill Switch</button></fieldset>
+     <div class="muted">Live hard limits stay outside this panel: max open ${cfg.maxOpenPositions??3} · exposure ${cfg.maxTotalExposureSol??.45} SOL · daily loss ${cfg.dailyLossLimitSol??'—'} SOL.</div>
+    </div></section>
+   </aside>
+  </div>
+ </div>`);
+
+ const setCtlStatus=(text,kind='')=>{const el=$('#ctlStatus');if(el){el.textContent=text;el.className=`control-save-status ${kind}`.trim();}};
+ const markDirty=()=>{controlDraftDirty=true;setCtlStatus('Unsaved manual changes','is-dirty')};
+ const fillExitInputs=preset=>{
+  const vals=preset==='custom'?(ec.customExit||{}):(ec.presetValues?.[preset]||{});
+  $$('.ctlExit').forEach(i=>{if(vals[i.dataset.k]!=null)i.value=vals[i.dataset.k]});
+ };
+ $('#profile')?.addEventListener('change',e=>{
+  const p=CONTROL_PROFILE_PRESETS[e.target.value];
+  if(p){$('#aggr').value=p.aggression;$('#aggrValue').textContent=p.aggression;$('#ctlFreq').value=p.entryFrequency;$('#ctlPreset').value=p.exitPreset;fillExitInputs(p.exitPreset);}
+  markDirty();
+ });
+ $('#aggr')?.addEventListener('input',e=>{const v=$('#aggrValue');if(v)v.textContent=e.target.value;markDirty()});
+ $('#ctlPreset')?.addEventListener('change',e=>{fillExitInputs(e.target.value);markDirty()});
+ $$('.ctl-manual-field').filter(i=>!['profile','aggr','ctlPreset'].includes(i.id)).forEach(i=>i.addEventListener('input',markDirty));
+ $$('.ctlExit').forEach(i=>i.addEventListener('input',()=>{const p=$('#ctlPreset');if(p&&p.value!=='custom')p.value='custom';markDirty()}));
+
+ $('#revertCtl')?.addEventListener('click',()=>{controlDraftDirty=false;controlPendingActionId=null;controlPendingKind='';controlPendingSince=0;document.activeElement?.blur?.();renderControl(true)});
  $('#applyCtl')?.addEventListener('click',async()=>{
-  const profileChanged=$('#profile').value!==String(r.profile);
-  const common={maxCandidates:Number($('#ctlCand').value),maxOpenPositions:$('#ctlMaxOpen').value===''?null:Number($('#ctlMaxOpen').value)};
-  const preset=$('#ctlPreset').value,customExit={};if(preset==='custom')$$('.ctlExit').forEach(i=>{if(i.value!=='')customExit[i.dataset.k]=Number(i.value)});
-  if(profileChanged){await post('/api/profile',{profile:$('#profile').value});await post('/api/runtime',{...common,...(preset==='custom'?{customExit}:{})})}
-  else await post('/api/runtime',{...common,aggression:Number($('#aggr').value),entryFrequency:$('#ctlFreq').value,exitPreset:preset,...(preset==='custom'?{customExit}:{})});
-  showDialog('Money Printer OS','Settings queued',profileChanged?'New profile applied (it sets aggression, exit preset and entry frequency). Candidates, max open and custom exits were sent too.':'Runtime settings were sent to the trading engine.')});
+  const preset=$('#ctlPreset').value,customExit={};
+  if(preset==='custom')$$('.ctlExit').forEach(i=>{if(i.value!=='')customExit[i.dataset.k]=Number(i.value)});
+  const payload={profile:$('#profile').value,aggression:Number($('#aggr').value),entryFrequency:$('#ctlFreq').value,maxCandidates:Number($('#ctlCand').value),maxOpenPositions:$('#ctlMaxOpen').value===''?null:Number($('#ctlMaxOpen').value),exitPreset:preset,...(preset==='custom'?{customExit}:{})};
+  setCtlStatus('Applying manual settings…','is-pending');
+  const out=await post('/api/control-settings',payload);
+  if(out?.ok===false){controlDraftDirty=true;return setCtlStatus(out.error||'Settings rejected','is-error')}
+  controlDraftDirty=false;controlPendingActionId=out?.actionId||null;controlPendingKind='manual';controlPendingSince=Date.now();setCtlStatus('Queued — waiting for engine acknowledgement…','is-pending');
+ });
+ $('#ctlLabSync')?.addEventListener('click',async()=>{
+  setCtlStatus('Syncing validated Lab champion…','is-pending');
+  const out=await post('/api/lab-sync',{});
+  if(out?.ok===false)return setCtlStatus(out.error||'Lab sync rejected','is-error');
+  controlDraftDirty=false;controlPendingActionId=out?.actionId||null;controlPendingKind='lab';controlPendingSince=Date.now();setCtlStatus('Lab auto-follow queued…','is-pending');
+ });
+
+ const resetPaperWallet=async amount=>{const n=Number(amount);if(!Number.isFinite(n)||n<=0||n>1000000)return showDialog('Money Printer OS','Invalid paper bankroll','Enter a positive SOL amount up to 1,000,000.');const out=await post('/api/reset',{amountSol:n});if(out?.ok===false)return showDialog('Money Printer OS','Paper wallet not reset',out.error||'The reset was rejected.');showDialog('Money Printer OS','Paper wallet reset',`Testing bankroll queued at ${n} SOL.`)};
+ $$('.test-reset').forEach(b=>b.onclick=()=>resetPaperWallet(b.dataset.sol));
+ $('#testResetCustom')?.addEventListener('click',()=>resetPaperWallet($('#testResetSol')?.value));
+ $('#testPause')?.addEventListener('click',()=>post('/api/pause',{}));
+ $('#testKill')?.addEventListener('click',()=>post('/api/kill',{}));
 }
 
 // Polymarket US combos (real execution): selection, stake and the in-flight build.
