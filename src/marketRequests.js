@@ -52,6 +52,9 @@ export function createMarketRequester({fetcher=(...args)=>globalThis.fetch(...ar
     pending.set(url,task);return task;
   }
   return {get,health(){const saved=stats.cacheHits+stats.coalescedHits,total=stats.requests+saved;return {...stats,requestsPerMinute:cap||null,cacheAvoidanceRate:total?Math.round(saved/total*1e6)/1e6:0,cached:cache.size,inFlight:pending.size,
+    // Per-host window usage, so a caller sharing this budget with its own fan-out can size itself
+    // against what is actually left instead of guessing (see dexscreener discoveryBatchBudget).
+    hosts:[...hosts].map(([host,state])=>({host,windowCalls:state.window.filter(t=>now()-t<60000).length,retryAt:state.retryAt})),
     retryAt:Math.max(0,...[...hosts.values()].map(h=>h.retryAt)),
     ok:![...hosts.values()].some(h=>h.retryAt>now())};}};
 }

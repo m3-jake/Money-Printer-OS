@@ -3,7 +3,7 @@ import { pathToFileURL, fileURLToPath } from 'node:url';
 import fs from 'node:fs';
 import path from 'node:path';
 import { cfg } from './config.js';
-import { discoverCandidates, refreshPair, refreshPositionPairs, discoveryHealth, solUsdPrice, batchTokenPrices } from './dexscreener.js';
+import { discoverCandidates, refreshPair, refreshPositionPairs, discoveryHealth, discoveryFanout, solUsdPrice, batchTokenPrices } from './dexscreener.js';
 import { analyze, explain, marketRegime } from './strategy.js';
 import { mintRisk, benchmarkRpcs } from './rpc.js';
 import { loadState, saveState, appendJournal, appendJournalBatch, drainActions, resetPaper } from './store.js';
@@ -514,7 +514,20 @@ async function cycle() {
   const discoveryStart = performance.now();
   const pairs = await discoverCandidates(max);
   s.system.metrics.discoveryMs = Math.round(performance.now() - discoveryStart);
+  // P0.3: the fan-out is sized from what is left of the per-minute budget, and the refusal counter
+  // is compared cycle over cycle so a budget that is still tripping shows up in the funnel instead
+  // of only inside the scan. discoveryBudget stays out of discoveryHealth on purpose: index.js walks
+  // that object as a list of feeds, and a non-feed key would be counted as a failing one.
+  const priorBudgetRejects = Number(s.system.discoveryHealth?.marketRequests?.budgetRejects || 0);
   s.system.discoveryHealth = discoveryHealth();
+  const budgetRejects = Number(s.system.discoveryHealth.marketRequests?.budgetRejects || 0);
+  const fanout = discoveryFanout();
+  s.system.marketBudget = {
+    requestsPerMinute: cfg.marketRequestsPerMinute, rejectsTotal: budgetRejects,
+    rejectsDelta: Math.max(0, budgetRejects - priorBudgetRejects),
+    fanoutRequested: fanout?.requested ?? null, fanoutAddresses: fanout?.allowed ?? null,
+    fanoutBatches: fanout?.batches ?? null, fanoutUsedInWindow: fanout?.usedInWindow ?? null,
+  };
   s.system.unitEconomics={externalApi:apiUnitEconomicsSnapshot(),caps:{marketRequestsPerMinute:cfg.marketRequestsPerMinute,heliusRequestsPerMinute:cfg.heliusRequestsPerMinute,dailySpendCapUsd:cfg.apiDailySpendCapUsd}};
   try{persistApiUnitEconomics('trader')}catch{}
   s.research.feedStats ||= {};
@@ -674,6 +687,10 @@ async function cycle() {
   if(missingPrices.length){s.system.diagnostics.push({level:'WARN',code:'HELD_PRICE_UNVERIFIED',message:`${missingPrices.length} held positions await a verified price`});if(s.system.health==='HEALTHY')s.system.health='CAUTION';}
   const requestHealth=discoveryHealth().marketRequests;
   if(requestHealth&&!requestHealth.ok){s.system.diagnostics.push({level:'WARN',code:'MARKET_RATE_LIMIT',message:'Market provider rate-limited; retry backoff is active'});if(s.system.health==='HEALTHY')s.system.health='CAUTION';}
+  // P0.3: a refused call is a dropped candidate, not just a slow one, so say so. Diagnostics are
+  // rebuilt each cycle by supervisorTick above, which is why this is pushed here and not earlier.
+  const budget= s.system.marketBudget||{};
+  if(Number(budget.rejectsDelta||0)>0){s.system.diagnostics.push({level:'WARN',code:'MARKET_BUDGET_REJECTED',message:`${budget.rejectsDelta} market request(s) refused by the ${budget.requestsPerMinute}/min budget last discovery; fan-out allowed ${budget.fanoutBatches ?? '?'} batch(es) after ${budget.fanoutUsedInWindow ?? '?'} call(s) in the window`});if(s.system.health==='HEALTHY')s.system.health='CAUTION';}
 
   const block = blockStatus(s);
   const rejectionReasons={score:0,invalidMarket:0,riskUnverified:0,execution:0,cooldown:0,alreadyOpen:0,blacklist:0};

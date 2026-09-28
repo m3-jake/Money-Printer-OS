@@ -43,7 +43,16 @@ P0.2 — done — — /api/health escalation after N consecutive cycle errors
       `cycleRecovery`. `markCleanCycle({state})` resets the streak on the first cycle that does not
       throw — reusing the state the loop already loads, and writing nothing when no streak is set.
       4 tests added; `test:recovery` 31 pass.
-P0.3 — pending — — discovery rate budget reconciliation
+P0.3 — done — — discovery rate budget reconciliation
+      `discoveryBatchBudget`/`discoveryAddressLimit` size the fan-out from the per-cycle share of
+      `MARKET_REQUESTS_PER_MINUTE` and what the window has already spent; `marketRequests.health()`
+      now reports per-host `windowCalls`; `discoveryFanout()` exposes what was allowed. The funnel
+      gets `s.system.marketBudget` (incl. `rejectsDelta`) and a `MARKET_BUDGET_REJECTED` WARN, and
+      `/api/health` reports `marketRequests` + `marketBudget`. Default fan-out drops from 32 batches
+      (960 addresses, 240 req/min against a 120 budget) to 8 (240 addresses) — the honest maximum;
+      more breadth now requires raising `MARKET_REQUESTS_PER_MINUTE`, which is the documented lever.
+      New target `test:discovery` (7 pass) wired into `test:all`; the simulation reproduces the old
+      overrun so the fix cannot silently regress.
 P0.4 — pending — — per-cycle abort signal
 P0.5 — pending — — documented panic path
 P1.1 — pending — — reconciliation check (legacy float vs core ledger) + promotion refusal

@@ -135,6 +135,52 @@ export function discoveryHealth() {
   return {...seedCache.health,marketRequests:{...requests.health(),ts:Date.now()}};
 }
 
+// What the last discovery fan-out was allowed to spend (null before the first cycle). Kept out of
+// discoveryHealth on purpose: index.js walks that object as a list of feeds.
+export function discoveryFanout() {
+  return seedCache.discoveryBudget || null;
+}
+
+// P0.3: keep the discovery fan-out inside the configured request budget instead of tripping it.
+//
+// The gate in marketRequests.js is per host and rolling over 60 s, and every call we make on
+// api.dexscreener.com shares it: the seed feeds, held-pool refreshes, follow-up prices and these
+// token batches. A 960-address slice is 32 calls per cycle, which at the 8 s default interval is
+// 240/min against a 120/min budget - so the tail of every cycle was refused with budgetRejects and
+// the try/catch below turned those refusals into empty batches: a quietly shrinking universe with
+// nothing in the funnel to say why. The fan-out is now sized from the budget that is actually left.
+export const DISCOVERY_BATCH_SIZE = 30;
+// Fraction of the per-cycle budget the token fan-out may use; the rest is left to the other calls
+// on the same host (seeds, held pools, follow-ups) inside the same rolling window.
+export const DISCOVERY_BUDGET_SHARE = 0.5;
+
+// How many token-batch calls one cycle may make. `usedInWindow` is what the requester reports it has
+// already spent on this host, so a cycle that is short of budget shrinks instead of being refused.
+export function discoveryBatchBudget({ requestsPerMinute = cfg.marketRequestsPerMinute, intervalSec = cfg.scanIntervalSec, usedInWindow = 0, share = DISCOVERY_BUDGET_SHARE } = {}) {
+  const perMinute = Math.max(0, Number(requestsPerMinute) || 0);
+  if (!perMinute) return Infinity; // budget disabled: nothing to clamp
+  const perCycle = Math.max(1, Math.floor(Math.max(1, Number(intervalSec) || cfg.scanIntervalSec) * perMinute / 60));
+  const own = Math.max(1, Math.floor(perCycle * Math.max(0.1, Math.min(1, Number(share) || DISCOVERY_BUDGET_SHARE))));
+  const headroom = Math.floor(perMinute - Math.max(0, Number(usedInWindow) || 0));
+  // At least one batch: a starved cycle should still see the freshest seeds, just not all of them.
+  return Math.max(1, Math.min(own, headroom));
+}
+
+// Address limit for one cycle: the caller's candidate cap, the historic 4x oversample, and the
+// request budget, whichever is smallest.
+export function discoveryAddressLimit(max, budgetBatches = discoveryBatchBudget()) {
+  const wanted = Math.max(max * 4, 240);
+  if (!Number.isFinite(budgetBatches)) return wanted;
+  return Math.max(DISCOVERY_BATCH_SIZE, Math.min(wanted, budgetBatches * DISCOVERY_BATCH_SIZE));
+}
+
+// Calls already spent on the dex host inside the current 60 s window (all labels, not just ours).
+function dexWindowCalls() {
+  const host = new URL(BASE).host;
+  const row = (requests.health().hosts || []).find(h => h.host === host);
+  return Number(row?.windowCalls || 0);
+}
+
 export async function discoverCandidates(max = 120) {
   const { meta } = await collectSeeds();
   const seedPriority = m => {
@@ -148,9 +194,17 @@ export async function discoverCandidates(max = 120) {
     if (m?.streamTs) q += Math.max(0, 40 - (Date.now()-m.streamTs)/15000);
     return q;
   };
-  const addresses = [...meta.entries()].sort((a,b)=>seedPriority(b[1])-seedPriority(a[1])).map(([mint])=>mint).slice(0, Math.max(max * 4, 240));
+  const usedInWindow = dexWindowCalls();
+  const batchBudget = discoveryBatchBudget({ usedInWindow });
+  const addressLimit = discoveryAddressLimit(max, batchBudget);
+  const addresses = [...meta.entries()].sort((a,b)=>seedPriority(b[1])-seedPriority(a[1])).map(([mint])=>mint).slice(0, addressLimit);
   const batches = [];
-  for (let i = 0; i < addresses.length; i += 30) batches.push(addresses.slice(i, i + 30));
+  for (let i = 0; i < addresses.length; i += DISCOVERY_BATCH_SIZE) batches.push(addresses.slice(i, i + DISCOVERY_BATCH_SIZE));
+  // What the fan-out was allowed to do this cycle, for the funnel and /api/health.
+  seedCache.discoveryBudget = {
+    at: Date.now(), requested: Math.max(max * 4, 240), allowed: addresses.length, batches: batches.length,
+    batchBudget: Number.isFinite(batchBudget) ? batchBudget : null, usedInWindow, requestsPerMinute: cfg.marketRequestsPerMinute, intervalSec: cfg.scanIntervalSec,
+  };
 
   const responses = await mapLimit(batches, 3, async batch => {
     const url = `${BASE}/tokens/v1/solana/${batch.join(',')}`;
