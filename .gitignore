@@ -2,6 +2,8 @@
 data/
 node_modules/
 .env
+.env.*
+*.key
 __pycache__/
 .build-version
 .build-commit
