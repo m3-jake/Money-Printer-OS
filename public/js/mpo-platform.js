@@ -9,6 +9,17 @@ window.MPOSPlatform = (() => {
   let scoreboard=null,scoreboardError='';
   const venues={kalshi:'kalshi',predictionmarkets:'polymarket'};
   const ids=['command','kalshi','arbitrage','predictionmarkets'];
+  const hostOf=id=>id==='predictionmarkets'?'sportsbook':id==='arbitrage'?'command':id;
+  function paneVisible(id){
+    const host=hostOf(id),w=document.querySelector(`.window[data-app="${host}"]`);if(!w||w.classList.contains('hidden'))return false;
+    if(w.classList.contains('glance'))return id===host;
+    const pane=document.getElementById('body-'+id);return !!pane&&(!pane.classList.contains('tabpane')||pane.classList.contains('on'));
+  }
+  function platformGlance(id){
+    const s=scoreboard?.summary||{},bad=diag?.sources?.filter(x=>!['CONNECTED','IDLE'].includes(x.status)).length||0;
+    if(id==='command')return `<div class="core-app"><div class="core-heading"><h2>COMMAND CENTER</h2><span class="mpo-badge">PAPER / RESEARCH</span></div><div class="core-lcd"><span>${s.beating||0} modules beating baseline</span><span>${s.notBeating||0} not beating</span><span>${s.notEnoughData||0} awaiting evidence</span><span>${bad} data sources need attention</span></div><p class="core-muted">Open Advanced for market desks, diagnostics, Events, risk controls and research detail.</p></div>`;
+    return `<div class="core-app"><div class="core-heading"><h2>${escape(id==='kalshi'?'KALSHI':'POLYMARKET')}</h2><span class="mpo-badge">PAPER</span></div><p class="core-muted">Open Advanced for books, orders, depth and execution detail.</p></div>`;
+  }
   const button=(action,label,extra='')=>`<button class="btn" data-core-action="${action}" ${extra} ${busy&&action!=='halt'?'disabled':''}>${label}</button>`;
   async function request(route,data){
     const r=await fetch('/api/platform'+route,data===undefined?{cache:'no-store'}:{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(data)});
@@ -112,11 +123,11 @@ window.MPOSPlatform = (() => {
       ${comparison.fees?`<p class="core-muted">Kalshi fees: ${escape(comparison.fees.a)}<br>Polymarket fees: ${escape(comparison.fees.b)}</p>`:''}${table(['Legs','A / B prices','Gross spread','Available size','Fees A / B','After fees','Conditional payoff'],comparison.directions.map(d=>`<tr><td>${d.sideA} + ${d.sideB}</td><td>${pct(d.venueA.averagePrice)} / ${pct(d.venueB.averagePrice)}</td><td><span class="core-spread" style="--spread:${Math.min(100,Math.abs(d.grossSpread||0)*100)}%">${pct(d.grossSpread)}</span></td><td>${Number(d.availableExecutableSize).toLocaleString(undefined,{maximumFractionDigits:2})}</td><td>${d.feeA===null||d.feeA===undefined?'Unavailable':dollars(d.feeA)+' / '+dollars(d.feeB)}</td><td>${pct(d.effectiveSpread)}</td><td>${d.conditionalMatchedPayoff==null?'Unavailable':dollars(d.conditionalMatchedPayoff)}</td></tr>`).join(''))}${executionRiskCard(comparison)}`:''}`;
   }
   function draw(id){
-    const host=id==='predictionmarkets'?'sportsbook':id,w=document.querySelector(`.window[data-app="${host}"]`);if(!w||w.classList.contains('hidden'))return;
-    const root=document.getElementById((w.classList.contains('glance')?'glance-':'body-')+id);if(!root)return;
+    if(!paneVisible(id))return;const host=hostOf(id),w=document.querySelector(`.window[data-app="${host}"]`),simple=w.classList.contains('glance');
+    const root=document.getElementById(simple?'glance-'+host:'body-'+id);if(!root)return;
     if(root.contains(document.activeElement)&&document.activeElement.matches('input,select,textarea'))return;
     const top=root.scrollTop;
-    const html=`<div class="core-app" data-core-id="${id}">${error?`<p class="core-error" role="alert">${escape(error)}</p>`:''}${busy?'<p role="status">Working…</p>':''}${id==='command'?command():id==='arbitrage'?arbitrage():marketProgram(id)}</div>`;
+    const html=simple?platformGlance(id):`<div class="core-app" data-core-id="${id}">${error?`<p class="core-error" role="alert">${escape(error)}</p>`:''}${busy?'<p role="status">Working…</p>':''}${id==='command'?command():id==='arbitrage'?arbitrage():marketProgram(id)}</div>`;
     if(root._mpoHTML===html)return;root._mpoHTML=html;root.innerHTML=html;root.scrollTop=top;
   }
   function render(){ids.forEach(draw);}
@@ -136,7 +147,7 @@ window.MPOSPlatform = (() => {
   // Command Center is open, without blocking the rest of the window.
   let events=null,eventsAt=0,eventsBusy=false,openEvent=null,eventKind='ALL';
   function loadEvents(force=false){
-    const w=document.querySelector('.window[data-app="command"]');if(!w||w.classList.contains('hidden')||eventsBusy||(!force&&Date.now()-eventsAt<300000))return;
+    const w=document.querySelector('.window[data-app="command"]');if(!paneVisible('command')||w?.classList.contains('glance')||eventsBusy||(!force&&Date.now()-eventsAt<300000))return;
     eventsBusy=true;request('/events'+(force?'?force=1':'')).then(v=>{events=v;eventsAt=Date.now();}).catch(e=>{events={error:e.message,pages:[]};eventsAt=Date.now()-240000;}).finally(()=>{eventsBusy=false;render();});
   }
   function eventsCard(){
@@ -204,7 +215,7 @@ window.MPOSPlatform = (() => {
       });
     });
     action(refresh);
-    setInterval(()=>{if(!document.hidden&&!busy&&ids.some(id=>{const w=document.querySelector(`.window[data-app="${id}"]`);return w&&!w.classList.contains('hidden');}))refresh().catch(e=>{error=e.message;render();});},10000);
+    setInterval(()=>{if(!document.hidden&&!busy&&ids.some(paneVisible))refresh().catch(e=>{error=e.message;render();});},10000);
   }
   return {install,render};
 })();

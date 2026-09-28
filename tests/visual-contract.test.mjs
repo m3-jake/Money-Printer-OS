@@ -204,21 +204,29 @@ test('integrated FX is profit-only money rain/pile with no fire', () => {
 });
 
 test('desktop keeps only platform-scale launchers; Command Center owns the supporting desks', () => {
-  for (const [id, label] of [['arbitrage','Arbitrage'],['stocks','Stocks'],['macro','Macro'],['edgar','EDGAR'],['weather','Weather'],['sports','Sports'],['wire','Wire']]) {
+  for (const [id, label] of [['arbitrage','Arbitrage'],['stocks','Stocks'],['marketlab','Market Lab'],['macro','Macro'],['edgar','EDGAR'],['weather','Weather'],['sports','Sports'],['wire','Wire']]) {
     assert.match(html, new RegExp("\\['" + id + "','" + label + "'[^\\]]*,'command'\\]"));
   }
   const desktop = html.match(/const DESKTOP_ICONS=\[([^\]]+)\]/)?.[1] || '';
-  for (const id of ['arbitrage','stocks','macro','edgar','weather','sports','wire']) assert.doesNotMatch(desktop, new RegExp("['\"]" + id + "['\"]"));
+  for (const id of ['arbitrage','stocks','marketlab','macro','edgar','weather','sports','wire']) assert.doesNotMatch(desktop, new RegExp("['\"]" + id + "['\"]"));
   assert.match(desktop, /['"]command['"]/);
 });
 
-test('desktop event feed is roomier, expires entries, and money shares the cloud breeze direction', () => {
-  assert.match(html, /MONEY_EVENT_LIFE_MS=75000/);
-  assert.match(html, /moneyEvents\.slice\(-12\)/);
+test('desktop event feed is roomier, importance-aware, and money shares the environment breeze', () => {
+  assert.match(html, /const MONEY_EVENT_META=/);
+  assert.match(html, /'major-win':\{ttl:120000/);
+  assert.match(html, /ambient:\{ttl:50000/);
+  assert.match(html, /moneyEvents\.slice\(-14\)/);
+  assert.match(html, /x\.count=\(x\.count\|\|1\)\+1/);
   assert.match(css, /max-height:\s*300px/);
   assert.match(css, /@keyframes moneyEventLife/);
-  assert.match(css, /animation-delay:\s*var\(--event-age/);
-  assert.match(html, /function fxWind\(t\)\{return 34\+/);
+  assert.match(css, /animation-duration:\s*var\(--event-life,75s\)/);
+  assert.match(html, /function fxWind\(t\)\{return environmentWindAt\(t\)\.pxs\}/);
+  assert.match(html, /const ENV_WIND=Object\.freeze/);
+  assert.match(html, /class="cloud-shadows"/);
+  assert.match(html, /class="grass-layer"/);
+  assert.match(css, /@keyframes cloudShadowDrift/);
+  assert.match(css, /@keyframes grassSwayNear/);
   assert.match(html, /b\.vx=fxRand\(14,30\)/);
 });
 
@@ -337,8 +345,8 @@ test('Polymarket panel shows shadow record, calibration and a one-click Lab appl
 test('live visuals: one animation engine, served read-only from /js, used by Polymarket, Robinhood and Pump.fun', () => {
   const viz = read('public/js/mpo-viz.js');
   const frames = [];
-  const win = { matchMedia: () => ({ matches: false }), devicePixelRatio: 1 };
-  const sandbox = { window: win, document: { hidden: false, querySelectorAll: () => [] }, performance: { now: () => 0 }, requestAnimationFrame: f => frames.push(f), console };
+  const win = { matchMedia: () => ({ matches: false }), devicePixelRatio: 1, addEventListener(){} };
+  const sandbox = { window: win, document: { hidden: false, querySelectorAll: () => [], addEventListener(){} }, performance: { now: () => 0 }, requestAnimationFrame: f => frames.push(f), console };
   vm.runInNewContext(viz, sandbox, { filename: 'mpo-viz.js' });
   assert.deepEqual([...win.MPOViz.types].sort(), ['bubbles', 'edge', 'funnel', 'gauge', 'hist', 'lanes', 'lines', 'pulse', 'scatter', 'ticker']);
   assert.match(win.MPOViz.canvas('k', 50, '<t>'), /data-viz="k"[^>]*height:50px/);

@@ -40,6 +40,12 @@
     <img class="sky-cloud" src="/assets/clouds/01.webp" alt="" style="width:27vw;top:5%;animation-duration:265s;animation-delay:-188s">
   </div>
   <div class="hill-foreground"></div>
+  <div class="cloud-shadows" aria-hidden="true">
+    <i style="--shadow-y:56%;--shadow-w:34vw;--shadow-delay:-190s"></i>
+    <i style="--shadow-y:66%;--shadow-w:27vw;--shadow-delay:-42s"></i>
+    <i style="--shadow-y:76%;--shadow-w:42vw;--shadow-delay:-285s"></i>
+  </div>
+  <div class="grass-layer" aria-hidden="true"></div>
   <div class="money-layer market-fx" id="moneyRain"></div>
   <div class="money-layer market-fx money-pile" id="moneyPile"></div>
   <div class="brand"><div class="mpo-logo" role="img" aria-label="Money Printer OS"><img class="brand-logo" src="/assets/mpo-logo-3d.webp" alt="" aria-hidden="true" width="960" height="591" draggable="false"><span class="shine" aria-hidden="true"></span></div><small id="runningVersion"></small></div>
@@ -501,7 +507,7 @@ const APPS=[
 ['kalshi','Kalshi','K','dark'],
 ['arbitrage','Arbitrage','ARB','dark','command'],
 ['stocks','Stocks','STK','dark','command'],
-['marketlab','Market Lab','RPL','dark'],
+['marketlab','Market Lab','RPL','dark','command'],
 ['macro','Macro','MAC','dark','command'],
 ['edgar','EDGAR','SEC','dark','command'],
 ['weather','Weather','WX','dark','command'],
@@ -519,8 +525,8 @@ const APPS=[
 ['settings','Settings','⚙','light','system']
 ];
 const ICON_PNG={money:'money.png',command:'command.png',trade:'trade.png',sportsbook:'sportsbook.png',kalshi:'kalshi.png',arbitrage:'arbitrage.png',wire:'wire.png',stocks:'stocks.png',marketlab:'marketlab.png',macro:'macro.png',edgar:'edgar.png',weather:'weather.png',sports:'sports.png',robinhood:'robinhood.png',journal:'journal.png',system:'settings.png',network:'network.png',settings:'settings.png'};
-const TAB_LABEL={sportsbook:'Live combos',trade:'Pump.fun',evolution:'Evolution Lab',wallet:'Wallets',risk:'Risk',archive:'Archive',control:'Controls',researchmon:'Lab Monitor',command:'Command',arbitrage:'Arbitrage',stocks:'Stocks',macro:'Macro',edgar:'EDGAR',weather:'Weather',sports:'Sports',wire:'Wire',system:'Monitor',economics:'Product',network:'Network',log:'Log',updater:'Updater',settings:'Settings'};
-const DESKTOP_ICONS=['money','command','trade','sportsbook','kalshi','marketlab','robinhood','journal','system'];
+const TAB_LABEL={sportsbook:'Live combos',trade:'Pump.fun',evolution:'Evolution Lab',wallet:'Wallets',risk:'Risk',archive:'Archive',control:'Controls',researchmon:'Lab Monitor',command:'Command',arbitrage:'Arbitrage',stocks:'Stocks',marketlab:'Market Lab',macro:'Macro',edgar:'EDGAR',weather:'Weather',sports:'Sports',wire:'Wire',system:'Monitor',economics:'Product',network:'Network',log:'Log',updater:'Updater',settings:'Settings'};
+const DESKTOP_ICONS=['money','command','trade','sportsbook','kalshi','robinhood','journal','system'];
 const appMeta=id=>APPS.find(a=>a[0]===id);
 const hostOf=id=>appMeta(id)?.[4]||id;
 const HOSTS=APPS.filter(a=>!a[4]).map(a=>a[0]);
@@ -563,8 +569,20 @@ const detailSet=new Set(readPref('mpo-detail',[]).filter(id=>HOSTS.includes(id))
 const isDetail=host=>displayPrefs.fullDetail||detailSet.has(host);
 const textScale=()=>TEXT_SCALES[displayPrefs.textSize]||TEXT_SCALES.M;
 function motionReduced(){return displayPrefs.lowMotion||matchMedia('(prefers-reduced-motion: reduce)').matches}
-function applyMotion(){document.documentElement.classList.toggle('mpo-low-motion',motionReduced())}
+const ENV_WIND=Object.freeze({direction:1,basePxS:34,cloudSec:{near:270,mid:420,far:680},shadowSec:390});
+function environmentWindAt(t){
+ const gust=Math.sin(t*.31)*8+Math.sin(t*.73+1.7)*5+Math.sin(t*1.9+.4)*3*Math.max(0,Math.sin(t*.17));
+ const pxs=Math.max(12,ENV_WIND.basePxS+gust);
+ return {direction:ENV_WIND.direction,pxs,gust,gustRatio:pxs/ENV_WIND.basePxS};
+}
+function paintEnvironmentWind(now=performance.now()){
+ const root=document.documentElement,w=environmentWindAt(now/1000),g=Math.max(.55,Math.min(1.55,w.gustRatio));
+ root.style.setProperty('--env-cloud-near',ENV_WIND.cloudSec.near+'s');root.style.setProperty('--env-cloud-mid',ENV_WIND.cloudSec.mid+'s');root.style.setProperty('--env-cloud-far',ENV_WIND.cloudSec.far+'s');root.style.setProperty('--env-shadow-duration',ENV_WIND.shadowSec+'s');
+ root.style.setProperty('--env-grass-a',(-.42*g).toFixed(2)+'deg');root.style.setProperty('--env-grass-b',(1.05*g).toFixed(2)+'deg');root.style.setProperty('--env-grass-far-a',(-.2*g).toFixed(2)+'deg');root.style.setProperty('--env-grass-far-b',(.52*g).toFixed(2)+'deg');root.style.setProperty('--env-wind-strength',g.toFixed(3));
+}
+function applyMotion(){document.documentElement.classList.toggle('mpo-low-motion',motionReduced());paintEnvironmentWind()}
 applyMotion();matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change',()=>{applyMotion();updateDesktopEffects()});
+setInterval(()=>{if(!document.hidden&&!motionReduced())paintEnvironmentWind()},1800);
 const bootFocus=(()=>{const f=readPref('mpo-last-focus','trade');const id=openSet.has(f)?f:[...openSet][0]||'trade';openSet.add(id);return id})();
 // A window without a saved spot opens centred and large: one clear thing on the desktop.
 const HERO_MAX_H={money:500,journal:600};
@@ -639,7 +657,7 @@ function appShell(id,title){
 function buildWindows(){
  $('#windows').innerHTML=HOSTS.map(id=>appShell(id,appMeta(id)[1])).join('');
  $$('.window').forEach(initWindow);
- $$('.window').forEach(w=>{fitResize?.observe(w);fitMutations.observe(w,{childList:true,subtree:true,characterData:true})});
+ $$('.window').forEach(w=>{fitResize?.observe(w);fitMutations.observe(w,{childList:true,subtree:true})});
  $$('.win-tabs .tab98').forEach(b=>b.onclick=e=>{e.stopPropagation();setTab(b.dataset.host,b.dataset.tab)});
  reflowAll(); renderTasks();
  const first=$(`.window[data-app="${bootFocus}"]`);if(first&&!first.classList.contains('hidden'))focus(first);
@@ -667,7 +685,7 @@ function setTab(host,id){
  activeTab[host]=id;
  w.querySelectorAll('.win-tabs .tab98').forEach(b=>b.classList.toggle('on',b.dataset.tab===id));
  w.querySelectorAll('.tabpane').forEach(p=>p.classList.toggle('on',p.id==='body-'+id));
- persist(); renderSig.delete(id); renderAll(); scheduleFit(w);
+ persist(); window.dispatchEvent(new CustomEvent('mpo:tab-change',{detail:{host,id}})); renderSig.delete(id); renderAll(); scheduleFit(w);
 }
 // Windows stay fully inside the desktop (above the taskbar); shrink them if the desktop got smaller.
 function clampWin(w){
@@ -731,7 +749,7 @@ function fitBadge(w,z){
 function scheduleFit(w){if(!w)return;fitQueue.add(w);if(!fitRaf)fitRaf=requestAnimationFrame(()=>{fitRaf=0;const ws=[...fitQueue];fitQueue.clear();const at=performance.now();for(const x of ws)fitWindow(x);window.MPOHud.measure('layoutAndFit',performance.now()-at)})}
 function fitAll(){$$('.window').forEach(scheduleFit)}
 const fitResize=typeof ResizeObserver==='function'?new ResizeObserver(es=>{for(const e of es)scheduleFit(e.target)}):null;
-const fitMutations=new MutationObserver(ms=>{for(const m of ms){const n=m.target.nodeType===1?m.target:m.target.parentElement;const w=n&&n.closest&&n.closest('.window');if(w)scheduleFit(w)}});
+const fitMutations=new MutationObserver(ms=>{const queued=new Set();for(const m of ms){const n=m.target.nodeType===1?m.target:m.target.parentElement,w=n&&n.closest&&n.closest('.window');if(!w||queued.has(w)||w.classList.contains('hidden'))continue;const pane=fitPaneOf(w);if(!pane||pane.querySelector('.core-app')||!(pane===n||pane.contains(n)))continue;queued.add(w);scheduleFit(w)}});
 // Tile: lay every open window out to fill the desktop with no overlap. The trading modules get the
 // top band (about two thirds of the height); System, Journal, Money and the rest share the band below.
 const TILE_PRIMARY=['trade','robinhood','sportsbook'];
@@ -825,7 +843,7 @@ function makeBurstBills(n,intensity,source='profit'){const tiny=intensity<.25;le
 // flies ballistically, then catches the air and flutters back down. Landed bills linger and fade slowly.
 const FX_PHYS={bills:new Set(),raf:0,last:0,t:0};
 function fxRand(a,b){return a+Math.random()*(b-a)}
-function fxWind(t){return 34+Math.sin(t*.31)*8+Math.sin(t*.73+1.7)*5+Math.sin(t*1.9+.4)*3*Math.max(0,Math.sin(t*.17))}
+function fxWind(t){return environmentWindAt(t).pxs}
 function fxPickMode(b){const r=Math.random();return b.heavy?(r<.7?"drift":"flutter"):r<.5?"flutter":r<.8?"tumble":"drift"}
 function fxResetBill(b,host,first){const el=b.el,H=host.clientHeight||innerHeight||720;b.w=el.offsetWidth||80;b.h=el.offsetHeight||40;b.bx=el.offsetLeft;b.y=-(H+b.h+fxRand(20,120));b.x=0;b.vx=fxRand(14,30)*(b.heavy?.65:1);b.vy=0;b.phase=fxRand(0,6.283);b.omega=fxRand(2.1,3.6)*(b.heavy?.7:1);b.amp=fxRand(.7,1.25);b.pitch=fxRand(-40,40);b.yaw=fxRand(-30,30);b.roll=fxRand(-20,20);b.spin=(Math.random()<.5?-1:1)*fxRand(380,720);b.mode=fxPickMode(b);b.modeT=fxRand(1.2,3.5);b.state="fall";b.rest=0;b.restSet=0;b.alpha=1;b.hitT=0;b.vt=(H+b.h)/Math.max(3,b.dur*.58)*(b.heavy?1.9:1);if(first&&b.delay<0){const skip=-b.delay;if(skip<b.dur*.58){b.y+=b.vt*skip*.85;b.delay=0}else b.delay=fxRand(0,b.dur*.4)}}
 function fxCx(b){return b.bx+b.x+b.w/2}
@@ -885,13 +903,18 @@ function fxRainHost(rain){if(rain.dataset.fx)return;rain.dataset.fx="1";const ad
  new MutationObserver(ms=>ms.forEach(m=>m.addedNodes.forEach(adopt))).observe(rain,{childList:true});rain.querySelectorAll("img.bill").forEach(adopt)}
 function makeRainBills(n,intensity){return Array.from({length:n},()=>{const d=12+Math.random()*5;return fxBill({cls:'rain',src:'paper-equity',tiny:intensity<.2,d:d.toFixed(2),delay:(-Math.random()*d).toFixed(2)})}).join('')}
 function makePileBills(n,intensity){return Array.from({length:n},(_,i)=>{const left=Math.max(2,Math.min(94,(i+.25)*100/Math.max(1,n)+Math.random()*8-4)),bottom=Math.max(0,Math.round(Math.random()*20+intensity*12)),rot=(Math.random()*30-15).toFixed(1),scale=(.62+Math.random()*.42).toFixed(2);return `<div class="bill pile" data-market="paper-equity" style="left:${left}%;bottom:${bottom}px;--rot:${rot}deg;--scale:${scale};animation-delay:${(-Math.random()*2).toFixed(2)}s"></div>`}).join('')}
-const MONEY_EVENT_LIFE_MS=75000;let moneyEventExpiryTimer=null;
-function renderMoneyEvents(){const el=$('#moneyEventFeed');if(!el)return;const now=Date.now();while(moneyEvents.length&&now-moneyEvents[0].at>=MONEY_EVENT_LIFE_MS)moneyEvents.shift();const rows=moneyEvents.slice(-12);el.innerHTML=rows.map(x=>{const ageSec=Math.max(0,(now-x.at)/1000);return `<div class="money-event ${x.kind||'profit'}" style="--event-age:-${ageSec.toFixed(2)}s"><span>${new Date(x.at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</span> ${polyEscape(x.text)}</div>`}).join('');if(moneyEventExpiryTimer)clearTimeout(moneyEventExpiryTimer);if(rows.length){const wait=Math.max(250,MONEY_EVENT_LIFE_MS-(now-rows[0].at)+50);moneyEventExpiryTimer=setTimeout(renderMoneyEvents,wait)}}
-function noteMoneyEvent(text,kind='profit'){const t=String(text||'').trim();if(!t)return;const last=moneyEvents.at(-1);if(last?.text===t&&Date.now()-last.at<2500)return;moneyEvents.push({at:Date.now(),text:t,kind});if(moneyEvents.length>60)moneyEvents.splice(0,moneyEvents.length-60);renderMoneyEvents()}
+const MONEY_EVENT_META={
+ 'major-win':{ttl:120000,cls:'major major-win'},'major-loss':{ttl:120000,cls:'major major-loss'},risk:{ttl:105000,cls:'risk'},
+ canary:{ttl:105000,cls:'canary'},'lab-promotion':{ttl:100000,cls:'lab-promotion'},status:{ttl:85000,cls:'status'},
+ system:{ttl:80000,cls:'system'},profit:{ttl:90000,cls:'paper-trade'},ambient:{ttl:50000,cls:'ambient'}
+};let moneyEventExpiryTimer=null;
+function moneyEventMeta(kind){return MONEY_EVENT_META[kind]||MONEY_EVENT_META.system}
+function renderMoneyEvents(){const el=$('#moneyEventFeed');if(!el)return;const now=Date.now();for(let i=moneyEvents.length-1;i>=0;i--)if(now-moneyEvents[i].at>=moneyEvents[i].ttl)moneyEvents.splice(i,1);const rows=moneyEvents.slice(-14);el.innerHTML=rows.map(x=>{const ageSec=Math.max(0,(now-x.at)/1000),life=(x.ttl/1000).toFixed(0);return `<div class="money-event ${x.cls}" style="--event-life:${life}s;--event-age:-${ageSec.toFixed(2)}s"><span>${new Date(x.at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</span> ${polyEscape(x.text)}${x.count>1?` <b class="event-count">×${x.count}</b>`:''}</div>`}).join('');if(moneyEventExpiryTimer)clearTimeout(moneyEventExpiryTimer);if(rows.length){const wait=Math.max(250,Math.min(...rows.map(x=>x.ttl-(now-x.at)))+50);moneyEventExpiryTimer=setTimeout(renderMoneyEvents,wait)}}
+function noteMoneyEvent(text,kind='system'){const t=String(text||'').trim();if(!t)return;const now=Date.now(),meta=moneyEventMeta(kind),key=kind+'|'+t.toLowerCase(),i=moneyEvents.findIndex(x=>x.key===key&&now-x.at<12000);if(i>=0){const x=moneyEvents.splice(i,1)[0];x.at=now;x.count=(x.count||1)+1;moneyEvents.push(x)}else moneyEvents.push({at:now,text:t,kind,key,ttl:meta.ttl,cls:meta.cls,count:1});if(moneyEvents.length>60)moneyEvents.splice(0,moneyEvents.length-60);renderMoneyEvents()}
 
 function triggerMoneyBurst(amountUsd=1,source='profit',reason='Profit realized'){
  const amount=Math.max(0,Number(amountUsd)||0);if(!(amount>0))return;
- noteMoneyEvent(reason+' · +$'+amount.toFixed(amount<10?2:0)+' effect');
+ noteMoneyEvent(reason+' · +$'+amount.toFixed(amount<10?2:0)+' effect',amount>=50?'major-win':'profit');
  const rain=$('#moneyRain'),pile=$('#moneyPile');if(!rain||!pile||motionReduced())return;
  const intensity=clamp01(Math.log10(1+amount)/2.2),n=Math.max(5,Math.min(34,Math.round(5+amount*1.2+intensity*10))),stacks=Math.max(8,Math.min(28,Math.round(10+intensity*18)));
  fxRainHost(rain);rain.insertAdjacentHTML('beforeend',makeBurstBills(n,intensity,source));rain.style.opacity='1';
@@ -904,6 +927,14 @@ function trackRobinhoodProfitBurst(next){
  const hist=Array.isArray(next?.paper?.history)?next.paper.history:[],keys=hist.map(x=>String(x?.id||String(x?.symbol||'robinhood')+':'+String(x?.closedAt||x?.at||'')));
  if(!fxRobinhoodPrimed){keys.forEach(k=>fxSeenRobinhoodCloses.add(k));fxRobinhoodPrimed=true;return}
  hist.forEach((x,i)=>{const k=keys[i];if(fxSeenRobinhoodCloses.has(k))return;fxSeenRobinhoodCloses.add(k);const pnl=Number(x?.pnlUsd);if(String(x?.status).toUpperCase()==='CLOSED'&&pnl>0)triggerMoneyBurst(pnl,'robinhood-win','Robinhood paper win +$'+pnl.toFixed(2))});
+}
+function trackDesktopStateEvents(prev,next){
+ if(!prev||!next)return;
+ const ph=String(prev.system?.health||''),nh=String(next.system?.health||'');if(ph&&nh&&ph!==nh)noteMoneyEvent('System health '+ph+' → '+nh,nh==='DEGRADED'?'risk':'status');
+ const pk=!!prev.system?.killSwitch,nk=!!next.system?.killSwitch;if(pk!==nk)noteMoneyEvent(nk?'Pump.fun kill switch engaged':'Pump.fun kill switch cleared','risk');
+ const pp=!!prev.system?.paused,np=!!next.system?.paused;if(pp!==np)noteMoneyEvent(np?'Pump.fun paper engine paused':'Pump.fun paper engine resumed',np?'risk':'status');
+ const pc=prev.labLink?.championId||prev.evolutionLoop?.champion?.id,nc=next.labLink?.championId||next.evolutionLoop?.champion?.id;if(pc&&nc&&pc!==nc)noteMoneyEvent('Evolution Lab paper champion '+String(pc)+' → '+String(nc),'lab-promotion');
+ const canary=x=>x?.paperCanary?.status||x?.evolutionLoop?.paperCanary?.status||x?.labLink?.paperCanary?.status||null,ca=canary(prev),cb=canary(next);if(ca&&cb&&ca!==cb)noteMoneyEvent('PAPER_CANARY '+String(ca)+' → '+String(cb),'canary');
 }
 
 function updateDesktopEffects(force=false){
@@ -1732,7 +1763,7 @@ async function refreshState(){
  const t0=performance.now();
  try{
    const sr=await fetch('/api/state',{cache:'no-store'});
-   if(sr.status!==304){const parseStart=performance.now(),next=await sr.json();perf.parseMs=performance.now()-parseStart;window.MPOHud.measure('stateParse',perf.parseMs);if(!next||typeof next!=='object'||Array.isArray(next)||!next.system)throw Error('Invalid trading service snapshot');state=next;$('#runningVersion').textContent=state?.build?.version?'v'+state.build.version:'';perf.stateKB=Number(sr.headers.get('x-payload-bytes')||0)/1024;perf.lastStateAt=Date.now();perf.stateError=null}
+   if(sr.status!==304){const parseStart=performance.now(),next=await sr.json();perf.parseMs=performance.now()-parseStart;window.MPOHud.measure('stateParse',perf.parseMs);if(!next||typeof next!=='object'||Array.isArray(next)||!next.system)throw Error('Invalid trading service snapshot');const prev=state;state=next;trackDesktopStateEvents(prev,next);$('#runningVersion').textContent=state?.build?.version?'v'+state.build.version:'';perf.stateKB=Number(sr.headers.get('x-payload-bytes')||0)/1024;perf.lastStateAt=Date.now();perf.stateError=null}
    perf.refreshMs=performance.now()-t0;trackRealizedProfitBurst();updateDesktopEffects();renderAll();
  }catch(e){if(e.name!=='AbortError')perf.stateError=e.message;paintReadStatus()}
 }

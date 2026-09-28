@@ -28,9 +28,9 @@
       ${rows ? table(['Accepted (public)', 'Form', 'Company', 'Facts: items / transactions', 'Analysis (rule-based)', 'Source'], rows.map(row).join(''), 'No filings.') : ''}
       <p class="core-muted">Facts are exactly what the filer declared. The analysis column maps item numbers to catalyst labels and matches loaded market titles; it is not investment advice and never replaces the filing.</p>`;
   }
-  const win = () => document.querySelector('.window[data-app="edgar"]');
-  const root = () => { const w = win(); return w ? document.getElementById((w.classList.contains('glance') ? 'glance-' : 'body-') + 'edgar') : null; };
-  const visible = () => { const w = win(); return !!(w && root() && !w.classList.contains('hidden')); };
+  const win = () => document.querySelector('.window[data-app="command"]');
+  const root = () => document.getElementById('body-edgar');
+  const visible = () => { const w = win(), r = root(); return !!(w && r && r.classList.contains('on') && !w.classList.contains('hidden') && !w.classList.contains('glance')); };
   function draw(force = false) {
     const r = root(); if (!visible() || (!force && drawn === r.id + ':' + stamp)) return;
     if (!force && r.contains(document.activeElement) && document.activeElement.matches('input,select,textarea')) return;

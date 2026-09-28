@@ -52,11 +52,11 @@
         <p class="core-muted">Promotion gate preview — PAPER: ${wf.checks.PAPER.allowed ? 'passes' : escape(wf.checks.PAPER.blockers.join(', '))} · CANDIDATE: ${wf.checks.CANDIDATE.allowed ? 'passes' : escape(wf.checks.CANDIDATE.blockers.join(', '))}${wf.attached ? ` · Evidence attached to <b>${escape(wf.attached.name)}</b> (${escape(wf.attached.state)}); promote it from Command Center when the gate passes.` : ''}</p>
         <p class="core-muted">Run ${escape(wf.id.slice(0, 8))} · dataset ${escape(wf.datasetFp.slice(0, 10))} · seed ${wf.seed} · ${escape(wf.evidence.method)}</p>` : ''}
       <h3>Experiment history <small>Append-only; same dataset + parameters + code reproduce the same result</small></h3>
-      ${table(['Time', 'Source', 'Instrument', 'Strategy', 'Params', 'Records', 'Return', 'B&H', 'Max DD', 'Dataset', 'Code'], runs.map(r => `<tr><td>${when(r.at)}</td><td>${escape(r.source)}</td><td>${escape(r.key)}</td><td>${escape(r.strategy)}</td><td><small>${escape(JSON.stringify(r.params))}</small></td><td>${r.records}</td><td class="${tone(r.result.returnPct)}">${pctv(r.result.returnPct)}</td><td>${pctv(r.result.buyHoldPct)}</td><td>${pctv(r.result.maxDrawdownPct)}</td><td>${escape(r.dataset_fp.slice(0, 10))}</td><td><small>${escape(r.code_version)}</small></td></tr>`).join(''), 'No runs yet.')}`;
+      ${table(['Time', 'Source', 'Instrument', 'Strategy', 'Params', 'Records', 'Return', 'B&H', 'Max DD', 'Dataset', 'Code'], runs.slice(0,80).map(r => `<tr><td>${when(r.at)}</td><td>${escape(r.source)}</td><td>${escape(r.key)}</td><td>${escape(r.strategy)}</td><td><small>${escape(JSON.stringify(r.params))}</small></td><td>${r.records}</td><td class="${tone(r.result.returnPct)}">${pctv(r.result.returnPct)}</td><td>${pctv(r.result.buyHoldPct)}</td><td>${pctv(r.result.maxDrawdownPct)}</td><td>${escape(r.dataset_fp.slice(0, 10))}</td><td><small>${escape(r.code_version)}</small></td></tr>`).join(''), 'No runs yet.')}`;
   }
-  const win = () => document.querySelector('.window[data-app="marketlab"]');
-  const root = () => { const w = win(); return w ? document.getElementById((w.classList.contains('glance') ? 'glance-' : 'body-') + 'marketlab') : null; };
-  const visible = () => { const w = win(); return !!(w && root() && !w.classList.contains('hidden')); };
+  const win = () => document.querySelector('.window[data-app="command"]');
+  const root = () => document.getElementById('body-marketlab');
+  const visible = () => { const w = win(), r = root(); return !!(w && r && r.classList.contains('on') && !w.classList.contains('hidden') && !w.classList.contains('glance')); };
   function draw(force = false) {
     const r = root(); if (!visible() || (!force && drawn === r.id + ':' + stamp)) return;
     if (!force && r.contains(document.activeElement) && document.activeElement.matches('input,select,textarea')) return;
@@ -73,7 +73,8 @@
   const stopTimer = () => { if (timer) clearInterval(timer); timer = null; };
   let stepping=false;
   async function step(ms) { if (!replay||stepping) return;const id=replay.id;stepping=true;try{ const r = await api('/lab/replay/step', { id, ms });if(!replay||replay.id!==id)return; const res = r.result; replay = { ...replay, clock: res.clock, revealed: res.revealed, done: res.done, mids: replay.mids.concat(res.fresh.map(x => (x.bid + x.ask) / 2)) }; if (res.done) stopTimer(); stamp++; draw(true); }finally{stepping=false} }
-  window.addEventListener('mpo:window-close',e=>{if(e.detail?.id==='marketlab'){stopTimer();stamp++}});
+  window.addEventListener('mpo:window-close',e=>{if(e.detail?.id==='command'){stopTimer();stamp++}});
+  window.addEventListener('mpo:tab-change',e=>{if(e.detail?.host==='command'&&e.detail?.id!=='marketlab'){stopTimer();stamp++}});
   document.addEventListener('visibilitychange',()=>{if(document.hidden){stopTimer();stamp++}});
   window.addEventListener('pagehide',stopTimer);
 

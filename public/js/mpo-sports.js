@@ -24,9 +24,9 @@
       }).join(''), 'No events in this filter.')}
       <p class="core-muted">K = Kalshi, P = Polymarket listing mids. * = Polymarket price of the other named outcome, shown as its complement. A venue gap is not an arbitrage: check terms and depth in Arbitrage.</p>`;
   }
-  const win = () => document.querySelector('.window[data-app="sports"]');
-  const root = () => { const w = win(); return w ? document.getElementById((w.classList.contains('glance') ? 'glance-' : 'body-') + 'sports') : null; };
-  const visible = () => { const w = win(); return !!(w && root() && !w.classList.contains('hidden')); };
+  const win = () => document.querySelector('.window[data-app="command"]');
+  const root = () => document.getElementById('body-sports');
+  const visible = () => { const w = win(), r = root(); return !!(w && r && r.classList.contains('on') && !w.classList.contains('hidden') && !w.classList.contains('glance')); };
   function draw(force = false) { const r = root(); if (!visible() || (!force && drawn === r.id + ':' + stamp)) return; drawn = r.id + ':' + stamp; const top = r.scrollTop; r.innerHTML = `<div class="core-app sports-app">${error ? `<p class="core-error" role="alert">${escape(error)}</p>` : ''}${view()}</div>`; r.scrollTop = top; }
   async function refresh() { if (busy || !visible() || Date.now() - lastFetch < 60000) return; busy = true; lastFetch = Date.now(); stamp++; draw(true); try { data = await api('/sports'); error = ''; } catch (e) { error = e.message; lastFetch = 0; } finally { busy = false; stamp++; draw(true); } }
   document.addEventListener('click', e => { const b = e.target.closest('[data-sp-filter]'); if (!b || !root()?.contains(b)) return; filter = b.dataset.spFilter; stamp++; draw(true); });

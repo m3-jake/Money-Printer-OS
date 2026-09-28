@@ -28,9 +28,9 @@
         : '<p class="core-muted">Set FRED_API_KEY (free at fred.stlouisfed.org) to query history as it was known on past dates. Without it, revised values would leak into backtests, so the query is disabled.</p>'}
       <p class="core-muted">FRED: ${escape(data.fred.status)} · ${escape(data.fred.mode)} · loaded ${when(data.at)}</p>`;
   }
-  const win = () => document.querySelector('.window[data-app="macro"]');
-  const root = () => { const w = win(); return w ? document.getElementById((w.classList.contains('glance') ? 'glance-' : 'body-') + 'macro') : null; };
-  const visible = () => { const w = win(); return !!(w && root() && !w.classList.contains('hidden')); };
+  const win = () => document.querySelector('.window[data-app="command"]');
+  const root = () => document.getElementById('body-macro');
+  const visible = () => { const w = win(), r = root(); return !!(w && r && r.classList.contains('on') && !w.classList.contains('hidden') && !w.classList.contains('glance')); };
   function draw(force = false) {
     const r = root(); if (!visible() || (!force && drawn === r.id + ':' + stamp)) return;
     if (!force && r.contains(document.activeElement) && document.activeElement.matches('input,select,textarea')) return;

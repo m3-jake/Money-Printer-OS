@@ -279,29 +279,39 @@
   };
 
   // ------------------------------------------------------------------ loop
-  let last = performance.now(), lastDraw = 0;
+  // Static charts draw only when data/layout changes. Motion charts run at <=15 fps and only while visible.
+  const MOTION_TYPES = new Set(['pulse','ticker','edge','bubbles']);
+  let last = performance.now(), lastDraw = 0, raf = 0, dirty = true;
   function visible(c) { return c.isConnected && c.offsetParent !== null && c.clientWidth > 0; }
+  function wake(){ if(!raf)raf=requestAnimationFrame(frame); }
   function frame(now) {
-    requestAnimationFrame(frame);
+    raf=0;
     if (document.hidden) { last = now; return; }
-    const minGap = reduce() ? 500 : 33;
-    if (now - lastDraw < minGap) return;
-    const dt = Math.min(0.25, (now - last) / 1000); last = now; lastDraw = now;
+    const canvases=[...document.querySelectorAll('canvas[data-viz]')].filter(visible);
+    if(!canvases.length){last=now;return}
+    const moving=canvases.some(c=>MOTION_TYPES.has(REG.get(c.dataset.viz)?.type));
+    if(!dirty&&!moving)return;
+    const minGap=reduce()?500:66;
+    if(moving&&!dirty&&now-lastDraw<minGap){wake();return}
+    const dt = Math.min(0.25, Math.max(0,(now - last) / 1000)); last = now; lastDraw = now;
     const t = now / 1000, drawStarted=performance.now();
-    for (const c of document.querySelectorAll('canvas[data-viz]')) {
-      if (!visible(c)) continue;
+    for (const c of canvases) {
       const key = c.dataset.viz, spec = REG.get(key); if (!spec || !T[spec.type]) continue;
       const dpr = Math.min(2, window.devicePixelRatio || 1), W = Math.round(c.clientWidth * dpr), H = Math.round(c.clientHeight * dpr);
       if (c.width !== W) c.width = W; if (c.height !== H) c.height = H;
       const x = c.getContext('2d'); x.clearRect(0, 0, W, H);
       try { T[spec.type](x, W, H, dpr, t, spec.data || {}, state(key), dt); } catch (e) { if (!spec.err) { spec.err = true; console.warn('viz', key, e); } }
     }
-    window.MPOHud?.measure('charts',performance.now()-drawStarted);
+    dirty=false;window.MPOHud?.measure('charts',performance.now()-drawStarted);
+    if(moving)wake();
   }
-  requestAnimationFrame(frame);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden){dirty=true;wake()}});
+  window.addEventListener('resize',()=>{dirty=true;wake()});
+  window.addEventListener('mpo:tab-change',()=>{dirty=true;wake()});
+  wake();
 
   window.MPOViz = {
-    set(key, type, data) { const prior = REG.get(key); REG.set(key, { type, data, err: prior && prior.type === type ? prior.err : false }); },
+    set(key, type, data) { const prior = REG.get(key); REG.set(key, { type, data, err: prior && prior.type === type ? prior.err : false }); dirty=true;wake(); },
     canvas(key, height, title) {
       return `<div class="mpo-viz">${title ? `<div class="mpo-viz__title">${esc(title)}</div>` : ''}<canvas data-viz="${esc(key)}" style="height:${Number(height) || 120}px"></canvas></div>`;
     },

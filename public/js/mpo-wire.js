@@ -22,9 +22,9 @@
         ${(i.relatedMarkets || []).length ? `<div class="wire-rel"><small>Related markets: ${i.relatedMarkets.slice(0, 4).map(m => escape(`${m.venue}: ${m.title}`)).join(' · ')}</small></div>` : ''}
       </article>`).join('') || '<p>No items in this view.</p>'}</div>`;
   }
-  const win = () => document.querySelector('.window[data-app="wire"]');
-  const root = () => { const w = win(); return w ? document.getElementById((w.classList.contains('glance') ? 'glance-' : 'body-') + 'wire') : null; };
-  const visible = () => { const w = win(); return !!(w && root() && !w.classList.contains('hidden')); };
+  const win = () => document.querySelector('.window[data-app="command"]');
+  const root = () => document.getElementById('body-wire');
+  const visible = () => { const w = win(), r = root(); return !!(w && r && r.classList.contains('on') && !w.classList.contains('hidden') && !w.classList.contains('glance')); };
   function draw(force = false) { const r = root(); if (!visible() || (!force && drawn === r.id + ':' + stamp)) return; if (!force && r.contains(document.activeElement) && document.activeElement.matches('input,select')) return; drawn = r.id + ':' + stamp; const top = r.scrollTop; r.innerHTML = `<div class="core-app wire-app">${error ? `<p class="core-error" role="alert">${escape(error)}</p>` : ''}${view()}</div>`; r.scrollTop = top; }
   async function refresh() { if (busy || !visible() || Date.now() - lastFetch < 30000) return; busy = true; lastFetch = Date.now(); stamp++; draw(true); try { data = await api('/wire'); error = ''; } catch (e) { error = e.message; lastFetch = 0; } finally { busy = false; stamp++; draw(); } }
   document.addEventListener('click', e => { const b = e.target.closest('[data-wire-filter]'); if (!b || !root()?.contains(b)) return; filter = b.dataset.wireFilter; stamp++; draw(true); });

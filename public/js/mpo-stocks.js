@@ -56,9 +56,9 @@
   }
 
   // Simple (glance) and Advanced modes use different panes; draw into whichever is showing.
-  const win = () => document.querySelector('.window[data-app="stocks"]');
-  const root = () => { const w = win(); return w ? document.getElementById((w.classList.contains('glance') ? 'glance-' : 'body-') + 'stocks') : null; };
-  const visible = () => { const w = win(); return !!(w && root() && !w.classList.contains('hidden')); };
+  const win = () => document.querySelector('.window[data-app="command"]');
+  const root = () => document.getElementById('body-stocks');
+  const visible = () => { const w = win(), r = root(); return !!(w && r && r.classList.contains('on') && !w.classList.contains('hidden') && !w.classList.contains('glance')); };
   function draw(force = false) {
     const r = root(); if (!visible() || (!force && drawn === r.id + ':' + stamp)) return;
     if (r.contains(document.activeElement) && document.activeElement.matches('input,select,textarea')) return;

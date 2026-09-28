@@ -909,3 +909,105 @@ img.bill.stack { filter: drop-shadow(0 6px 6px #0007); }
 img.bill.phys { animation: none !important; transform-origin: 50% 50%; will-change: transform, opacity, filter; backface-visibility: visible; }
 img.bill.phys.grab { pointer-events: auto; cursor: grab; touch-action: none; user-select: none; -webkit-user-drag: none; }
 img.bill.phys.grabbing { cursor: grabbing; z-index: 5; }
+
+/* alpha.72 living desktop: one prevailing breeze drives clouds, hill shadows, grass and paper. */
+:root {
+  --env-cloud-near: 270s;
+  --env-cloud-mid: 420s;
+  --env-cloud-far: 680s;
+  --env-shadow-duration: 390s;
+  --env-grass-a: -.42deg;
+  --env-grass-b: 1.05deg;
+  --env-grass-far-a: -.20deg;
+  --env-grass-far-b: .52deg;
+  --env-wind-strength: 1;
+}
+/* The existing cloud placement stays intact; only cadence is grouped by visual depth. */
+.sky-clouds > .sky-cloud:nth-child(-n+4) { animation-duration: var(--env-cloud-far) !important; }
+.sky-clouds > .sky-cloud:nth-child(n+5):nth-child(-n+7) { animation-duration: var(--env-cloud-mid) !important; }
+.sky-clouds > .sky-cloud:nth-child(n+8) { animation-duration: var(--env-cloud-near) !important; }
+
+.cloud-shadows {
+  position: absolute;
+  inset: 0 0 var(--task);
+  z-index: 2;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: .8;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0 47%, #000 58% 100%);
+  mask-image: linear-gradient(to bottom, transparent 0 47%, #000 58% 100%);
+}
+.cloud-shadows i {
+  position: absolute;
+  left: -48vw;
+  top: var(--shadow-y);
+  width: var(--shadow-w);
+  height: 8vh;
+  min-height: 34px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(12,63,29,.075) 0 24%, rgba(15,72,34,.035) 48%, transparent 74%);
+  will-change: transform;
+  animation: cloudShadowDrift var(--env-shadow-duration) linear infinite;
+  animation-delay: var(--shadow-delay);
+}
+@keyframes cloudShadowDrift {
+  from { transform: translate3d(-8vw,0,0) skewX(-10deg); }
+  to { transform: translate3d(160vw,0,0) skewX(-10deg); }
+}
+
+.grass-layer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: var(--task);
+  height: 27%;
+  z-index: 2;
+  overflow: hidden;
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0 48%, rgba(0,0,0,.28) 63%, #000 100%);
+  mask-image: linear-gradient(to bottom, transparent 0 48%, rgba(0,0,0,.28) 63%, #000 100%);
+}
+.grass-layer::before,
+.grass-layer::after {
+  content: "";
+  position: absolute;
+  inset: 0 -3%;
+  transform-origin: 50% 100%;
+  will-change: transform;
+  background:
+    repeating-linear-gradient(84deg, transparent 0 10px, rgba(24,96,34,.13) 10px 11px, transparent 11px 18px),
+    repeating-linear-gradient(96deg, transparent 0 15px, rgba(35,116,43,.09) 15px 16px, transparent 16px 24px);
+}
+.grass-layer::before { animation: grassSwayNear 4.8s ease-in-out infinite; opacity: .78; }
+.grass-layer::after { animation: grassSwayFar 7.2s ease-in-out infinite reverse; opacity: .52; transform: scaleY(.73); }
+@keyframes grassSwayNear {
+  0%,100% { transform: skewX(var(--env-grass-a)); }
+  50% { transform: skewX(var(--env-grass-b)); }
+}
+@keyframes grassSwayFar {
+  0%,100% { transform: scaleY(.73) skewX(var(--env-grass-far-a)); }
+  50% { transform: scaleY(.73) skewX(var(--env-grass-far-b)); }
+}
+
+/* Importance-aware Events feed; lifespan is supplied per event by the renderer. */
+.money-event { animation-duration: var(--event-life,75s); }
+.money-event.major { padding: 4px 7px; border-left-width: 4px; font-size: 14px; background: linear-gradient(90deg,#052716d9,#05271677 74%,transparent); }
+.money-event.major-win { color: #eaffd7; border-left-color: #9dff48; }
+.money-event.major-loss,
+.money-event.risk { color: #ffd4d4; border-left-color: #ff6767; }
+.money-event.canary { color: #fff0af; border-left-color: #ffd34d; }
+.money-event.lab-promotion { color: #d9d7ff; border-left-color: #aa8cff; }
+.money-event.status,
+.money-event.system { border-left-color: #8eb9c9; color: #dceff1; }
+.money-event.paper-trade { border-left-color: #66ff66; }
+.money-event .event-count { color: #fff; font-weight: 900; }
+
+.mpo-low-motion .sky-cloud { animation-play-state: paused !important; }
+.mpo-low-motion .cloud-shadows { display: none; }
+.mpo-low-motion .grass-layer::before,
+.mpo-low-motion .grass-layer::after { animation: none; transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  .cloud-shadows { display: none; }
+  .grass-layer::before,
+  .grass-layer::after { animation: none; transform: none; }
+}

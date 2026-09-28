@@ -25,9 +25,9 @@
       ${data.alertsError ? `<p class="core-error">${escape(data.alertsError)}</p>` : table(['Sent', 'Event', 'Severity', 'Area', 'Expires', 'Possible exposure (speculative)'], alerts.slice(0, 60).map(a => `<tr><td>${when(a.sent)}</td><td><b>${escape(a.event)}</b></td><td>${escape(a.severity)} / ${escape(a.urgency || '')}</td><td><small>${escape(String(a.area || '').slice(0, 140))}</small></td><td>${when(a.expires)}</td><td><small>${escape(a.analysis.sectors.join(', ')) || '—'}</small></td></tr>`).join(''), 'No alerts in this filter.')}
       <p class="core-muted">NWS ${escape(data.nws.status)} · loaded ${when(data.at)} · refreshes every 10 minutes while open.</p>`;
   }
-  const win = () => document.querySelector('.window[data-app="weather"]');
-  const root = () => { const w = win(); return w ? document.getElementById((w.classList.contains('glance') ? 'glance-' : 'body-') + 'weather') : null; };
-  const visible = () => { const w = win(); return !!(w && root() && !w.classList.contains('hidden')); };
+  const win = () => document.querySelector('.window[data-app="command"]');
+  const root = () => document.getElementById('body-weather');
+  const visible = () => { const w = win(), r = root(); return !!(w && r && r.classList.contains('on') && !w.classList.contains('hidden') && !w.classList.contains('glance')); };
   function draw(force = false) { const r = root(); if (!visible() || (!force && drawn === r.id + ':' + stamp)) return; drawn = r.id + ':' + stamp; const top = r.scrollTop; r.innerHTML = `<div class="core-app wx-app">${error ? `<p class="core-error" role="alert">${escape(error)}</p>` : ''}${view()}</div>`; r.scrollTop = top; }
   async function refresh() { if (busy || !visible() || Date.now() - lastFetch < 600000) return; busy = true; lastFetch = Date.now(); stamp++; draw(true); try { data = await api('/weather'); error = ''; } catch (e) { error = e.message; lastFetch = 0; } finally { busy = false; stamp++; draw(true); } }
   document.addEventListener('click', e => { const b = e.target.closest('[data-wx-filter]'); if (!b || !root()?.contains(b)) return; filter = b.dataset.wxFilter; stamp++; draw(true); });
