@@ -16,6 +16,8 @@ import { alert } from './alerts.js';
 import { pushTick, microFeatures, explosionScore, moonScore, buildCandles, narrative, walletSignals } from './intelligence.js';
 import { socialSignals } from './providers.js';
 import { startProgramStream } from './stream.js';
+import { startTrackedWalletStream, smartWallets, copySignalForMint } from './walletTracker.js';
+import { copyTradeSignals } from './copyTrade.js';
 import { aggressionParams, exitPresets, operatingProfiles, customExitPolicy, sanitizeCustomExit, openLimitFor, MAX_OPEN_OVERRIDE, isAggressivePaper } from './runtime.js';
 import { recordUniverse, postmortemTrade } from './research.js';
 import { supervisorTick } from './supervisor.js';
@@ -154,6 +156,8 @@ async function liveSell(s, p, fraction, reason) {
 }
 
 async function enter(s, pick, manual = false) {
+  const copySignal=cfg.mode==='paper'?copySignalForMint(pick?.mint):null;
+  if(copySignal){pick={...pick,signalSource:copySignal.source,dominantSignal:'copy-trade'};}
   if (!pick || s.runtime.blacklist.includes(pick.mint) || s.positions.some(p => p.mint === pick.mint)) return;
   if(!(Number(pick.priceUsd)>0)||!Number.isFinite(Number(pick.priceUsd))||Date.now()-Number(pick.priceObservedAt||0)>30000){
     s.stats.skipped++;return;
@@ -253,7 +257,7 @@ async function enter(s, pick, manual = false) {
       profile: s.runtime.profile || null, exitPreset: s.runtime.exitPreset || null, championId: s.runtime.activeEvolutionChampionId || 'BASE',
     });
     s.stats.signals++;
-    appendJournal({type:'trade-open',mode:'PAPER',pnlMode:'PAPER',mint:pick.mint,symbol:pick.symbol,sizeSol:filledBasis,requestedSizeSol:size,score:pick.score,fastEdgeScore:pick.fastEdgeScore||pick.score,strategy,manual,fillStatus:sim.status,fillRatio:sim.fillRatio,slippageBps:sim.slippageBps,simulatedFailurePct:sim.failurePct,latencyMs:sim.latencyMs});
+    appendJournal({type:'trade-open',mode:'PAPER',pnlMode:'PAPER',mint:pick.mint,symbol:pick.symbol,sizeSol:filledBasis,requestedSizeSol:size,score:pick.score,fastEdgeScore:pick.fastEdgeScore||pick.score,strategy,signalSource:copySignal?.source||pick.signalSource||'scanner',manual,fillStatus:sim.status,fillRatio:sim.fillRatio,slippageBps:sim.slippageBps,simulatedFailurePct:sim.failurePct,latencyMs:sim.latencyMs});
     return;
   }
 
@@ -759,12 +763,14 @@ async function main() {
   const dashboard = once ? null : startDashboard();
   if (!once && cfg.alphaWorkerEnabled) startAlphaWorker();
   if (!once) openBrowser();
-  const stream = once ? null : startProgramStream(() => appendJournal({ type: 'program-stream-event' }));
+  const stream = once ? null : startProgramStream(event => appendJournal(event));
+  const walletStream = once ? null : startTrackedWalletStream(event=>copyTradeSignals([event],{mode:cfg.mode,wallets:smartWallets(),log:appendJournal}));
   let shuttingDown = false;
   const shutdown = () => {
     if (shuttingDown) return;
     shuttingDown = true;
     try { stream?.close?.(); } catch {}
+    try { walletStream?.close?.(); } catch {}
     try { stopAlphaWorker(); } catch {}
     try { dashboard?.close?.(); } catch {}
   };
