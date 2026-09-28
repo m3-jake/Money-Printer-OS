@@ -23,3 +23,11 @@ export function splitTranches(total, { threshold = 0.25, clips = 3, intervalMs =
   const each = size / n;
   return Array.from({ length: n }, (_, i) => ({ sizeSol: i === n - 1 ? size - each * (n - 1) : each, delayMs: i * Math.max(0, intervalMs) }));
 }
+// Ledger history is oldest-first; callers must not depend on physical array order.
+export function recentClosedReturns(rows = [], limit = 40, { now = Date.now() } = {}) {
+  const n = Math.max(0, Math.min(5000, Math.trunc(Number(limit) || 0)));
+  return (Array.isArray(rows) ? rows : []).filter(t => t && t.returnPct != null && t.returnPct !== '' && typeof t.returnPct !== 'boolean'
+    && Number.isFinite(Number(t.returnPct)) && Number(t.closedAt) > 0 && Number(t.closedAt) <= now
+    && String(t.pnlMode || t.mode || 'PAPER').toUpperCase() !== 'LIVE')
+    .sort((a,b) => Number(b.closedAt)-Number(a.closedAt)).slice(0,n).map(t => Number(t.returnPct)/100);
+}

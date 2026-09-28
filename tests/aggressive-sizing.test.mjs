@@ -26,3 +26,14 @@ test('aggressive paper engine derives size from closed returns and stages later 
  const source=fs.readFileSync(new URL('../src/index.js',import.meta.url),'utf8');
  assert.match(source,/sizeFromEdge\(/);assert.match(source,/stagedTranches/);assert.match(source,/paper-tranche-fill/);
 });
+
+test('recent closed returns are chronological, finite, paper-only and independent of array order', async () => {
+  const {recentClosedReturns}=await import('../src/sizing.js');
+  const rows=Array.from({length:50},(_,i)=>({closedAt:i+1,returnPct:i,mode:'PAPER'})), original=JSON.stringify(rows);
+  const expected=rows.slice(-3).reverse().map(x=>x.returnPct/100);
+  assert.deepEqual(recentClosedReturns(rows,3,{now:100}),expected);
+  assert.deepEqual(recentClosedReturns([...rows].reverse(),3,{now:100}),expected);
+  assert.equal(JSON.stringify(rows),original);
+  const invalid=[{closedAt:101,returnPct:999},{closedAt:90,returnPct:null},{closedAt:95,returnPct:999,mode:'LIVE'}];
+  assert.deepEqual(recentClosedReturns([...rows,...invalid],3,{now:100}),expected);
+});

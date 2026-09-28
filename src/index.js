@@ -49,7 +49,7 @@ import { exitSimulation, simulatePaperExit, paperExitQuote, reviewPositionPrice,
 import { apiUnitEconomicsSnapshot, persistApiUnitEconomics, attributeScanCycle, strategyNetPnlAfterDataCost } from './apiUnitEconomics.js';
 import { assessPortfolioRisk } from './portfolioRisk.js';
 import { estimateRoutedPaperExecution } from './executionSimAggressive.js';
-import { sizeFromEdge, splitTranches } from './sizing.js';
+import { sizeFromEdge, splitTranches, recentClosedReturns } from './sizing.js';
 
 const once = process.argv.includes('--once');
 const dashboardOnly = process.argv.includes('--dashboard-only');
@@ -188,7 +188,7 @@ async function enter(s, pick, manual = false) {
   const decision = isPaper ? recordPumpDecision(s, pumpSizingDecision(sizingState, effectiveConfig, pick, legacySizing), pick) : null;
   let size = decision ? decision.sizeSol : legacySizing.size;
   if (isAggressivePaper(s.runtime)) {
-    const returns=(s.history||[]).filter(t=>Number.isFinite(Number(t.returnPct))).slice(0,40).map(t=>Number(t.returnPct)/100);
+    const returns=recentClosedReturns(s.history,40);
     const avg=returns.length?returns.reduce((a,b)=>a+b,0)/returns.length:0;
     const variance=returns.length>1?returns.reduce((q,x)=>q+(x-avg)**2,0)/(returns.length-1):0;
     const cap=Math.min(Number(effectiveConfig.maxPositionSol||3),Number(decision?.allowedSol??3));

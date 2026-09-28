@@ -27,3 +27,5 @@ Both installed archives were backed up before source editing. The paired updater
 
 ## Packaged-runtime compatibility follow-up
 The first alpha.76 archive smoke failed before any installation: an SDK transitive ESM import expected an Anchor named BN export unavailable in Electron Node 22.22.0. src/pumpSdk.js selects the SDK's published CommonJS export with createRequire, preserving the application's ESM modules and paper transport restrictions. All four native adapter tests then passed under the installed Electron runtime. A fresh clean-source build and paired archive smoke are still required before installation is considered complete.
+
+Final runtime continuity inspection confirmed that the authoritative history is oldest-first. Experimental sizing now sorts closed trades explicitly and excludes future, missing-return and live records. The regression checks both input orders without mutating history. Compact dashboard history is not used as the authoritative data-continuity check.
