@@ -21,7 +21,7 @@ import { startTrackedWalletStream, smartWallets, copySignalForMint } from './wal
 import { copyTradeSignals } from './copyTrade.js';
 import { simulateAggressivePaperExecution } from './executionSimAggressive.js';
 import { parsePumpfunLaunch, PUMPFUN_PROGRAM_ID } from './pumpfun.js';
-import { createSniper } from './pumpfunSniper.js';
+import { pumpfunPaperLane } from './pumpfunPaper.js';
 import { aggressionParams, exitPresets, operatingProfiles, customExitPolicy, sanitizeCustomExit, openLimitFor, MAX_OPEN_OVERRIDE, isAggressivePaper } from './runtime.js';
 import { recordUniverse, postmortemTrade } from './research.js';
 import { supervisorTick } from './supervisor.js';
@@ -755,6 +755,8 @@ async function cycle() {
   supervisorTick(s, ranked);
   try { s.system.arbitragePaper = await runArbitragePaperTick(marketPlatform(), s, cfg.mode); }
   catch (e) { s.system.arbitragePaper = { error: compactError(e), ordersSubmitted: 0 }; }
+  try { s.system.pumpfunPaper = await pumpfunPaperLane().maintain({ runtime: s.runtime, mode: cfg.mode, solUsd: s.market?.solUsd }); }
+  catch (e) { s.system.pumpfunPaper = { error: compactError(e), ordersSubmitted: 0 }; }
   if(cfg.mode==='paper'&&s.runtime?.profile==='AGGRESSIVE_PAPER'&&s.system.portfolioRisk?.some(x=>x.flatten)){
     for(const p of [...s.positions])paperSell(s,p,1,Number(p.lastPrice||p.entryPrice),'portfolio-drawdown-tier3',true);
     appendJournal({type:'portfolio-risk-flatten',mode:'PAPER',reason:'drawdown-tier3'});
@@ -816,14 +818,16 @@ async function main() {
   const dashboard = once ? null : startDashboard();
   if (!once && cfg.alphaWorkerEnabled) startAlphaWorker();
   if (!once) openBrowser();
-  const sniper=createSniper();
+  const nativePaperLane = pumpfunPaperLane();
   const stream = once ? null : startProgramStream(event => {
     appendJournal(event);
     if(!event.programHints?.includes(PUMPFUN_PROGRAM_ID))return;
     const launch=parsePumpfunLaunch(event.logs,{signature:event.signature,ts:event.ts});if(!launch)return;
-    const runtime=loadState().runtime,decision=sniper({...launch,slot:event.slot},{runtime,mode:cfg.mode,block:event.slot});
-    appendJournal({type:'pumpfun-sniper-signal',mode:cfg.mode.toUpperCase(),...launch,...decision,source:'pumpfun:sniper',orderSubmitted:false});
-  });
+    const state = loadState();
+    nativePaperLane.onLaunch({ ...launch, slot: event.slot }, { runtime: state.runtime, mode: cfg.mode, solUsd: state.market?.solUsd })
+      .then(decision => appendJournal({ type: 'pumpfun-sniper-signal', mode: cfg.mode.toUpperCase(), ...launch, ...decision, source: 'pumpfun:sniper', orderSubmitted: false }))
+      .catch(error => appendJournal({ type: 'pumpfun-sniper-error', mode: 'PAPER', mint: launch.mint, error: compactError(error), orderSubmitted: false }));
+  }, { programIds: [...cfg.programLogIds, PUMPFUN_PROGRAM_ID], enabled: () => cfg.directStreamEnabled || isAggressivePaper(loadState().runtime, cfg.mode) });
   const walletStream = once ? null : startTrackedWalletStream(event=>copyTradeSignals([event],{mode:cfg.mode,wallets:smartWallets(),log:appendJournal}));
   let shuttingDown = false;
   const shutdown = () => {

@@ -11,7 +11,8 @@ export function createSniper({ perBlockLimit = 1 } = {}) {
     const key = String(block ?? Math.floor(Number(event.ts || Date.now()) / 400));
     const count = blocks.get(key) || 0; if (count >= perBlockLimit) return { accepted: false, reason: 'block-rate-limit' };
     seen.add(mint); blocks.set(key, count + 1);
-    for (const b of blocks.keys()) if (b !== key) blocks.delete(b);
+    if (seen.size > 5000) seen.delete(seen.values().next().value);
+    while (blocks.size > 128) blocks.delete(blocks.keys().next().value);
     const requestedSizeSol = Math.min(Number(sizeSol) || 0, Number(runtime?.paperOverrides?.maxPositionSol || 3));
     const execution = estimateAggressivePaperExecution(event, requestedSizeSol, Number(event.solUsd || 0));
     return { accepted: true, mode: 'PAPER', shadowOnly: true, mint, requestedSizeSol, execution, priorityFeeLamports: 0, jitoBundle: false,

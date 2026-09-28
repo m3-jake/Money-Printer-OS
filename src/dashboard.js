@@ -31,6 +31,7 @@ import { usComboJournalView, usComboSnapshot, buildUSCombo, quoteUSCombo, placeU
 import { readApiUnitEconomics } from './apiUnitEconomics.js';
 import { shadowFill, appendShadowRowOnce } from './shadowLive.js';
 import { readShadowRows, shadowDivergenceReport } from './shadowReport.js';
+import { pumpfunPaperLane } from './pumpfunPaper.js';
 import { productEconomics, productIngestionAuthorized, productReadAuthorized } from './productEconomics.js';
 import updateChannel from '../desktop/update-channel.cjs';
 import { handlePlatformRequest, localMutationAllowed } from './core/http.js';
@@ -543,6 +544,7 @@ export function startDashboard() {
         return json(res,{...book,open,shadowSource:'polymarket-us-public-bbo',orderPlaced:false});
       }
       if (req.method === 'GET' && u.pathname === '/api/shadow-report') { const rows=await readShadowRows(path.join(DATA_DIR,'shadow-live.ndjson'));return json(res,{...shadowDivergenceReport(rows,100),orderPlaced:false}); }
+      if (req.method === 'GET' && u.pathname === '/api/pumpfun/paper') return json(res, { ...pumpfunPaperLane().view(), orderSubmitted: false });
       if (req.method === 'GET' && u.pathname === '/api/polymarket-us/combos/journal') { const j=usComboJournalView({historyLimit:500}); return json(res, {...j,performance:comboPerformance(j.history,j.open)}); }
       if (req.method === 'GET' && u.pathname === '/api/polymarket-us/combos') { const snap=await usComboSnapshot(); let paper=null; try{paper=paperBookView()}catch(e){paper={error:String(e.message||e)}} return json(res, {...snap,paper}); }
       if (req.method === 'GET' && u.pathname === '/api/polymarket-us/paper') return json(res, paperBookView());

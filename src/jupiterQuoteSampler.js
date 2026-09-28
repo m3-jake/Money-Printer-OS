@@ -31,6 +31,11 @@ async function quote({ inputMint, outputMint, amount, slippageBps, fetchImpl, ur
   return { outAmount: String(j.outAmount), priceImpactPct: Number.isFinite(Number(j.priceImpactPct)) ? Number(j.priceImpactPct) : null, hops: Array.isArray(j.routePlan) ? j.routePlan.length : null, ms };
 }
 
+export function quoteExactInput({ inputMint, outputMint, amount, slippageBps = 100, fetchImpl = globalThis.fetch, url = jupQuoteUrl(), timeoutMs = 6000, apiKey = process.env.JUPITER_API_KEY || '' } = {}) {
+  if (!MINT_RE.test(String(inputMint)) || !MINT_RE.test(String(outputMint)) || !/^\d+$/.test(String(amount)) || BigInt(amount) <= 0n || !(slippageBps >= 0 && slippageBps <= 1000)) throw new Error('Valid read-only Jupiter quote inputs required');
+  return quote({ inputMint, outputMint, amount, slippageBps, fetchImpl, url, timeoutMs, apiKey });
+}
+
 // One target: buy notional SOL of the token, then quote selling exactly what the buy returns.
 export async function quoteRoundTrip(target, { notionalSol = 0.1, slippageBps = 100, fetchImpl = globalThis.fetch, url = jupQuoteUrl(), timeoutMs = 6000, apiKey = process.env.JUPITER_API_KEY || '', now = Date.now() } = {}) {
   const lamports = Math.round(notionalSol * 1e9);
