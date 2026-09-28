@@ -8,6 +8,11 @@
 // Scope note: AUDIT.md and PROGRESS.md are excluded from the premise scan on purpose. Quoting a finding
 // in order to disprove it is what the ledger does, and those rows say so in the same paragraph; the
 // scan targets the documents a reader trusts as description, not the ones that record the dispute.
+//
+// P5.3 carried the same treatment to the other end of the same problem: the two `.agent-state` entry
+// points still opened at 2026-09-27 alpha.67 while the tree had moved through P0-P5, so a session that
+// reads those files first got a state description with no route to the record and no signal that
+// anything had changed. Their pin is indirect on purpose — see the last test.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -110,5 +115,27 @@ test('the disproven import premise survives only as a labelled correction', () =
   }
   assert.deepEqual(offenders, [], `the disproven premise is restated as current fact in: ${offenders.join(', ')}`);
   assert.ok(SOURCES.length > 20, 'the scan found the documents and sources it is supposed to cover');
+});
+
+// The entry points a session opens before it touches anything. The pin is deliberately indirect: each
+// file must name the ledger of record, and neither may be older than the pass the ledger records. A pass
+// that changes behaviour and leaves these silent fails here, and no edit to the ledger alone can satisfy
+// it — which is the failure mode that produced this file.
+const ENTRY_POINTS = ['.agent-state/CURRENT_TASKS.md', '.agent-state/PROJECT_STATE.md'];
+const datesIn = doc => [...doc.matchAll(/20\d\d-\d\d-\d\d/g)].map(m => m[0]).sort();
+const newest = doc => datesIn(doc).at(-1);
+
+test('the agent-state entry points are not older than the record they describe', () => {
+  const ledger = read('PROGRESS.md');
+  assert.match(ledger, /^\*\*P\d+\.\d+ /m, 'PROGRESS.md no longer holds dated pass items, so the entry points route to nothing');
+  const newestLedger = newest(ledger);
+  assert.ok(newestLedger, 'PROGRESS.md carries no date for the pass it records');
+  for (const rel of ENTRY_POINTS) {
+    assert.ok(fs.existsSync(path.join(root, rel)), `${rel} is gone — the entry point a session reads first moved`);
+    const doc = read(rel);
+    assert.match(doc, /PROGRESS\.md/, `${rel} does not route the reader to the ledger of record`);
+    assert.ok(newest(doc) >= newestLedger,
+      `${rel} is older (${newest(doc)}) than the pass the ledger records (${newestLedger}) — a pass changed the tree and left the entry point silent`);
+  }
 });
 

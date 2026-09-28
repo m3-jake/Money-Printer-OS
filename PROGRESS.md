@@ -928,7 +928,26 @@ Touched: `src/positionExecution.js` (the comment states the measured scope and t
 alternative instead of implying the live lane is symmetric) and `tests/execution-turnover.test.mjs`
 (+1 test). That closes the last deliberately deferred item in the pass.
 
-**P5 status: complete (P5.1, P5.2).** Every remaining entry in `.agent-state/KNOWN_BUGS.md` now carries
+**P5.3 — the two `.agent-state` entry points carry the pass.** Status: done. `CURRENT_TASKS.md` and
+`PROJECT_STATE.md` still opened at 2026-09-27 / alpha.67 — and those are the files `.agent-state/` exists
+for, the ones a session reads before it touches the tree. A reader of them alone would not learn that
+cycle recovery, the market-request budget, the per-cycle budget, the `/api/state` contract, the export
+surface or the tick-band decision had changed; the only route to the record sat in
+`MONEY_PRINTER_STATUS.md`, which a session is not guaranteed to open first. Each file now opens with one
+dated line naming this pass, the ledger and the audit, the `0.5.0-alpha.71` label this checkout carries,
+the fact that no release pair was built, signed or installed, and that no lock was loosened (P4.2 added a
+refusal). No other claim in either file was edited — the alpha.67 / Lab alpha.11 row stays as the release
+pair of record and the Profit Lab queue is untouched.
+
+Pinned in `tests/doc-drift.test.mjs` (5th test): each entry point must name `PROGRESS.md`, and neither
+may be older than the newest date the ledger carries, so a future pass cannot change the tree and leave
+the entry points silent — and editing the ledger alone cannot satisfy it, because the assertion reads the
+entry points. Bite-proofed twice: removing the routing sentence from `CURRENT_TASKS.md` fails with
+`does not route the reader to the ledger of record`, and winding `PROJECT_STATE.md` back a day fails the
+age assertion; both restored byte-exactly (hash-checked). Sweep: 30 targets, 986 tests / 984 pass /
+0 fail / 2 SKIP, +1.
+
+**P5 status: complete (P5.1, P5.2, P5.3).** Every remaining entry in `.agent-state/KNOWN_BUGS.md` now carries
 an explicit disposition — fixed with a test, a deliberate non-goal, or an honest risk note with its
 measurement — rather than an unexamined claim.
 
