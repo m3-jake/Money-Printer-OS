@@ -24,3 +24,10 @@ test('dashboard exposes qualification through a read-only GET route', () => {
   assert.match(source, /req\.method === 'GET' && u\.pathname === '\/api\/paper-qualification'/);
   assert.match(source, /qualifiesForLivePromotion\(id,closes\)/);
 });
+
+test('dashboard shows qualification as a read-only badge and does not expose live controls', () => {
+  const html = fs.readFileSync(new URL('../public/dashboard.html', import.meta.url), 'utf8');
+  assert.match(html, /id="paperQualificationBadge"/);
+  assert.match(html, /\/api\/paper-qualification/);
+  assert.match(html, /This never unlocks or starts live trading/);
+});
