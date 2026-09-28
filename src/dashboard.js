@@ -1,6 +1,7 @@
 import { handleRobinhoodRequest, startRobinhoodLoops, stopRobinhoodLoops, startPracticeLoop, stopPracticeLoop } from './robinhoodHttp.js';
 import { handleRobinhoodEquitiesRequest, startRobinhoodEquitiesLoop, stopRobinhoodEquitiesLoop } from './robinhoodEquitiesHttp.js';
 import { exitPresets, customExitPolicy, openLimitFor, aggressionParams, customExitBounds, MAX_OPEN_OVERRIDE } from './runtime.js';
+import { sizingReadout } from './positionExecution.js';
 import { evolutionChampionPolicy } from './learner.js';
 import { dataCoverage } from './dataCoverage.js';
 import { solanaBookView } from './solanaEconomics.js';
@@ -388,6 +389,10 @@ function snapshot() {
         labFollowing:rt.followLabBest!==false,
         controlMode:activeChamp?'LAB_AUTO':rt.followLabBest===false?'MANUAL':'LAB_WAITING',
         openLimit:openLimitFor(rt),autoOpenLimit:aggressionParams(rt.aggression).maxOpenPositions,
+        // P1.3: which dial sizes the next entry and where the risk dial would take over. It states the
+        // measured truth (at default equity the trade size dial binds, not riskPerTradePct), so the
+        // panel cannot imply that risk-per-trade is what the size came from.
+        sizing:sizingReadout({state:s,config:cfg,sizeFactor:aggressionParams(rt.aggression).sizeFactor,aggression:rt.aggression,stopPct:effectiveExit.stop,paper:cfg.mode==='paper',sprint:rt.profile==='SPRINT'}),
         bounds:{...customExitBounds,maxOpenPositions:MAX_OPEN_OVERRIDE},presets:Object.keys(exitPresets),presetValues:exitPresets
       };
     })(),

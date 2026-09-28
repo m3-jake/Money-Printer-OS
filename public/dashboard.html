@@ -1083,6 +1083,7 @@ function renderControl(){
       <div><span>Source</span><b>${sourceLabel}</b></div>
       <div><span>Entry threshold</span><b>${lab&&following?fmt(lab.threshold,0):'aggression-based'}</b></div>
       <div><span>Open cap</span><b>${ec.openLimit??'—'}</b></div>
+      <div title="${polyEscape(ec.sizing?.statement||'Trade size is not available yet.')}"><span>Trade size</span><b>${ec.sizing?fmt(ec.sizing.size,3)+' SOL · '+ec.sizing.bindingLabel.replace(/^the /,''):'—'}</b></div>
       <div><span>TP1 / TP2</span><b>${fmt(eff.tp1,1)} / ${fmt(eff.tp2,1)}%</b></div>
       <div><span>Stop / trail</span><b>${fmt(eff.stop,1)} / ${fmt(eff.trail,1)}%</b></div>
       <div><span>Max hold</span><b>${fmt(eff.maxHold,0)}m</b></div>

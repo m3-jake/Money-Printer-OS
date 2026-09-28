@@ -155,7 +155,21 @@ P1.2 — done — — /api/state split: persisted state with an honest ETag, liv
       EVOLUTION_LAB_SPLIT. Tests: `tests/api-state-split.test.mjs` (5 tests) in `test:visual` —
       71 pass — including that a research-state.json write alone invalidates the tag (the case the old
       stamp served stale) and that `/api/health` keeps the live sample it always had.
-P1.3 — pending — — sizing dial readout (premise corrected by V7)
+P1.3 — done — — sizing dial readout (V7 premise corrected by measurement)
+      `src/positionExecution.js`: `sizingReadout()` — every dial (trade size, risk per trade, position
+      cap, exposure headroom), which of them bound the size, the risk-versus-aggression growth rates,
+      and the equity at which risk sizing takes over (`crossoverEquitySol`, null when the aggression
+      ramp always sizes smaller). It wraps `entrySizing` and changes no number: the same call, the same
+      size. The comment states the measured fact, not the audit's premise: at 1 SOL equity with the
+      default profile `riskPerTradePct` 1 / stop 8 allows 0.125 SOL while the trade size dial asks for
+      max(0.05 × sizeFactor, 0.012 + aggression/1800) = 0.052 SOL, so **`tradeSizeSol` is the binding
+      dial** and `riskPerTradePct` becomes the structural limit only below 0.4 SOL of equity.
+      Surfaced as `effectiveControls.sizing` in `/api/state` and as a *Trade size* row (with the binding
+      dial, full statement in the tooltip) in the HUD's "Effective right now" panel.
+      Tests: `tests/accounting-integrity.test.mjs` asserts the default-profile numbers (0.125 / 0.052 /
+      crossover 0.4), the inversion below the crossover (0.3 SOL → 0.0375 SOL), the limp-ramp and SPRINT
+      cases, live sizing (flat target, no mark), and that the snapshot publishes the readout —
+      `test:accounting` 14 pass, `test:visual` 71, `test:lane-contracts` 96.
 P1.4 — pending — — test hygiene (`npm test`, wire 2 suites, skip-safe visual test, coverage telemetry)
 P1.5 — pending — — rejected-by-band counter in the funnel
 P2.1 — pending — — research-state.json backup/validate parity or documented asymmetry

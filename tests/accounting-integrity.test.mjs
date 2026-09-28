@@ -178,6 +178,46 @@ test('F8 a 100x phantom mark cannot enlarge the next paper fill', () => {
   assert.match(indexSource, /paper: isPaper, sprint: sprintPaper/);
 });
 
+test('P1.3 the sizing readout names the dial that actually binds, measured not assumed', () => {
+  // Default paper profile: 1 SOL, FAIR aggression 72, 8% stop. V7 of the audit claimed sizing is
+  // risk-based here; the readout has to say what the arithmetic says.
+  const config = { riskPerTradePct: 1, maxPositionSol: 0.15, maxTotalExposureSol: 0.6, tradeSizeSol: 0.05 };
+  const state = { cashSol: 1, positions: [] };
+  const r = execution.sizingReadout({ state, config, sizeFactor: 1, aggression: 72, stopPct: 8, paper: true, sprint: false });
+  assert.equal(r.eq, 1);
+  assert.ok(Math.abs(r.riskSized - 0.125) < 1e-9, 'riskPerTradePct 1 / stop 8 allows 0.125 SOL');
+  assert.ok(Math.abs(r.targetSize - 0.052) < 1e-9, 'the trade size dial asks for 0.012 + 72/1800');
+  assert.deepEqual(r.binding, ['tradeSizeSol'], 'the trade size dial is what binds, not risk-per-trade');
+  assert.equal(r.size, r.targetSize);
+  assert.equal(r.dials.find(d => d.dial === 'riskPerTradePct').binding, false);
+  assert.match(r.statement, /set by the trade size dial/);
+  assert.match(r.statement, /risk sizing would allow 0\.1250 SOL/);
+  assert.ok(Math.abs(r.crossoverEquitySol - 0.4) < 1e-9, 'risk sizing takes over at 0.05 / 0.125 SOL of equity');
+  // Below the crossover the relationship inverts, which is the case the audit described as the rule.
+  const small = execution.sizingReadout({ state: { cashSol: 0.3, positions: [] }, config, sizeFactor: 1, aggression: 72, stopPct: 8, paper: true, sprint: false });
+  assert.deepEqual(small.binding, ['riskPerTradePct']);
+  assert.ok(Math.abs(small.size - 0.0375) < 1e-9);
+  assert.equal(small.statement, 'Size 0.0375 SOL is set by the risk-per-trade dial.');
+  // With a limp aggression ramp the risk cap grows faster per SOL, so it never becomes the limit.
+  const limp = execution.sizingReadout({ state, config, sizeFactor: 1, aggression: 0, stopPct: 3, paper: true, sprint: false });
+  assert.equal(limp.binding.includes('riskPerTradePct'), false);
+  assert.ok(limp.riskSized > limp.targetSize);
+  // SPRINT ramps the target harder and takes the risk dial out of the picture entirely.
+  const sprint = execution.sizingReadout({ state, config, sizeFactor: 1, aggression: 72, stopPct: 8, paper: true, sprint: true });
+  assert.equal(sprint.binding.includes('riskPerTradePct'), false);
+  assert.ok(Math.abs(sprint.targetSize - 0.06) < 1e-9);
+  // Live sizing is the configured caps and the flat trade size, never the mark.
+  const live = execution.sizingReadout({ state: { cashSol: 25.5, positions: [] }, config, sizeFactor: 1, aggression: 72, stopPct: 8, paper: false, sprint: false });
+  assert.equal(live.targetRatePerSol, 0);
+  assert.equal(live.binding.includes('tradeSizeSol'), true);
+  assert.equal(live.targetSize, config.tradeSizeSol);
+  // The dashboard publishes the readout instead of leaving the operator to infer it.
+  const dashboardSource = fs.readFileSync(new URL('../src/dashboard.js', import.meta.url), 'utf8');
+  assert.match(dashboardSource, /sizing:sizingReadout\(\{state:s,config:cfg,sizeFactor:aggressionParams\(rt\.aggression\)\.sizeFactor/);
+  assert.match(fs.readFileSync(new URL('../public/dashboard.html', import.meta.url), 'utf8'), /<span>Trade size<\/span>/);
+});
+
+
 test('saveState refuses a single-save equity teleport', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mpo-jump-'));
   process.env.MONEY_PRINTER_DATA_DIR = dir;

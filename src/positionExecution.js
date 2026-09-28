@@ -123,3 +123,40 @@ export function entrySizing({ state, config, sizeFactor = 1, aggression = 0, sto
   const size = Math.max(0, Math.min(targetSize, positionCap, riskSized, headroom));
   return { eq, markedEquity: equity(state), riskSized, positionCap, exposureCap, headroom, targetSize, size };
 }
+
+// Which dial actually sized the last trade (P1.3). V7 of the audit claimed sizing is risk-based and
+// that `tradeSizeSol` is "not binding"; measured at the default profile it is the other way round:
+// with 1 SOL of paper equity, `riskPerTradePct` 1 / stop 8 allows 0.125 SOL while the trade-size dial
+// asks for max(0.05 * sizeFactor, 0.012 + aggression/1800) = 0.052 SOL, and the position cap (0.15) and
+// exposure headroom are looser still. So `tradeSizeSol` binds by default and `riskPerTradePct` only
+// becomes the structural limit below about 0.42 SOL of equity (or with a stop far tighter than 8%) --
+// which is the number `crossoverEquitySol` reports for whatever profile is actually running.
+export const SIZING_DIALS = Object.freeze(['tradeSizeSol', 'riskPerTradePct', 'maxPositionSol', 'maxTotalExposureSol']);
+const DIAL_LABELS = Object.freeze({
+  tradeSizeSol: 'the trade size dial', riskPerTradePct: 'the risk-per-trade dial',
+  maxPositionSol: 'the per-position cap', maxTotalExposureSol: 'the exposure headroom',
+});
+export function sizingReadout(input = {}) {
+  const s = entrySizing(input);
+  const config = input.config || {}, agg = Number(input.aggression || 0), stop = Math.max(3, Number(input.stopPct));
+  const sprint = Boolean(input.paper && input.sprint);
+  const riskRate = (Number(config.riskPerTradePct) / 100) / (stop / 100);           // riskSized per SOL of equity
+  const targetRate = input.paper ? (sprint ? .06 : 0.012 + agg / 1800) : 0;         // targetSize per SOL of equity
+  const flatTarget = Number(config.tradeSizeSol) * Number(input.sizeFactor ?? 1);
+  // riskSized == targetSize happens once, in the range where targetSize is still flat. Beyond that the
+  // target grows at `targetRate`: if that is faster than the risk cap, the risk dial never binds.
+  const crossoverEquitySol = riskRate > targetRate && flatTarget > 0 ? flatTarget / riskRate : null;
+  const dials = [
+    { dial: 'tradeSizeSol', value: s.targetSize }, { dial: 'riskPerTradePct', value: s.riskSized },
+    { dial: 'maxPositionSol', value: s.positionCap }, { dial: 'maxTotalExposureSol', value: s.headroom },
+  ];
+  const lowest = Math.min(...dials.map(d => d.value));
+  const bound = dials.filter(d => d.value <= lowest + 1e-12);
+  const binding = bound.map(d => d.dial), bindingLabels = binding.map(d => DIAL_LABELS[d]);
+  const riskBinds = binding.includes('riskPerTradePct');
+  return { ...s, dials: dials.map(d => ({ ...d, binding: binding.includes(d.dial), label: DIAL_LABELS[d.dial] })), binding, bindingLabel: bindingLabels.join(' and '),
+    riskRatePerSol: riskRate, targetRatePerSol: targetRate, crossoverEquitySol,
+    statement: `Size ${s.size.toFixed(4)} SOL is set by ${bindingLabels.join(' and ')}` + (riskBinds ? '.' :
+      `; risk sizing would allow ${s.riskSized.toFixed(4)} SOL and only becomes the limit below ${
+        crossoverEquitySol === null ? 'any equity (the aggression ramp always sizes smaller)' : crossoverEquitySol.toFixed(4) + ' SOL of equity'}.`) };
+}

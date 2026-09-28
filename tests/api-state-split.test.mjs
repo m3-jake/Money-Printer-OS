@@ -44,6 +44,10 @@ test('the state endpoint carries persisted state only, with an exact ETag and no
   assert.equal(s.walletIntel.scorecard, null);
   assert.equal('cpuPct' in (s.system.metrics || {}), false);
   assert.equal('memoryPct' in (s.system.metrics || {}), false);
+  // P1.3: the payload publishes which dial sizes the next entry (measured, not inferred).
+  assert.ok(Array.isArray(s.effectiveControls.sizing.binding) && s.effectiveControls.sizing.binding.length > 0);
+  assert.match(s.effectiveControls.sizing.statement, /is set by/);
+  assert.equal(s.effectiveControls.sizing.dials.length, 4);
 });
 
 test('a matching If-None-Match is a real 304, and the tag covers every file the snapshot reads', async () => {
