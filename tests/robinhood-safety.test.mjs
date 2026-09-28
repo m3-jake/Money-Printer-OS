@@ -113,3 +113,23 @@ test('cancel, cancel-all and forget require their exact phrases; forget never to
  assert.equal(J.loadJournal().open.length,0);assert.equal(J.loadJournal().cooldowns['BTC-USD'],undefined);assert.equal(mock.calls.length,0);nothingSigned();
  assert.match(fs.readFileSync(new URL('../src/robinhoodAutoTrader.js',import.meta.url),'utf8'),/confirmation!=='FORGET'/);
 });
+
+test('production Robinhood transport has a code-level real-host POST barrier',async()=>{
+ reset();
+ assert.equal(TX.ROBINHOOD_LIVE_TRADING_ENABLED,false,'production source constant is locked off');
+ const oldApi=process.env.ROBINHOOD_API,oldLiveKey=process.env.ROBINHOOD_LIVE_API_KEY,oldLivePrivate=process.env.ROBINHOOD_LIVE_PRIVATE_KEY,priorFetch=globalThis.fetch;
+ let fetches=0;
+ try{
+  process.env.ROBINHOOD_API='https://trading.robinhood.com';
+  process.env.ROBINHOOD_REAL_ENABLED='true';
+  process.env.ROBINHOOD_LIVE_API_KEY=KEYS.apiKey;process.env.ROBINHOOD_LIVE_PRIVATE_KEY=KEYS.seed;
+  globalThis.fetch=async()=>{fetches++;throw new Error('real host fetch must be unreachable')};
+  await assert.rejects(TX.rhRequest({method:'POST',path:'/api/v2/crypto/trading/orders/',json:{symbol:'BTC-USD'}}),e=>e?.code==='ROBINHOOD_PAPER_ONLY_BUILD');
+  assert.equal(fetches,0,'source barrier fires before signing or network dispatch');
+ }finally{
+  process.env.ROBINHOOD_API=oldApi||'https://rh.test';process.env.ROBINHOOD_REAL_ENABLED='true';
+  oldLiveKey===undefined?delete process.env.ROBINHOOD_LIVE_API_KEY:process.env.ROBINHOOD_LIVE_API_KEY=oldLiveKey;
+  oldLivePrivate===undefined?delete process.env.ROBINHOOD_LIVE_PRIVATE_KEY:process.env.ROBINHOOD_LIVE_PRIVATE_KEY=oldLivePrivate;
+  globalThis.fetch=priorFetch;
+ }
+});

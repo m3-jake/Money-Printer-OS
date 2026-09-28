@@ -1,5 +1,9 @@
 # Current tasks — 2026-09-26 master upgrade
 
+## Profit Lab queue — 2026-09-27
+
+Highest-leverage unfinished profitability task: Research Pro monetization v1. Revenue/funnel instrumentation already exists; do not duplicate it. Implement only on the isolated Profit Lab branch and keep monetization disabled by default. Gate read-only research detail, never trading/risk/execution. Exact scope: `docs/PROFIT-LAB-MONETIZATION-2026-09-27.md`. Acceptance requires the focused monetization suite plus the full `npm run test:all` before merge.
+
 Implementation and verification of milestones A–F are recorded in
 `reports/UPGRADE-IMPLEMENTATION-2026-09-26.md`; current operator documentation is
 `docs/UPGRADE-OPERATIONS.md`. Remaining owner/external work: review prepared alpha.61/alpha.7

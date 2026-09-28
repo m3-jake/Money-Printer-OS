@@ -23,7 +23,7 @@ import { mapLimit, sleep, compactError } from './utils.js';
 import { fastEdgeScore, queueOutcomeSamples, settleOutcomeSamples, dueOutcomeMints, learnerSnapshot, evolutionChampionPolicy, evolutionChampionScore } from './learner.js';
 import { recordChampionPublication } from './researchControlPlane.js';
 import { syncLabLink, publishLabFeed } from './labLink.js';
-import { estimatePaperExecution, deterministicFillAllowed, estimateRoundTripFrictionPct } from './executionSim.js';
+import { estimatePaperExecution, simulatePumpPaperExecution, estimateRoundTripFrictionPct } from './executionSim.js';
 import { enqueueAlphaEvent as enqueueAlphaRaw } from './alphaQueue.js';
 import { dailyPnl, recentPnl, bookClosedPnl, unrealizedPnl, equity, updatePortfolio } from './accounting.js';
 import { startAlphaWorker, stopAlphaWorker } from './alphaWorkerManager.js';
@@ -33,7 +33,7 @@ const enqueueAlphaEvent = row => { if (cfg.alphaWorkerEnabled) enqueueAlphaRaw(r
 // champions are still re-validated locally and can only affect paper mode. Set MPO_LAB_LINK=false to isolate it.
 const LAB_LINK = String(process.env.MPO_LAB_LINK ?? 'true').toLowerCase() === 'true';
 import { solanaCostGate, paperProfileDemotion } from './solanaEconomics.js';
-import { exitSimulation, paperExitQuote, reviewPositionPrice, entrySizing, paperEntryRejection } from './positionExecution.js';
+import { exitSimulation, simulatePaperExit, paperExitQuote, reviewPositionPrice, entrySizing, paperEntryRejection } from './positionExecution.js';
 import { apiUnitEconomicsSnapshot, persistApiUnitEconomics, attributeScanCycle, strategyNetPnlAfterDataCost } from './apiUnitEconomics.js';
 
 const once = process.argv.includes('--once');
@@ -90,30 +90,31 @@ function preset(s) {
 function paperSell(s, p, fraction, price, reason, final = false, market = null) {
   fraction = Math.min(1, Math.max(0, fraction));
   const rem = Number(p.remainingSol ?? p.sizeSol ?? 0);
-  const basis = rem * fraction;
-  if (!(basis > 0) || !(price > 0)) return false;
-  const sim = exitSimulation(p,{...market,priceUsd:price},Number(s.market?.solUsd||0),cfg.simulatedSlippageBps,cfg.simulatedFeeBps,fraction);
-  if (!deterministicFillAllowed(p.mint, Date.now() + String(reason).length * 997, Math.min(65, sim.failurePct * 0.75))) {
-    appendJournal({ type:'paper-exit-missed', mint:p.mint, symbol:p.symbol, reason, failurePct:sim.failurePct, slippageBps:sim.slippageBps });
+  const requestedBasis = rem * fraction, now = Date.now();
+  if (!(requestedBasis > 0) || !(price > 0)) return false;
+  const sim = simulatePaperExit(p,{...market,priceUsd:price},Number(s.market?.solUsd||0),cfg.simulatedSlippageBps,cfg.simulatedFeeBps,fraction,{now,seed:`pump-exit:${p.id||p.mint}:${reason}:${Math.floor(now/8000)}`});
+  if (sim.status === 'REJECTED' || !(sim.filledBasisSol > 0)) {
+    appendJournal({ type:'paper-exit-missed', mode:'PAPER', pnlMode:'PAPER', mint:p.mint, symbol:p.symbol, reason, fillReason:sim.reason, failurePct:sim.failurePct, slippageBps:sim.slippageBps??null, latencyMs:sim.latencyMs??null });
     return false;
   }
-  const {exitPrice:exit,fee,proceeds}=paperExitQuote(p,price,sim,fraction);
+  const soldBasis=Math.min(rem,Number(sim.filledBasisSol)),fee=Math.max(0,Number(sim.feeSol||0)),proceeds=Math.max(0,Number(sim.gross||0)-fee),exit=Number(sim.fillPriceUsd||price);
   s.cashSol += proceeds;
-  p.remainingSol = Math.max(0, rem - basis);
-  p.realizedSol = (p.realizedSol || 0) + (proceeds - basis);
+  p.remainingSol = Math.max(0, rem - soldBasis);
+  p.realizedSol = (p.realizedSol || 0) + (proceeds - soldBasis);
   p.feesSol = (p.feesSol || 0) + fee;
   p.exitSlippageBps = sim.slippageBps;
+  p.lastPaperExecution={mode:'PAPER',status:sim.status,fillRatio:sim.fillRatio,latencyMs:sim.latencyMs,slippageBps:sim.slippageBps,feeSol:fee,requestedBasisSol:requestedBasis,soldBasisSol:soldBasis,fillAt:sim.fillAt,model:sim.executionModel};
 
-  if (final || p.remainingSol < 1e-8) {
+  if (p.remainingSol < 1e-8 || (final && fraction >= .999999 && Number(sim.fillRatio||0) >= .999999)) {
     s.positions = s.positions.filter(x => x.id !== p.id);
     const cooldownMin = cfg.mode === 'paper' && s.runtime?.profile === 'SPRINT' ? 2 : cfg.cooldownMin;
     s.cooldowns[p.mint] = Date.now() + cooldownMin * 60_000;
     const rr = p.realizedSol / (p.sizeSol || 1) * 100;
-    const trade = { ...p, closedAt: Date.now(), exitPrice: exit, returnPct: rr, pnlSol: p.realizedSol, reason, exitSlippageBps: sim.slippageBps };
+    const trade = { ...p, mode:'PAPER', pnlMode:'PAPER', closedAt: Date.now(), exitPrice: exit, returnPct: rr, pnlSol: p.realizedSol, reason, exitSlippageBps: sim.slippageBps };
     s.history.push(trade);
     recordClosed(s, trade);
     postmortemTrade(s, trade);
-    appendJournal({ type: 'trade-close', trade });
+    appendJournal({ type: 'trade-close', mode:'PAPER', pnlMode:'PAPER', trade });
     alert(`EXIT ${p.symbol} ${pct(rr)} · ${reason}`).catch(() => {});
   }
   return true;
@@ -206,27 +207,28 @@ async function enter(s, pick, manual = false) {
       appendJournal({ type: 'paper-entry-reject', mint: pick.mint, symbol: pick.symbol, reason: entryReject });
       return;
     }
-    const sim = sprintPreview || estimatePaperExecution(pick, size, Number(s.market?.solUsd || 0), cfg.simulatedSlippageBps, cfg.simulatedFeeBps);
-    const entryFee = size * sim.feeBps / 10_000;
-    if (s.cashSol < size + entryFee) return;
-    if (!deterministicFillAllowed(pick.mint, Date.now(), sim.failurePct)) {
+    const now=Date.now(),sim=simulatePumpPaperExecution(pick,size,Number(s.market?.solUsd||0),cfg.simulatedSlippageBps,cfg.simulatedFeeBps,{side:'BUY',now,seed:`pump-entry:${pick.mint}:${Math.floor(now/8000)}`});
+    if(sim.status==='REJECTED'||!(Number(sim.gross)>0)){
       s.stats.skipped++;
-      appendJournal({ type:'paper-fill-failed', mint:pick.mint, symbol:pick.symbol, sizeSol:size, simulatedFailurePct:sim.failurePct, slippageBps:sim.slippageBps });
+      appendJournal({type:'paper-fill-failed',mode:'PAPER',pnlMode:'PAPER',mint:pick.mint,symbol:pick.symbol,requestedSizeSol:size,fillReason:sim.reason,simulatedFailurePct:sim.failurePct,slippageBps:sim.slippageBps??null,latencyMs:sim.latencyMs??null});
       return;
     }
-    s.cashSol -= size + entryFee;
-    const ep = pick.priceUsd * (1 + sim.slippageBps / 10_000);
+    const filledBasis=Math.max(0,Number(sim.gross||0)),entryFee=Math.max(0,Number(sim.feeSol||0)),debit=filledBasis+entryFee;
+    if(!(debit>0)||s.cashSol<debit)return;
+    s.cashSol-=debit;
+    const ep=Number(sim.fillPriceUsd||pick.priceUsd);
     s.positions.push({
-      id: `${Date.now()}-${pick.mint.slice(0, 6)}`, mint: pick.mint, symbol: pick.symbol, name: pick.name,
-      sizeSol: size, remainingSol: size, entryPrice: ep, lastPrice: pick.priceUsd, highPrice: pick.priceUsd, pairAddress: pick.pairAddress || null,
-      openedAt: Date.now(), score: pick.score, fastEdgeScore:pick.fastEdgeScore||pick.edgeScore||pick.score, riskScore: pick.risk?.score, executionScore:pick.executionScore, strategy, reasons: explain(pick),
-      tp1Done: false, tp2Done: false, breakEvenArmed: false, realizedSol: -entryFee, feesSol: entryFee, manual,
-      maxFavorablePct: 0, maxAdversePct: 0, entrySlippageBps:sim.slippageBps, simulatedLatencyMs:sim.latencyMs,
-      lastLiquidityUsd:pick.liq, lastMicro:pick.micro, lastPriceAccel:pick.priceAccel,
+      id:`${now}-${pick.mint.slice(0,6)}`,mode:'PAPER',pnlMode:'PAPER',mint:pick.mint,symbol:pick.symbol,name:pick.name,
+      sizeSol:filledBasis,remainingSol:filledBasis,requestedSizeSol:size,entryPrice:ep,lastPrice:pick.priceUsd,highPrice:pick.priceUsd,pairAddress:pick.pairAddress||null,
+      openedAt:now,score:pick.score,fastEdgeScore:pick.fastEdgeScore||pick.edgeScore||pick.score,riskScore:pick.risk?.score,executionScore:pick.executionScore,strategy,reasons:explain(pick),
+      tp1Done:false,tp2Done:false,breakEvenArmed:false,realizedSol:-entryFee,feesSol:entryFee,manual,
+      maxFavorablePct:0,maxAdversePct:0,entrySlippageBps:sim.slippageBps,simulatedLatencyMs:sim.latencyMs,
+      paperExecution:{mode:'PAPER',status:sim.status,fillRatio:sim.fillRatio,requestedSizeSol:size,filledBasisSol:filledBasis,latencyMs:sim.latencyMs,slippageBps:sim.slippageBps,feeSol:entryFee,fillAt:sim.fillAt,model:sim.executionModel},
+      lastLiquidityUsd:pick.liq,lastMicro:pick.micro,lastPriceAccel:pick.priceAccel,
       profile: s.runtime.profile || null, exitPreset: s.runtime.exitPreset || null, championId: s.runtime.activeEvolutionChampionId || 'BASE',
     });
     s.stats.signals++;
-    appendJournal({ type: 'trade-open', mode: 'paper', mint: pick.mint, symbol: pick.symbol, sizeSol: size, score: pick.score, fastEdgeScore:pick.fastEdgeScore||pick.score, strategy, manual, slippageBps:sim.slippageBps, simulatedFailurePct:sim.failurePct });
+    appendJournal({type:'trade-open',mode:'PAPER',pnlMode:'PAPER',mint:pick.mint,symbol:pick.symbol,sizeSol:filledBasis,requestedSizeSol:size,score:pick.score,fastEdgeScore:pick.fastEdgeScore||pick.score,strategy,manual,fillStatus:sim.status,fillRatio:sim.fillRatio,slippageBps:sim.slippageBps,simulatedFailurePct:sim.failurePct,latencyMs:sim.latencyMs});
     return;
   }
 
@@ -681,6 +683,7 @@ async function cycle() {
 }
 
 async function main() {
+  console.info(`[MPOS][MODE] BING PUMPO=${String(cfg.mode).toUpperCase()} | P&L=${cfg.mode==='live'?'LIVE':'PAPER'} | live signing/risk switch unchanged`);
   marketPlatform();
   // A one-shot scan must actually terminate; do not leave servers/workers alive.
   const dashboard = once ? null : startDashboard();

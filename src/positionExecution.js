@@ -1,4 +1,4 @@
-import { estimatePaperExecution } from './executionSim.js';
+import { estimatePaperExecution, simulatePumpPaperExecution } from './executionSim.js';
 import { equity } from './accounting.js';
 
 export function paperExitQuote(position,price,simulation,fraction=1) {
@@ -18,6 +18,15 @@ export function exitSimulation(position,pair,solUsd,slippageBps,feeBps,fraction=
   return estimatePaperExecution({liq:Number(pair?.liquidity?.usd??position.lastLiquidityUsd??0),
     executionScore:Number(position.executionScore||50),micro:position.lastMicro||{},priceAccel:Number(position.lastPriceAccel||0)},
     value,solUsd,slippageBps,feeBps);
+}
+
+export function simulatePaperExit(position,pair,solUsd,slippageBps,feeBps,fraction=1,{now=Date.now(),seed=null}={}){
+  const requestedFraction=Math.max(0,Math.min(1,Number(fraction||0))),basis=Number(position.remainingSol??position.sizeSol??0)*requestedFraction;
+  const priceUsd=Number(pair?.priceUsd||position.lastPrice||0),entryPrice=Number(position.entryPrice||0),valueSol=entryPrice>0?basis*priceUsd/entryPrice:0;
+  const candidate={mint:position.mint,symbol:position.symbol,priceUsd,priceObservedAt:Number(pair?.priceObservedAt||now),liq:Number(pair?.liquidity?.usd??position.lastLiquidityUsd??0),
+    executionScore:Number(position.executionScore||50),micro:position.lastMicro||{},priceAccel:Number(position.lastPriceAccel||0)};
+  const sim=simulatePumpPaperExecution(candidate,valueSol,solUsd,slippageBps,feeBps,{side:'SELL',now,seed:seed??`pump-exit:${position.id||position.mint}:${Math.floor(now/8000)}`});
+  return {...sim,requestedBasisSol:basis,requestedValueSol:valueSol,requestedFraction,filledBasisSol:basis*Math.max(0,Math.min(1,Number(sim.fillRatio||0)))};
 }
 
 // A single bad tick cannot create a windfall or a write-off. Paper-only recovery

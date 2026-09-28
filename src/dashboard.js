@@ -286,7 +286,8 @@ function positionView(p = {}) {
 }
 
 function historyView(h = {}) {
-  return { symbol: h.symbol, mint: h.mint, pnlSol: h.pnlSol, returnPct: h.returnPct, reason: h.reason, closedAt: h.closedAt };
+  const pnlMode=String(h.mode||cfg.mode||'paper').toLowerCase()==='live'?'LIVE':'PAPER';
+  return { symbol: h.symbol, mint: h.mint, pnlSol: h.pnlSol, pnlMode, returnPct: h.returnPct, reason: h.reason, closedAt: h.closedAt };
 }
 
 function journalView(x = {}) {
@@ -378,6 +379,7 @@ function snapshot() {
       learner: s.system?.learner || null,
     },
     mode: cfg.mode,
+    pnlMode: cfg.mode==='live'?'LIVE':'PAPER',
     build: { version: packageMeta.version, productName: packageMeta.productName || 'Money Printer OS',provenance:BUILD_PROVENANCE },
     config: {
       scanIntervalSec: cfg.scanIntervalSec,
@@ -393,6 +395,7 @@ function snapshot() {
 }
 
 export function startDashboard() {
+  {const m=usReadiness();console.info(`[MPOS][MODE] Polymarket US=${m.mode} | realEnabled=${m.realEnabled} | armed=${m.sessionArmed} | credentials=${m.credentialsReady}`);}
   marketPlatform().setLegacyReaders({solana:loadStateCached,robinhoodPractice:()=>practiceSnapshot({dataDir:path.dirname(RH_JOURNAL_FILE)}),robinhoodPracticeBook:()=>loadPracticeBook(path.dirname(RH_JOURNAL_FILE)),usCombos:usComboJournalView,
     solanaResearch:()=>loadStateCached().research,walletScorecard:()=>walletScorecardView(),
     // Read-only venue account readers for reconciliation (GET requests only).

@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import WebSocket from 'ws';
 import { lateGameEstimate, comboCapacity, TURNOVER_TARGET_MINUTES } from './sportsTiming.js';
 import { renameSyncWithRetry, writeFileSynced } from './atomicRename.js';
+import { MarketAdapter, OrderSimulator, frictionConfigFor } from './core/paperTrading.js';
 
 const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const DATA_DIR=path.resolve(process.env.MONEY_PRINTER_DATA_DIR||path.join(ROOT,'data'));
@@ -78,10 +79,11 @@ function autopilotSettings(s={}){
   maxOpenPct:clamp(num(a.maxOpenPct)||d.maxOpenPct,1,100),lastRunAt:num(a.lastRunAt),lastAction:a.lastAction||null,
   placedCount:num(a.placedCount),skipped:Array.isArray(a.skipped)?a.skipped.slice(0,20):[]};
 }
-function defaultState(){return {cashUsd:DEFAULT_PAPER_BANKROLL_USD,startUsd:DEFAULT_PAPER_BANKROLL_USD,positions:[],history:[],autopilot:defaultAutopilot(),bankrollDefaultsVersion:PAPER_DEFAULTS_VERSION,createdAt:nowMs()}}
+function defaultState(){return {mode:'PAPER',pnlMode:'PAPER',cashUsd:DEFAULT_PAPER_BANKROLL_USD,startUsd:DEFAULT_PAPER_BANKROLL_USD,positions:[],history:[],autopilot:defaultAutopilot(),bankrollDefaultsVersion:PAPER_DEFAULTS_VERSION,createdAt:nowMs()}}
 function normalizePaper(s){
- s.positions=(s.positions||[]).map(p=>p&&typeof p==='object'?{...p,kind:p.kind||'combo'}:p).filter(Boolean);
- s.history=(s.history||[]).map(h=>h&&typeof h==='object'?{...h,kind:h.kind||'combo'}:h).filter(Boolean);
+ s.mode='PAPER';s.pnlMode='PAPER';
+ s.positions=(s.positions||[]).map(p=>p&&typeof p==='object'?{...p,mode:'PAPER',pnlMode:'PAPER',kind:p.kind||'combo'}:p).filter(Boolean);
+ s.history=(s.history||[]).map(h=>h&&typeof h==='object'?{...h,mode:'PAPER',pnlMode:'PAPER',kind:h.kind||'combo'}:h).filter(Boolean);
  s.autopilot=autopilotSettings(s);
  return s;
 }
@@ -615,9 +617,21 @@ function cleanLeg(x){
   feesEnabled:x.feesEnabled!==false,feeSchedule:x.feeSchedule||null,takerBaseFee:num(x.takerBaseFee),
   fairProbability:x.fairProbability!=null&&Number.isFinite(Number(x.fairProbability))?Number(x.fairProbability):null,
   netPrice:x.netPrice!=null&&Number.isFinite(Number(x.netPrice))?Number(x.netPrice):null,edgeAfterFriction:x.edgeAfterFriction!=null&&Number.isFinite(Number(x.edgeAfterFriction))?Number(x.edgeAfterFriction):null,
-  expectedRoi:x.expectedRoi!=null&&Number.isFinite(Number(x.expectedRoi))?Number(x.expectedRoi):null,calibrationSamples:num(x.calibrationSamples)};
+  expectedRoi:x.expectedRoi!=null&&Number.isFinite(Number(x.expectedRoi))?Number(x.expectedRoi):null,calibrationSamples:num(x.calibrationSamples),
+  askDepthUsd:num(x.askDepthUsd),bookAt:num(x.bookAt),freshnessSec:num(x.freshnessSec)};
 }
 function newPositionId(){return `poly_${Date.now()}_${Math.random().toString(36).slice(2,7)}`}
+function simulatePaperLeg(leg,budgetUsd,seed){
+ const price=num(leg.fillPrice),feePerShare=takerFeePerShare(price,leg),unit=Math.max(1e-9,price+feePerShare),qty=Math.max(0,num(budgetUsd)/unit),now=nowMs();
+ const depthUsd=Math.max(0,num(leg.askDepthUsd)),depthQty=depthUsd>0?depthUsd/Math.max(price,1e-9):qty,cached=leg.tokenId?bookCache.get(String(leg.tokenId)):null;
+ const cachedFresh=cached&&now-num(cached.at)<=BOOK_FRESH_MS&&Array.isArray(cached.asks)&&cached.asks.length;
+ const asks=cachedFresh?cached.asks.map(x=>({price:num(x.price),quantity:num(x.size??x.quantity)})):[{price,quantity:depthQty}],at=cachedFresh?num(cached.at):(num(leg.bookAt)||now);
+ const adapter=new MarketAdapter({venue:'polymarket',staleMs:BOOK_FRESH_MS});
+ const market=adapter.normalize({symbol:String(leg.tokenId||leg.marketId),asks,bids:[],timestamp:at,source:cachedFresh?'clob-depth':'clob-derived'},{now});
+ const friction=frictionConfigFor('polymarket',{overrides:{fee:{kind:'custom',compute:({quantity:q,price:p})=>q*takerFeePerShare(p,leg)},
+  slippage:{kind:'depth'},maxStaleMs:BOOK_FRESH_MS,allowDepthPartial:true}});
+ return new OrderSimulator().simulate({order:{side:'BUY',quantity:qty},market,friction,seed,now,mode:'PAPER'});
+}
 export function placePaperSingle({leg,stakeUsd,placedBy}={}){
  const stake=Number(stakeUsd);
  if(!leg||typeof leg!=='object'||leg.marketId==null||!String(leg.marketId).trim())throw new Error('Invalid market');
@@ -626,11 +640,14 @@ export function placePaperSingle({leg,stakeUsd,placedBy}={}){
  if(!(clean.fillPrice>0&&clean.fillPrice<1))throw new Error('Invalid leg price');
  const s=loadPaper();
  if(stake>num(s.cashUsd))throw new Error('Insufficient paper cash');
- const priced=applyFees([clean],stake),quote=comboQuote([clean],stake);
- const pos={id:newPositionId(),createdAt:nowMs(),status:'OPEN',kind:'single',stakeUsd:stake,shares:priced.shares,
-  fillPrice:clean.fillPrice,feeUsd:priced.feeUsd,decimalOdds:quote.decimalOdds,potentialPayoutUsd:priced.shares*1,
-  placedBy:placedBy||'manual',research:{expectedRoi:clean.expectedRoi,expectedValueUsd:Number.isFinite(clean.expectedRoi)?round5(stake*clean.expectedRoi):null,edgeAfterFriction:clean.edgeAfterFriction,calibrationSamples:clean.calibrationSamples},legs:[clean]};
- s.cashUsd=round5(num(s.cashUsd)-stake);s.positions.unshift(pos);savePaper(s);
+ const sim=simulatePaperLeg(clean,stake,`poly-single:${clean.marketId}:${nowMs()}`);if(sim.status==='REJECTED')throw new Error(`Paper fill rejected: ${sim.reason}`);
+ clean.fillPrice=sim.fillPrice;const cashDebit=round5(sim.gross+sim.feeUsd),shares=sim.filledQuantity,quote=comboQuote([clean],cashDebit);
+ if(!(cashDebit>0&&shares>0))throw new Error('Paper fill produced no executable quantity');
+ const pos={id:newPositionId(),createdAt:nowMs(),status:'OPEN',kind:'single',mode:'PAPER',stakeUsd:cashDebit,requestedStakeUsd:stake,shares,
+  fillPrice:sim.fillPrice,feeUsd:round5(sim.feeUsd),decimalOdds:quote.decimalOdds,potentialPayoutUsd:shares,
+  execution:{mode:'PAPER',status:sim.status,latencyMs:sim.latencyMs,fillRatio:sim.fillRatio,slippageBps:sim.slippageBps,fillAt:sim.fillAt},
+  placedBy:placedBy||'manual',research:{expectedRoi:clean.expectedRoi,expectedValueUsd:Number.isFinite(clean.expectedRoi)?round5(cashDebit*clean.expectedRoi):null,edgeAfterFriction:clean.edgeAfterFriction,calibrationSamples:clean.calibrationSamples},legs:[clean]};
+ s.cashUsd=round5(num(s.cashUsd)-cashDebit);s.positions.unshift(pos);savePaper(s);
  return {ok:true,position:pos,paper:s};
 }
 export function placePaperCombo({legs,stakeUsd,placedBy}={}){
@@ -645,11 +662,17 @@ export function placePaperCombo({legs,stakeUsd,placedBy}={}){
  if(clean.some(x=>!(x.fillPrice>0&&x.fillPrice<1)))throw new Error('Invalid leg price');
  const s=loadPaper();
  if(stake>num(s.cashUsd))throw new Error('Insufficient paper cash');
- const quote=comboQuote(clean,stake),priced=applyFees(clean,stake),ev=comboExpectedValue(clean);
- const pos={id:newPositionId(),createdAt:nowMs(),status:'OPEN',kind:'combo',stakeUsd:stake,shares:priced.shares,
-  fillPrice:null,feeUsd:quote.feeUsd,decimalOdds:quote.decimalOdds,potentialPayoutUsd:quote.payout,
-  placedBy:placedBy||'manual',research:{expectedRoi:ev.expectedRoi,expectedValueUsd:round5(stake*ev.expectedRoi),fairProbability:ev.fairProbability,effectiveProbability:ev.effectiveProbability},legs:clean};
- s.cashUsd=round5(num(s.cashUsd)-stake);s.positions.unshift(pos);savePaper(s);
+ const sims=clean.map((leg,i)=>simulatePaperLeg(leg,stake,`poly-combo:${leg.marketId}:${i}:${nowMs()}`));
+ if(sims.some(x=>x.status==='REJECTED'))throw new Error(`Paper combo fill rejected: ${sims.find(x=>x.status==='REJECTED').reason}`);
+ const ratio=Math.min(1,...sims.map(x=>Math.max(0,num(x.fillRatio)))),effectiveStake=round5(stake*ratio);
+ if(effectiveStake<.01)throw new Error('Paper combo partial fill is below the economical minimum');
+ sims.forEach((sim,i)=>{clean[i].fillPrice=sim.fillPrice;clean[i].paperExecution={mode:'PAPER',status:sim.status,latencyMs:sim.latencyMs,fillRatio:sim.fillRatio,slippageBps:sim.slippageBps,fillAt:sim.fillAt}});
+ const quote=comboQuote(clean,effectiveStake),priced=applyFees(clean,effectiveStake),ev=comboExpectedValue(clean),feeUsd=round5(priced.feeUsd);
+ const pos={id:newPositionId(),createdAt:nowMs(),status:'OPEN',kind:'combo',mode:'PAPER',stakeUsd:effectiveStake,requestedStakeUsd:stake,shares:priced.shares,
+  fillPrice:null,feeUsd,decimalOdds:quote.decimalOdds,potentialPayoutUsd:quote.payout,
+  execution:{mode:'PAPER',status:ratio<.999999?'PARTIAL':'FILLED',fillRatio:ratio,latencyMs:Math.max(...sims.map(x=>x.latencyMs||0))},
+  placedBy:placedBy||'manual',research:{expectedRoi:ev.expectedRoi,expectedValueUsd:round5(effectiveStake*ev.expectedRoi),fairProbability:ev.fairProbability,effectiveProbability:ev.effectiveProbability},legs:clean};
+ s.cashUsd=round5(num(s.cashUsd)-effectiveStake);s.positions.unshift(pos);savePaper(s);
  return {ok:true,position:pos,paper:s};
 }
 export function setAutopilot(patch={}){
@@ -991,9 +1014,9 @@ export async function polymarketSnapshot(){
  const exposureCapUsd=round5(num(research.equityUsd)*ap.maxOpenPct/100);
  const audit=research.settlement||paperSettlementAudit(paper,now);
  const ageById=new Map((audit.openAges||[]).map(a=>[a.id,a]));
- const paperView={...paper,positions:(paper.positions||[]).map(p=>{const a=ageById.get(p.id);return a?{...p,ageMs:a.ageMs,ageMinutes:a.ageMinutes,overdue:a.overdue,stale:a.stale}:p})};
+ const paperView={...paper,mode:'PAPER',pnlMode:'PAPER',positions:(paper.positions||[]).map(p=>{const a=ageById.get(p.id);return a?{...p,ageMs:a.ageMs,ageMinutes:a.ageMinutes,overdue:a.overdue,stale:a.stale}:p})};
  const keep=!!audit.keep;
- return {mode:'paper',research,replay,paper:paperView,candidates,confidenceCandidates:confidenceCandidates.slice(0,30),suggested,quote,
+ return {mode:'PAPER',pnlMode:'PAPER',research,replay,paper:paperView,candidates,confidenceCandidates:confidenceCandidates.slice(0,30),suggested,quote,
   feed:{ok:usable,error:usable?null:feed.error,degraded:!!feed.error&&usable,lastError:feed.error,updatedAt:feed.at,lastSuccessAt:feed.lastSuccessAt,ageMs:feedAge,failures:feed.failures||0,count:feed.markets.length,
    sources:{gammaLive:{events:num(feed.sources?.events),games:num(feed.sources?.games),ageMs:feedAge,pages:num(feed.sources?.pages)},
     sportsWs:{connected:!!sportsFeed.connected,lastMessageAt:sportsFeed.lastMessageAt||0,error:sportsFeed.error||null},
@@ -1056,6 +1079,7 @@ export const __testing={
  STATE_FILE
 };
 function startPolymarketLoops(){
+ console.info('[MPOS][MODE] Polymarket(global)=PAPER | P&L=PAPER | real execution locked');
  startSportsFeed();
  bookTimer=setInterval(()=>{refreshBooksIfStale().catch(()=>{})},BOOK_TTL_MS);bookTimer.unref?.();
  autopilotTimer=setInterval(()=>{runAutopilotOnce().catch(()=>{})},AUTOPILOT_TICK_MS);autopilotTimer.unref?.();

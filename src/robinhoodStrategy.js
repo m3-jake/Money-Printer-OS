@@ -1,10 +1,11 @@
 // Robinhood Auto Trader — strategy module (work package C).
-// Pure: no fs, env, network or clock reads inside the rule functions. `now` is a
-// parameter everywhere; Date.now() appears only as a default at the API edge.
-// The only import is node:crypto for the sha256 used by paramsHash.
+// Pure strategy rules have no fs/network/signing dependencies; `now` is a parameter everywhere.
+// PAPER fill functions delegate execution tuning to the shared friction core (environment-backed config),
+// while Date.now() appears only as a default at the API edge.
 //
 // Contract: docs/ROBINHOOD-AUTO-TRADER.md §7 and §20.
 import { createHash } from 'node:crypto';
+import { MarketAdapter, FrictionModel, OrderSimulator, frictionConfigFor } from './core/paperTrading.js';
 
 export const STRATEGY_DEFAULTS = Object.freeze({
   sampleMs: 15000, warmupSamples: 120, lookbackSamples: 90, volWindow: 60, horizonSamples: 960,
@@ -326,6 +327,14 @@ function halfSpreadOf(bid, ask) {
 }
 
 const estimateFresh = (estimate, now) => estimate && Number.isFinite(estimate.at) && now - estimate.at <= ESTIMATE_MAX_AGE_MS && now - estimate.at >= 0;
+const sharedPaperFill=({side,qty,bid,ask,feeRatio,slipBps,now})=>{
+ const halfSpreadBps=halfSpreadOf(bid,ask)*1e4,adapter=new MarketAdapter({venue:'robinhood',staleMs:30000,syntheticDepthUsd:1e6}),tuned=frictionConfigFor('robinhood');
+ const market=adapter.normalize({bid,ask,timestamp:now,source:'robinhood-paper-quote'},{now}),friction=new FrictionModel({venue:'robinhood',fee:{kind:'bps',bps:feeRatio*1e4+Number(tuned.fee?.bps||0)},
+  slippage:{...tuned.slippage,kind:'fixed-bps',bps:halfSpreadBps+slipBps+Number(tuned.slippage?.bps||0)},latency:tuned.latency,
+  // This feed exposes top-of-book price but not executable size. Pretending a random partial would be less honest than a conservative full top-of-book model.
+  partialFill:{enabled:false,probability:0,rejectProbability:Number(tuned.partialFill?.rejectProbability||0)},minOrderQty:tuned.minOrderQty,minNotional:tuned.minNotional,maxStaleMs:Math.min(30000,tuned.maxStaleMs)});
+ return new OrderSimulator().simulate({order:{side,quantity:qty},market,friction,seed:`robinhood:${side}:${now}:${qty}`,now,mode:'PAPER'});
+};
 
 export function paperBuyFill({ qty, bid, ask, feeRatio = 0, estimate = null, now = Date.now(), params } = {}) {
   const p = withDefaults(params);
@@ -336,9 +345,10 @@ export function paperBuyFill({ qty, bid, ask, feeRatio = 0, estimate = null, now
     const fillPrice = qty > 0 ? (costUsd - feeUsd) / qty : 0;
     return { fillPrice, feeUsd, costUsd, source: 'estimate' };
   }
-  const fillPrice = ask * (1 + halfSpreadOf(bid, ask) + p.slipBps / 1e4);
-  const feeUsd = qty * fillPrice * fee;
-  return { fillPrice, feeUsd, costUsd: qty * fillPrice + feeUsd, source: 'model' };
+  const sim=sharedPaperFill({side:'BUY',qty,bid,ask,feeRatio:fee,slipBps:p.slipBps,now});
+  if(sim.status==='REJECTED')return {fillPrice:null,feeUsd:0,costUsd:0,source:'model',status:'REJECTED',reason:sim.reason,latencyMs:sim.latencyMs,simulation:'shared-paper-core'};
+  const fillPrice=sim.fillPrice,feeUsd=sim.feeUsd;
+  return { fillPrice, feeUsd, costUsd: sim.gross + feeUsd, source: 'model', status:sim.status, fillRatio:sim.fillRatio, latencyMs:sim.latencyMs, simulation:'shared-paper-core' };
 }
 
 export function paperSellFill({ qty, bid, ask, feeRatio = 0, estimate = null, now = Date.now(), params } = {}) {
@@ -350,9 +360,10 @@ export function paperSellFill({ qty, bid, ask, feeRatio = 0, estimate = null, no
     const fillPrice = qty > 0 ? (proceedsUsd + feeUsd) / qty : 0;
     return { fillPrice, feeUsd, proceedsUsd, source: 'estimate' };
   }
-  const fillPrice = bid * (1 - halfSpreadOf(bid, ask) - p.slipBps / 1e4);
-  const feeUsd = qty * fillPrice * fee;
-  return { fillPrice, feeUsd, proceedsUsd: qty * fillPrice - feeUsd, source: 'model' };
+  const sim=sharedPaperFill({side:'SELL',qty,bid,ask,feeRatio:fee,slipBps:p.slipBps,now});
+  if(sim.status==='REJECTED')return {fillPrice:null,feeUsd:0,proceedsUsd:0,source:'model',status:'REJECTED',reason:sim.reason,latencyMs:sim.latencyMs,simulation:'shared-paper-core'};
+  const fillPrice=sim.fillPrice,feeUsd=sim.feeUsd;
+  return { fillPrice, feeUsd, proceedsUsd: sim.gross - feeUsd, source: 'model', status:sim.status, fillRatio:sim.fillRatio, latencyMs:sim.latencyMs, simulation:'shared-paper-core' };
 }
 
 export function markToMarket(position, bid, feeRatio = 0) {

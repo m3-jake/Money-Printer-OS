@@ -56,7 +56,7 @@ test('a superseded chart request cannot reset the chosen pair or range',async()=
 test('Command Center renders unknown marked equity and exclusions without invented totals',()=>{
  const source=fs.readFileSync(new URL('../public/js/mpo-platform.js',import.meta.url),'utf8').replace('return {install,render};','return {install,render,markedRiskCard,capabilityCard};');
  const env=vm.createContext({window:{},document:{}});vm.runInContext(source,env);const card=env.window.MPOSPlatform.markedRiskCard({scope:'CORE_LEDGER_USD',complete:false,consolidatedComplete:false,equityUsd:null,drawdownPct:null,cashUsd:30,limitations:[{venue:'test',reason:'STALE_MARK'}],excludedAccounts:[{currency:'SOL',reason:'NO_VERIFIED_FX_CONVERSION'}]});
- assert.match(card,/Equity Unknown/);assert.match(card,/drawdown Unknown/);assert.match(card,/STALE_MARK/);assert.match(card,/Excluded from USD totals: SOL/);assert.doesNotMatch(card,/Equity \$0|drawdown 0\.00/);
+ assert.match(card,/PAPER equity Unknown/);assert.match(card,/PAPER cash \$30/);assert.match(card,/PAPER unrealized P\/L Unknown/);assert.match(card,/PAPER daily P\/L Unknown/);assert.match(card,/PAPER high-water drawdown Unknown/);assert.match(card,/STALE_MARK/);assert.match(card,/Excluded from USD totals: SOL/);assert.doesNotMatch(card,/PAPER equity \$0|drawdown 0\.00/);
  const readiness=env.window.MPOSPlatform.capabilityCard([{id:'test',role:'TRADING',collection:{state:'STALE'},evaluator:'v2',paper:'PAPER',decision:'WAIT',blockers:['missing outcomes'],appliedStrategy:{paramsHash:'applied-123'},proposal:{paramsHash:'new-proposal'}}]);
  assert.match(readiness,/applied-123/);assert.match(readiness,/missing outcomes/);assert.doesNotMatch(readiness,/new-proposal/);
 });

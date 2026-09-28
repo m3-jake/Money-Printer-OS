@@ -50,7 +50,7 @@ test('ENOENT -> defaults with autopilot off; default shapes pin the spec keys',(
  const j=J.loadJournal();
  assert.equal(j.recoveryRequired,undefined);
  assert.equal(j.autopilot.enabled,false);
- assert.deepEqual(Object.keys(j),['version','open','history','stats','autopilot','cooldowns','account','lastReconcileAt','lastError']);
+ assert.deepEqual(Object.keys(j),['version','mode','pnlMode','open','history','stats','autopilot','cooldowns','account','lastReconcileAt','lastError']);assert.equal(j.mode,'LIVE');assert.equal(j.pnlMode,'LIVE');
  assert.deepEqual(j.autopilot,{enabled:false,orderUsd:10,maxOpen:2,dailyLossCapUsd:25,symbols:['BTC-USD','ETH-USD'],orderType:'market',lastRunAt:0,lastAction:null,skipped:[],disabledReason:null,disabledAt:0,enabledAt:0,paramsHash:null});
  assert.deepEqual(j.stats,{placed:0,closed:0,won:0,lost:0,pnlUsd:0,feesUsd:0,hitRate:null,profitFactor:null,unverified:0});
  const p=J.loadPaper();

@@ -29,11 +29,11 @@ class PaperError extends Error{constructor(code,message){super(message);this.cod
 const fail=(code,message)=>{throw new PaperError(code,message)};
 
 export function defaultPaperAutopilot(){return {enabled:true,stakeUsd:5,maxOpen:3,maxLegs:2,window:null,lastRunAt:null}}
-export function defaultPaperBook(){const createdAt=Date.now();return {schema:PAPER_SCHEMA,epochId:`paper-${createdAt}-${process.pid}`,startUsd:PAPER_START_USD,cashUsd:PAPER_START_USD,open:[],history:[],cooldowns:{},
+export function defaultPaperBook(){const createdAt=Date.now();return {schema:PAPER_SCHEMA,mode:'PAPER',pnlMode:'PAPER',epochId:`paper-${createdAt}-${process.pid}`,startUsd:PAPER_START_USD,cashUsd:PAPER_START_USD,open:[],history:[],cooldowns:{},
  autopilot:defaultPaperAutopilot(),decisions:[],evaluation:null,createdAt,resets:0}}
 function normalize(s={}){
- const out={...defaultPaperBook(),...s,schema:PAPER_SCHEMA};
- out.open=Array.isArray(s.open)?s.open:[];out.history=Array.isArray(s.history)?s.history:[];
+ const out={...defaultPaperBook(),...s,schema:PAPER_SCHEMA,mode:'PAPER',pnlMode:'PAPER'};
+ out.open=Array.isArray(s.open)?s.open.map(x=>x&&typeof x==='object'?{...x,mode:'PAPER',pnlMode:'PAPER'}:x):[];out.history=Array.isArray(s.history)?s.history.map(x=>x&&typeof x==='object'?{...x,mode:'PAPER',pnlMode:'PAPER'}:x):[];
  out.cooldowns=s.cooldowns&&typeof s.cooldowns==='object'?s.cooldowns:{};
  out.decisions=Array.isArray(s.decisions)?s.decisions.slice(0,50):[];
  out.epochId=String(s.epochId||`legacy-${s.createdAt||0}`);
@@ -246,7 +246,7 @@ export function paperBookView(){
  const decided=b.history.filter(x=>x.status==='WON'||x.status==='LOST'),won=decided.filter(x=>x.status==='WON').length;
  const staked=decided.reduce((a,x)=>a+num(x.costUsd),0),pnl=decided.reduce((a,x)=>a+num(x.pnlUsd),0);
  const openCost=b.open.reduce((a,x)=>a+num(x.costUsd),0);
- return {schema:PAPER_SCHEMA,paperOnly:true,startUsd:b.startUsd,cashUsd:b.cashUsd,openCostUsd:r2(openCost),equityUsd:r2(b.cashUsd+openCost),valuationBasis:'CASH_PLUS_RESERVED_COST_UNMARKED',
+ return {schema:PAPER_SCHEMA,mode:'PAPER',pnlMode:'PAPER',paperOnly:true,startUsd:b.startUsd,cashUsd:b.cashUsd,openCostUsd:r2(openCost),equityUsd:r2(b.cashUsd+openCost),valuationBasis:'CASH_PLUS_RESERVED_COST_UNMARKED',
   stats:{settled:decided.length,won,lost:decided.length-won,voided:b.history.filter(x=>x.status==='VOID').length,hitRate:decided.length?r4(won/decided.length):null,
    pnlUsd:r2(pnl),roi:staked>0?r4(pnl/staked):null},
   curve:decided.slice(0,200).reverse().reduce((acc,x)=>{acc.push(r2((acc.at(-1)||0)+num(x.pnlUsd)));return acc},[]),

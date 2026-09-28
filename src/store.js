@@ -45,6 +45,7 @@ const strategyStats = () => Object.fromEntries(strategyNames.map(k => [k, {
 }]));
 
 const fresh = (startSol = cfg.paperStartSol) => ({
+  mode: String(cfg.mode||'paper').toUpperCase(), pnlMode: String(cfg.mode||'paper').toUpperCase()==='LIVE'?'LIVE':'PAPER',
   paperStartSol: Number.isFinite(Number(startSol)) && Number(startSol) > 0 ? Number(startSol) : cfg.paperStartSol,
   cashSol: Number.isFinite(Number(startSol)) && Number(startSol) > 0 ? Number(startSol) : cfg.paperStartSol,
   positions: [], history: [], pnlLedger: [], realizedLifetimePnlSol: 0, cooldowns: {}, watchlist: [], snapshots: {}, tickHistory: {}, candles: {},
@@ -77,6 +78,10 @@ function merge(s) {
     if (!Array.isArray(s.pnlLedger)) delete out.pnlLedger;
     if (!Number.isFinite(Number(s.realizedLifetimePnlSol))) delete out.realizedLifetimePnlSol;
   }
+  const runtimeMode=String(cfg.mode||out.mode||'paper').toUpperCase()==='LIVE'?'LIVE':'PAPER';
+  out.mode=runtimeMode;out.pnlMode=runtimeMode;
+  const labelTrade=row=>{if(!row||typeof row!=='object')return row;const inferred=String(row.mode||((row.signature||row.remainingRaw)?'LIVE':'PAPER')).toUpperCase()==='LIVE'?'LIVE':'PAPER';return {...row,mode:inferred,pnlMode:inferred}};
+  out.positions=(out.positions||[]).map(labelTrade);out.history=(out.history||[]).map(labelTrade);
   ensureResearch(out);
   ensurePnlLedger(out);
   out._accounting = paperIdentity(out);

@@ -92,7 +92,7 @@ export function verdict(stats, baselineNet, { minCloses = MIN_CLOSES } = {}) {
 export function scoreRow({ id, module, book, unit, stats, baseline, fresh, minCloses = MIN_CLOSES, kind = 'paper', note = null, extra = {} }) {
   const v = verdict(stats, baseline?.netPnl, { minCloses });
   return {
-    id, module, book, kind, unit,
+    id, module, book, kind, mode: kind === 'lab' ? 'BACKTEST' : 'PAPER', unit,
     ...stats,
     baseline: { kind: baseline?.kind || 'cash', label: baseline?.label || 'Cash (0)', netPnl: baseline?.netPnl === null || baseline?.netPnl === undefined ? null : round(Number(baseline.netPnl)), note: baseline?.note || null },
     edgeVsBaseline: finite(baseline?.netPnl) === null ? null : round(stats.netPnl - Number(baseline.netPnl)),

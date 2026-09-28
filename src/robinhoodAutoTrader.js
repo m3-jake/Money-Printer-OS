@@ -21,7 +21,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { fail, RobinhoodError } from './robinhoodErrors.js';
-import { creds, keyObject, rhLastAuth, rhClock, rhRateLimit, rhCallStats, fetchAccount, fetchTradingPairs, fetchBestBidAsk, fetchEstimatedPrice, listOrders, getOrder, placeOrder, cancelOrder, orderBody } from './robinhoodTransport.js';
+import { creds, keyObject, liveCreds, liveKeyObject, ROBINHOOD_LIVE_TRADING_ENABLED, rhLastAuth, rhClock, rhRateLimit, rhCallStats, fetchAccount, fetchTradingPairs, fetchBestBidAsk, fetchEstimatedPrice, listOrders, getOrder, placeOrder, cancelOrder, orderBody } from './robinhoodTransport.js';
 import { loadRobinhoodPrivateKey, publicKeyBase64 } from './robinhoodSigner.js';
 import * as J from './robinhoodJournal.js';
 import * as S from './robinhoodStrategy.js';
@@ -46,6 +46,9 @@ const TICK_MS=Math.max(5000,envNum('ROBINHOOD_TICK_MS',15000)), PREVIEW_TTL_MS=3
 const SYMBOL_RE=/^[A-Z0-9]{2,10}-USD$/;
 const DATA_DIR=path.dirname(J.JOURNAL_FILE), USER_ROOT=path.dirname(DATA_DIR), ENV_FILE=path.join(USER_ROOT,'.env');
 let timer=null, clockFn=null, tickBusy=false, paperBusy=false, feedFlight=null, snapshotFlight=null;
+export const LIVE_TRADING_ENABLED=ROBINHOOD_LIVE_TRADING_ENABLED;
+// Production source lock. Enabling Robinhood live execution requires an intentional code change here AND
+// in robinhoodTransport.js, plus the separate ROBINHOOD_LIVE_* credential set. Runtime config cannot flip it.
 const PAPER_ONLY_BUILD=true;
 let testRealExecutionUnlocked=false;
 let account=null, pairs=new Map(), quotes=new Map(), feedAt=0, identity='', lastTickAt=0, lastError=null, paperDirty=false;
@@ -67,9 +70,11 @@ const safeMessage=e=>{let m=String(e?.message||e);for(const v of Object.values(c
 const noteText=t=>String(t).replace(/\s+/g,' ').slice(0,160);
 function note(stage,e){lastError={at:now(),stage,code:e?.code||'unknown',message:safeMessage(e)}}
 function addNote(entry,text){entry.notes=[...(entry.notes||[]).slice(-7),{at:now(),text:noteText(text)}]}
-const paperOnlyBuild=()=>PAPER_ONLY_BUILD&&!testRealExecutionUnlocked;
+const testExecution=()=>{if(!testRealExecutionUnlocked)return false;try{const h=new URL(String(process.env.ROBINHOOD_API||'')).hostname.toLowerCase();return h==='localhost'||h==='127.0.0.1'||h.endsWith('.test')}catch{return false}};
+const paperOnlyBuild=()=>(PAPER_ONLY_BUILD||!LIVE_TRADING_ENABLED)&&!testExecution();
+const liveCredentialReady=()=>testExecution()?!!(creds().apiKey&&keyObject()):!!(liveCreds().apiKey&&liveKeyObject());
 const realEnabled=()=>!paperOnlyBuild()&&String(process.env.ROBINHOOD_REAL_ENABLED||'false').toLowerCase()==='true';
-function assertRealExecutionAvailable(){if(paperOnlyBuild())fail('paperOnly','Robinhood real execution is locked in this build; paper trading only')}
+function assertRealExecutionAvailable(){if(paperOnlyBuild())fail('paperOnly','Robinhood real execution is locked in code; PAPER only. Changing runtime config cannot enable it.')}
 export function robinhoodLimits(){return {maxOrderUsd:envNum('ROBINHOOD_MAX_ORDER_USD',25),maxOpen:Math.floor(envNum('ROBINHOOD_MAX_OPEN',5)),dailyLossCapUsd:envNum('ROBINHOOD_DAILY_LOSS_CAP_USD',50),priceTolerance:envNum('ROBINHOOD_PRICE_TOLERANCE',0.02)}}
 // §21 Bitcoin specialization: primary symbol, candidate weight and per-order multiplier, all re-read from env.
 export function robinhoodPrimary(){
@@ -127,7 +132,7 @@ async function refreshFeed(requested=robinhoodSymbols(),force=false){
 function qualification(p=paper()){return J.evaluateQualification(p,now(),J.qualificationThresholds(),robinhoodLimits())}
 export function robinhoodReadiness(){
  const c=creds(),key=keyObject(),auth=rhLastAuth(),clock=rhClock(),rate=rhRateLimit(),j=J.loadJournal(),p=paper(),primary=robinhoodPrimary();
- return {platform:'Robinhood Crypto',hasApiKey:!!c.apiKey,hasPrivateKey:!!c.privateKeyBase64,keyValid:!!key,credentialsReady:!!(c.apiKey&&key),publicKey:key?publicKeyBase64(key):null,paperOnlyBuild:paperOnlyBuild(),paperQuoteSource,paperFallbackReason:paperFallbackReason?clone(paperFallbackReason):null,realEnabled:realEnabled(),sessionArmed,execution:paperOnlyBuild()?'paper-only':'manual-confirm-only',equities:'official Agentic Trading MCP only — not automated here',developerPortal:'https://robinhood.com/account/crypto',lastAuthError:auth.error?safeMessage(auth.error):null,authCode:auth.code,lastAuthAt:auth.at,clockSkewSec:clock.lastDateHeaderSec===null?null:clock.lastDateHeaderSec-Math.floor(clock.syncedAt/1000),rateLimit:{backoffUntil:rate.backoffUntil,consecutive429:rate.consecutive429},recoveryRequired:!!j.recoveryRequired,paperRecoveryRequired:!!p.recoveryRequired,qualified:qualification(p).qualified,primary:{symbol:primary.symbol,weight:primary.weight}};
+ return {platform:'Robinhood Crypto',mode:'PAPER',pnlMode:'PAPER',hasApiKey:!!c.apiKey,hasPrivateKey:!!c.privateKeyBase64,keyValid:!!key,credentialsReady:!!(c.apiKey&&key),liveCredentialsReady:liveCredentialReady(),liveCodeEnabled:LIVE_TRADING_ENABLED,publicKey:key?publicKeyBase64(key):null,paperOnlyBuild:paperOnlyBuild(),paperQuoteSource,paperFallbackReason:paperFallbackReason?clone(paperFallbackReason):null,realEnabled:realEnabled(),sessionArmed,execution:paperOnlyBuild()?'paper-only':'manual-confirm-only',equities:'official Agentic Trading MCP only — not automated here',developerPortal:'https://robinhood.com/account/crypto',lastAuthError:auth.error?safeMessage(auth.error):null,authCode:auth.code,lastAuthAt:auth.at,clockSkewSec:clock.lastDateHeaderSec===null?null:clock.lastDateHeaderSec-Math.floor(clock.syncedAt/1000),rateLimit:{backoffUntil:rate.backoffUntil,consecutive429:rate.consecutive429},recoveryRequired:!!j.recoveryRequired,paperRecoveryRequired:!!p.recoveryRequired,qualified:qualification(p).qualified,primary:{symbol:primary.symbol,weight:primary.weight}};
 }
 // ------------------------------------------------------------------ credentials / arming
 function rewriteEnv(values){let text='';try{text=fs.readFileSync(ENV_FILE,'utf8')}catch{}for(const [k,v] of Object.entries(values)){const line=`${k}=${String(v).replace(/\n/g,'')}`;const re=new RegExp(`^${k}=.*$`,'m');text=re.test(text)?text.replace(re,line):`${text.trimEnd()}\n${line}\n`}fs.mkdirSync(USER_ROOT,{recursive:true});fs.writeFileSync(ENV_FILE,text,{encoding:'utf8',mode:0o600});try{fs.chmodSync(ENV_FILE,0o600)}catch{}}
@@ -144,7 +149,7 @@ export function configureRobinhood({apiKey,privateKey,realEnabled:enable=false}=
 export function armRobinhood(armed=false){
  if(armed===true)assertRealExecutionAvailable();
  const j=J.loadJournal();if(j.recoveryRequired)fail('stateRecovery',j.recoveryError||'STATE RECOVERY REQUIRED');
- if(!robinhoodReadiness().credentialsReady)fail('noCredentials','Connect Robinhood API credentials first');
+ if(armed===true&&!liveCredentialReady())fail('noCredentials','Separate Robinhood LIVE credentials are required before any future live build can arm');
  if(armed===true&&!realEnabled())fail('realDisabled','Set ROBINHOOD_REAL_ENABLED=true in your .env and restart to arm real trading');
  sessionArmed=armed===true;return robinhoodReadiness();
 }
@@ -155,7 +160,7 @@ const GATE_TEXT={stateRecovery:'STATE RECOVERY REQUIRED: review the real journal
 function gateState({symbol,side='buy',costUsd=null,placedBy='manual',overrideCooldown=false}={}){
  const j=J.loadJournal(),limits=robinhoodLimits(),c=creds(),buy=side!=='sell';
  return {limits,journal:j,gates:{
-  stateRecovery:!j.recoveryRequired,credentials:!!(c.apiKey&&keyObject()),realEnabled:realEnabled(),armed:sessionArmed,
+  stateRecovery:!j.recoveryRequired,credentials:liveCredentialReady(),realEnabled:realEnabled(),armed:sessionArmed,
   orderCap:costUsd===null||(Number.isFinite(costUsd)&&costUsd<=limits.maxOrderUsd+1e-9),
   openCap:!buy||j.open.length<limits.maxOpen,
   dailyLossCap:!buy||J.realizedTodayUsd(j,now())>-limits.dailyLossCapUsd,
@@ -494,13 +499,14 @@ function openPaperAt(p,symbol,usd,placedBy='manual',tapeBook=p){
  if((placedBy==='paper-autopilot'||placedBy==='explore-autopilot')&&!signal.enter)fail('validation','No entry signal: '+signal.reason);
  const fill=S.paperBuyFill({qty:size.qty,bid:q.bid,ask:q.ask,feeRatio:fee(),now:now(),params:p.params});
  if(!(fill.costUsd>0)||fill.costUsd>usd+1e-8||fill.costUsd>p.cashUsd)fail('paperCash','Modeled fill would exceed the paper budget');
- const position={id:J.newPaperId(),symbol,status:'OPEN',placedBy,qty:size.qty,entryAsk:q.ask,...fill,at:now(),openedAt:now(),stopPct:signal.stopPct,takePct:signal.takePct,trailArmPct:signal.trailArmPct,trailPct:signal.trailPct,peakBid:q.bid,trailStop:null,maxFavorablePct:0,maxAdversePct:0,params:clone(p.params),paramsHash:p.paramsHash,costPct,quoteSource:q.source,exit:null,pnlUsd:null};
+ const position={id:J.newPaperId(),mode:'PAPER',pnlMode:'PAPER',symbol,placedBy,qty:size.qty,entryAsk:q.ask,...fill,paperFillStatus:fill.status||'FILLED',status:'OPEN',at:now(),openedAt:now(),stopPct:signal.stopPct,takePct:signal.takePct,trailArmPct:signal.trailArmPct,trailPct:signal.trailPct,peakBid:q.bid,trailStop:null,maxFavorablePct:0,maxAdversePct:0,params:clone(p.params),paramsHash:p.paramsHash,costPct,quoteSource:q.source,exit:null,pnlUsd:null};
  p.cashUsd-=fill.costUsd;p.positions.push(position);p.feeRatio=fee();return position;
 }
 function closePaperAt(p,id,reason='manual',closedBy='manual'){
  assertPaper(p);const index=p.positions.findIndex(x=>x.id===id);if(index<0)fail('notFound','Paper position not found');
  const position=p.positions[index],q=quote(position.symbol),fill=S.paperSellFill({qty:position.qty,bid:q.bid,ask:q.ask,feeRatio:fee(),now:now(),params:position.params||p.params});
- if(!(fill.proceedsUsd>=0)||!Number.isFinite(fill.proceedsUsd))fail('validation','Invalid modeled exit');
+ if(fill.status==='REJECTED')fail('validation','Modeled PAPER exit rejected: '+String(fill.reason||'no-fill'));
+ if(!(fill.proceedsUsd>=0)||!Number.isFinite(fill.proceedsUsd))fail('validation','Invalid modeled PAPER exit');
  const closed={...position,status:'CLOSED',exit:{reason,bid:q.bid,...fill,filledQty:position.qty,at:now()},pnlUsd:fill.proceedsUsd-position.costUsd,closedBy,closedAt:now()};
  p.positions.splice(index,1);p.history.unshift(closed);p.cashUsd+=fill.proceedsUsd;J.setCooldown(p,position.symbol,S.cooldownUntil(closed,position.params||p.params));return closed;
 }
@@ -645,7 +651,7 @@ function ensureRobinhoodPaperPractice(){
  J.savePaper(p,{force:true});
  return p;
 }
-export function startRobinhoodLoops(){if(timer)return timer;const setting=process.env.ROBINHOOD_AUTOSTART??'true'; /* §23: no longer falls back to POLYMARKET_AUTOSTART */if(String(setting).toLowerCase()==='false')return null;try{ensureRobinhoodPaperPractice()}catch(e){note('paper-practice-default',e)}timer=setInterval(()=>{tick().catch(()=>{})},TICK_MS);timer.unref?.();if(collectAlways()&&String(process.env.ROBINHOOD_WARM_START??'true').toLowerCase()!=='false')warmStartRobinhood().then(()=>tick()).catch(()=>{});try{RD.startDailyLoop({dataDir:DATA_DIR,quoteFn:robinhoodDailyQuote,feeFn:fee})}catch(e){note('daily-book',e)}return timer}
+export function startRobinhoodLoops(){if(timer)return timer;console.info(`[MPOS][MODE] Robinhood=PAPER | P&L=PAPER | live code enabled=${LIVE_TRADING_ENABLED} | real-host POSTs code-locked`);const setting=process.env.ROBINHOOD_AUTOSTART??'true'; /* §23: no longer falls back to POLYMARKET_AUTOSTART */if(String(setting).toLowerCase()==='false')return null;try{ensureRobinhoodPaperPractice()}catch(e){note('paper-practice-default',e)}timer=setInterval(()=>{tick().catch(()=>{})},TICK_MS);timer.unref?.();if(collectAlways()&&String(process.env.ROBINHOOD_WARM_START??'true').toLowerCase()!=='false')warmStartRobinhood().then(()=>tick()).catch(()=>{});try{RD.startDailyLoop({dataDir:DATA_DIR,quoteFn:robinhoodDailyQuote,feeFn:fee})}catch(e){note('daily-book',e)}return timer}
 export function stopRobinhoodLoops(){if(timer)clearInterval(timer);timer=null;RD.stopDailyLoop();if(paperDirty){try{J.savePaper(paper(),{force:true});paperDirty=false}catch(e){note('paper-save',e)}}T.flushTape({force:true,now:now()})}
 // ------------------------------------------------------------------ evolution (§22, paper-only)
 const LAB_RH_STATUS_FILE=path.join(DATA_DIR,'lab-link','modules','robinhood.json');

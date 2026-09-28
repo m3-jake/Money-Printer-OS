@@ -58,7 +58,7 @@ test('gauge and exploration sections render both books, label EXPLORATION (NOT A
   explore:{label:'EXPLORATION (NOT A STRATEGY)',enabled:true,startUsd:1000,equityUsd:990,overrides:{costMultiple:0.5,lookbackSamples:40,maxHoldMin:120},stats:{closes:3,pnlUsd:-4.2,feesUsd:1.3,hitRate:1/3,profitFactor:0.4},positions:[],history:[{symbol:'BTC-USD',exit:{reason:'stop'},pnlUsd:-2}]}};
  const gs=vm.runInContext('rhGaugeSection(st)',ctx),ex=vm.runInContext('rhExploreSection(st)',ctx);
  assert.match(gs,/data-rh-gauge="strict:BTC-USD"/);assert.match(gs,/data-rh-gauge="explore:BTC-USD"/);assert.match(gs,/90<\/small>|90\/120/);assert.match(gs,/warming up/);assert.match(gs,/200 tape \+ 520 candle rows/);
- assert.match(ex,/EXPLORATION \(NOT A STRATEGY\)/);assert.match(ex,/NEVER COUNTS TOWARD QUALIFICATION OR PROMOTION/);assert.match(ex,/Net P\/L after fees/);
+ assert.match(ex,/EXPLORATION \(NOT A STRATEGY\)/);assert.match(ex,/NEVER COUNTS TOWARD QUALIFICATION OR PROMOTION/);assert.match(ex,/PAPER net P\/L after fees/);
  assert.doesNotMatch(ex,/rhAction\(|evolve\/apply|Apply to paper/,'no control on the exploration book can promote it');
 });
 test('multi-asset suite: crypto views keep their parts, stocks & ETFs and practice get their own tabs',()=>{

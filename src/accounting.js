@@ -2,7 +2,7 @@ const n=x=>Number.isFinite(Number(x))?Number(x):0;
 
 export function pnlRows(s={}){
   if(Array.isArray(s.pnlLedger)&&s.pnlLedger.length)return s.pnlLedger;
-  return (s.history||[]).filter(x=>x&&x.closedAt!=null).map(x=>({closedAt:Number(x.closedAt),pnlSol:n(x.pnlSol)}));
+  return (s.history||[]).filter(x=>x&&x.closedAt!=null).map(x=>({closedAt:Number(x.closedAt),pnlSol:n(x.pnlSol),mode:String(x.mode||s.pnlMode||'PAPER').toUpperCase(),pnlMode:String(x.pnlMode||x.mode||s.pnlMode||'PAPER').toUpperCase()}));
 }
 export function recentPnl(s,ms,now=Date.now()){return pnlRows(s).filter(x=>Number(x.closedAt)>=now-ms).reduce((q,x)=>q+n(x.pnlSol),0)}
 export function dailyPnl(s,now=Date.now()){const d=new Date(now);d.setHours(0,0,0,0);return pnlRows(s).filter(x=>Number(x.closedAt)>=d.getTime()).reduce((q,x)=>q+n(x.pnlSol),0)}
@@ -13,7 +13,9 @@ export function dailyPnl(s,now=Date.now()){const d=new Date(now);d.setHours(0,0,
 // "lifetime (from <date>)" instead of implying a complete history.
 export function ensurePnlLedger(s={}){
   const rebuilt=!Array.isArray(s.pnlLedger);
-  if(rebuilt)s.pnlLedger=(s.history||[]).filter(x=>x&&x.closedAt!=null).map(x=>({closedAt:Number(x.closedAt),pnlSol:n(x.pnlSol)}));
+  if(rebuilt)s.pnlLedger=(s.history||[]).filter(x=>x&&x.closedAt!=null).map(x=>({closedAt:Number(x.closedAt),pnlSol:n(x.pnlSol),mode:String(x.mode||s.pnlMode||'PAPER').toUpperCase(),pnlMode:String(x.pnlMode||x.mode||s.pnlMode||'PAPER').toUpperCase()}));
+  const fallback=String(s.pnlMode||s.mode||'PAPER').toUpperCase()==='LIVE'?'LIVE':'PAPER';
+  s.pnlLedger=(s.pnlLedger||[]).map(x=>{const label=String(x?.pnlMode||x?.mode||fallback).toUpperCase()==='LIVE'?'LIVE':'PAPER';return {...x,mode:label,pnlMode:label}});
   if(!Number.isFinite(Number(s.realizedLifetimePnlSol))){
     const strategyTotal=Object.values(s.strategies||{}).reduce((q,x)=>q+n(x?.pnlSol),0);
     s.realizedLifetimePnlSol=strategyTotal||s.pnlLedger.reduce((q,x)=>q+n(x.pnlSol),0);
@@ -26,7 +28,8 @@ export function ensurePnlLedger(s={}){
 }
 export function bookClosedPnl(s,trade){
   ensurePnlLedger(s);
-  const row={closedAt:Number(trade?.closedAt||Date.now()),pnlSol:n(trade?.pnlSol)};
+  const label=String(trade?.pnlMode||trade?.mode||s?.pnlMode||'PAPER').toUpperCase()==='LIVE'?'LIVE':'PAPER';
+  const row={closedAt:Number(trade?.closedAt||Date.now()),pnlSol:n(trade?.pnlSol),mode:label,pnlMode:label};
   s.pnlLedger.push(row);
   if(s.pnlLedger.length>100000)s.pnlLedger.splice(0,s.pnlLedger.length-100000);
   s.realizedLifetimePnlSol=n(s.realizedLifetimePnlSol)+row.pnlSol;
@@ -40,10 +43,11 @@ export function updatePortfolio(s,{now=Date.now()}={}){
   ensurePnlLedger(s);
   const solUsd=n(s.market?.solUsd),cash=n(s.cashSol),positions=markedPositionsValue(s),eq=equity(s),unrealized=unrealizedPnl(s);
   const day=dailyPnl(s,now),life=n(s.realizedLifetimePnlSol);
-  s.portfolio={cashSol:cash,cashUsd:cash*solUsd,positionsValueSol:positions,positionsValueUsd:positions*solUsd,unrealizedPnlSol:unrealized,unrealizedPnlUsd:unrealized*solUsd,realizedDayPnlSol:day,realizedLifetimePnlSol:life,realizedSessionPnlSol:day,equitySol:eq,equityUsd:eq*solUsd,solUsd,updatedAt:now};
+  const pnlMode=String(s.pnlMode||s.mode||'PAPER').toUpperCase()==='LIVE'?'LIVE':'PAPER';
+  s.portfolio={mode:pnlMode,pnlMode,cashSol:cash,cashUsd:cash*solUsd,positionsValueSol:positions,positionsValueUsd:positions*solUsd,unrealizedPnlSol:unrealized,unrealizedPnlUsd:unrealized*solUsd,realizedDayPnlSol:day,realizedLifetimePnlSol:life,realizedSessionPnlSol:day,equitySol:eq,equityUsd:eq*solUsd,solUsd,updatedAt:now};
   s.portfolioSeries=Array.isArray(s.portfolioSeries)?s.portfolioSeries:[];
   const last=s.portfolioSeries.at(-1);
-  if(!last||now-Number(last.ts||0)>=4000){s.portfolioSeries.push({ts:now,equitySol:eq,cashSol:cash,realizedSol:day,unrealizedSol:unrealized});if(s.portfolioSeries.length>21600)s.portfolioSeries.splice(0,s.portfolioSeries.length-21600)}
+  if(!last||now-Number(last.ts||0)>=4000){s.portfolioSeries.push({ts:now,mode:pnlMode,pnlMode,equitySol:eq,cashSol:cash,realizedSol:day,unrealizedSol:unrealized});if(s.portfolioSeries.length>21600)s.portfolioSeries.splice(0,s.portfolioSeries.length-21600)}
   return s.portfolio;
 }
 

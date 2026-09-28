@@ -43,7 +43,7 @@ const objMap=(v)=>{const o={};if(isObj(v))for(const [k,x] of Object.entries(v)){
 export function defaultRealAutopilot(){return {enabled:false,orderUsd:10,maxOpen:2,dailyLossCapUsd:25,symbols:DEFAULT_SYMBOLS.slice(),orderType:'market',
  lastRunAt:0,lastAction:null,skipped:[],disabledReason:null,disabledAt:0,enabledAt:0,paramsHash:null}}
 function defaultStats(){return {placed:0,closed:0,won:0,lost:0,pnlUsd:0,feesUsd:0,hitRate:null,profitFactor:null,unverified:0}}
-export function defaultJournal(){return {version:1,open:[],history:[],stats:defaultStats(),autopilot:defaultRealAutopilot(),cooldowns:{},
+export function defaultJournal(){return {version:1,mode:'LIVE',pnlMode:'LIVE',open:[],history:[],stats:defaultStats(),autopilot:defaultRealAutopilot(),cooldowns:{},
  account:{accountNumber:null,feeRatio:null,buyingPowerUsd:null,apiVersion:null,at:0},lastReconcileAt:0,lastError:null}}
 function normalizeRealAutopilot(a){
  const d=defaultRealAutopilot(),s=isObj(a)?a:{};
@@ -161,7 +161,7 @@ function defaultPaperStats(){return {closes:0,won:0,lost:0,pnlUsd:0,grossWinUsd:
 function defaultQualification(paramsHash=null,windowDays=qualificationThresholds().windowDays){return {qualified:false,paramsHash,closes:0,hitRate:null,profitFactor:null,pnlUsd:0,grossPnlUsd:0,feesUsd:0,feeDragPct:null,maxDrawdownUsd:0,requiredHitRate:null,lastCloseAt:null,windowDays,reasons:[`closes 0 < ${qualificationThresholds().minCloses}`],at:0}}
 export function defaultPaper(){
  const start=envNum('ROBINHOOD_PAPER_START_USD',1000);
- return {version:1,createdAt:Date.now(),cashUsd:start,startUsd:start,feeRatio:envNum('ROBINHOOD_FEE_RATIO_FALLBACK',0.0095),
+ return {version:1,mode:'PAPER',pnlMode:'PAPER',createdAt:Date.now(),cashUsd:start,startUsd:start,feeRatio:envNum('ROBINHOOD_FEE_RATIO_FALLBACK',0.0095),
   positions:[],history:[],autopilot:defaultPaperAutopilot(),params:{},paramsHash:null,cooldowns:{},tape:{},tapeAt:0,
   stats:defaultPaperStats(),qualification:defaultQualification()};
 }
@@ -188,6 +188,7 @@ export function normalizePaper(s={}){
  const out={...d,...src};
  delete out.sessionArmed;
  out.version=1;
+ out.mode='PAPER';out.pnlMode='PAPER';
  out.createdAt=num(src.createdAt)||d.createdAt;
  out.cashUsd=Number.isFinite(Number(src.cashUsd))?Number(src.cashUsd):d.cashUsd;
  out.startUsd=num(src.startUsd)>0?num(src.startUsd):d.startUsd;

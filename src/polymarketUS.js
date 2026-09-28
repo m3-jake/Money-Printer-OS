@@ -38,7 +38,7 @@ const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 
 function creds(){return {keyId:String(process.env.POLYMARKET_KEY_ID||'').trim(),secretKey:String(process.env.POLYMARKET_SECRET_KEY||'').trim()}}
 function client(){const c=creds(),k=c.keyId+'|'+c.secretKey;if(!c.keyId||!c.secretKey)return null;if(!authClient||k!==authKey){authClient=new PolymarketUS({...c,timeout:20000});authKey=k}return authClient}
-export function usReadiness(){const c=creds();return {platform:'Polymarket US',hasKeyId:!!c.keyId,hasSecretKey:!!c.secretKey,credentialsReady:!!(c.keyId&&c.secretKey),realEnabled:String(process.env.POLYMARKET_US_REAL_ENABLED||'true').toLowerCase()!=='false',sessionArmed,execution:'manual-confirm-only',developerPortal:'https://polymarket.us/developer',lastAuthError:lastAuth.error,authCode:lastAuth.code,keyVerified:lastAuth.code==='ok',lastAuthAt:lastAuth.at}}
+export function usReadiness(){const c=creds(),credentialsReady=!!(c.keyId&&c.secretKey),realEnabled=String(process.env.POLYMARKET_US_REAL_ENABLED||'true').toLowerCase()!=='false';const executionMode=realEnabled?(sessionArmed&&credentialsReady?'LIVE_ARMED':'LIVE_CAPABLE_UNARMED'):'LIVE_DISABLED';return {platform:'Polymarket US',mode:executionMode,pnlMode:'LIVE',hasKeyId:!!c.keyId,hasSecretKey:!!c.secretKey,credentialsReady,realEnabled,sessionArmed,execution:'manual-confirm-only',developerPortal:'https://polymarket.us/developer',lastAuthError:lastAuth.error,authCode:lastAuth.code,keyVerified:lastAuth.code==='ok',lastAuthAt:lastAuth.at}}
 
 function feePerContract(p,taker=true){return (taker?.05:-.0125)*p*(1-p)}
 function marketScore(m,reward=0,live=false){

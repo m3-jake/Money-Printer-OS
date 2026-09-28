@@ -17,6 +17,7 @@ import { reconcileVenue } from './accountReconcile.js';
 import { syncLabChampions } from './labSync.js';
 import { extractTerms,matchTerms,termsFingerprint,candidatePairs } from './contractTerms.js';
 import { describeFeeModel,takerFee } from './fees.js';
+import { MarketAdapter, OrderSimulator, frictionConfigFor } from './paperTrading.js';
 import { PaperBroker,STOCK_VENUE,cleanSymbols,EQUITY_FEE_MODEL } from './brokers.js';
 import { readBarStore } from '../robinhoodEquitiesData.js';
 import os from 'node:os';
@@ -58,7 +59,7 @@ export class MarketPlatform {
       strategy TEXT NOT NULL, params TEXT NOT NULL, dataset_fp TEXT NOT NULL, records INTEGER NOT NULL, code_version TEXT NOT NULL, machine TEXT NOT NULL, seed TEXT, result TEXT NOT NULL);
       CREATE TRIGGER IF NOT EXISTS lab_runs_no_update BEFORE UPDATE ON lab_runs BEGIN SELECT RAISE(ABORT,'Experiment records are append-only'); END;
       CREATE TRIGGER IF NOT EXISTS lab_runs_no_delete BEFORE DELETE ON lab_runs BEGIN SELECT RAISE(ABORT,'Experiment records are append-only'); END;`);this.stocks=new PaperBroker({platform:this,...(stockQuotes?{quotes:stockQuotes}:{}),...(stockClock?{clock:stockClock}:{}),...(stockSession?{session:stockSession}:{})});this.dataDir=dataDir;
-    this.providers=providers||new ProviderRegistry();if(!providers){this.providers.register(new KalshiProvider());this.providers.register(new PolymarketProvider());}
+    this.providers=providers||new ProviderRegistry();if(!providers){this.providers.register(new KalshiProvider());this.providers.register(new PolymarketProvider());console.info('[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED');}
     this.journalError=null;
     if(dataDir)this.bus.on('RISK_STATE_CHANGED',event=>{
       try{appendProjectJournal(path.join(dataDir,'project-journal.ndjson'),{kind:'risk',title:`Risk Governor: ${event.data.state}`,detail:event.data.reason||'Paper execution resumed',at:event.at});}
@@ -66,7 +67,7 @@ export class MarketPlatform {
     });
   }
   snapshot(){
-    return {at:Date.now(),build:BUILD_PROVENANCE,capabilities:moduleCapabilities(this.store,{dataDir:this.dataDir}),risk:this.risk.state(),providers:this.providers.status(),database:this.store.health(),eventBus:this.bus.snapshot(),journalError:this.journalError,
+    return {at:Date.now(),build:BUILD_PROVENANCE,executionModes:{kalshi:'PAPER',polymarket:'PAPER',liveCore:'LOCKED'},pnlLabels:{portfolio:'PAPER',livePortfolio:'LIVE'},capabilities:moduleCapabilities(this.store,{dataDir:this.dataDir}),risk:this.risk.state(),providers:this.providers.status(),database:this.store.health(),eventBus:this.bus.snapshot(),journalError:this.journalError,
       strategies:this.strategies.list(),venueAccounts:this.store.db.prepare('SELECT venue,at,state,result FROM venue_reconcile').all().map(r=>({...JSON.parse(r.result),at:r.at})),legacy:{...legacyCoverage(this.legacyReaders),mirror:this.store.db.prepare('SELECT * FROM legacy_sync').all().map(r=>({...r,detail:JSON.parse(r.detail)}))},labSync:this.labSync||null,portfolio:this.ledger.portfolio(),livePortfolio:this.ledger.portfolio('LIVE'),ledger:this.ledger.entries(),events:this.store.events(),
       watchlist:this.store.db.prepare('SELECT * FROM watchlist ORDER BY added_at DESC').all(),proposals:this.store.db.prepare('SELECT * FROM proposals ORDER BY created_at DESC LIMIT 100').all().map(r=>({...r,payload:JSON.parse(r.payload),decision:JSON.parse(r.decision)})),
       coverage:{legacyBooks:'MIRRORED_AND_RECONCILED_WHERE_POSSIBLE',liveAccounts:'NOT_RECONCILED',riskValuation:'USD_MARKED_EQUITY_WITH_CASH_FLOW_NEUTRAL_HIGH_WATER',note:'USD risk requires fresh liquidation depth and costs for every included open position. SOL and other currencies are reported separately without FX consolidation. Legacy books without fresh marks block new USD risk; US combos remain excluded without a reconciled account balance. High-water history begins at the first upgraded valuation; earlier intraperiod peaks are unknown.'}};
@@ -113,21 +114,21 @@ export class MarketPlatform {
     const {contract,book}=await this.book(input.venue,input.sourceId);
     if(!['OPEN','ACTIVE'].includes(contract.data.status)||contract.data.closeAt!==null&&contract.data.closeAt<=Date.now())throw new Error('Market is not open for paper execution');
     const side=book[input.outcome.toLowerCase()],levels=input.side==='BUY'?side.asks:side.bids;
-    // walkBook buys lowest asks. Selling uses the reciprocal so highest bids fill first.
-    const quote=walkBook(input.side==='BUY'?levels:levels.map(l=>({...l,price:1-l.price})),quantity);
-    if(!quote.complete||quote.averagePrice===null)throw new Error('Insufficient observed order-book depth');
-    const price=input.side==='BUY'?quote.averagePrice:1-quote.averagePrice;
-    const top=levels[0]?.price;const slippageBps=top>0?Math.abs(price/top-1)*10000:null;
     const venueModel=contract.data.feeModel||null;
     if(feeBps===null&&!venueModel)throw new Error(`Venue fee schedule unavailable (${contract.data.feeModelReason||'no fee model'}); enter a modeled fee in bps`);
-    const fills=input.side==='BUY'?quote.fills:quote.fills.map(f=>({...f,price:1-f.price}));
-    const venueFee=feeBps===null?takerFee(venueModel,fills):null;if(feeBps===null&&venueFee===null)throw new Error('Venue fee could not be computed for these fills; enter a modeled fee in bps');
-    const gross=decimal(BigInt(Math.ceil(quantity*price*1e6))),fee=decimal(BigInt(Math.ceil((feeBps===null?venueFee:Number(gross)*feeBps/10000)*1e6)));
+    const quoteAt=Math.min(book.observedAt,book.providerTimestamp??book.observedAt),adapter=new MarketAdapter({venue:input.venue,staleMs:30000});
+    const market=adapter.normalize({symbol:`${input.sourceId}:${input.outcome}`,bids:side.bids,asks:side.asks,timestamp:quoteAt,source:input.venue},{now:Date.now()});
+    const friction=frictionConfigFor(input.venue,{overrides:{fee:{kind:'custom',compute:({quantity:q,price})=>feeBps===null?takerFee(venueModel,[{quantity:q,price}]):q*price*feeBps/10000},
+      slippage:{kind:'depth'},minOrderQty:input.venue==='kalshi'?1:0,minNotional:0,maxStaleMs:30000,allowDepthPartial:true}});
+    const sim=new OrderSimulator().simulate({order:{side:input.side,quantity},market,friction,seed:`${input.venue}:${input.sourceId}:${input.outcome}:${input.side}:${quantity}:${fingerprint(book)}`,now:Date.now()});
+    if(sim.status==='REJECTED')throw new Error(`Paper simulation rejected: ${sim.reason}`);
+    const filledQuantity=sim.filledQuantity,price=sim.fillPrice,slippageBps=sim.slippageBps;
+    const gross=decimal(BigInt(Math.ceil(sim.gross*1e6))),fee=decimal(BigInt(Math.ceil(sim.feeUsd*1e6)));
     const feeModel=feeBps===null?{kind:'VENUE_SCHEDULE',model:venueModel.kind,rate:venueModel.rate,source:venueModel.source,describe:describeFeeModel(venueModel)}:{kind:'USER_MODELED_BPS',bps:feeBps};
     const payload={id:input.id||randomUUID(),mode:input.mode,venue:input.venue,account:'manual',currency:'USD',instrumentId:stableId('Instrument',input.venue,`${input.sourceId}:${input.outcome}`),
-      contractId:contract.id,sourceId:input.sourceId,outcome:input.outcome,eventId:contract.data.eventId||contract.id,strategyId:'manual',side:input.side,quantity,price,feeUsd:Number(fee),gross,fee,
-      slippageBps,liquidityUsd:levels.reduce((s,l)=>s+l.price*l.quantity,0),quoteAt:Math.min(book.observedAt,book.providerTimestamp??book.observedAt),bookFingerprint:fingerprint(book),feeModel,simulated:true};
-    this.captureRiskMarks(input.venue,input.sourceId,book,venueModel,input.outcome,quantity,feeBps);
+      contractId:contract.id,sourceId:input.sourceId,outcome:input.outcome,eventId:contract.data.eventId||contract.id,strategyId:'manual',side:input.side,quantity:filledQuantity,requestedQuantity:quantity,price,feeUsd:Number(fee),gross,fee,
+      slippageBps,liquidityUsd:sim.liquidityUsd,quoteAt,bookFingerprint:fingerprint(book),feeModel,simulated:true,simulation:{mode:'PAPER',status:sim.status,reason:sim.reason,latencyMs:sim.latencyMs,fillAt:sim.fillAt,fillRatio:sim.fillRatio,bookSlippageBps:sim.bookSlippageBps,extraSlippageBps:sim.extraSlippageBps}};
+    this.captureRiskMarks(input.venue,input.sourceId,book,venueModel,input.outcome,filledQuantity,feeBps);
     const result=this.risk.propose(payload);this.bus.publish(result.status==='REJECTED'?'ORDER_REJECTED':'ORDER_PROPOSED',{id:result.id,status:result.status});return result;
   }
   executePaper(id,confirmation){
@@ -143,7 +144,7 @@ export class MarketPlatform {
       // The same observed depth cannot be consumed by multiple simulated fills.
       const used=this.store.db.prepare("SELECT payload FROM proposals WHERE status='FILLED'").all().some(r=>{const p=JSON.parse(r.payload);return p.bookFingerprint===order.bookFingerprint&&p.instrumentId===order.instrumentId&&p.side===order.side;});
       if(used)throw new Error('Book snapshot already consumed; request a fresh preview');
-      this.ledger.append({sourceKey:`paper-fill:${id}`,at:Date.now(),mode:'PAPER',venue:order.venue,account:order.account,currency:order.currency,kind:order.side,instrumentId:order.instrumentId,strategyId:order.strategyId,eventId:order.eventId,quantity:String(order.quantity),gross:order.gross,fee:order.fee,reference:`Simulated depth fill; proposal ${id}; ${order.feeModel.kind==='USER_MODELED_BPS'?`modeled fee ${order.feeModel.bps} bps`:order.feeModel.kind==='VENUE_SCHEDULE'?`venue fee schedule (${order.feeModel.model}, rate ${order.feeModel.rate})`:order.feeModel.describe||order.feeModel.kind}`});
+      this.ledger.append({sourceKey:`paper-fill:${id}`,at:order.simulation?.fillAt||Date.now(),mode:'PAPER',venue:order.venue,account:order.account,currency:order.currency,kind:order.side,instrumentId:order.instrumentId,strategyId:order.strategyId,eventId:order.eventId,quantity:String(order.quantity),gross:order.gross,fee:order.fee,reference:`PAPER simulated ${order.simulation?.status||'fill'} after ${order.simulation?.latencyMs??0} ms; proposal ${id}; ${order.feeModel.kind==='USER_MODELED_BPS'?`modeled fee ${order.feeModel.bps} bps`:order.feeModel.kind==='VENUE_SCHEDULE'?`venue fee schedule (${order.feeModel.model}, rate ${order.feeModel.rate})`:order.feeModel.describe||order.feeModel.kind}`});
       this.store.db.prepare("UPDATE proposals SET status='FILLED',decision=?,updated_at=? WHERE id=?").run(JSON.stringify(decision),Date.now(),id);this.store.record('ORDER_FILLED',{id,mode:'PAPER',simulated:true});
       return {id,status:'FILLED',simulated:true,order};
     });

@@ -19,18 +19,18 @@
   function positions() {
     const open = journal?.open || [], paper = corePoly().flatMap(a => a.positions.map(p => ({ ...p, account: a.account })));
     return `<div class="core-heading"><h2>POSITIONS</h2><span class="mpo-badge">READ ONLY</span></div>
-      <h3>US combos <small>Real venue orders placed from Live combos · not reconciled with the venue</small></h3>
-      ${table(['Opened', 'Legs', 'Fill price', 'Qty', 'Cost', 'Status', 'Fill'], open.map(x => `<tr><td>${when(x.at)}</td><td>${escape(legs(x))}</td><td>${pct(x.fillPrice)}</td><td>${escape(x.quantity)}</td><td>${usd(x.costUsd)}</td><td>${escape(x.status)}</td><td>${x.fillVerified === true ? 'verified' : '<b>unverified</b>'}</td></tr>`).join(''), 'No open US combos.')}
+      <h3>US combos · LIVE UNRECONCILED <small>Real venue orders placed from Live combos · not reconciled with the venue</small></h3>
+      ${table(['Opened', 'Legs', 'LIVE Fill price', 'Qty', 'LIVE Cost', 'Status', 'Fill'], open.map(x => `<tr><td>${when(x.at)}</td><td>${escape(legs(x))}</td><td>${pct(x.fillPrice)}</td><td>${escape(x.quantity)}</td><td>${usd(x.costUsd)}</td><td>${escape(x.status)}</td><td>${x.fillVerified === true ? 'verified' : '<b>unverified</b>'}</td></tr>`).join(''), 'No open US combos.')}
       <h3>Core paper positions <small>Simulated fills in the common ledger</small></h3>
-      ${table(['Instrument', 'Strategy', 'Quantity', 'Cost basis'], paper.map(p => `<tr><td>${escape(p.instrumentId)}</td><td>${escape(p.strategyId)}</td><td>${escape(p.quantity)}</td><td>${usd(p.costBasis)}</td></tr>`).join(''), 'No core paper positions on Polymarket.')}`;
+      ${table(['Instrument', 'Strategy', 'Quantity', 'PAPER Cost basis'], paper.map(p => `<tr><td>${escape(p.instrumentId)}</td><td>${escape(p.strategyId)}</td><td>${escape(p.quantity)}</td><td>${usd(p.costBasis)}</td></tr>`).join(''), 'No core paper positions on Polymarket.')}`;
   }
   function history() {
     const rows = journal?.history || [], ledger = (core?.ledger || []).filter(e => e.venue === 'polymarket');
     return `<div class="core-heading"><h2>HISTORY</h2><span class="mpo-badge">LAST ${rows.length}</span></div>
-      <h3>US combos</h3>
-      ${table(['Settled', 'Legs', 'Fill price', 'Cost', 'Payout', 'P/L', 'Result'], rows.map(x => `<tr><td>${when(x.settledAt || x.at)}</td><td>${escape(legs(x))}</td><td>${pct(x.fillPrice)}</td><td>${usd(x.costUsd)}</td><td>${usd(x.payoutUsd)}</td><td class="${tone(x.pnlUsd)}">${usd(x.pnlUsd)}</td><td>${escape(x.status)}</td></tr>`).join(''), 'No settled US combos yet.')}
+      <h3>US combos · LIVE UNRECONCILED</h3>
+      ${table(['Settled', 'Legs', 'LIVE Fill price', 'LIVE Cost', 'LIVE Payout', 'LIVE P/L', 'Result'], rows.map(x => `<tr><td>${when(x.settledAt || x.at)}</td><td>${escape(legs(x))}</td><td>${pct(x.fillPrice)}</td><td>${usd(x.costUsd)}</td><td>${usd(x.payoutUsd)}</td><td class="${tone(x.pnlUsd)}">${usd(x.pnlUsd)}</td><td>${escape(x.status)}</td></tr>`).join(''), 'No settled US combos yet.')}
       <h3>Core paper ledger <small>Polymarket entries</small></h3>
-      ${table(['Time', 'Kind', 'Quantity', 'Gross', 'Fee', 'Reference'], ledger.map(e => `<tr><td>${when(e.at)}</td><td>${escape(e.kind)}</td><td>${escape(e.quantity)}</td><td>${usd(e.gross)}</td><td>${usd(e.fee)}</td><td>${escape(e.reference)}</td></tr>`).join(''), 'No core ledger entries for Polymarket.')}`;
+      ${table(['Time', 'Kind', 'Quantity', 'PAPER Gross', 'PAPER Fee', 'Reference'], ledger.map(e => `<tr><td>${when(e.at)}</td><td>${escape(e.kind)}</td><td>${escape(e.quantity)}</td><td>${usd(e.gross)}</td><td>${usd(e.fee)}</td><td>${escape(e.reference)}</td></tr>`).join(''), 'No core ledger entries for Polymarket.')}`;
   }
   function performance() {
     const p = journal?.performance;
@@ -38,15 +38,15 @@
     const ci = p.winRateCi95 ? `${pct(p.winRateCi95.low)}–${pct(p.winRateCi95.high)}` : '—';
     const tile = (label, value, cls = '') => `<div class="pm-tile"><small>${escape(label)}</small><b class="${cls}">${value}</b></div>`;
     if (window.MPOViz) {
-      MPOViz.set('pm-perf-curve', 'lines', { series: [{ label: 'net P/L', color: '#ffb000', points: p.curve }], unit: '$', empty: 'Cumulative P/L appears once combos settle' });
+      MPOViz.set('pm-perf-curve', 'lines', { series: [{ label: 'LIVE net P/L', color: '#ffb000', points: p.curve }], unit: '$', empty: 'Cumulative P/L appears once combos settle' });
       MPOViz.set('pm-perf-cal', 'scatter', { lo: 0.5, hi: 1, points: p.calibration.map(c => ({ x: c.implied, y: c.winRate, n: c.n })), empty: 'Calibration fills in as combos settle' });
     }
-    return `<div class="core-heading"><h2>PERFORMANCE</h2><span class="mpo-badge">US COMBOS · SETTLED ONLY</span></div>
+    return `<div class="core-heading"><h2>PERFORMANCE</h2><span class="mpo-badge">US COMBOS · LIVE UNRECONCILED · SETTLED ONLY</span></div>
       ${p.sampleNote ? `<p class="core-notice">${escape(p.sampleNote)}</p>` : ''}
-      <div class="pm-tiles">${tile('Net P/L', usd(p.netPnlUsd), tone(p.netPnlUsd))}${tile('ROI on cost', p.roiPct === null ? '—' : p.roiPct.toFixed(1) + '%', tone(p.roiPct))}${tile('Settled / placed', `${p.settled} / ${p.placed}`)}${tile('Won / lost', `${p.won} / ${p.lost}`)}
+      <div class="pm-tiles">${tile('LIVE Net P/L', usd(p.netPnlUsd), tone(p.netPnlUsd))}${tile('LIVE ROI on cost', p.roiPct === null ? '—' : p.roiPct.toFixed(1) + '%', tone(p.roiPct))}${tile('Settled / placed', `${p.settled} / ${p.placed}`)}${tile('Won / lost', `${p.won} / ${p.lost}`)}
         ${tile('Win rate', pct(p.winRate))}${tile('95% interval', ci)}${tile('Avg implied', pct(p.avgImplied))}${tile('Realized − implied', p.edge === null ? '—' : (p.edge * 100).toFixed(1) + ' pts', tone(p.edge))}
-        ${tile('Open', `${p.open} (${p.unverifiedOpen} unverified)`)}${tile('Open cost', usd(p.openCostUsd))}</div>
-      ${window.MPOViz ? `<div class="mpo-viz-grid">${MPOViz.canvas('pm-perf-curve', 130, 'cumulative net P/L')}${MPOViz.canvas('pm-perf-cal', 130, 'won vs implied (fill price)')}</div>` : ''}
+        ${tile('LIVE Open', `${p.open} (${p.unverifiedOpen} unverified)`)}${tile('LIVE Open cost', usd(p.openCostUsd))}</div>
+      ${window.MPOViz ? `<div class="mpo-viz-grid">${MPOViz.canvas('pm-perf-curve', 130, 'LIVE cumulative net P/L')}${MPOViz.canvas('pm-perf-cal', 130, 'won vs implied (fill price)')}</div>` : ''}
       <h3>Calibration by fill price</h3>
       ${table(['Fill price', 'Combos', 'Avg implied', 'Won', 'Difference'], p.calibration.map(c => `<tr><td>${pct(c.lo)}–${pct(c.hi)}</td><td>${c.n}</td><td>${pct(c.implied)}</td><td>${pct(c.winRate)}</td><td class="${tone(c.winRate - c.implied)}">${((c.winRate - c.implied) * 100).toFixed(1)} pts</td></tr>`).join(''), 'No settled combos with a fill price yet.')}
       <p class="core-muted">Implied probability is the fill price per $1 contract. Fees are inside cost and P/L. Past settlement rates do not predict future results; small samples swing widely.</p>`;

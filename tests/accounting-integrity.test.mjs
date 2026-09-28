@@ -148,7 +148,9 @@ test('F7 a paper entry without a pool binding is refused', () => {
   assert.equal(execution.paperEntryRejection({ mint: 'M', pairAddress: 'PAIR' }), null);
   // index.js must refuse the fill before any cash moves
   assert.match(indexSource, /const entryReject = paperEntryRejection\(pick\);/);
-  assert.ok(indexSource.indexOf('const entryReject') < indexSource.indexOf('s.cashSol -= size + entryFee'));
+  const guardAt=indexSource.indexOf('const entryReject'),executeAt=indexSource.indexOf('simulatePumpPaperExecution(pick',guardAt),debitAt=indexSource.indexOf('s.cashSol-=debit',guardAt);
+  assert.ok(guardAt>=0&&executeAt>guardAt, 'pool binding is checked before shared PAPER execution');
+  assert.ok(debitAt>guardAt, 'pool binding is checked before any PAPER cash debit');
   // and the position's own tick history must reach reviewPositionPrice
   assert.match(indexSource, /reviewPositionPrice\(p,pair,\{[^}]*ticks:s\.tickHistory\?\.\[p\.mint\]/);
 });

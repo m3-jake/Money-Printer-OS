@@ -9,9 +9,12 @@ import { RobinhoodError, RH_CODES, fail } from './robinhoodErrors.js';
 import { RH_BASE_URL, loadRobinhoodPrivateKey, signRequest, buildPath } from './robinhoodSigner.js';
 export { RobinhoodError, RH_CODES, fail } from './robinhoodErrors.js';
 
-const APP_VERSION='0.5.0-alpha.59';
+const APP_VERSION='0.5.0-alpha.63';
+export const ROBINHOOD_LIVE_TRADING_ENABLED=false;
+export const ROBINHOOD_LIVE_CREDENTIAL_ENV=Object.freeze({apiKey:'ROBINHOOD_LIVE_API_KEY',privateKey:'ROBINHOOD_LIVE_PRIVATE_KEY'});
 const UA=()=>`MoneyPrinterOS/${APP_VERSION}`;
 const BASE=()=>String(process.env.ROBINHOOD_API||RH_BASE_URL).replace(/\/+$/,'');
+const isTestDestination=()=>{try{const h=new URL(BASE()).hostname.toLowerCase();return h==='localhost'||h==='127.0.0.1'||h.endsWith('.test')}catch{return false}};
 const ORDER_API=()=>String(process.env.ROBINHOOD_ORDER_API||'v2').trim().toLowerCase()==='v1'?'v1':'v2';
 const TIME_IN_FORCE=['gtc','gfd','gfw','gfm'];
 const num=v=>{if(v===null||v===undefined||v==='')return null;const n=Number(v);return Number.isFinite(n)?n:null};
@@ -31,14 +34,17 @@ export const RH_POST_ALLOWED=/^\/api\/v[12]\/crypto\/trading\/orders\/(?:[A-Za-z
 export function rhCallStats(){return {...callStats}}
 
 export function creds(){return {apiKey:String(process.env.ROBINHOOD_API_KEY||'').trim(),privateKeyBase64:String(process.env.ROBINHOOD_PRIVATE_KEY||'').trim()}}
-export function keyObject(){
- const {privateKeyBase64}=creds();
+export function liveCreds(){return {apiKey:String(process.env.ROBINHOOD_LIVE_API_KEY||'').trim(),privateKeyBase64:String(process.env.ROBINHOOD_LIVE_PRIVATE_KEY||'').trim()}}
+function keyFor(credentials){
+ const {privateKeyBase64}=credentials||{};
  if(!privateKeyBase64)return null;
  const hash=crypto.createHash('sha256').update(privateKeyBase64).digest('hex');
  if(keyCache.key&&keyCache.hash===hash)return keyCache.key;
  try{const key=loadRobinhoodPrivateKey(privateKeyBase64);keyCache={hash,key};return key}
  catch(e){keyCache={hash:'',key:null};noteRobinhoodAuth({code:'badKey',message:e?.message||'bad key'});return null}
 }
+export function keyObject(){return keyFor(creds())}
+export function liveKeyObject(){return keyFor(liveCreds())}
 export function rhLastAuth(){return {...lastAuth}}
 export function noteRobinhoodAuth({code=null,message=null,status=0}={}){
  const resolved=code||(status?classifyRobinhoodError(status,null,message):(message?'unknown':'ok'));
@@ -91,14 +97,18 @@ function takeToken(){
  rate.tokens-=1;
 }
 export async function rhRequest({method,path,json,timeoutMs=15000,retryOn401=true}){
- const verb=String(method||'GET').toUpperCase();
- if(verb==='POST'&&!/\/cancel\/(?:\?|$)/.test(String(path||'')))assertLiveDispatchAllowed();
+ const verb=String(method||'GET').toUpperCase(),mutation=verb==='POST';
+ if(mutation&&!isTestDestination()){
+  if(!ROBINHOOD_LIVE_TRADING_ENABLED)throw Object.assign(new Error('Robinhood PAPER-ONLY build: outbound order mutations are disabled in code'),{code:'ROBINHOOD_PAPER_ONLY_BUILD'});
+  assertLiveDispatchAllowed();
+ }
  if(verb==='POST'&&!RH_POST_ALLOWED.test(String(path||''))){callStats.postRefused++;fail('validation','Robinhood POST refused: only the order endpoints may be posted to')}
  if(verb==='GET')callStats.get++;else if(verb==='POST'){callStats.post++;callStats.lastPostAt=now();callStats.lastPostPath=String(path).split('?')[0]}else callStats.other++;
  const m=String(method||'GET').toUpperCase();
- const {apiKey,privateKeyBase64}=creds();
- if(!apiKey||!privateKeyBase64){noteRobinhoodAuth({code:'noCredentials',message:'Robinhood API credentials are not configured'});fail('noCredentials','Robinhood API credentials are not configured')}
- const privateKey=keyObject();
+ const requestCreds=mutation&&!isTestDestination()?liveCreds():creds();
+ const {apiKey,privateKeyBase64}=requestCreds;
+ if(!apiKey||!privateKeyBase64){const msg=mutation?'Separate Robinhood LIVE credentials are not configured':'Robinhood API credentials are not configured';noteRobinhoodAuth({code:'noCredentials',message:msg});fail('noCredentials',msg)}
+ const privateKey=keyFor(requestCreds);
  if(!privateKey)fail('badKey',lastAuth.code==='badKey'&&lastAuth.error?lastAuth.error:'Robinhood private key is invalid');
  const p=normalizePath(path);
  const body=(json===undefined||json===null)?'':JSON.stringify(json);   // serialised exactly once; signed bytes === sent bytes

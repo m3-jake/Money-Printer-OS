@@ -124,8 +124,9 @@ export function solanaBookView(s = {}, config = {}) {
   const be = breakEvenHitRate(pr, cost.pct);
   const floor = baselineRoundTripPct(config);
   const sprintBe = breakEvenHitRate(exitPresets.sprint, cost.pct);
+  const mode=String(s.pnlMode||s.mode||config.mode||'PAPER').toUpperCase()==='LIVE'?'LIVE':'PAPER';
   return {
-    profile: runtime.profile || null, exitPreset: runtime.exitPreset || null,
+    mode,pnlMode:mode,profile: runtime.profile || null, exitPreset: runtime.exitPreset || null,
     preset: { tp1: pr.tp1, tp2: pr.tp2, stop: pr.stop, trail: pr.trail, maxHold: pr.maxHold },
     ...solanaBookStats(s.history),
     fair: fairExpectancy(s.history, config),
