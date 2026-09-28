@@ -890,3 +890,45 @@ skipped** in 57 s — P4.3's 980/978/0/2 plus these four. Touched: `MONEY_PRINTE
 `tests/doc-drift.test.mjs`, and these two ledger entries.
 
 
+**P5.2 — the one-sided tick band: P1.5's deferred decision, made with evidence.** Status: done.
+
+P1.5 built the counters and deliberately left the band itself alone ("a later decision with its own
+evidence"). The evidence available is a probe of the real module rather than a tick series: `data/` in
+this checkout is a 3.3 KB experiment registry and a 266-byte project journal, so there is nothing to
+calibrate a behaviour change against, and the decision has to rest on mechanism and direction of loss.
+
+- **Inside the anchor window (0.05..20x the last accepted price) the band is upside-only, in both
+  modes.** With a median and anchor of 0.01, a print of 0.0006 — 16.7x below the median, −94% — is
+  accepted immediately (`corrected: undefined`) in paper *and* live. P1.5's account implied the live
+  lane was already symmetric here; it is not. The `!paper` guard in `positionExecution.js:73` governs
+  the extreme case only.
+- **Below the floor (0.0004, ratio 0.04):** paper returns `confirming-price-drop` and needs three
+  exact-pool refreshes over ≥15 s; live returns `price-discontinuity` and never recovers. So the
+  corroboration the one-sidedness is argued from covers the far drop, not the mid-range one.
+- **Decision: keep it one-sided.** A two-sided band would refuse the mid-range mark with nothing able
+  to confirm it — the corroboration state is only reachable below the floor — so the mark would be
+  trapped at a stale level, which is the failure the crash path exists to prevent, and it would slow
+  the exit on a real mid-range dump, the expensive direction once real orders are attached. The damage
+  the asymmetry leaves open is bounded and recorded (one stop-out at a bad mark, visible in the P1.5
+  funnel); the phantom-upside damage the band prevents is unbounded and silent (NAV, position size,
+  every ratio downstream).
+- **What would reopen it:** a real tick series in which phantom mid-range prints occur, or P1.5 funnel
+  evidence of downward stop-outs clustered at the boundary. Both are now written where the code lives,
+  and the behaviour is pinned by the P5.2 test in `tests/execution-turnover.test.mjs`, alongside the
+  existing invariant that the band never rejects downward — so the asymmetry cannot change by accident.
+
+**Bite-proof:** making the band two-sided (reject `price < median/5` as well) turns
+`tests/execution-turnover.test.mjs` red on the P5.2 assertion — 12 pass / 1 fail, "a 16.7x-below-median
+print is accepted (paper=true)" — and the file is byte-identical afterwards (SHA-256 unchanged). Worth
+recording: the older invariant "the band never rejects downward" does **not** catch that mutation, because
+its crash case (0.0005 against an anchor of 1) sits below the window floor and never reaches the band at
+all. That is why the mid-range case had to be pinned separately.
+
+Touched: `src/positionExecution.js` (the comment states the measured scope and the rejected
+alternative instead of implying the live lane is symmetric) and `tests/execution-turnover.test.mjs`
+(+1 test). That closes the last deliberately deferred item in the pass.
+
+**P5 status: complete (P5.1, P5.2).** Every remaining entry in `.agent-state/KNOWN_BUGS.md` now carries
+an explicit disposition — fixed with a test, a deliberate non-goal, or an honest risk note with its
+measurement — rather than an unexamined claim.
+

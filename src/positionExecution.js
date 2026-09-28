@@ -37,10 +37,19 @@ export function simulatePaperExit(position,pair,solUsd,slippageBps,feeBps,fracti
 // is a 110x teleport in two "legal" moves. An accepted tick is therefore also banded against the
 // MEDIAN of the position's own recent ticks, which no single bad print can move.
 //
-// The band is deliberately one-sided. Upward discontinuities are what manufacture phantom equity
-// (and phantom position size, see F8); genuine crashes keep the existing three-refresh
-// corroboration path and are not touched here. The band lifts once the tick history goes stale,
-// so a quiet position can never be trapped by an old median.
+// The band is deliberately one-sided, and P5.2 (2026-09-28) settled the decision P1.5 left open: keep
+// it. Measured scope (pinned by tests/execution-turnover.test.mjs): a price above 5x the recent tick
+// median is refused in both modes, while a price far BELOW the median is accepted with no
+// corroboration in both modes for as long as it stays >=0.05x the last accepted price. Below that
+// floor the crash path takes over — three exact-pool refreshes over >=15s in paper, a flat refusal in
+// live — so the corroboration the asymmetry is argued from covers the extreme drop only, not the
+// mid-range one. The rejected alternative, on the record: a two-sided band would refuse the mid-range
+// mark with nothing able to confirm it (that state is only reachable below the floor), i.e. the mark
+// would be trapped at a stale level, which is the failure the crash path exists to prevent, and it
+// would slow the exit on a real mid-range dump — the expensive direction once real orders are
+// attached. Reopen only with a real tick series showing phantom mid-range prints (this checkout has
+// none) or P1.5 funnel evidence of downward stop-outs at the boundary. The band lifts once the tick
+// history goes stale, so a quiet position can never be trapped by an old median.
 export const TICK_BAND_MAX_RATIO = 5;
 export const TICK_BAND_MIN_TICKS = 4;
 export const TICK_BAND_WINDOW = 12;

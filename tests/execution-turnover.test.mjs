@@ -153,3 +153,31 @@ test('16 held positions use one request and exact base/pool matching',async()=>{
  assert.equal(calls,1);assert.ok(rows[0].pair);assert.equal(rows[1].pair,null);assert.equal(rows[15].pair,null);
  await dex.refreshPositionPairs(positions);assert.equal(calls,1,'5 second cache avoids a duplicate request');
 });
+test('P5.2 the band is one-sided on purpose, and a sub-crash downward print is acted on in both modes', () => {
+  // The behaviour the P1.5 deferral was waiting on, measured rather than argued. Two boundaries decide
+  // it: the anchor window (0.05..20x the last accepted price) and the median band (reject above 5x).
+  // Inside the window a price is banded on the UPSIDE ONLY, in both modes, so a print far below the
+  // median is accepted with no corroboration; only below the window floor does the three-refresh path
+  // (paper) or a flat refusal (live) apply.
+  const now = 1000000, ticks = [...Array(6)].map(() => ({ ts: 999000, price: .01 }));
+  const held = () => ({ ...position(), entryPrice: .01, lastPrice: .01 });
+  assert.equal(recentTickMedian(ticks, now), .01, 'the median the band and the window share');
+  const mid = .0006; // 0.06x the anchor (-94%), 16.7x BELOW the median
+  for (const paper of [true, false]) {
+    const reviewed = reviewPositionPrice(held(), pair(mid, now), { paper, now, ticks });
+    assert.equal(reviewed.accepted, true, `a 16.7x-below-median print is accepted (paper=${paper})`);
+    assert.equal(reviewed.corrected, undefined, 'and it needs no corroboration');
+  }
+  const below = .0004; // 0.04x the anchor (-96%): the only thing that asks for corroboration
+  const paperFloor = reviewPositionPrice(held(), pair(below, now), { paper: true, now, ticks });
+  assert.equal(paperFloor.accepted, false); assert.equal(paperFloor.reason, 'confirming-price-drop');
+  const liveFloor = reviewPositionPrice(held(), pair(below, now), { paper: false, now, ticks });
+  assert.equal(liveFloor.accepted, false); assert.equal(liveFloor.reason, 'price-discontinuity');
+  // Decision (P5.2, 2026-09-28): keep the band one-sided. The corroboration that would make a two-sided
+  // band safe is only reachable below the floor, so banding the mid-range too would refuse the mark and
+  // go on refusing it — the failure the crash path exists to prevent — while being slow on real
+  // downside is the expensive direction once real orders are attached. Reopen only with a real tick
+  // series (none exists in this checkout) or P1.5 funnel evidence of downward stop-outs at the
+  // boundary; changing this test is how that decision gets recorded.
+});
+
