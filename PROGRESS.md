@@ -1,7 +1,7 @@
 1 — done — 5e6150c — Created the 16-task checkpoint ledger, paper-aggression branch, and verified secret-file ignore rules.
 2 — done — 717a14b — Added journal analytics, confidence and decay summaries, cross-source price validation, and report/replay:journal CLI.
 3 — done — 5338e98 — Added bounded tracked-wallet websocket ingestion, Pump.fun buy parsing, paper-only source signals, scanner attribution, and trailing-scorecard demotion.
-4 — partial — PENDING — Added atomic paired paper settlement with all-or-none leg states; venue polling and a recurring feed remain unwired.
+4 — partial — 69a236a — Added atomic paired paper settlement with all-or-none leg states; venue polling and a recurring feed remain unwired.
 5 — done — dc5c9d7 — Connected TTL-cached SOL and mint flow derivation to indexed transaction rows, candidate signals, and the paper journal without extra RPC calls.
 6 — done — bafbb66 — Wired half-Kelly sizing to aggressive paper entries after two closes, logged warm-up inputs, reserved staged exposure, and scheduled 2–4 paper clips with cash and sizing guards.
 7 — done — 6749f84 — Added correlation/narrative exposure gates, persistent equity peak tracking, tiered paper cuts, entry halts, and flatten handling.
