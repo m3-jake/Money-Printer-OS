@@ -960,7 +960,17 @@ cannot come back through the section readers act on. Bite-proofed (the route rem
 assertion, restored byte-exactly and hash-checked). Sweep: 30 targets, 987 tests / 985 pass / 0 fail /
 2 SKIP, +1.
 
-**P5 status: complete (P5.1, P5.2, P5.3, P5.4).** Every remaining entry in `.agent-state/KNOWN_BUGS.md` now carries
+**P5.5 — the audit row counted a suite the suite outgrew.** Status: done. The `AUDIT.md` row for this
+claim named the drift suite as "4 tests in `test:wiring`" — a count that went stale twice inside the same
+pass, when P5.3 and P5.4 added one each. That is the class P5.1 fixed, one level up: the audit's own
+summary of the fix is a document a reader acts on. The row now says 6 and names what the two extra tests
+assert (the entry-point route and age rule, and the open list's install item), so the next reader sees the
+coverage rather than a number. No test was added for this — the row quotes a count at the pass revision
+and `tests/doc-drift.test.mjs` deliberately leaves `AUDIT.md` out of the premise scan, since the audit
+quotes findings in order to rebut them. Sweep: 30 targets, 987 tests / 985 pass / 0 fail / 2 SKIP (the
+ledger edit and this row carry no test).
+
+**P5 status: complete (P5.1, P5.2, P5.3, P5.4, P5.5).** Every remaining entry in `.agent-state/KNOWN_BUGS.md` now carries
 an explicit disposition — fixed with a test, a deliberate non-goal, or an honest risk note with its
 measurement — rather than an unexamined claim.
 
