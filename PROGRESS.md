@@ -947,7 +947,20 @@ entry points. Bite-proofed twice: removing the routing sentence from `CURRENT_TA
 age assertion; both restored byte-exactly (hash-checked). Sweep: 30 targets, 986 tests / 984 pass /
 0 fail / 2 SKIP, +1.
 
-**P5 status: complete (P5.1, P5.2, P5.3).** Every remaining entry in `.agent-state/KNOWN_BUGS.md` now carries
+**P5.4 — the open list's release item routes to its record.** Status: done. The last line of
+`MONEY_PRINTER_STATUS.md`'s open list still read "The alpha.54 build hasn't been installed" — three
+alphas before the pair the rest of that document describes, and the same class as the four premises P5.1
+corrected: a reader acting on it looks for the wrong build. What the line was really recording is
+checkable in the tree (`scripts/release-alpha53.mjs:273` — `install`/`restart` are bing-only and refuse
+under an agent session), and the label it named is dated where it belongs
+(`.agent-state/RELEASE_STATUS.md:26`, the alpha.54 Windows build, not installed). The item now states the
+checkable part and sends the reader to that record. Pinned in `tests/doc-drift.test.mjs` (6th test): the
+open list must hold exactly one install item and it must name `RELEASE_STATUS.md`, so a stale build label
+cannot come back through the section readers act on. Bite-proofed (the route removed → red at that
+assertion, restored byte-exactly and hash-checked). Sweep: 30 targets, 987 tests / 985 pass / 0 fail /
+2 SKIP, +1.
+
+**P5 status: complete (P5.1, P5.2, P5.3, P5.4).** Every remaining entry in `.agent-state/KNOWN_BUGS.md` now carries
 an explicit disposition — fixed with a test, a deliberate non-goal, or an honest risk note with its
 measurement — rather than an unexamined claim.
 

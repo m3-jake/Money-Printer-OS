@@ -81,7 +81,7 @@ built, signed or installed in this pass. Version `0.5.0-alpha.71`.
 - Polymarket US API key returns 401 `keyNotFound`. Only bing can fix it by regenerating the key.
 - Combo/RFQ access is gated by a beta allow-list on Polymarket's side.
 - The research evidence gate isn't wired in (deliberate). The Polymarket strategy family loses after fees (report section 1).
-- The alpha.54 build hasn't been installed. Signing and publishing are bing-only.
+- Nothing is installed from a session in this tree: `install`/`restart` refuse under an agent session (`scripts/release-alpha53.mjs`), so the operator install plus signing and publishing stay bing-only — the pair and its status, including the alpha.54 Windows build that was never installed, are in `.agent-state/RELEASE_STATUS.md`.
 - The collector's cursor file can still be lost if it was already NUL-filled before this fix. The only effect is duplicate Solana ticks (bounded by `tickHistory`).
 
 ## Bugs fixed

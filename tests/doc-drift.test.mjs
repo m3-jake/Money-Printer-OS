@@ -139,3 +139,17 @@ test('the agent-state entry points are not older than the record they describe',
   }
 });
 
+// The open list is the section a reader acts on, and its release item used to name alpha.54 — three
+// alphas before the pair the rest of this document describes — so the reader's next move was ambiguous
+// and the label could only get older. The rule kept here is the routing one: an item that says something
+// is not installed must point at the record that carries the status, where the labels are dated.
+test('the open list routes its install item to the release status record', () => {
+  const open = sectionOf(status, '## Broken / unfinished / open');
+  const install = open.split('\n').filter(l => /install/i.test(l));
+  assert.equal(install.length, 1, 'the open list no longer has exactly one install item to check');
+  assert.match(install[0], /RELEASE_STATUS\.md/,
+    'the install item does not route the reader to `.agent-state/RELEASE_STATUS.md`, so its build label can go stale unnoticed');
+  assert.ok(fs.existsSync(path.join(root, '.agent-state/RELEASE_STATUS.md')),
+    'the record the open list points at is gone — the route leads nowhere');
+});
+
