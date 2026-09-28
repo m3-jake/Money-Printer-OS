@@ -13,6 +13,7 @@ import { activateExecutionBoundary } from './executionBoundary.js';
 import { StrategyRegistry, strategyEvidenceIdentity } from './strategies.js';
 import { legacyCoverage } from './legacyBooks.js';
 import { solanaPlan,practicePlan } from './legacyImport.js';
+import { reconcileLegacyBooks } from './bookReconcile.js';
 import { reconcileVenue } from './accountReconcile.js';
 import { syncLabChampions } from './labSync.js';
 import { extractTerms,matchTerms,termsFingerprint,candidatePairs } from './contractTerms.js';
@@ -67,10 +68,15 @@ export class MarketPlatform {
     });
   }
   snapshot(){
+    const legacy=legacyCoverage(this.legacyReaders),legacyMirror=this.store.db.prepare('SELECT * FROM legacy_sync').all().map(r=>({...r,detail:JSON.parse(r.detail)})),portfolio=this.ledger.portfolio();
+    // P1.1: the coverage claim is derived here, never asserted. Each legacy book is compared with its
+    // mirror account (bookReconcile.js) and a book that disagrees makes the platform refuse the
+    // "reconciled" wording, naming the fields it disagrees on. Nothing is repaired to make it pass.
+    const legacyReconcile=reconcileLegacyBooks({coverage:legacy,mirrors:legacyMirror,accounts:portfolio.accounts,at:Date.now()}),claim=legacyReconcile.claim;
     return {at:Date.now(),build:BUILD_PROVENANCE,executionModes:{kalshi:'PAPER',polymarket:'PAPER',liveCore:'LOCKED'},pnlLabels:{portfolio:'PAPER',livePortfolio:'LIVE'},capabilities:moduleCapabilities(this.store,{dataDir:this.dataDir}),risk:this.risk.state(),providers:this.providers.status(),database:this.store.health(),eventBus:this.bus.snapshot(),journalError:this.journalError,
-      strategies:this.strategies.list(),venueAccounts:this.store.db.prepare('SELECT venue,at,state,result FROM venue_reconcile').all().map(r=>({...JSON.parse(r.result),at:r.at})),legacy:{...legacyCoverage(this.legacyReaders),mirror:this.store.db.prepare('SELECT * FROM legacy_sync').all().map(r=>({...r,detail:JSON.parse(r.detail)}))},labSync:this.labSync||null,portfolio:this.ledger.portfolio(),livePortfolio:this.ledger.portfolio('LIVE'),ledger:this.ledger.entries(),events:this.store.events(),
+      strategies:this.strategies.list(),venueAccounts:this.store.db.prepare('SELECT venue,at,state,result FROM venue_reconcile').all().map(r=>({...JSON.parse(r.result),at:r.at})),legacy:{...legacy,mirror:legacyMirror,reconciliation:legacyReconcile},labSync:this.labSync||null,portfolio,livePortfolio:this.ledger.portfolio('LIVE'),ledger:this.ledger.entries(),events:this.store.events(),
       watchlist:this.store.db.prepare('SELECT * FROM watchlist ORDER BY added_at DESC').all(),proposals:this.store.db.prepare('SELECT * FROM proposals ORDER BY created_at DESC LIMIT 100').all().map(r=>({...r,payload:JSON.parse(r.payload),decision:JSON.parse(r.decision)})),
-      coverage:{legacyBooks:'MIRRORED_AND_RECONCILED_WHERE_POSSIBLE',liveAccounts:'NOT_RECONCILED',riskValuation:'USD_MARKED_EQUITY_WITH_CASH_FLOW_NEUTRAL_HIGH_WATER',note:'USD risk requires fresh liquidation depth and costs for every included open position. SOL and other currencies are reported separately without FX consolidation. Legacy books without fresh marks block new USD risk; US combos remain excluded without a reconciled account balance. High-water history begins at the first upgraded valuation; earlier intraperiod peaks are unknown.'}};
+      coverage:{legacyBooks:claim.legacyBooks,legacyReconcile:{promotionAllowed:claim.promotionAllowed,checked:claim.checked,refused:claim.refused,unverified:claim.unverified},liveAccounts:'NOT_RECONCILED',riskValuation:'USD_MARKED_EQUITY_WITH_CASH_FLOW_NEUTRAL_HIGH_WATER',note:'USD risk requires fresh liquidation depth and costs for every included open position. SOL and other currencies are reported separately without FX consolidation. Legacy books without fresh marks block new USD risk; US combos remain excluded without a reconciled account balance. High-water history begins at the first upgraded valuation; earlier intraperiod peaks are unknown.'}};
   }
   async markets(venue,query={}){
     const result=await this.providers.get(venue).markets(query);

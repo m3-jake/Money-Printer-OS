@@ -117,7 +117,25 @@ All green except the one pre-existing failure, which reports the *same* error as
 | test:replay | 24 pass | test:lab-link | 28 pass |
 | test:experiments | 9 pass | | |
 
-P1.1 — pending — — reconciliation check (legacy float vs core ledger) + promotion refusal
+P1.1 — done — — reconciliation of the legacy float books vs the core ledger + claim refusal
+      `src/core/bookReconcile.js` (new): one verdict per book, per currency — cash (the mirror's own
+      verdict, authoritative), open cost basis, open position count, realized and fees — with a
+      tolerance of one 6-dp rounding step per compared row. `coverage.legacyBooks` in
+      `platform.snapshot()` was a literal string (`MIRRORED_AND_RECONCILED_WHERE_POSSIBLE`); it is now
+      derived, and a book that disagrees makes the platform publish
+      `MIRRORED_WITH_UNRECONCILED_DIFFERENCE` and name the fields it disagrees on
+      (`coverage.legacyReconcile.{promotionAllowed,checked,refused,unverified}`, `legacy.reconciliation`).
+      Nothing is repaired to make it pass: the re-sync of a book that went backwards appends no entry.
+      Cash alone was the gap (a book whose basis, count, realized or fees drifted still showed the same
+      cash). The like-for-like expectations were verified against the mirror's own arithmetic rather
+      than assumed: `solanaPlan` grosses a sell's proceeds up by its fees and books the fees separately,
+      so the ledger's realized is (history pnl + open-position realized) and its fee total spans open
+      and closed trades — `legacyBooks.js` now exposes exactly those two fields (`openRealized`,
+      `fees`) instead of applying a fudge factor. The module also refuses to compare across books
+      (currency or venue), which is the mistake it exists to prevent.
+      Tests: `tests/book-reconcile.test.mjs` (6 tests) added to `test:lane-contracts` — 96 pass.
+      Honesty note: on real data the derived claim can refuse where the old literal could not; the
+      `refused` entry names the source and the fields, which is the P1.1 (V5) point.
 P1.2 — pending — — split /api/state (keep ETag pure state, add /api/telemetry)
 P1.3 — pending — — sizing dial readout (premise corrected by V7)
 P1.4 — pending — — test hygiene (`npm test`, wire 2 suites, skip-safe visual test, coverage telemetry)
