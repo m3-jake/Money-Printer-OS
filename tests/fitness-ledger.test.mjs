@@ -73,8 +73,8 @@ test('files are written atomically per module and bad files read as missing', ()
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('Solana fitness reports the Jupiter quote tape but stays blocked until a replay exists', () => {
+test('Solana fitness reports a non-qualifying Jupiter tape but still fails closed', () => {
   const doc = fitnessDoc('solana', solanaFitnessParts({ runtime: { exitPreset: 'fair' }, history: [] }, {}, { jupiter: { rowsTotal: 42, medianRoundTripPct: 3.1 } }));
   assert.equal(doc.evidence.quoteSources['jupiter-quote'], 42); assert.equal(doc.evidence.executablePrices, false); assert.equal(doc.verdict, 'BLOCKED');
-  assert.ok(doc.blockers.some(b => /Jupiter quote tape collecting \(42 rows, latest median round trip 3.1%\)/.test(b)));
+  assert.ok(doc.blockers.some(b => /42 validated rows but is not fresh\/qualifying/.test(b)));
 });

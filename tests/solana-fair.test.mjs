@@ -117,7 +117,7 @@ test('paper auto-demote: SPRINT fails the cost gate at the floor round trip and 
   // If even FAIR would fail the gate, do not churn profiles.
   assert.equal(paperProfileDemotion({ mode: 'paper', runtime: sprint, config: { simulatedSlippageBps: 400, simulatedFeeBps: 100 } }), null);
   const src = read('src/index.js');
-  assert.match(src, /paperProfileDemotion\(\{ mode: cfg\.mode, runtime: s\.runtime, config: cfg \}\)/);
+  assert.match(src, /followLabBest===false \? null : paperProfileDemotion\(\{ mode: cfg\.mode, runtime: s\.runtime, config: cfg \}\)/, 'manual mode must not be rewritten behind the operator');
   assert.match(src, /type: 'profile-auto-demote'/);
   assert.doesNotMatch(src, /profile = 'SPRINT'/, 'nothing promotes to SPRINT automatically');
 });

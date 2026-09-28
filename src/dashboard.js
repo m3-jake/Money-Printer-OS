@@ -18,6 +18,7 @@ import { readEvidenceMonitor } from './researchEvidenceStore.js';
 import { readResearchControlPlane, attachControlPlaneToMonitor, leaderboardRows, championPublicationView, controlPlaneFiles } from './researchControlPlane.js';
 import { seedProjectJournal } from './projectJournal.js';
 import { fitnessSnapshot, writeFitnessFiles, solanaFitnessParts, polymarketFitnessParts } from './fitnessLedger.js';
+import { summarizeJupiterEvidence } from './jupiterEvidence.js';
 import { robinhoodFitnessParts } from './robinhoodAutoTrader.js';
 import { runSelfReport, latestSelfReport } from './selfReport.js';
 import { saveResourcePolicy, resourceSnapshot, systemTelemetry } from './resourcePolicy.js';
@@ -88,7 +89,10 @@ function requestUpdater(action){
 
 function researchCaptureStatus(){try{return JSON.parse(fs.readFileSync(RESEARCH_CAPTURE_STATUS_FILE,'utf8'))}catch{return {schema:'mpo.research-capture-status.v1',updatedAt:null}}}
 function labModuleStatuses(){const out={};for(const id of ['robinhood','robinhood-equities','polymarket','polymarket-combo']){try{const v=JSON.parse(fs.readFileSync(path.join(DATA_DIR,'lab-link','modules',`${id}.json`),'utf8'));if(v&&v.module===id)out[id]=v}catch{}}return out}
-const readJupiterStatus = () => { try { return JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'research-capture-status.json'), 'utf8')).jupiter || null; } catch { return null; } };
+const readJupiterStatus = () => {
+  let capture = null; try { capture = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'research-capture-status.json'), 'utf8')).jupiter || null; } catch {}
+  try { return { ...(capture || {}), ...summarizeJupiterEvidence(DATA_DIR) }; } catch { return capture; }
+};
 // One fitness record per module (docs/FITNESS-LEDGER.md). A failing module reports a blocker instead of throwing.
 async function fitnessNow(s = loadStateCached()) {
   const at = Date.now(), part = fn => { try { return fn(); } catch (e) { return { blockers: [`unavailable: ${String(e?.message || e).slice(0, 160)}`] }; } };
