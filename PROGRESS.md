@@ -9,7 +9,7 @@
 9 — partial — 77ffc73 — Added launch parsing and paper-only sniper gates; native transaction builder, Jito integration, and order submission remain unavailable.
 10 — done — 368fb66 — Raised Polymarket US paper bounds and added weather, sports, culture, and politics filters; existing real-order rails remain unchanged.
 11 — done — e09b531 — Added signed Kalshi API facade with exact demo-host enforcement, required weather/sports series, and bounded paper book.
-12 — pending — — Robinhood equities paper trading.
+12 — done — 8c2bf97 — Added a paper-only equities/ETF order adapter using the shared paper book and aggressive estimator behind its profile gate.
 13 — pending — — Regime-conditional central routing.
 14 — pending — — Shadow live measurement without orders.
 15 — pending — — Paper qualification dashboard.
