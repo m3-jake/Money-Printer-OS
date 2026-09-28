@@ -7,7 +7,7 @@
 7 — done — 6749f84 — Added correlation/narrative exposure gates, persistent equity peak tracking, tiered paper cuts, entry halts, and flatten handling.
 8 — done — 29f8ee6 — Added a separate 20 bps plus impact, 10 bps fee, 150 ms, 5% max-failure fill model and gated initial and staged fills to AGGRESSIVE_PAPER; journal rows retain both estimates and delta.
 9 — partial — PENDING — Connected Pump.fun program log launch parsing to deduped/rate-limited paper sniper signals and journal; native transaction builder and Jito order path are unavailable.
-10 — partial — 32efe35 — Raised Polymarket paper bounds and added category filters; single-order paper routes and the mode-specific parked guard are not present in this checkout.
+10 — done — PENDING — Added bounded public-quote single paper positions, Yes/No BBO handling, market categories, and local-only place/reset/read routes; real submit remains separately gated.
 11 — done — 6a0fbd1 — Added signed Kalshi API facade with exact demo-host enforcement, required weather/sports series, and bounded paper book.
 12 — done — 6f26d00 — Added a paper-only equities/ETF adapter and shared-book recorder; no broker order route is used.
 13 — partial — 5235493 — Added per-asset regime classification, strategy gates, and route helpers; central proposal routing is not connected.

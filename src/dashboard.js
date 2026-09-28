@@ -23,8 +23,9 @@ import { summarizeJupiterEvidence } from './jupiterEvidence.js';
 import { robinhoodFitnessParts } from './robinhoodAutoTrader.js';
 import { runSelfReport, latestSelfReport } from './selfReport.js';
 import { saveResourcePolicy, resourceSnapshot, systemTelemetry } from './resourcePolicy.js';
-// polymarketUS.js is parked except for credentials and the session arm: its scanner and single-order routes are not served.
-import { usReadiness, configurePolymarketUS, armPolymarketUS, polymarketUSAccount } from './polymarketUS.js';
+// Real Polymarket US order routes stay parked; singles below use a separate virtual paper book.
+import { usReadiness, configurePolymarketUS, armPolymarketUS, polymarketUSAccount, polymarketUSSnapshot, filterUSMarketsByCategory } from './polymarketUS.js';
+import { paperSinglesBookView, placePaperSingle, markPaperSingles, resetPaperSingles } from './polymarketUSSinglesPaper.js';
 import { placePaperCombo, settlePaperCombos, setPaperAutopilot, resetPaperBook, paperBookView, startPaperLoops, stopPaperLoops, setPaperLabPolicy, rollbackPaperLabPolicy } from './polymarketUSPaper.js';
 import { usComboJournalView, usComboSnapshot, buildUSCombo, quoteUSCombo, placeUSCombo, cancelUSRfq, setUSComboSettings, settleUSCombos, forgetUSCombo, startUSComboLoops, setUSComboAutopilot } from './polymarketUSCombos.js';
 import { readApiUnitEconomics } from './apiUnitEconomics.js';
@@ -530,6 +531,8 @@ export function startDashboard() {
       if (req.method === 'GET' && u.pathname === '/api/polymarket-us/readiness') return json(res, usReadiness());
       if (req.method === 'GET' && u.pathname === '/api/polymarket-us/evidence') { const ev=await import('./polymarketUSEvidence.js'); return json(res, {...ev.evidenceSummary(),lab:{proposal:ev.labComboProposal(),status:labModuleStatuses()['polymarket-combo']||null}}); }
       if (req.method === 'GET' && u.pathname === '/api/polymarket-us/account') return json(res, await polymarketUSAccount());
+      if (req.method === 'GET' && u.pathname === '/api/polymarket-us/singles/markets') { const snap=await polymarketUSSnapshot();const wanted=(u.searchParams.get('category')||'').split(',').filter(Boolean);return json(res,{at:snap.at,categories:wanted.length?wanted:['weather','sports','culture','politics'],markets:filterUSMarketsByCategory(snap.opportunities||[],wanted.length?wanted:undefined)}); }
+      if (req.method === 'GET' && u.pathname === '/api/polymarket-us/singles/paper') { const book=paperSinglesBookView(),snap=await polymarketUSSnapshot();return json(res,{...book,open:markPaperSingles(snap.opportunities||[])}); }
       if (req.method === 'GET' && u.pathname === '/api/polymarket-us/combos/journal') { const j=usComboJournalView({historyLimit:500}); return json(res, {...j,performance:comboPerformance(j.history,j.open)}); }
       if (req.method === 'GET' && u.pathname === '/api/polymarket-us/combos') { const snap=await usComboSnapshot(); let paper=null; try{paper=paperBookView()}catch(e){paper={error:String(e.message||e)}} return json(res, {...snap,paper}); }
       if (req.method === 'GET' && u.pathname === '/api/polymarket-us/paper') return json(res, paperBookView());
@@ -570,6 +573,8 @@ export function startDashboard() {
       if (u.pathname === '/api/resources') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); return json(res,{ok:true,policy:saveResourcePolicy({cpuPercent:b.cpuPercent,memoryGB:b.memoryGB,diskGB:b.diskGB},'manual')}); }
       if (u.pathname === '/api/resources/sync') return json(res,{ok:true,policy:saveResourcePolicy({},'hive')});
       if (u.pathname === '/api/polymarket-us/config') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); try{return json(res,{ok:true,readiness:configurePolymarketUS(b)})}catch(e){return json(res,{ok:false,error:String(e.message||e)},400)} }
+      if (u.pathname === '/api/polymarket-us/singles/paper/place') { const b=await body(req);if(b.__error)return json(res,{ok:false,error:b.__error},400);try{const snap=await polymarketUSSnapshot(),market=(snap.opportunities||[]).find(x=>String(x.slug||x.id)===String(b.marketSlug||''));if(!market)return json(res,{ok:false,error:'Market is not available in the current public snapshot'},404);const entry=placePaperSingle({market,stakeUsd:b.stakeUsd,outcome:b.outcome,mode:cfg.mode});return json(res,{ok:true,entry,paper:paperSinglesBookView()})}catch(e){return json(res,{ok:false,code:e.code||'paper-single-error',error:String(e.message||e)},400)} }
+      if (u.pathname === '/api/polymarket-us/singles/paper/reset') { const b=await body(req);if(b.__error)return json(res,{ok:false,error:b.__error},400);if(b.confirmation!=='RESET PAPER SINGLES')return json(res,{ok:false,error:'Type RESET PAPER SINGLES to reset this paper book'},400);return json(res,{ok:true,paper:resetPaperSingles({startUsd:b.startUsd})}); }
       if (u.pathname === '/api/polymarket-us/arm') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); try{return json(res,{ok:true,readiness:armPolymarketUS(!!b.armed)})}catch(e){return json(res,{ok:false,error:String(e.message||e)},400)} }
       if (u.pathname.startsWith('/api/polymarket-us/combos/')) {
         const b = await body(req); if (b.__error) return json(res, { ok:false, error:b.__error }, 400);
