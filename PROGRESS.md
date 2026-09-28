@@ -1,6 +1,6 @@
 1 — done — 5e6150c — Created the 16-task checkpoint ledger, paper-aggression branch, and verified secret-file ignore rules.
 2 — done — 717a14b — Added journal analytics, confidence and decay summaries, cross-source price validation, and report/replay:journal CLI.
-3 — done — PENDING — Added bounded tracked-wallet websocket ingestion, Pump.fun buy parsing, paper-only source signals, scanner attribution, and trailing-scorecard demotion.
+3 — done — 5338e98 — Added bounded tracked-wallet websocket ingestion, Pump.fun buy parsing, paper-only source signals, scanner attribution, and trailing-scorecard demotion.
 4 — partial — 3473763 — Added matcher, cost hurdle, journaling, and paired paper parent proposal; venue book integration and atomic dual-leg execution are not wired.
 5 — partial — 13e4d1d — Added rolling netflow/whale derivation and TTL caching; RPC source acquisition is injected rather than connected to a live flow feed.
 6 — partial — b7f1669 — Added gated half-Kelly math and tranche planning; runtime sizing and staged fills are not connected to the engine.
