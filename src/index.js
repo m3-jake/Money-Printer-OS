@@ -6,10 +6,13 @@ import { pathToFileURL, fileURLToPath } from 'node:url';
 import fs from 'node:fs';
 import path from 'node:path';
 import { cfg } from './config.js';
-import { discoverCandidates, refreshPair, refreshPositionPairs, discoveryHealth, solUsdPrice, batchTokenPrices } from './dexscreener.js';
+import { assertLiveConfig } from './liveConfig.js';
+import { discoverCandidates, refreshPair, refreshPositionPairs, discoveryHealth, discoveryFanout, setCycleSignal, solUsdPrice, batchTokenPrices } from './dexscreener.js';
 import { analyze, explain, marketRegime } from './strategy.js';
 import { mintRisk, benchmarkRpcs } from './rpc.js';
 import { loadState, saveState, appendJournal, appendJournalBatch, drainActions, resetPaper } from './store.js';
+import { recordCycleError, markCleanCycle, recordCycleBudgetAbort } from './cycleRecovery.js';
+import { createCycleBudget, isCycleBudgetError } from './cycleBudget.js';
 import { buyWithSol, sellTokenForSol, walletSolBalance } from './jupiter.js';
 import { startDashboard } from './dashboard.js';
 import { marketPlatform } from './core/platform.js';
@@ -46,7 +49,7 @@ const enqueueAlphaEvent = row => { if (cfg.alphaWorkerEnabled) enqueueAlphaRaw(r
 const LAB_LINK = String(process.env.MPO_LAB_LINK ?? 'true').toLowerCase() === 'true';
 import { solanaCostGate, paperProfileDemotion } from './solanaEconomics.js';
 import { latestJupiterQuote } from './jupiterEvidence.js';
-import { exitSimulation, simulatePaperExit, paperExitQuote, reviewPositionPrice, entrySizing, paperEntryRejection } from './positionExecution.js';
+import { exitSimulation, simulatePaperExit, paperExitQuote, reviewPositionPrice, entrySizing, paperEntryRejection, emptyPriceReviewTally, tallyPriceReview } from './positionExecution.js';
 import { apiUnitEconomicsSnapshot, persistApiUnitEconomics, attributeScanCycle, strategyNetPnlAfterDataCost } from './apiUnitEconomics.js';
 import { assessPortfolioRisk } from './portfolioRisk.js';
 import { estimateRoutedPaperExecution } from './executionSimAggressive.js';
@@ -441,7 +444,8 @@ async function actions(s) {
   expireProposals(s);
 }
 
-async function updatePositions(s) {
+async function updatePositions(s, reviewTally = null) {
+  const pr=exitPolicy(s);
   const positions = [...s.positions];
   const refreshed = await refreshPositionPairs(positions);
   for (const row of refreshed) {
@@ -456,6 +460,7 @@ async function updatePositions(s) {
     const anchor = Number(p.lastPrice || p.entryPrice || 0);
     const tickRatio = anchor > 0 ? price / anchor : 1;
     const review=reviewPositionPrice(p,pair,{paper:cfg.mode==='paper',ticks:s.tickHistory?.[p.mint]});
+    if (reviewTally) tallyPriceReview(reviewTally, review, Date.now());
     if (!review.accepted) {
       p.priceStatus=review.reason;
       p.priceIntegrityRejects = Number(p.priceIntegrityRejects || 0) + 1;
@@ -557,8 +562,12 @@ function refreshRpcHealthAsync() {
   benchmarkRpcs().then(rows => { latestRpcHealth = rows; }).catch(() => {}).finally(() => { rpcBenchInFlight = false; });
 }
 
-async function cycle() {
+async function cycle(budget = null) {
   const cycleStart = performance.now();
+  // P0.4: the deadline for this cycle. The signal reaches the market requester through
+  // dexscreener.setCycleSignal (one hook covers every dex/gecko read), and the phase boundaries
+  // below stop a cycle that ran past it instead of letting it drag the loop's cadence.
+  budget?.assertAlive('actions');
   const s = loadState();
   let pinned=0;
   try{pinned=initializePumpCapture(s,cfg);}catch(e){s.system.profitCaptureError=compactError(e);if(s.pumpProfitCapture)s.pumpProfitCapture.experimentPaused=true;}
@@ -587,7 +596,11 @@ async function cycle() {
     s.runtime.activeEvolutionChampionId=hotPolicy.id;s.system.activeEvolutionPolicy={...hotPolicy,stage:'PAPER_CANARY',hotReload:true,applied:true,liveActivationAllowed:false,automaticLivePromotionAllowed:false,liveExecution:'manual'};
   }else if(cfg.mode==='paper'){s.runtime.activeEvolutionChampionId='BASE';s.system.activeEvolutionPolicy={id:'BASE',stage:'BASE',hotReload:true,applied:false,liveActivationAllowed:false,automaticLivePromotionAllowed:false,liveExecution:'manual'};}
   else {const existing=s.system.activeEvolutionPolicy||{};s.system.activeEvolutionPolicy={...existing,hotReload:false,applied:false,liveActivationAllowed:false,automaticLivePromotionAllowed:false,liveExecution:'manual'};}
-  if (['paper', 'live'].includes(cfg.mode)) await updatePositions(s);
+  // P1.5: what the position price review returned this cycle, per reason — the tick band's rejection
+  // count is published in the funnel instead of only living in each position's priceStatus field.
+  const priceReviews=emptyPriceReviewTally();
+  if (['paper', 'live'].includes(cfg.mode)) await updatePositions(s, priceReviews);
+  budget?.assertAlive('positions');
 
   if (s.stats.cycles === 1 || Date.now() - lastRpcBenchAt >= 120_000) refreshRpcHealthAsync();
   const solPricePromise = solUsdPrice().catch(() => Number(s.market?.solUsd || 0));
@@ -595,8 +608,22 @@ async function cycle() {
   const max = Math.max(30, Math.min(600, Number(s.runtime.maxCandidates) || cfg.maxCandidates));
   const discoveryStart = performance.now();
   const pairs = await discoverCandidates(max);
+  budget?.assertAlive('discovery');
   s.system.metrics.discoveryMs = Math.round(performance.now() - discoveryStart);
+  // P0.3: the fan-out is sized from what is left of the per-minute budget, and the refusal counter
+  // is compared cycle over cycle so a budget that is still tripping shows up in the funnel instead
+  // of only inside the scan. discoveryBudget stays out of discoveryHealth on purpose: index.js walks
+  // that object as a list of feeds, and a non-feed key would be counted as a failing one.
+  const priorBudgetRejects = Number(s.system.discoveryHealth?.marketRequests?.budgetRejects || 0);
   s.system.discoveryHealth = discoveryHealth();
+  const budgetRejects = Number(s.system.discoveryHealth.marketRequests?.budgetRejects || 0);
+  const fanout = discoveryFanout();
+  s.system.marketBudget = {
+    requestsPerMinute: cfg.marketRequestsPerMinute, rejectsTotal: budgetRejects,
+    rejectsDelta: Math.max(0, budgetRejects - priorBudgetRejects),
+    fanoutRequested: fanout?.requested ?? null, fanoutAddresses: fanout?.allowed ?? null,
+    fanoutBatches: fanout?.batches ?? null, fanoutUsedInWindow: fanout?.usedInWindow ?? null,
+  };
   s.system.unitEconomics={externalApi:apiUnitEconomicsSnapshot(),caps:{marketRequestsPerMinute:cfg.marketRequestsPerMinute,heliusRequestsPerMinute:cfg.heliusRequestsPerMinute,dailySpendCapUsd:cfg.apiDailySpendCapUsd}};
   try{persistApiUnitEconomics('trader')}catch{}
   s.research.feedStats ||= {};
@@ -715,6 +742,8 @@ async function cycle() {
     for (const a of ranked) if (socialMap.has(a.mint)) a.social = socialMap.get(a.mint);
   }
 
+  budget?.assertAlive('enrichment');
+
   const now = Date.now();
   for (const a of ranked) s.snapshots[a.mint] = { liq: a.liq, priceUsd: a.priceUsd, v5: a.v5, flow5: a.flow5, pc5: a.pc5, score: a.score, ts: now };
 
@@ -774,6 +803,10 @@ async function cycle() {
   if(missingPrices.length){s.system.diagnostics.push({level:'WARN',code:'HELD_PRICE_UNVERIFIED',message:`${missingPrices.length} held positions await a verified price`});if(s.system.health==='HEALTHY')s.system.health='CAUTION';}
   const requestHealth=discoveryHealth().marketRequests;
   if(requestHealth&&!requestHealth.ok){s.system.diagnostics.push({level:'WARN',code:'MARKET_RATE_LIMIT',message:'Market provider rate-limited; retry backoff is active'});if(s.system.health==='HEALTHY')s.system.health='CAUTION';}
+  // P0.3: a refused call is a dropped candidate, not just a slow one, so say so. Diagnostics are
+  // rebuilt each cycle by supervisorTick above, which is why this is pushed here and not earlier.
+  const marketBudget= s.system.marketBudget||{};
+  if(Number(marketBudget.rejectsDelta||0)>0){s.system.diagnostics.push({level:'WARN',code:'MARKET_BUDGET_REJECTED',message:`${marketBudget.rejectsDelta} market request(s) refused by the ${marketBudget.requestsPerMinute}/min budget last discovery; fan-out allowed ${marketBudget.fanoutBatches ?? '?'} batch(es) after ${marketBudget.fanoutUsedInWindow ?? '?'} call(s) in the window`});if(s.system.health==='HEALTHY')s.system.health='CAUTION';}
 
   const block = blockStatus(s);
   const rejectionReasons={score:0,invalidMarket:0,riskUnverified:0,execution:0,regime:0,cooldown:0,alreadyOpen:0,blacklist:0};
@@ -803,7 +836,10 @@ async function cycle() {
     scorePassed:ranked.filter(x=>Number(x.fastEdgeScore||0)>=Number(x.entryThreshold||0)).length,eligible:ranked.filter(x=>x.eligible).length,
     executionPassed:ranked.filter(x=>x.eligible&&Number(x.executionScore||0)>=15).length,approved,
     opened:Number(s.stats.signals||0)-signalsBefore,blocked:postBlock.blocked,blockReasons:postBlock.reasons,rejectionReasons,
-    openPositions:s.positions.length,openLimit:postBlock.openLimit,capitalDeploymentPct:exposure(s)/eqNow*100,cashPct:Number(s.cashSol||0)/eqNow*100};
+    openPositions:s.positions.length,openLimit:postBlock.openLimit,capitalDeploymentPct:exposure(s)/eqNow*100,cashPct:Number(s.cashSol||0)/eqNow*100,
+    // P1.5: position price reviews (accepted/rejected per reason). `bandRejects` with
+    // `bandMedianRatioMin/Max` shows how often and how far the one-sided tick band fired (V8).
+    priceReviews:{...priceReviews,reasons:{...priceReviews.reasons}}};
   s.system.opportunityFunnel=funnel;
   s.research.improvementLoop ||= {iteration:0,funnelHistory:[]};
   s.research.improvementLoop.iteration=Number(s.research.improvementLoop.iteration||0)+1;
@@ -822,6 +858,12 @@ async function cycle() {
 }
 
 async function main() {
+  // P4.2: refuse a live configuration that could never dispatch, before any provider work (the
+  // message names the env var to fix; main()'s catch reports it and exits 1). A coherent but inert
+  // live config is reported line by line instead -- the default (paper, gate off) prints nothing.
+  // Fail-closed only: this cannot arm anything, and the execution boundary still locks dispatch.
+  const liveConfig = assertLiveConfig(cfg);
+  for (const w of liveConfig.warnings) console.warn(`[MPOS][LIVE] ${w.code}: ${w.message}`);
   console.info(`[MPOS][MODE] BING PUMPO=${String(cfg.mode).toUpperCase()} | P&L=${cfg.mode==='live'?'LIVE':'PAPER'} | live signing/risk switch unchanged`);
   marketPlatform();
   // A one-shot scan must actually terminate; do not leave servers/workers alive.
@@ -840,9 +882,12 @@ async function main() {
   }, { programIds: [...cfg.programLogIds, PUMPFUN_PROGRAM_ID], enabled: () => cfg.directStreamEnabled || isAggressivePaper(loadState().runtime, cfg.mode) });
   const walletStream = once ? null : startTrackedWalletStream(event=>copyTradeSignals([event],{mode:cfg.mode,wallets:smartWallets(),log:appendJournal}));
   let shuttingDown = false;
+  let activeBudget = null;
   const shutdown = () => {
     if (shuttingDown) return;
     shuttingDown = true;
+    // P0.4: cancel in-flight cycle work (a fetch holding the loop open would delay the exit).
+    try { activeBudget?.abort('shutdown'); } catch {}
     try { stream?.close?.(); } catch {}
     try { walletStream?.close?.(); } catch {}
     try { stopAlphaWorker(); } catch {}
@@ -861,18 +906,32 @@ async function main() {
 
   do {
     const loopStarted = Date.now();
+    const budget = createCycleBudget();
+    activeBudget = budget;
+    setCycleSignal(budget.signal);
     try {
-      await cycle();
+      await cycle(budget);
     } catch (error) {
-      const s = loadState();
-      s.system.lastError = compactError(error);
-      s.stats.errors++;
-      saveState(s);
-      appendJournal({ type: 'error', error: compactError(error) });
-      console.error(compactError(error));
+      if (isCycleBudgetError(error)) {
+        // Abandoned at its budget, not broken: its own journal type and counter, so a slow provider
+        // never looks like an engine error (recordCycleBudgetAbort degrades only if it repeats).
+        const aborted = recordCycleBudgetAbort({ error, budgetMs: budget.budgetMs });
+        console.error(`${compactError(error)} [aborted ${aborted.aborts} time(s), streak ${aborted.abortStreak}]`);
+      } else {
+        // A refused recovery save must never end the loop: recordCycleError journals first, then
+        // tries state.json, then flags /api/health in memory (see cycleRecovery.js).
+        const recovery = recordCycleError({ error });
+        console.error(recovery.saveFailed
+          ? `${recovery.message} [recovery save refused at ${recovery.stage}: ${recovery.failure?.message}]`
+          : recovery.message);
+      }
+    } finally {
+      setCycleSignal(null);
     }
     if (once) { shutdown(); break; }
     const current = loadState();
+    // A cycle that did not throw clears the failure streak; nothing is written unless one was set.
+    markCleanCycle({ state: current });
     const sprintPaperLoop = cfg.mode === 'paper' && current.runtime?.profile === 'SPRINT';
     const systemCpu = Number(current.system?.metrics?.cpuPct || 0);
     let sprintIntervalSec = Math.min(cfg.scanIntervalSec, 2);
@@ -906,4 +965,9 @@ if (isMainModule) {
   });
 }
 
-export { main };
+// P4.3 / AUDIT exec #5: the trade path is published so a test can drive it in-process.
+// Importing this file has never run a cycle (main() has been behind the isMainModule guard
+// above since bbc8f4d), but `export { main }` was the whole surface, so cycle/enter/
+// updatePositions could only be exercised by spawning a whole process or by grep. See
+// tests/trade-path.test.mjs. Nothing here changes runtime behaviour.
+export { main, cycle, enter, updatePositions };

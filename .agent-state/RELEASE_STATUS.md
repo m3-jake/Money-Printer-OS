@@ -1,3 +1,30 @@
+# Merge of the P0-P5.5 remediation pass into the published line - alpha.78 (2026-09-28)
+
+`0.5.0-alpha.78` is the first source tree that carries both lines: the published alpha.72-alpha.77 work
+(zero-credit research, Pump.fun paper plans, wallet-crowd evidence, the quant library) and the P0-P5.5
+remediation pass. Seven conflicts were resolved by keeping both intents rather than picking a side: the
+alpha.72 split `summaryRequest`/`parseSummaryResponse` adapters and `assertPaidResearchEnabled()` guard
+with P3.4's lazy SDK import (the boot probe in `tests/market-core.test.mjs` requires the SDK stay off the
+boot path, and the alpha.72 assertions require `betas`/`fallbacks` stay out of the pure request); the
+pump-policy per-position exit override with P1.5's price-review tally and the two-argument
+`updatePositions(s, reviewTally)`; `/api/wallet-crowd` and `/api/telemetry` as two separate routes; P1.1's
+derived legacy-coverage claim with `practiceMarkSync`; the HUD's profit-capture/wallet-crowd/desktop-event
+instrumentation with the P1.2 state-cache split; and `test:all`, which now reaches 136 suites.
+
+Installed state before this pass, read from the receipt rather than inferred from package versions:
+`PAIRED-RELEASE.json` in both install roots records Money Printer OS `0.5.0-alpha.77` at
+`2c007c0a35669fa207b1308e1cc1c71afcfa3927` (sha256 `9afb08b0706fdf3a7ee6c058792415a7550bc79b257f1ccdd723b4cdda71b630`,
+92,641,841 B) paired with Evolution Lab `0.1.0-alpha.17` at `1a3755ba9bb54483a8f45a3b333e2e2b807ccfc3`
+(sha256 `eb41d26f9b29e0c4ed8773f8baebe98d9ac413e61d43265757fe4855e978ffe9`), `installedAt`
+`2026-09-28T18:37:22.3347787Z` by `scripts/update-local-install.ps1`, with `paperOnlyBuild: true`,
+`realEnabled: false`, `liveActivationAllowed: false`, `paidModelsEnabled: false`. The alpha.78 source above
+becomes the installed pair only when that same local paired updater builds, boot-tests, swaps and verifies
+it and rewrites both receipts. An agent session installs nothing: `install` and `restart` in
+`scripts/release-alpha53.mjs` always refuse, which is why that step is the operator's. Historical records
+below are retained and not overwritten.
+
+---
+
 # Resumed source checkpoint - alpha.73 / Lab alpha.14
 
 See reports/RESUMED-RECOVERY-2026-09-28.md for the Desktop Commander continuation, tests, observed-depth practice valuation repair and remaining historical/external boundaries. Exact installed commits and hashes are recorded in PAIRED-RELEASE.json in both install roots after verification. Historical records below do not override that receipt.

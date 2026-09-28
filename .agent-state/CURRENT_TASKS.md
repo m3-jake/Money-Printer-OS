@@ -17,6 +17,14 @@ Money Printer OS 0.5.0-alpha.72 / Evolution Lab 0.1.0-alpha.14 supersedes the hi
 ---
 
 # Current tasks — 2026-09-27 alpha.67 / Lab alpha.11
+**2026-09-28 (between releases) — audit remediation pass P0–P5.** The whole pass is recorded in
+`AUDIT.md` (the eight claims the fixes depend on, re-verified) and `PROGRESS.md` (the ledger, item by
+item). It changed cycle error recovery, the market-request spend budget, the per-cycle budget, the
+`/api/state` contract, the legacy-book coverage claim, the hardcoded doc refs, the engine's export
+surface, and the decision on the one-sided tick band; the checkout carries `0.5.0-alpha.71`. The
+alpha.67 / Lab alpha.11 row below is unchanged and remains the release pair of record — no new pair
+was built, signed or installed in the pass, and no lock was loosened (P4.2 added a refusal).
+
 
 The final Windows release pair for this repair is alpha.67 / Lab alpha.11. Internal completion means
 both full source suites pass, both packaged builds identify their exact clean commits, the paired

@@ -9,7 +9,10 @@ import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const read=p=>fs.readFileSync(path.join(root,p),'utf8');
-const html=read('public/dashboard.html'),panel=read('public/assets/robinhood-panel.js');
+// Line endings are normalized at the read boundary: a CRLF checkout (core.autocrlf=true on Windows) is
+// not a difference in the panel, and the marker split below would find nothing (P1.4).
+const lf=s=>s.replace(/\r\n/g,'\n');
+const html=lf(read('public/dashboard.html')),panel=lf(read('public/assets/robinhood-panel.js'));
 const rx=s=>new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'));
 const PHRASES=['PLACE REAL CRYPTO ORDER','CANCEL REAL CRYPTO ORDER','CANCEL REAL CRYPTO ORDERS','ENABLE REAL CRYPTO AUTOPILOT'];
 

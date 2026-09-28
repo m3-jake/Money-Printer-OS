@@ -3,6 +3,7 @@ import { pumpProfitView } from './pumpProfitRuntime.js';
 import { handleRobinhoodRequest, startRobinhoodLoops, stopRobinhoodLoops, startPracticeLoop, stopPracticeLoop } from './robinhoodHttp.js';
 import { handleRobinhoodEquitiesRequest, startRobinhoodEquitiesLoop, stopRobinhoodEquitiesLoop } from './robinhoodEquitiesHttp.js';
 import { exitPresets, customExitPolicy, openLimitFor, aggressionParams, customExitBounds, MAX_OPEN_OVERRIDE } from './runtime.js';
+import { sizingReadout } from './positionExecution.js';
 import { evolutionChampionPolicy } from './learner.js';
 import { dataCoverage } from './dataCoverage.js';
 import { solanaBookView } from './solanaEconomics.js';
@@ -14,7 +15,8 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadState, loadStateCached, stateStamp, readJournal, enqueueAction } from './store.js';
+import { loadState, loadStateCached, stateSourcesStamp, readJournal, enqueueAction } from './store.js';
+import { cycleRecoveryView } from './cycleRecovery.js';
 import { cfg } from './config.js';
 import { readEvidenceMonitor } from './researchEvidenceStore.js';
 import { queryQuantResearch, quantResearchSummary } from './quantResearchCatalog.js';
@@ -75,6 +77,28 @@ function json(res, obj, status = 200, extraHeaders = {}) {
 
 function queue(type, data = {}) {
   return enqueueAction({ type, ...data });
+}
+
+// ---- P1.2: /api/state is cacheable, its live half is not -------------------------------------------
+// The snapshot is a function of persisted files only: state.json + research-state.json (store.js
+// stateSourcesStamp) and the control-plane files the research plane reads (controlPlaneFiles, the one
+// list that owns them). Anything sampled live — CPU/RAM, the resource lane, RPC health, the wallet
+// scorecard — is served by /api/telemetry instead. That is what makes an honest ETag possible: those
+// samples used to sit inside /api/state, which forced its tag to carry a per-second timestamp, so a
+// 304 could never happen and every 1.5 s poll rebuilt the whole snapshot.
+function fileStamp(file) { try { const st = fs.statSync(file); return `${Math.trunc(st.mtimeMs)}:${st.size}`; } catch { return 'missing'; } }
+function sourcesStamp() { return [stateSourcesStamp(), ...Object.values(controlPlaneFiles(DATA_DIR)).map(fileStamp)].join('|'); }
+let statePayloadCache = { tag: null, payload: null, builtAt: 0 };
+function statePayload(tag) {
+  if (statePayloadCache.tag === tag && statePayloadCache.payload !== null) return { payload: statePayloadCache.payload, cached: true, builtAt: statePayloadCache.builtAt };
+  const payload = JSON.stringify(snapshot());
+  statePayloadCache = { tag, payload, builtAt: Date.now() };
+  return { payload, cached: false, builtAt: statePayloadCache.builtAt };
+}
+// The live readings that used to be embedded in /api/state, plus the ones that read their own files.
+function telemetryView() {
+  return { at: Date.now(), metrics: systemTelemetry(), resources: resourceSnapshot(), holderRpc: holderRpcHealth(), walletScorecard: walletScorecardView(),
+    note: 'Sampled live and never cached: merged by the HUD on top of /api/state. Keep it out of any ETag.' };
 }
 // Telemetry failure must never make a completed paper order look rejected.
 function productTelemetry(fn) { try { return fn(productEconomics()); } catch (error) { console.warn('Product telemetry unavailable:', error.message); } }
@@ -313,7 +337,9 @@ function systemView(s = {}, policy = null) {
   return {
     paused: !!s.paused, killSwitch: !!s.killSwitch, health: s.health, lastCycle: s.lastCycle,
     lastError: s.lastError, lastAction: s.lastAction || null, startedAt: s.startedAt, streamEvents: s.streamEvents, learner: s.learner || null,
-    metrics: { ...(s.metrics || {}), ...systemTelemetry() }, resources: resourceSnapshot(), opportunityFunnel: s.opportunityFunnel || null, diagnostics: (s.diagnostics || []).slice(-20),
+    // P1.2: persisted metrics only. The live CPU/RAM sample is in /api/telemetry (and /api/health), so
+    // this object is a function of state.json alone and can be tagged as one.
+    metrics: { ...(s.metrics || {}) }, resources: null, opportunityFunnel: s.opportunityFunnel || null, diagnostics: (s.diagnostics || []).slice(-20),
     activeEvolutionPolicy: policy || s.activeEvolutionPolicy || null,
   };
 }
@@ -370,6 +396,10 @@ function snapshot() {
         labFollowing:rt.followLabBest!==false,
         controlMode:activeChamp?'LAB_AUTO':rt.followLabBest===false?'MANUAL':'LAB_WAITING',
         openLimit:openLimitFor(rt),autoOpenLimit:aggressionParams(rt.aggression).maxOpenPositions,
+        // P1.3: which dial sizes the next entry and where the risk dial would take over. It states the
+        // measured truth (at default equity the trade size dial binds, not riskPerTradePct), so the
+        // panel cannot imply that risk-per-trade is what the size came from.
+        sizing:sizingReadout({state:s,config:cfg,sizeFactor:aggressionParams(rt.aggression).sizeFactor,aggression:rt.aggression,stopPct:effectiveExit.stop,paper:cfg.mode==='paper',sprint:rt.profile==='SPRINT'}),
         bounds:{...customExitBounds,maxOpenPositions:MAX_OPEN_OVERRIDE},presets:Object.keys(exitPresets),presetValues:exitPresets
       };
     })(),
@@ -394,8 +424,9 @@ function snapshot() {
     liveExecution: 'manual',
     walletIntel: {
       wallets: Object.values(s.research?.walletProfiles || {}).sort((a,b)=>(b.recurrenceScore||0)-(a.recurrenceScore||0)).slice(0,24),
-      holderRpc: holderRpcHealth(),
-      scorecard: walletScorecardView(),
+      // P1.2: both live in /api/telemetry (a live RPC probe and a wallet-data file read).
+      holderRpc: null,
+      scorecard: null,
     },
     researchSummary: {
       universeCount: Object.keys(s.research?.universe || {}).length,
@@ -499,13 +530,19 @@ export function startDashboard() {
         return fs.createReadStream(file).pipe(res);
       }
       if (req.method === 'GET' && u.pathname === '/api/state') {
-        // This response contains live CPU/RAM telemetry. A persisted-state-only
-        // ETag can pin an idle UI to the first CPU sample (which is intentionally 0).
-        const tag = `\"${stateStamp()}-${Math.floor(Date.now() / 1000)}\"`;
-        res.setHeader('etag', tag);
-        return json(res, snapshot(), 200, { etag: tag });
+        // Persisted state only (P1.2). The tag covers every file the snapshot reads, so a matching
+        // If-None-Match is a real 304: no snapshot rebuild and no serialization. The cache below holds
+        // one payload under that same tag, so a poll that changes nothing costs two stats and a write.
+        const tag = `"${sourcesStamp()}"`;
+        const { payload, cached, builtAt } = statePayload(tag);
+        const headers = { etag: tag, 'cache-control': 'no-cache', 'x-payload-bytes': String(Buffer.byteLength(payload)), 'x-state-cache': cached ? 'HIT' : 'MISS', 'x-state-built-at': String(builtAt) };
+        if (req.headers['if-none-match'] === tag && cached) { res.writeHead(304, headers); return res.end(); }
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'x-content-type-options': 'nosniff', ...headers });
+        return res.end(payload);
       }
       if (req.method === 'GET' && u.pathname === '/api/wallet-crowd') return json(res,crowdRuntimeView(DATA_DIR));
+      // P1.2: the live half of what /api/state used to carry. Never cached, never tagged.
+      if (req.method === 'GET' && u.pathname === '/api/telemetry') return json(res, telemetryView());
       if (req.method === 'GET' && u.pathname === '/api/health') {
         const s = loadState();
         return json(res, {
@@ -514,6 +551,13 @@ export function startDashboard() {
           lastCycle: s.system?.lastCycle || null,
           metrics: { ...(s.system?.metrics || {}), ...systemTelemetry() },
           diagnostics: s.system?.diagnostics || [],
+          // A cycle error whose recovery save was refused is invisible in state.json; this is where
+          // it becomes visible (in-memory flag + the journal rows that outlive the process).
+          cycleRecovery: cycleRecoveryView({ state: s }),
+          // P0.3: the request budget and the discovery fan-out it allowed, so a refused call is
+          // visible here instead of only inside the scan cycle.
+          marketRequests: s.system?.discoveryHealth?.marketRequests || null,
+          marketBudget: s.system?.marketBudget || null,
           switches: traderSwitches({ readiness: (() => { try { return robinhoodReadiness(); } catch { return null; } })(), state: s }),
         });
       }

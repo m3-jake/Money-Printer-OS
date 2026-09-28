@@ -10,6 +10,9 @@ import { renameSyncWithRetry } from './atomicRename.js';
 const dir = path.resolve(process.env.MONEY_PRINTER_DATA_DIR || 'data');
 const stateFile = path.join(dir, 'state.json');
 const backupFile = path.join(dir, 'state.backup.json');
+// The account backup interval. research-state.backup.json uses the same bound (RESEARCH_BACKUP_MS) so the two
+// files cannot drift apart in how much history they are willing to lose.
+export const STATE_BACKUP_MS = 120_000;
 // The heavy research sections live in research-state.json, written at most every RESEARCH_SAVE_MS; state.json keeps
 // the account plus the small research fields and lists the moved keys in research.externalized. A crash can lose up
 // to a minute of research, never account data. Old state.json files with inline research migrate on the next save.
@@ -17,6 +20,16 @@ const researchFile = path.join(dir, 'research-state.json');
 export const RESEARCH_HEAVY = ['learner', 'universe', 'postmortems', 'walletProfiles', 'deployerProfiles', 'alpha', 'improvementLoop', 'daily', 'experiments', 'lessons', 'challengers'];
 export const RESEARCH_SAVE_MS = 60_000;
 let lastResearchSaveAt = 0;
+// P2.1: research-state.json holds the only copy of the heavy sections, so it now gets the two protections
+// state.json has always had -- a bounded backup published from validated bytes, and a read-back check before
+// anything replaces it -- without the account's pause/killSwitch, which would be the wrong response to a
+// research problem. Measured before the change: a torn file loaded as "no research", the next save rewrote it
+// with rebuilt-empty sections, and nothing anywhere said so.
+const researchBackupFile = path.join(dir, 'research-state.backup.json');
+export const RESEARCH_BACKUP_MS = 120_000;
+let lastResearchBackupAt = 0;
+// Last verdict on whether the research primary can be read back, cached per file stamp (see unreadableResearchPrimary).
+let researchReadCheck = { stamp: '', reason: null };
 const journalFile = path.join(dir, 'market.ndjson');
 const actionFile = path.join(dir, 'actions.ndjson');
 const JOURNAL_MAX_BYTES = 128 * 1024 * 1024;
@@ -28,12 +41,23 @@ let lastSaveMs = 0;
 let lastBackupAt = 0;
 let readCache = { stamp: '', value: null };
 
-export function stateStamp() {
-  try { const st = fs.statSync(stateFile); return `${Math.trunc(st.mtimeMs)}:${st.size}`; } catch { return 'missing'; }
+export function stateStamp() { return fileStamp(stateFile); }
+
+// research-state.json is merged back into the state by loadState(), so a stamp that only covers
+// state.json changes while the state it describes does not (and, worse, misses a research write).
+// P2.1: the research backup is stamped as well. It is only read when the primary is unreadable and nothing
+// writes it in that state, so including it can only invalidate a cache entry early, never serve a stale one.
+function fileStamp(file) {
+  try { const st = fs.statSync(file); return `${Math.trunc(st.mtimeMs)}:${st.size}`; } catch { return 'missing'; }
 }
+export function researchStamp() { return `${fileStamp(researchFile)}~${fileStamp(researchBackupFile)}`; }
+
+// Every persisted source of the state: an ETag built from this cannot go stale when either file is
+// written, and a 304 on it is safe (P1.2). Files outside these two are stamped by their own reader.
+export function stateSourcesStamp() { return `${stateStamp()}|${researchStamp()}`; }
 
 export function loadStateCached() {
-  const stamp = stateStamp();
+  const stamp = stateSourcesStamp();
   if (readCache.value && readCache.stamp === stamp) return readCache.value;
   const value = loadState();
   readCache = { stamp, value };
@@ -176,6 +200,59 @@ export function realizedBasisViolations(state, previous = publishedBasis) {
   return out;
 }
 
+// P2.1: the sections that live in research-state.json, with the container each reader expects (learner.js reads
+// learner.outcomes, research.js indexes universe/walletProfiles by mint/address, pruneState sorts alpha.tokens).
+// JSON.parse already catches a torn write; this catches the other half -- a file that parses but cannot be the
+// object we wrote (a stray `null`, an array, a foreign JSON file), which reads as "an install with no research".
+// A null section is treated as absent rather than invalid: every writer in the tree uses `|| {}` / `|| []`.
+export const RESEARCH_SECTIONS = {
+  learner: 'object', universe: 'object', postmortems: 'array', walletProfiles: 'object', deployerProfiles: 'object',
+  alpha: 'object', improvementLoop: 'object', daily: 'array', experiments: 'array', lessons: 'array', challengers: 'array',
+};
+function validateResearch(ext) {
+  if (!ext || typeof ext !== 'object' || Array.isArray(ext)) throw new Error('Invalid research state: expected a section object');
+  for (const [key, kind] of Object.entries(RESEARCH_SECTIONS)) {
+    const value = ext[key];
+    if (value === undefined || value === null) continue;
+    const ok = kind === 'array' ? Array.isArray(value) : typeof value === 'object' && !Array.isArray(value);
+    if (!ok) throw new Error(`Invalid research state: ${key} must be an ${kind}, got ${Array.isArray(value) ? 'array' : typeof value}`);
+  }
+  return ext;
+}
+function readResearchFile(file) { return validateResearch(JSON.parse(fs.readFileSync(file, 'utf8'))); }
+
+function researchRecoveryMarker(system, status, reason) {
+  const prior = system?.researchRecovery;
+  const firstSeen = prior && prior.status === status && prior.reason === reason ? prior.observedAt : Date.now();
+  return { ...(system || {}), researchRecovery: {
+    status, observedAt: firstSeen, reason, reviewRequired: true,
+    effect: status === 'RESEARCH_BACKUP_RECOVERED'
+      ? 'sections restored from research-state.backup.json and republished over the damaged file'
+      : 'publication refused; the unreadable file is left in place for repair and the sections travel inline in state.json',
+  } };
+}
+
+// Evaluated at publication time rather than load time, so a restart cannot bypass it: after a refused save the
+// sections travel inline in state.json (with no `externalized` list) and only the file on disk knows it is
+// damaged. Cached per file stamp so the check costs one read per version of the file, not one per cycle.
+// A missing file is a fresh install, a pre-split state.json or a deliberate reset -- not damage.
+function unreadableResearchPrimary() {
+  const stamp = fileStamp(researchFile);
+  if (stamp === 'missing') return null;
+  if (researchReadCheck.stamp === stamp) return researchReadCheck.reason;
+  let reason = null;
+  try {
+    readResearchFile(researchFile);
+  } catch (primaryError) {
+    // A valid backup makes the damage recoverable: the recovered sections are republished over the damaged file
+    // while the backup keeps the good copy, exactly as the account path does. Without one, the damaged file is
+    // the last copy there is, and it is not replaced by rebuilt-empty sections.
+    try { readResearchFile(researchBackupFile); reason = null; } catch { reason = primaryError.message; }
+  }
+  researchReadCheck = { stamp, reason };
+  return reason;
+}
+
 function validateAccount(s) {
   if (!s || typeof s !== 'object' || Array.isArray(s)
       || typeof s.cashSol !== 'number' || !Number.isFinite(s.cashSol) || s.cashSol < 0
@@ -189,16 +266,39 @@ function validateAccount(s) {
   return s;
 }
 
+// Statuses that mean the heavy sections in state.json are a degraded rebuild rather than the newest copy: they
+// are written inline exactly when publication of research-state.json was refused (see externalizeResearch).
+const RESEARCH_REFUSED = new Set(['RESEARCH_UNREADABLE', 'RESEARCH_UNPUBLISHABLE']);
+
 function attachResearch(raw) {
-  const keys = raw?.research?.externalized;
-  if (!Array.isArray(keys)) return raw;
+  if (!raw || typeof raw !== 'object' || !raw.research || typeof raw.research !== 'object') return raw;
+  const keys = raw.research.externalized;
+  // A readable research file is authoritative for the sections it has when the inline copy is only there because
+  // publication was refused: that is a repaired or restored dataset, while the inline copy is the rebuild that
+  // refusal left behind. Without that marker the inline sections are the newest ones we hold, so they win.
+  const refused = RESEARCH_REFUSED.has(raw.system?.researchRecovery?.status);
+  if (!Array.isArray(keys) && !refused) return raw;
+  const wanted = Array.isArray(keys) ? keys : RESEARCH_HEAVY;
   delete raw.research.externalized;
+  let ext = null;
   try {
-    const ext = JSON.parse(fs.readFileSync(researchFile, 'utf8'));
-    for (const k of keys) if (ext && k in ext) raw.research[k] = ext[k];
-  } catch {
-    // Missing or torn research file: the account still loads; ensureResearch rebuilds empty sections.
+    ext = readResearchFile(researchFile);
+  } catch (primaryError) {
+    // P2.1: a research file that exists but cannot be read is not an install with no research. The account still
+    // loads and nothing is paused (research is not money), but the difference is recorded instead of swallowed.
+    try {
+      ext = readResearchFile(researchBackupFile);
+      raw.system = researchRecoveryMarker(raw.system, 'RESEARCH_BACKUP_RECOVERED', primaryError.message);
+    } catch {
+      // A missing file (fresh install, pre-split state.json, deliberate reset) is rebuilt by design. Only a file
+      // that is *there* and unreadable is reported, and publication is refused for it in externalizeResearch.
+      if (fs.existsSync(researchFile)) {
+        raw.system = researchRecoveryMarker(raw.system, 'RESEARCH_UNREADABLE', primaryError.message);
+      }
+      return raw;
+    }
   }
+  for (const k of wanted) if (ext && k in ext) raw.research[k] = ext[k];
   return raw;
 }
 function parseState(file) {
@@ -334,7 +434,7 @@ export function saveState(state) {
   const temp = `${stateFile}.${process.pid}.tmp`;
   const json = JSON.stringify(externalizeResearch(s));
   fs.writeFileSync(temp, json, { flush: true });
-  if (fs.existsSync(stateFile) && Date.now() - lastBackupAt > 120_000) {
+  if (fs.existsSync(stateFile) && Date.now() - lastBackupAt > STATE_BACKUP_MS) {
     const backupTemp = `${backupFile}.${process.pid}.tmp`;
     try {
       // Validate the same bytes we publish, never copy a damaged primary over good recovery data.
@@ -351,21 +451,49 @@ export function saveState(state) {
   }
   try { renameSyncWithRetry(temp, stateFile); }
   finally { try { fs.rmSync(temp, { force: true }); } catch {} }
-  readCache = { stamp: stateStamp(), value: s };
+  readCache = { stamp: stateSourcesStamp(), value: s };
   publishedBasis = snapshotBasis(s);
   lastSaveMs = Math.round(performance.now() - started);
   return lastSaveMs;
 }
 
-// Returns the object to write as state.json. Writes research-state.json when due; if that write fails the research
-// stays inline, so nothing is ever referenced that was not persisted at least once.
+// Keeps research-state.backup.json a copy of the last *valid* published research file. Same rule as the account
+// backup: validate the same bytes we publish, so a damaged primary can never replace good recovery data.
+function backupResearchIfDue(now) {
+  if (!fs.existsSync(researchFile) || now - lastResearchBackupAt <= RESEARCH_BACKUP_MS) return;
+  const tmp = `${researchBackupFile}.${process.pid}.tmp`;
+  try {
+    const previous = fs.readFileSync(researchFile, 'utf8');
+    validateResearch(JSON.parse(previous));
+    fs.writeFileSync(tmp, previous, { flush: true });
+    renameSyncWithRetry(tmp, researchBackupFile);
+    lastResearchBackupAt = now;
+  } catch {
+    // The prior backup remains intact if the primary is unreadable or publication fails.
+  } finally {
+    try { fs.rmSync(tmp, { force: true }); } catch {}
+  }
+}
+
+// Returns the object to write as state.json. Writes research-state.json when due; if that write fails, or the file
+// on disk cannot be read back, the research stays inline, so nothing is ever referenced that was not persisted at
+// least once -- and a file we could not read is never replaced by rebuilt-empty sections (P2.1).
 function externalizeResearch(s) {
   if (!s.research || typeof s.research !== 'object') return s;
   const heavy = {}, light = { ...s.research };
   for (const k of RESEARCH_HEAVY) if (k in light) { heavy[k] = light[k]; delete light[k]; }
   if (!Object.keys(heavy).length) return s;
   const now = Date.now();
+  const unreadable = unreadableResearchPrimary();
+  if (unreadable) {
+    s.system = researchRecoveryMarker(s.system, 'RESEARCH_UNREADABLE', unreadable);
+    return s;
+  }
+  // Never publish a shape we would refuse to read back later (the check above only guards the file on disk).
+  try { validateResearch(heavy); }
+  catch (error) { s.system = researchRecoveryMarker(s.system, 'RESEARCH_UNPUBLISHABLE', error.message); return s; }
   if (now - lastResearchSaveAt >= RESEARCH_SAVE_MS || !fs.existsSync(researchFile)) {
+    backupResearchIfDue(now);
     const tmp = `${researchFile}.${process.pid}.tmp`;
     try { fs.writeFileSync(tmp, JSON.stringify(heavy), { flush: true }); renameSyncWithRetry(tmp, researchFile); lastResearchSaveAt = now; }
     catch { try { fs.rmSync(tmp, { force: true }); } catch {} return s; }

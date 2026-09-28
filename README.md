@@ -94,4 +94,7 @@ the suite touches the network.
 - `.agent-state/KNOWN_BUGS.md`, `.agent-state/RELEASE_STATUS.md` — open issues and packaging
   history.
 - `docs/` — design notes, including `docs/EVOLUTION_LAB_SPLIT.md`.
+- `docs/RUNBOOK-PANIC.md` — stop / verify / recover: the kill switch only gates entries, how to read
+  `/api/health` during an incident, what a refused state save leaves behind, and the reset actions.
+- `PROGRESS.md` — remediation ledger: one line per audit item, with the evidence for each fix.
 - `EXECUTION_UPDATE.md` — historical (alpha.41); superseded by `.agent-state/`.

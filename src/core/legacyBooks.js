@@ -13,7 +13,12 @@ export function solanaLegacy(s) {
     cash: num(s.cashSol), start: num(s.paperStartSol), openPositions: positions.length,
     openCost: sum(positions, p => p.remainingSol ?? p.sizeSol),
     // History is capped at the last 1500 closes, so this is realized P/L over the retained window only.
-    realized: sum(history, h => h.pnlSol), realizedScope: `last ${history.length} closes`, asOf: num(s.updatedAt) ?? null };
+    realized: sum(history, h => h.pnlSol), realizedScope: `last ${history.length} closes`, asOf: num(s.updatedAt) ?? null,
+    // What the ledger mirror of THIS book must show, for the reconciliation in bookReconcile.js.
+    // solanaPlan grosses a sell's proceeds up by its fees and books the fees as a separate FEE entry,
+    // so the ledger's realized is (history pnl) + (partial-exit pnl still open) and its fee total is
+    // every trade's fees, closed or open. Null anywhere stays null: unknown is never guessed.
+    openRealized: sum(positions, p => p.realizedSol), fees: sum([...history, ...positions], t => t.feesSol) };
 }
 
 export function robinhoodPracticeLegacy(snap) {
@@ -21,7 +26,10 @@ export function robinhoodPracticeLegacy(snap) {
   const positions = Array.isArray(snap.positions) ? snap.positions : [];
   return { source: 'robinhood-practice', label: 'Robinhood practice', currency: 'USD', mode: 'PAPER', status: snap.recoveryRequired ? 'RECOVERY_REQUIRED' : 'LEGACY_READ_ONLY',
     reason: snap.recoveryReason || null, cash: num(snap.cashUsd), start: num(snap.budgetUsd), openPositions: positions.length,
-    openCost: sum(positions, p => p.costUsd), realized: num(snap.realizedPnlUsd), realizedScope: 'book lifetime', asOf: num(snap.at) };
+    openCost: sum(positions, p => p.costUsd), realized: num(snap.realizedPnlUsd), realizedScope: 'book lifetime', asOf: num(snap.at),
+    // practicePlan mirrors BUY at cost and SELL at proceeds (cost + pnl) with no FEE entries, so an open
+    // position contributes nothing to realized and the mirror account's fee total is 0 by construction.
+    openRealized: 0, fees: 0 };
 }
 
 // US combo entries are real venue orders placed manually. They are not reconciled against the venue,

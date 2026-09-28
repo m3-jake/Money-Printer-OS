@@ -51,7 +51,9 @@ memory or deleted); `.drain` orphans older than 5 minutes are swept once a minut
 
 **HUD**: the Evolution panel shows the link state (`NOT LINKED` / `STALE` / linked via this
 machine or bridge, lab name/version, status age) above the usual metrics; `/api/state` carries
-`labLink`; `/api/research-monitor` reports `source: 'evolution-lab'` when linked.
+`labLink`; `/api/research-monitor` reports `source: 'evolution-lab'` when linked. The live
+CPU/RAM readings the panel shows come from `/api/telemetry` (P1.2): `/api/state` is persisted
+state only, served with an exact ETag, so a poll that changes nothing is a `304`.
 
 ## Migrating a machine
 

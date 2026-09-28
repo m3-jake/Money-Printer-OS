@@ -36,6 +36,9 @@ export function ensureLearner(s) {
   s.research.learner ||= {version:2, weights:{...DEFAULT_WEIGHTS}, pending:[], outcomes:[], featureStats:blankStats(), samples:0, trainingSamples:0, validationSamples:0, validated:false, validationSpreadPct:0, lastUpdate:0, status:'COLLECTING', lastCorrelation:{}, horizons:horizonState()};
   const l=s.research.learner;
   l.version=2; l.pending ||= []; l.outcomes ||= []; l.horizons ||= horizonState();
+  // P2.1: a learner section that exists but lost (or predates) `weights`/`featureStats` used to throw right here,
+  // and loadState() then read a research problem as an unreadable ACCOUNT -- pausing trading on the backup path.
+  l.weights ||= {...DEFAULT_WEIGHTS}; l.featureStats ||= blankStats();
   for(const h of HORIZONS){ l.horizons[h] ||= horizonState()[h]; const hs=l.horizons[h]; hs.featureStats ||= blankStats(); hs.weights ||= {...DEFAULT_WEIGHTS}; hs.correlations ||= {}; hs.clusterCounts ||= {}; for(const k of FEATURES){hs.featureStats[k] ||= {n:0,sx:0,sy:0,sxx:0,syy:0,sxy:0};hs.weights[k] ??= DEFAULT_WEIGHTS[k];}}
   l.trainingSamples ??= 0; l.validationSamples ??= 0; l.validated ??= false; l.validationSpreadPct ??= 0;
   for(const k of FEATURES){l.weights[k] ??= DEFAULT_WEIGHTS[k]; l.featureStats[k] ||= {n:0,sx:0,sy:0,sxx:0,syy:0,sxy:0};}

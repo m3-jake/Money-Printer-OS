@@ -1,4 +1,10 @@
 # Current project state — 2026-09-27
+**2026-09-28 (audit remediation pass P0–P5, the checkout this was written against):** see `AUDIT.md`
+and `PROGRESS.md`. That checkout carries `0.5.0-alpha.71` (tag `v0.5.0-alpha.71`). The release pair of
+record is unchanged at alpha.67 / Lab alpha.11, and nothing was built, signed or installed during the
+pass. The PAPER-only posture described below is untouched, and no lock was loosened — the pass added a
+live-config refusal in `src/liveConfig.js` (P4.2) that both startup and `doctor` consult.
+
 
 Authoritative working repositories are `W:/money-printer-os` on `main` at version
 `0.5.0-alpha.67` and `W:/money-printer-evolution-lab` on `master` at version

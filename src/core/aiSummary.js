@@ -1,5 +1,13 @@
-import Anthropic from '@anthropic-ai/sdk';
 import { assertPaidResearchEnabled } from './localResearch.js';
+
+// P3.4: the SDK is a 9.4 MB module graph and ~180 ms of cold import — 226 ms for `import '@anthropic-ai/sdk'`
+// against 49 ms for an empty ESM process, measured 2026-09-28 — and this file sits on the engine's boot
+// path: `index.js:14` -> `core/platform.js:32` -> here. The feature it serves is request-only by its own
+// contract ("summaries are made only on request"), so the SDK is imported on first use and cached. The call
+// it enables is a multi-second API request, so the one-off import is off every path measured for cost, and
+// the error classes stay exact because they come from this same resolved module.
+let sdk = null;
+const anthropicSdk = async () => (sdk ||= (await import('@anthropic-ai/sdk')).default);
 
 // AI-assisted filing summaries. Everything returned here is AI-GENERATED ANALYSIS: it is stored and
 // shown apart from the filing facts, carries the model that produced it, and every summary sentence
@@ -56,6 +64,7 @@ export function parseSummaryResponse(response, model = SUMMARY_MODEL) {
 export async function summarizeFiling({ text, facts, client, model = process.env.MPO_AI_SUMMARY_MODEL || SUMMARY_MODEL }) {
   const request = summaryRequest({text,facts,model});
   assertPaidResearchEnabled(); // Before SDK construction, credentials, retries or any network access.
+  const Anthropic = await anthropicSdk(); // P3.4: the guard and the pure request above never pay for the SDK graph.
   client ||= new Anthropic({maxRetries:0,timeout:60000});
   try { return parseSummaryResponse(await client.beta.messages.create(request), model); }
   catch(e) {

@@ -37,10 +37,19 @@ export function simulatePaperExit(position,pair,solUsd,slippageBps,feeBps,fracti
 // is a 110x teleport in two "legal" moves. An accepted tick is therefore also banded against the
 // MEDIAN of the position's own recent ticks, which no single bad print can move.
 //
-// The band is deliberately one-sided. Upward discontinuities are what manufacture phantom equity
-// (and phantom position size, see F8); genuine crashes keep the existing three-refresh
-// corroboration path and are not touched here. The band lifts once the tick history goes stale,
-// so a quiet position can never be trapped by an old median.
+// The band is deliberately one-sided, and P5.2 (2026-09-28) settled the decision P1.5 left open: keep
+// it. Measured scope (pinned by tests/execution-turnover.test.mjs): a price above 5x the recent tick
+// median is refused in both modes, while a price far BELOW the median is accepted with no
+// corroboration in both modes for as long as it stays >=0.05x the last accepted price. Below that
+// floor the crash path takes over — three exact-pool refreshes over >=15s in paper, a flat refusal in
+// live — so the corroboration the asymmetry is argued from covers the extreme drop only, not the
+// mid-range one. The rejected alternative, on the record: a two-sided band would refuse the mid-range
+// mark with nothing able to confirm it (that state is only reachable below the floor), i.e. the mark
+// would be trapped at a stale level, which is the failure the crash path exists to prevent, and it
+// would slow the exit on a real mid-range dump — the expensive direction once real orders are
+// attached. Reopen only with a real tick series showing phantom mid-range prints (this checkout has
+// none) or P1.5 funnel evidence of downward stop-outs at the boundary. The band lifts once the tick
+// history goes stale, so a quiet position can never be trapped by an old median.
 export const TICK_BAND_MAX_RATIO = 5;
 export const TICK_BAND_MIN_TICKS = 4;
 export const TICK_BAND_WINDOW = 12;
@@ -87,9 +96,44 @@ export function reviewPositionPrice(p,pair,{paper=false,now=Date.now(),ticks=nul
 
 // ---------------------------------------------------------------------------------------------
 // F7(a) / F8 (ACCOUNTING-AUDIT §4 RC-B, RC-C) — entry rails, extracted so they are testable.
-// src/index.js is a top-level script (it calls main() on import) and exports nothing, so the
-// entry-side arithmetic lives here and index.js calls into it.
+// The rationale that was written here ("src/index.js calls main() on import and exports nothing")
+// was disproven by P4.3 on 2026-09-28: main() has been guarded by an isMainModule check since
+// bbc8f4d, so importing src/index.js starts nothing. The arithmetic still belongs here for the
+// reason that survives measurement: it is pure, so it can be tested without an engine at all.
+// index.js now also exports cycle/enter/updatePositions (P4.3), and tests/trade-path.test.mjs
+// drives those in-process; this module stays the home of the fee/slippage/exit arithmetic.
 // ---------------------------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------------------------
+// P1.5 / V8 — how often the tick band actually fires.
+// The band rejects only a price ABOVE TICK_BAND_MAX_RATIO times the recent tick median; an unbounded
+// drop passes it (that asymmetry is V8, and it is not changed here). Before deciding whether to make it
+// two-sided, the funnel has to say whether it ever rejects at all, so this counts what the review
+// returned instead of leaving it invisible in a per-position `priceStatus` field.
+export function emptyPriceReviewTally() {
+  return { reviewed: 0, accepted: 0, rejected: 0, reasons: {}, bandRejects: 0, bandMedianRatioMin: null, bandMedianRatioMax: null, lastBandAt: null };
+}
+export function tallyPriceReview(tally, review, at = Date.now()) {
+  const t = tally || emptyPriceReviewTally();
+  t.reviewed++;
+  if (review?.accepted) t.accepted++;
+  else {
+    t.rejected++;
+    const reason = review?.reason || 'unknown';
+    t.reasons[reason] = Number(t.reasons[reason] || 0) + 1;
+    if (reason === 'price-outside-tick-band') {
+      t.bandRejects++; t.lastBandAt = Number(at) || Date.now();
+      const mr = Number(review?.medianRatio);
+      // The minimum ratio is the evidence for the one-sidedness: it can never be below the band maximum,
+      // because a price below the median is accepted whatever it is.
+      if (Number.isFinite(mr)) {
+        if (t.bandMedianRatioMin === null || mr < t.bandMedianRatioMin) t.bandMedianRatioMin = mr;
+        if (t.bandMedianRatioMax === null || mr > t.bandMedianRatioMax) t.bandMedianRatioMax = mr;
+      }
+    }
+  }
+  return t;
+}
 
 // A paper position with no pool binding accepts a price from ANY pool of that mint
 // (reviewPositionPrice only enforces the pair when p.pairAddress is truthy), and index.js
@@ -122,4 +166,41 @@ export function entrySizing({ state, config, sizeFactor = 1, aggression = 0, sto
     : config.tradeSizeSol * sizeFactor;
   const size = Math.max(0, Math.min(targetSize, positionCap, riskSized, headroom));
   return { eq, markedEquity: equity(state), riskSized, positionCap, exposureCap, headroom, targetSize, size };
+}
+
+// Which dial actually sized the last trade (P1.3). V7 of the audit claimed sizing is risk-based and
+// that `tradeSizeSol` is "not binding"; measured at the default profile it is the other way round:
+// with 1 SOL of paper equity, `riskPerTradePct` 1 / stop 8 allows 0.125 SOL while the trade-size dial
+// asks for max(0.05 * sizeFactor, 0.012 + aggression/1800) = 0.052 SOL, and the position cap (0.15) and
+// exposure headroom are looser still. So `tradeSizeSol` binds by default and `riskPerTradePct` only
+// becomes the structural limit below about 0.42 SOL of equity (or with a stop far tighter than 8%) --
+// which is the number `crossoverEquitySol` reports for whatever profile is actually running.
+export const SIZING_DIALS = Object.freeze(['tradeSizeSol', 'riskPerTradePct', 'maxPositionSol', 'maxTotalExposureSol']);
+const DIAL_LABELS = Object.freeze({
+  tradeSizeSol: 'the trade size dial', riskPerTradePct: 'the risk-per-trade dial',
+  maxPositionSol: 'the per-position cap', maxTotalExposureSol: 'the exposure headroom',
+});
+export function sizingReadout(input = {}) {
+  const s = entrySizing(input);
+  const config = input.config || {}, agg = Number(input.aggression || 0), stop = Math.max(3, Number(input.stopPct));
+  const sprint = Boolean(input.paper && input.sprint);
+  const riskRate = (Number(config.riskPerTradePct) / 100) / (stop / 100);           // riskSized per SOL of equity
+  const targetRate = input.paper ? (sprint ? .06 : 0.012 + agg / 1800) : 0;         // targetSize per SOL of equity
+  const flatTarget = Number(config.tradeSizeSol) * Number(input.sizeFactor ?? 1);
+  // riskSized == targetSize happens once, in the range where targetSize is still flat. Beyond that the
+  // target grows at `targetRate`: if that is faster than the risk cap, the risk dial never binds.
+  const crossoverEquitySol = riskRate > targetRate && flatTarget > 0 ? flatTarget / riskRate : null;
+  const dials = [
+    { dial: 'tradeSizeSol', value: s.targetSize }, { dial: 'riskPerTradePct', value: s.riskSized },
+    { dial: 'maxPositionSol', value: s.positionCap }, { dial: 'maxTotalExposureSol', value: s.headroom },
+  ];
+  const lowest = Math.min(...dials.map(d => d.value));
+  const bound = dials.filter(d => d.value <= lowest + 1e-12);
+  const binding = bound.map(d => d.dial), bindingLabels = binding.map(d => DIAL_LABELS[d]);
+  const riskBinds = binding.includes('riskPerTradePct');
+  return { ...s, dials: dials.map(d => ({ ...d, binding: binding.includes(d.dial), label: DIAL_LABELS[d.dial] })), binding, bindingLabel: bindingLabels.join(' and '),
+    riskRatePerSol: riskRate, targetRatePerSol: targetRate, crossoverEquitySol,
+    statement: `Size ${s.size.toFixed(4)} SOL is set by ${bindingLabels.join(' and ')}` + (riskBinds ? '.' :
+      `; risk sizing would allow ${s.riskSized.toFixed(4)} SOL and only becomes the limit below ${
+        crossoverEquitySol === null ? 'any equity (the aggression ramp always sizes smaller)' : crossoverEquitySol.toFixed(4) + ' SOL of equity'}.`) };
 }

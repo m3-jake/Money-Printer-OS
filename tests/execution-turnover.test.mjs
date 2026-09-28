@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {createMarketRequester} from '../src/marketRequests.js';
-import {paperExitQuote,reviewPositionPrice,exitSimulation} from '../src/positionExecution.js';
+import {paperExitQuote,reviewPositionPrice,exitSimulation,emptyPriceReviewTally,tallyPriceReview,recentTickMedian,TICK_BAND_MAX_RATIO} from '../src/positionExecution.js';
 
 test('concurrent reads share transport and cache preserves original observation time',async()=>{
  let at=100000,calls=0;
@@ -60,6 +60,49 @@ test('missing pools, stale prices, huge windfalls and live jumps stay quarantine
  const p=position();for(const now of [100000,110000,120000])assert.equal(reviewPositionPrice(p,pair(.01,now),{paper:false,now}).accepted,false);
 });
 
+test('P1.5 the funnel counts what the price review rejected, band included', () => {
+  // V8: the band only rejects a price ABOVE 5x the recent tick median. The counter has to make that
+  // visible (and its one-sidedness measurable) before anyone changes the band itself.
+  const tally = emptyPriceReviewTally();
+  assert.deepEqual(tally, { reviewed: 0, accepted: 0, rejected: 0, reasons: {}, bandRejects: 0, bandMedianRatioMin: null, bandMedianRatioMax: null, lastBandAt: null });
+  const p = position(), now = 100000;
+  const median = recentTickMedian([...Array(6)].map((_, i) => ({ ts: now - 1000, price: .01 })), now);
+  assert.equal(median, .01);
+  const above = reviewPositionPrice(p, pair(.1, now), { paper: true, now, ticks: [...Array(6)].map(() => ({ ts: now - 1000, price: .01 })) });
+  assert.equal(above.accepted, false); assert.equal(above.reason, 'price-outside-tick-band');
+  tallyPriceReview(tally, above, now);
+  assert.equal(tally.bandRejects, 1); assert.equal(tally.rejected, 1); assert.equal(tally.accepted, 0);
+  assert.equal(tally.reasons['price-outside-tick-band'], 1); assert.equal(tally.lastBandAt, now);
+  assert.equal(tally.bandMedianRatioMin, 10); assert.equal(tally.bandMedianRatioMax, 10);
+  // The asymmetry itself: a crash far BELOW the median is never a band rejection, so the minimum ratio
+  // the counter can ever record stays above the band maximum.
+  const crash = reviewPositionPrice(p, pair(.0005, now), { paper: true, now, ticks: [...Array(6)].map(() => ({ ts: now - 1000, price: .01 })) });
+  assert.notEqual(crash.reason, 'price-outside-tick-band');
+  tallyPriceReview(tally, crash, now);
+  assert.equal(tally.bandRejects, 1, 'a downward multiple is not a band rejection');
+  assert.equal(tally.reasons[crash.reason], 1);
+  // Stale/missing prices and accepted reviews land in the same tally, so the funnel shows the whole review.
+  tallyPriceReview(tally, { accepted: false, reason: 'missing-or-stale-price' });
+  tallyPriceReview(tally, { accepted: true });
+  assert.equal(tally.reviewed, 4); assert.equal(tally.accepted, 1); assert.equal(tally.rejected, 3);
+  assert.equal(tally.bandMedianRatioMin > TICK_BAND_MAX_RATIO, true, 'the band never rejects downward');
+  // A second, bigger rejection widens the recorded ratio range without changing the count baseline.
+  tallyPriceReview(tally, { accepted: false, reason: 'price-outside-tick-band', medianRatio: 40 }, 200000);
+  assert.equal(tally.bandRejects, 2); assert.equal(tally.bandMedianRatioMax, 40); assert.equal(tally.bandMedianRatioMin, 10);
+  assert.equal(tally.lastBandAt, 200000);
+  assert.equal(tallyPriceReview(null, { accepted: true }).accepted, 1, 'a missing tally is created, not thrown on');
+  // The engine publishes it on the funnel and the HUD shows it.
+  const indexSource = fs.readFileSync(new URL('../src/index.js', import.meta.url), 'utf8');
+  assert.match(indexSource, /const priceReviews=emptyPriceReviewTally\(\);/);
+  assert.match(indexSource, /await updatePositions\(s, priceReviews\)/);
+  assert.equal((indexSource.match(/await updatePositions\(/g) || []).length, 1, 'one call site, so the tally cannot be left unpassed elsewhere');
+  assert.match(indexSource, /priceReviews:\{\.\.\.priceReviews,reasons:\{\.\.\.priceReviews\.reasons\}\}/);
+  assert.match(indexSource, /if \(reviewTally\) tallyPriceReview\(reviewTally, review, Date\.now\(\)\);/);
+  const hud = fs.readFileSync(new URL('../public/dashboard.html', import.meta.url), 'utf8');
+  assert.match(hud, /const rv=s\.system\?\.opportunityFunnel\?\.priceReviews;/);
+  assert.match(hud, /rv&&rv\.rejected\?`price rejects \$\{rv\.rejected\} · band \$\{rv\.bandRejects\}`:null/);
+});
+
 test('exit net return includes entry fee, exit slippage and fee on sale proceeds',()=>{
  const p=position(),q=paperExitQuote(p,1.01,{slippageBps:80,feeBps:25});
  assert.ok(1.01>p.entryPrice&&q.netReturnPct<0,'a green quote can still lose cash');
@@ -110,3 +153,31 @@ test('16 held positions use one request and exact base/pool matching',async()=>{
  assert.equal(calls,1);assert.ok(rows[0].pair);assert.equal(rows[1].pair,null);assert.equal(rows[15].pair,null);
  await dex.refreshPositionPairs(positions);assert.equal(calls,1,'5 second cache avoids a duplicate request');
 });
+test('P5.2 the band is one-sided on purpose, and a sub-crash downward print is acted on in both modes', () => {
+  // The behaviour the P1.5 deferral was waiting on, measured rather than argued. Two boundaries decide
+  // it: the anchor window (0.05..20x the last accepted price) and the median band (reject above 5x).
+  // Inside the window a price is banded on the UPSIDE ONLY, in both modes, so a print far below the
+  // median is accepted with no corroboration; only below the window floor does the three-refresh path
+  // (paper) or a flat refusal (live) apply.
+  const now = 1000000, ticks = [...Array(6)].map(() => ({ ts: 999000, price: .01 }));
+  const held = () => ({ ...position(), entryPrice: .01, lastPrice: .01 });
+  assert.equal(recentTickMedian(ticks, now), .01, 'the median the band and the window share');
+  const mid = .0006; // 0.06x the anchor (-94%), 16.7x BELOW the median
+  for (const paper of [true, false]) {
+    const reviewed = reviewPositionPrice(held(), pair(mid, now), { paper, now, ticks });
+    assert.equal(reviewed.accepted, true, `a 16.7x-below-median print is accepted (paper=${paper})`);
+    assert.equal(reviewed.corrected, undefined, 'and it needs no corroboration');
+  }
+  const below = .0004; // 0.04x the anchor (-96%): the only thing that asks for corroboration
+  const paperFloor = reviewPositionPrice(held(), pair(below, now), { paper: true, now, ticks });
+  assert.equal(paperFloor.accepted, false); assert.equal(paperFloor.reason, 'confirming-price-drop');
+  const liveFloor = reviewPositionPrice(held(), pair(below, now), { paper: false, now, ticks });
+  assert.equal(liveFloor.accepted, false); assert.equal(liveFloor.reason, 'price-discontinuity');
+  // Decision (P5.2, 2026-09-28): keep the band one-sided. The corroboration that would make a two-sided
+  // band safe is only reachable below the floor, so banding the mid-range too would refuse the mark and
+  // go on refusing it — the failure the crash path exists to prevent — while being slow on real
+  // downside is the expensive direction once real orders are attached. Reopen only with a real tick
+  // series (none exists in this checkout) or P1.5 funnel evidence of downward stop-outs at the
+  // boundary; changing this test is how that decision gets recorded.
+});
+

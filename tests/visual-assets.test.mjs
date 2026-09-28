@@ -73,6 +73,23 @@ test('required visual assets ship with usable geometry', () => {
   assert.equal(bliss.height, 2160);
 });
 
+test('the 1.29 MB logo master stays off the desktop, which draws a sized derivative', () => {
+  // P3.5. The master is the packaging source (desktop/main.cjs tray + window icon, build/icon.icns)
+  // and stays referenced by the docs; the desktop only ever draws it in boxes of 64 px (boot mark),
+  // 72/80/108 px (brand marks) and 120 px (stacked-bill FX sprite), so it is resampled once, offline
+  // by scripts/make-logo-derivative.py, instead of being shipped whole to each of the five slots.
+  const master = pngInfo(path.join(ASSETS, 'money-printer-logo.png'));
+  const sized = pngInfo(path.join(ASSETS, 'money-printer-logo-512.png'));
+  assert.equal(sized.color, 6, 'the derivative keeps the RGBA contract');
+  assert.equal(sized.width, 512);
+  assert.equal(sized.height, 512);
+  assert.ok(sized.width >= 3 * 120, '3x the widest drawn box (120 px), the same rule the master was sized by');
+  assert.ok(sized.bytes < master.bytes / 3, `derivative must reclaim weight: ${sized.bytes} vs ${master.bytes}`);
+  const html = fs.readFileSync(DASH, 'utf8');
+  assert.equal((html.match(/money-printer-logo-512\.png/g) || []).length, 5, 'all five drawn slots use the derivative');
+  assert.doesNotMatch(html, /money-printer-logo\.png/, 'the master must not be drawn on the desktop');
+});
+
 test('desktop icons are shaded artwork, not 10-color placeholders', () => {
   const floors = { money: 4000, network: 2000, robinhood: 2000, settings: 4000, sportsbook: 2000, trade: 2000 };
   for (const [name, minBytes] of Object.entries(floors)) {
