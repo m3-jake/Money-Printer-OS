@@ -634,7 +634,7 @@ P3.4 — done — ~180 ms and a 9.4 MB module graph off every process that boots
       Sweep after P3.4: **30 targets, 964 pass, 0 fail, 2 `# SKIP`** (stderr file empty) — the P3.2/P3.3 baseline of 963
       plus exactly the one new test, so the pin is counted by the suite and nothing else moved.
 
-## P4 status: in progress (P4.1 measured and declined; P4.2 done — exec #4 held up only on its loud half; P4.3 = exec #5 `index.js` extraction remains open)
+## P4 status: complete (P4.1 measured and declined; P4.2 done; P4.3 done — exec #5's premise was half false and the half that was true is now pinned by behaviour)
 
 P4.1 — skipped on measurement — — `system.diagnostics`: there is nothing to dedupe and nothing to cap, because the array is not a log; it is the current cycle's condition board, and a history here would be the bug
       The claim under test (executive summary #3): "`system.diagnostics` is appended every cycle with no dedupe and no cap,
@@ -767,3 +767,79 @@ P4.2 — done (dispatch lock pinned, refused live configs are loud) — — the 
       `package.json` (1 line, `test:solana`), `docs/RUNBOOK-PANIC.md` (three rows: unimplemented `MODE`, live-without-signer,
       and the dispatch lock itself, plus the second `1` exit code), `AUDIT.md` (exec #4 annotated disproven-in-part, §0
       *Live-config verdict* row), this entry.
+
+P4.3 — done (the brain is drivable; the extraction the row asked for was declined on measurement) — — exec #5: the
+      highest-risk code is finally reachable by a test, and the claim's premise turned out to be its wrong half
+      The claim under test (executive summary #5): "The trade-path brain (`src/index.js`, ~50 KB: `cycle`/`enter`/
+      `updatePositions`) is a top-level script that exports nothing, so it cannot be imported by a test; only the extracted
+      rails are testable. The highest-risk code is outside the suite's reach" — cited to `positionExecution.js:88-91`,
+      `index.js:776-790`, effort **L**, with the instruction "extract incrementally, never big-bang".
+      The premise splits in two, and the halves land opposite to the way the row reads. **"Cannot be imported" is false, and
+      was false at the revision the row was written against**: the cite `index.js:776-790` *is* the guard — `const
+      isMainModule = …` at line **776** and `if (isMainModule) main().catch(…)` at line **787** in
+      `git show 416ded8:src/index.js` — and `git log -S isMainModule` dates it to `bbc8f4d`, before the report.
+      Measured (`%TEMP%\mpo-p43\probe-import.mjs`, HEAD, temp data dir): one import = **553 ms, 93 MB RSS**, and
+      `process.getActiveResourcesInfo()` afterwards returns **only the probe's own stdout/stderr** — no timers, no sockets,
+      no dashboard, no cycle — so a test runner imports this file and exits on its own. The one import-time global side
+      effect is `dexscreener.js:7`'s `configureApiSpendPolicy(...)`, which any test that sets `MONEY_PRINTER_DATA_DIR`
+      before importing re-points anyway.
+      **"Exports nothing" was true, and it was the whole gap.** The surface was `export { main }`, so `cycle`, `enter` and
+      `updatePositions` — the code that decides every entry, every exit and every fill price — could not be reached from a
+      test at all. What the suite did instead, measured: **23 literal `src/index.js` references across 10 test files**
+      (accounting-integrity 3, journal-append-contract 3, live-gate 3, solana-fair 4, cycle-recovery 1, cycle-budget 1,
+      execution-turnover 1, panic-runbook 1, sign-manifest 1, and the new trade-path file 5) — every one of them
+      `readFileSync` + regex or a comment quoting a line number, none executing a line of the trade path — plus **2
+      full-process spawns** (`live-gate.test.mjs:170,178`: `node src/index.js --once`, ~1.9 s each and a live network
+      round trip; the probe's own `--once` run took a **429** from `api.mainnet-beta.solana.com`). A grep cannot see
+      arithmetic and a spawn only measures "the process exited", so both were blind to exactly the failures this code can
+      have: an entry that debits the wrong number of SOL still exits 0.
+      Which is also why the row's remedy was declined rather than deferred: **extraction would not have bought what the row
+      assumes it buys.** Re-measured at HEAD with a line-range + identifier scan (`%TEMP%\mpo-p43\scan-seam.mjs`; no parser is
+      vendored — only `@babel/runtime` — so it reports declaration spans and identifier references, not a call graph):
+      the trade-path cluster is **18 declarations spanning 705 of the file's 852 lines** (bounding range 47-754) and it
+      references **104 module-level names, 82 of them imported bindings**. Only **4** of those names are shared with
+      `main()` — `cfg`, `appendJournal`, `loadState`, `compactError` — so a move would produce a ~700-line module whose
+      header is 82 imports, i.e. the same coupling in a new file, and doing it in one step is the single thing the row
+      forbids ("never big-bang"). The seam the scan *did* find is the harness, not the brain: **`main()` is 79 lines** and
+      pulls **19 names nothing else uses** (`assertLiveConfig`, `marketPlatform`, `startDashboard`, `startAlphaWorker`,
+      `startProgramStream`, `stopAlphaWorker`, `createCycleBudget`, `setCycleSignal`, `isCycleBudgetError`,
+      `recordCycleBudgetAbort`, `recordCycleError`, `markCleanCycle`, `sleep`, `fileURLToPath`, `openBrowser`, plus the
+      `once`/`dashboardOnly` consts). That boundary already exists and is where a future extraction should start; it is just
+      not where this finding points.
+      What was done instead is the smallest change that converts the finding into an invariant: **one line**, `export
+      { main }` → `export { main, cycle, enter, updatePositions }` (plus a four-line comment recording why), with **no
+      behaviour change** — nothing in the file reads its own export list, `main()`'s call site is untouched, and the guard is
+      what keeps an import side-effect-free.
+      The new `tests/trade-path.test.mjs` (7 tests, **0.63 s**, added to `test:recovery`) imports the engine in-process,
+      points `MONEY_PRINTER_DATA_DIR` at a temp dir before the import, and drives the real functions against a stubbed
+      market: (1) the export contract itself; (2) a paper entry, asserting the position is bound to the pool it was priced
+      from (F7), that `cashSol` fell by exactly `basis + entry fee`, that the entry fee is booked as a realized loss at
+      open, and that a `trade-open` row reached `market.ndjson`; (3) a duplicate entry for the same mint is refused *by the
+      brain*, with cash untouched; (4) a stale position is closed through the real ladder — `updatePositions` → refresh →
+      review → stale-purge → `paperSell` → cooldown → journal — with the cash delta reconciled against the closed row's
+      `pnlSol`, `sizeSol` and `feesSol` minus its exit fee; (5) a stop-loss fires and books a loss when the *return* is
+      below `-preset.stop` while the tick is flat (the band judges `price/lastPrice`, the ladder judges
+      `price/entryPrice`, so anchoring both is what isolates the ladder's decision from the band's); (6) one full `cycle()`
+      runs in-process and persists its counters with `system.lastError === null`; (7) a host allowlist over every hostname
+      the driven calls touched, so a new hidden dependency fails a test instead of surprising a release. The stub is the
+      coupling measurement: the whole trade path reached **`api.dexscreener.com` and `127.0.0.1`** under this fixture, and
+      nothing else.
+      Two fixture lessons worth keeping, both found by the test failing on its first run: dexscreener's held-price cache
+      (**5 s**, keyed by pool) replays the previous mark, so a suite that reuses one pair id across tests silently asserts
+      nothing — each test now opens its own pool; and a closed trade's `feesSol` **accumulates entry and exit fees**
+      (`index.js:108`) while `proceeds` is already net of the exit fee, so the cash reconciliation has to subtract
+      `lastPaperExecution.feeSol` a second time. Neither is a product bug; both are things only a behavioural oracle can
+      teach. Bite-proof: with the exit credit doubled (`s.cashSol += proceeds` → ` * 2`, after backing the file up to
+      `%TEMP%\mpo-p43\index.bak` — the lesson P4.2 recorded) the suite goes **6 pass / 1 fail** on "cash change reconciles
+      against the booked pnl, basis and fees"; restoring the backup returns **7/7**, confirmed by a re-run and by
+      `git diff --stat` showing only the intended lines.
+      Called out because it is the same false premise: `positionExecution.js:88-91` justified its own reason for existing
+      with "src/index.js is a top-level script (it calls main() on import) and exports nothing". That comment is corrected
+      rather than deleted — extraction is still the right call for those rails, for the reason that survives measurement
+      (the arithmetic is pure and needs no engine), not for the reason that was written down.
+      Sweep after P4.3: `npm run test:all` exit 0 — 30 targets, **980 tests / 978 pass / 0 fail / 2 SKIP**, against the
+      P4.2 baseline of 973/971/0/2, i.e. exactly +7 (this file) and no other movement.
+      Files: `src/index.js` (+5/-1), `src/positionExecution.js` (comment only, +6/-2), `tests/trade-path.test.mjs` (new),
+      `package.json` (1 line: the new member of `test:recovery`), `AUDIT.md` (exec #5 annotated disproven-in-part with the
+      measurements, new §0 row *Trade-path reach*), this entry.
+

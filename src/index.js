@@ -849,4 +849,9 @@ if (isMainModule) {
   });
 }
 
-export { main };
+// P4.3 / AUDIT exec #5: the trade path is published so a test can drive it in-process.
+// Importing this file has never run a cycle (main() has been behind the isMainModule guard
+// above since bbc8f4d), but `export { main }` was the whole surface, so cycle/enter/
+// updatePositions could only be exercised by spawning a whole process or by grep. See
+// tests/trade-path.test.mjs. Nothing here changes runtime behaviour.
+export { main, cycle, enter, updatePositions };

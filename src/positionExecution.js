@@ -87,8 +87,12 @@ export function reviewPositionPrice(p,pair,{paper=false,now=Date.now(),ticks=nul
 
 // ---------------------------------------------------------------------------------------------
 // F7(a) / F8 (ACCOUNTING-AUDIT §4 RC-B, RC-C) — entry rails, extracted so they are testable.
-// src/index.js is a top-level script (it calls main() on import) and exports nothing, so the
-// entry-side arithmetic lives here and index.js calls into it.
+// The rationale that was written here ("src/index.js calls main() on import and exports nothing")
+// was disproven by P4.3 on 2026-09-28: main() has been guarded by an isMainModule check since
+// bbc8f4d, so importing src/index.js starts nothing. The arithmetic still belongs here for the
+// reason that survives measurement: it is pure, so it can be tested without an engine at all.
+// index.js now also exports cycle/enter/updatePositions (P4.3), and tests/trade-path.test.mjs
+// drives those in-process; this module stays the home of the fee/slippage/exit arithmetic.
 // ---------------------------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------------------------
