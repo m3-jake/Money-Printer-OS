@@ -10,7 +10,7 @@
 10 — done — 56b4bdc — Added bounded public-quote single paper positions, Yes/No BBO handling, market categories, and local-only place/reset/read routes; real submit remains separately gated.
 11 — done — 6a0fbd1 — Added signed Kalshi API facade with exact demo-host enforcement, required weather/sports series, and bounded paper book.
 12 — done — 6f26d00 — Added a paper-only equities/ETF adapter and shared-book recorder; no broker order route is used.
-13 — done — PENDING — Shared proposeTrade routing now covers scanner, native sniper, prediction venues, and equities; per-class regimes preserve unknown observations, aggressive-paper-only strategy gates, manual venue contracts, unique IDs, and durable route records.
-14 — partial — 850a4ed — Added executable side-specific public Polymarket BBO marks, fee/latency estimates, minute deduplication, and a read-only divergence report; shadow polling currently covers the Polymarket singles paper lane only.
+13 — done — 3ff047b — Shared proposeTrade routing now covers scanner, native sniper, prediction venues, and equities; per-class regimes preserve unknown observations, aggressive-paper-only strategy gates, manual venue contracts, unique IDs, and durable route records.
+14 — partial — 850a4ed — WIP: recurring shadow observations across paper venue books, Solana quote readers, and equities; missing quotes/fees stay explicitly unavailable.
 15 — done — ddf5493 — Added a read-only dashboard qualification badge backed by paper metrics; it never changes live authority.
 16 — done — 5f09801 — Added a concise AGGRESSIVE_PAPER note, journal locations, Kalshi demo variables, LIVE IS STILL LOCKED callout, and progress pointer.
