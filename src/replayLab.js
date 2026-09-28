@@ -269,3 +269,21 @@ async function main(){
 }
 export function isMainModule(argv1=process.argv[1]){if(!argv1)return false;try{return path.resolve(fileURLToPath(import.meta.url))===path.resolve(argv1)}catch{return false}}
 if(isMainModule())main().catch(e=>{console.error(e?.stack||e);process.exit(1)});
+
+// Phase 0 additive diagnostics entry point. The historical runRange policy and the
+// pessimistic execution functions above are deliberately unchanged. This is NOT
+// runtime-policy parity: captured ticks omit raw features and historic Lab policies.
+export function replayFixedWindow(events, config, { from, to, startSol = 1, solUsd = 200 } = {}) {
+  if (!Array.isArray(events)) throw new Error('Replay events must be an array');
+  if (![from, to, startSol, solUsd].every(Number.isFinite) || !(to > from) || !(startSol > 0) || !(solUsd > 0))
+    throw new Error('Explicit valid window and positive starting capital/SOL price required');
+  if (!config || !PRESETS[config.id] || config.filter) throw new Error('Only existing unfiltered reference presets supported');
+  for (const event of events) {
+    if (!Number.isFinite(event.ts) || !Number.isFinite(event.price) || !(event.price > 0))
+      throw new Error('Invalid replay event');
+  }
+  if (Object.entries(PRESETS[config.id]).some(([key, value]) => config[key] !== value)) throw new Error('Reference preset parameters are immutable');
+  const ordered = [...events].sort((a, b) => a.ts - b.ts || String(a.mint).localeCompare(String(b.mint)));
+  const range = { id: 'fixed-phase0', trainStart: from, trainEnd: from, testStart: from, testEnd: to };
+  return runRange(ordered, config, range, { startSol, solUsd });
+}
