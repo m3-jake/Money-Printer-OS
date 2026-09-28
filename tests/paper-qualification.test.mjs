@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { qualificationMetrics, qualifiesForLivePromotion, paperQualificationBadge } from '../src/paperQualification.js';
 
 function sampleRows(n = 120) { const start = Date.parse('2026-01-01T00:00:00Z'); return Array.from({ length: n }, (_, i) => ({ trade: { strategy: 'A', closedAt: start + i * 864_000_000, pnlSol: i % 5 ? 0.02 : -0.01, replayPnl: 0.01, shadowDivergenceBps: 25 } })); }
@@ -16,4 +17,10 @@ test('promotion verdict is thresholded, read-only and never authorizes auto-prom
   assert.equal(pass.ok, true); assert.deepEqual(pass.reasons, []); assert.equal(pass.automaticLivePromotionAllowed, false);
   const fail = qualifiesForLivePromotion('A', rows, { minSamples: 200 }); assert.equal(fail.ok, false); assert.ok(fail.reasons.includes('insufficient-samples'));
   assert.deepEqual(paperQualificationBadge(fail), { label: 'NOT QUALIFIED', status: 'BLOCKED', reasons: fail.reasons, readOnly: true, liveActivationAllowed: false });
+});
+
+test('dashboard exposes qualification through a read-only GET route', () => {
+  const source = fs.readFileSync(new URL('../src/dashboard.js', import.meta.url), 'utf8');
+  assert.match(source, /req\.method === 'GET' && u\.pathname === '\/api\/paper-qualification'/);
+  assert.match(source, /qualifiesForLivePromotion\(id,closes\)/);
 });

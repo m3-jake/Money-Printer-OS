@@ -510,6 +510,12 @@ export function startDashboard() {
         const limit = Math.max(20, Math.min(500, Number.isFinite(requested) ? Math.trunc(requested) : 220));
         return json(res, readJournal(limit).map(journalView));
       }
+      if (req.method === 'GET' && u.pathname === '/api/paper-qualification') {
+        const closes=readJournal(5000).filter(x=>x?.type==='trade-close');
+        const ids=[...new Set(closes.map(x=>String(x.trade?.strategy||x.strategy||'UNKNOWN')))];
+        const { qualifiesForLivePromotion }=await import('./paperQualification.js');
+        return json(res,{readOnly:true,strategies:ids.map(id=>qualifiesForLivePromotion(id,closes))});
+      }
       if (req.method === 'GET' && u.pathname === '/api/evolution') { const st = loadStateCached(); return json(res, { ...(st.evolution || {}), loop: evolutionLoopView(st.evolutionLoop || st.evolution?.loop || {}), labLink: labLinkView(st) }); }
       if (req.method === 'GET' && u.pathname === '/api/network') { const r=await meshRequest('GET','/state'); return json(res,r.body,r.status); }
       if (req.method === 'GET' && u.pathname === '/api/resources') return json(res, resourceSnapshot());

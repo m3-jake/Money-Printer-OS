@@ -1,16 +1,16 @@
 1 — done — 5e6150c — Created the 16-task checkpoint ledger, paper-aggression branch, and verified secret-file ignore rules.
 2 — done — 717a14b — Added journal analytics, confidence and decay summaries, cross-source price validation, and report/replay:journal CLI.
-3 — done — 949ee8a — Reused wallet scorecard research and added tracked Pump.fun buy signal tagging, trailing score ranking, and paper-only copy signal logging.
-4 — done — b2eb928 — Added event/outcome matcher, fee/slippage hurdle, opportunity journaling, and paper paired proposal record.
-5 — done — bb89a09 — Added rolling netflow/whale signal derivation and a shared TTL cache with fixture tests.
-6 — done — 27e1936 — Added half-Kelly sizing gated by the aggressive paper profile and deterministic 2–4 clip planning.
-7 — done — 24890dd — Added correlation and narrative exposure gates, persistent equity peak tracking, tiered paper size cuts, entry halts, and flatten handling.
+3 — partial — 7937e72 — Added score-based paper copy signals; tracked-wallet RPC/WebSocket subscription and automatic end-to-end proposal wiring remain outstanding.
+4 — partial — 3473763 — Added matcher, cost hurdle, journaling, and paired paper parent proposal; venue book integration and atomic dual-leg execution are not wired.
+5 — partial — 13e4d1d — Added rolling netflow/whale derivation and TTL caching; RPC source acquisition is injected rather than connected to a live flow feed.
+6 — partial — b7f1669 — Added gated half-Kelly math and tranche planning; runtime sizing and staged fills are not connected to the engine.
+7 — done — 6749f84 — Added correlation/narrative exposure gates, persistent equity peak tracking, tiered paper cuts, entry halts, and flatten handling.
 8 — done — ed4677c — Added AGGRESSIVE_PAPER profile overrides, paper-only estimator routing, and opt-in learner threshold relaxation while preserving default thresholds.
 9 — partial — 77ffc73 — Added launch parsing and paper-only sniper gates; native transaction builder, Jito integration, and order submission remain unavailable.
-10 — done — 368fb66 — Raised Polymarket US paper bounds and added weather, sports, culture, and politics filters; existing real-order rails remain unchanged.
-11 — done — e09b531 — Added signed Kalshi API facade with exact demo-host enforcement, required weather/sports series, and bounded paper book.
-12 — done — 8c2bf97 — Added a paper-only equities/ETF order adapter using the shared paper book and aggressive estimator behind its profile gate.
-13 — done — 60307cd — Added per-asset market regime classification, strategy/regime gates, and route decisions for requested classes.
-14 — done — d2abb80 — Added separate shadow fill modeling, JSONL output, divergence report, and static assertion that the path has no order transport.
-15 — partial — f63a6c9 — Added rolling strategy qualification math and a read-only badge payload; dashboard endpoint integration remains outstanding.
-16 — done — b204d3e — Added a concise AGGRESSIVE_PAPER enablement note, journal locations, Kalshi demo environment names, LIVE IS STILL LOCKED callout, and progress ledger pointer.
+10 — partial — 32efe35 — Raised Polymarket paper bounds and added category filters; single-order paper routes and the mode-specific parked guard are not present in this checkout.
+11 — done — 6a0fbd1 — Added signed Kalshi API facade with exact demo-host enforcement, required weather/sports series, and bounded paper book.
+12 — done — 6f26d00 — Added a paper-only equities/ETF adapter and shared-book recorder; no broker order route is used.
+13 — partial — 5235493 — Added per-asset regime classification, strategy gates, and route helpers; central proposal routing is not connected.
+14 — partial — 54fa26d — Added separate shadow fill modeling and reporting with no order transport; live book/latency acquisition is caller-supplied.
+15 — partial — 9b84c55 — Added qualification math, read-only badge payload, and GET endpoint; dashboard UI badge remains outstanding.
+16 — done — 5f09801 — Added a concise AGGRESSIVE_PAPER note, journal locations, Kalshi demo variables, LIVE IS STILL LOCKED callout, and progress pointer.
