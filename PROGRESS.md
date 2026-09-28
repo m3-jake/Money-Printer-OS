@@ -1,6 +1,6 @@
 1 — done — 5e6150c — Created the 16-task checkpoint ledger, paper-aggression branch, and verified secret-file ignore rules.
 2 — done — 717a14b — Added journal analytics, confidence and decay summaries, cross-source price validation, and report/replay:journal CLI.
-3 — pending — — Solana wallet tracking and paper copy trading.
+3 — done — 949ee8a — Reused wallet scorecard research and added tracked Pump.fun buy signal tagging, trailing score ranking, and paper-only copy signal logging.
 4 — pending — — Cross-platform prediction-market arbitrage.
 5 — pending — — Solana on-chain flow signals.
 6 — pending — — Kelly sizing and tranched entries.
