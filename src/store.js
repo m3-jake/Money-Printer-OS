@@ -32,8 +32,18 @@ export function stateStamp() {
   try { const st = fs.statSync(stateFile); return `${Math.trunc(st.mtimeMs)}:${st.size}`; } catch { return 'missing'; }
 }
 
+// research-state.json is merged back into the state by loadState(), so a stamp that only covers
+// state.json changes while the state it describes does not (and, worse, misses a research write).
+export function researchStamp() {
+  try { const st = fs.statSync(researchFile); return `${Math.trunc(st.mtimeMs)}:${st.size}`; } catch { return 'missing'; }
+}
+
+// Every persisted source of the state: an ETag built from this cannot go stale when either file is
+// written, and a 304 on it is safe (P1.2). Files outside these two are stamped by their own reader.
+export function stateSourcesStamp() { return `${stateStamp()}|${researchStamp()}`; }
+
 export function loadStateCached() {
-  const stamp = stateStamp();
+  const stamp = stateSourcesStamp();
   if (readCache.value && readCache.stamp === stamp) return readCache.value;
   const value = loadState();
   readCache = { stamp, value };
@@ -351,7 +361,7 @@ export function saveState(state) {
   }
   try { renameSyncWithRetry(temp, stateFile); }
   finally { try { fs.rmSync(temp, { force: true }); } catch {} }
-  readCache = { stamp: stateStamp(), value: s };
+  readCache = { stamp: stateSourcesStamp(), value: s };
   publishedBasis = snapshotBasis(s);
   lastSaveMs = Math.round(performance.now() - started);
   return lastSaveMs;

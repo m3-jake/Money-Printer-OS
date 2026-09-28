@@ -45,7 +45,9 @@ rather than silently queued.
 A stopped engine looks like: `state.json` shows `system.paused: true`, `system.killSwitch: true`, and
 `lastCycle` stops advancing while `/api/health` still answers (the dashboard runs in the same
 process, so if the port is dead the process is gone too). `GET /api/state` returns the same
-state the engine is working from, if you would rather not read the file.
+state the engine is working from, if you would rather not read the file. `/api/state` is persisted
+state only and may answer `304 Not Modified` while state.json is unchanged; the machine's live
+CPU/RAM and RPC readings are `/api/telemetry`.
 
 
 ## 3. When the state file is the problem

@@ -136,7 +136,25 @@ P1.1 — done — — reconciliation of the legacy float books vs the core ledge
       Tests: `tests/book-reconcile.test.mjs` (6 tests) added to `test:lane-contracts` — 96 pass.
       Honesty note: on real data the derived claim can refuse where the old literal could not; the
       `refused` entry names the source and the fields, which is the P1.1 (V5) point.
-P1.2 — pending — — split /api/state (keep ETag pure state, add /api/telemetry)
+P1.2 — done — — /api/state split: persisted state with an honest ETag, live readings in /api/telemetry
+      `src/store.js`: `researchStamp()` + `stateSourcesStamp()` cover state.json **and**
+      research-state.json, because `loadState()` merges the latter — a state.json-only stamp changes
+      while the state it describes does not, and misses a research write. `loadStateCached()` caches on
+      that same pair now, so the reader cannot hand back a state that predates a research write.
+      `src/dashboard.js`: the snapshot carries persisted state only (`system.metrics` is persisted
+      metrics, `system.resources` / `walletIntel.holderRpc` / `walletIntel.scorecard` are null, each
+      with a comment saying where it went). `/api/state` tags on the state sources plus every file in
+      `controlPlaneFiles` (the one list that owns those files, so adding one extends the tag), keeps
+      the serialized payload under that tag and answers 304 on a matching If-None-Match — no rebuild
+      and no serialization, which is the CPU the audit measured. The per-second timestamp is gone from
+      the tag. `/api/telemetry` serves the live half (`no-store`, no ETag).
+      HUD: `/api/state` is fetched with `cache:'no-cache'` (no-store would forbid the 304 now on
+      offer), `/api/telemetry` is merged on top, a telemetry failure keeps the last readings and says
+      `LIVE READINGS STALE` in the banner; `perf.stateCache` exposes HIT/MISS.
+      Docs: RUNBOOK-UNATTENDED (endpoint table), RUNBOOK-PANIC (304 + where live readings went),
+      EVOLUTION_LAB_SPLIT. Tests: `tests/api-state-split.test.mjs` (5 tests) in `test:visual` —
+      71 pass — including that a research-state.json write alone invalidates the tag (the case the old
+      stamp served stale) and that `/api/health` keeps the live sample it always had.
 P1.3 — pending — — sizing dial readout (premise corrected by V7)
 P1.4 — pending — — test hygiene (`npm test`, wire 2 suites, skip-safe visual test, coverage telemetry)
 P1.5 — pending — — rejected-by-band counter in the funnel

@@ -481,7 +481,7 @@ const readPrefEarly=k=>{try{return JSON.parse(localStorage.getItem(k))}catch{ret
 function saveChartView(){try{localStorage.setItem('mpo-chart-view',JSON.stringify({range:chartView.range,zoom:chartView.zoom}))}catch{}}
 let chartView={range:'session',zoom:1,...(()=>{const v=readPrefEarly('mpo-chart-view');return v&&typeof v==='object'?{...(['m1','m5','m15','h1','session'].includes(v.range)?{range:v.range}:{}),...(Number.isFinite(v.zoom)?{zoom:Math.max(1,Math.min(32,v.zoom))}:{})}:{}})(),pan:0,dragging:false,lastX:0,hoverX:null};let fxSig='',fxBurstTimer=null,fxBurstUntil=0,fxLastRealizedSol=null,fxComboPrimed=false,fxRobinhoodPrimed=false,fxAheadAnnounced=false;const fxSeenComboSettlements=new Set(),fxSeenRobinhoodCloses=new Set(),moneyEvents=[];
 const renderSig=new Map();
-const perf={stateKB:0,renderMs:0,refreshMs:0,lastStateAt:0};
+const perf={stateKB:0,renderMs:0,refreshMs:0,lastStateAt:0,lastTelemetryAt:0,telemetryError:null,stateCache:null};
 let productEconomicsState=null;
 // [id,name,glyph,style,host?] — a host entry means this app is a TAB inside host's window.
 const APPS=[
@@ -1728,11 +1728,32 @@ function renderAll(force=false){
  perf.renderMs=performance.now()-t0;window.MPOHud.measure('allRenderers',perf.renderMs);
 }
 async function post(url,obj){return fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(obj||{})}).then(r=>r.json())}
+// P1.2: /api/state is persisted state and may answer 304; the live readings (CPU/RAM, resource lane,
+// RPC health, wallet scorecard) come from /api/telemetry on the same loop and are merged on top. A
+// telemetry failure never blanks the panel: the last readings stay and the status banner says stale.
+function applyTelemetry(t){
+ if(!t||typeof t!=='object')return;
+ state=state||{};
+ state.system=state.system||{};
+ if(t.metrics)state.system.metrics={...(state.system.metrics||{}),...t.metrics};
+ state.system.resources=t.resources||null;
+ state.walletIntel=state.walletIntel||{};
+ state.walletIntel.holderRpc=t.holderRpc||null;
+ state.walletIntel.scorecard=t.walletScorecard||null;
+ perf.lastTelemetryAt=Date.now();perf.telemetryError=null;
+}
+async function refreshTelemetry(){
+ try{const tr=await fetch('/api/telemetry',{cache:'no-store'});if(!tr.ok)throw Error('HTTP '+tr.status);applyTelemetry(await tr.json())}
+ catch(e){if(e.name!=='AbortError'){perf.telemetryError=e.message;paintReadStatus()}}
+}
 async function refreshState(){
  const t0=performance.now();
  try{
-   const sr=await fetch('/api/state',{cache:'no-store'});
-   if(sr.status!==304){const parseStart=performance.now(),next=await sr.json();perf.parseMs=performance.now()-parseStart;window.MPOHud.measure('stateParse',perf.parseMs);if(!next||typeof next!=='object'||Array.isArray(next)||!next.system)throw Error('Invalid trading service snapshot');state=next;$('#runningVersion').textContent=state?.build?.version?'v'+state.build.version:'';perf.stateKB=Number(sr.headers.get('x-payload-bytes')||0)/1024;perf.lastStateAt=Date.now();perf.stateError=null}
+   const sr=await fetch('/api/state',{cache:'no-cache'});
+   if(sr.status!==304){const parseStart=performance.now(),next=await sr.json();perf.parseMs=performance.now()-parseStart;window.MPOHud.measure('stateParse',perf.parseMs);if(!next||typeof next!=='object'||Array.isArray(next)||!next.system)throw Error('Invalid trading service snapshot');state=next;$('#runningVersion').textContent=state?.build?.version?'v'+state.build.version:'';perf.lastStateAt=Date.now();perf.stateError=null}
+   if(sr.headers.get('x-payload-bytes'))perf.stateKB=Number(sr.headers.get('x-payload-bytes'))/1024;
+   perf.stateCache=sr.headers.get('x-state-cache')||null;
+   await refreshTelemetry();
    perf.refreshMs=performance.now()-t0;trackRealizedProfitBurst();updateDesktopEffects();renderAll();
  }catch(e){if(e.name!=='AbortError')perf.stateError=e.message;paintReadStatus()}
 }
@@ -1742,9 +1763,9 @@ function readOwner(key){
  const lane=key.match(/^\/api\/platform\/(stocks|lab|macro|edgar|weather|sports|wire|whales)(?:[/?]|$)/)?.[1],owner=lane==='lab'?'marketlab':lane==='whales'?'trade':lane;return owner?hostOf(owner):(/^\/api\/platform|^\/api\/scoreboard/.test(key)?'command':key.startsWith('/api/state')?'trade':'system');
 }
 function paintReadStatus(){
- const status=window.MPOHud.transport.status(),ageMs=perf.lastStateAt?Date.now()-perf.lastStateAt:Infinity,stale=!!perf.stateError||!!window.MPOHud.transport.state('/api/state').error||ageMs>10000;
- const led=$('#feedLed');if(led){const bad=stale||state?.system?.health==='DEGRADED';led.classList.toggle('bad',bad);led.style.background=bad?'var(--mpo-led-bad)':'var(--mpo-led-ok)';led.title=stale?'Trading service data stale; last successful snapshot '+(perf.lastStateAt?age(perf.lastStateAt)+' ago':'never'):'Trading service snapshot received '+age(perf.lastStateAt)+' ago'}
- const banner=$('#hudReadStatus');if(banner){const issue=window.MPOHud.storageErrors.size?'Preferences could not be saved or were repaired. ':'';const text=issue+(stale?(perf.lastStateAt?'STALE · service snapshot '+age(perf.lastStateAt)+' old':'WAITING · trading service'):(status.failures.length?status.failures.length+' data source'+(status.failures.length===1?'':'s')+' unavailable':'Connected'));if(banner.textContent!==text)banner.textContent=text;banner.classList.toggle('bad',stale||status.failures.length>0);banner.title=[perf.stateError,...status.failures.map(x=>x.error)].filter(Boolean).join('\n')||'Local service connected; strategy readiness is shown in each module.'}
+ const status=window.MPOHud.transport.status(),ageMs=perf.lastStateAt?Date.now()-perf.lastStateAt:Infinity,telAgeMs=perf.lastTelemetryAt?Date.now()-perf.lastTelemetryAt:Infinity,stale=!!perf.stateError||!!window.MPOHud.transport.state('/api/state').error||ageMs>10000,telStale=!!perf.telemetryError||telAgeMs>10000;
+ const led=$('#feedLed');if(led){const bad=stale||state?.system?.health==='DEGRADED';led.classList.toggle('bad',bad);led.style.background=bad?'var(--mpo-led-bad)':'var(--mpo-led-ok)';led.title=stale?'Trading service data stale; last successful snapshot '+(perf.lastStateAt?age(perf.lastStateAt)+' ago':'never'):'Trading service snapshot received '+age(perf.lastStateAt)+' ago'+(telStale?' (live readings stale)':'')}
+ const banner=$('#hudReadStatus');if(banner){const issue=window.MPOHud.storageErrors.size?'Preferences could not be saved or were repaired. ':'';const text=issue+(stale?(perf.lastStateAt?'STALE · service snapshot '+age(perf.lastStateAt)+' old':'WAITING · trading service'):telStale?'LIVE READINGS STALE · state is current, telemetry '+(perf.lastTelemetryAt?age(perf.lastTelemetryAt)+' old':'unavailable'):(status.failures.length?status.failures.length+' data source'+(status.failures.length===1?'':'s')+' unavailable':'Connected'));if(banner.textContent!==text)banner.textContent=text;banner.classList.toggle('bad',stale||telStale||status.failures.length>0);banner.title=[perf.stateError,perf.telemetryError,...status.failures.map(x=>x.error)].filter(Boolean).join('\n')||'Local service connected; strategy readiness is shown in each module.'}
  for(const w of $$('.window')){const bad=status.failures.filter(x=>readOwner(x.key)===w.dataset.app),node=w.querySelector('.hud-data-status');if(node){const text=bad.length?'STALE · retained values · '+bad.map(x=>x.key.split('?')[0]).join(', '):'';if(node.textContent!==text)node.textContent=text;node.hidden=!text}}
 }
 function scheduleUSComboBuild(){

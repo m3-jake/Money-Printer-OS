@@ -22,6 +22,7 @@ Trader data is `%APPDATA%\Money Printer OS\data` on Windows and
 | `http://127.0.0.1:8792/api/fitness` | fitness ledger: verdict and blockers per module (`docs/FITNESS-LEDGER.md`) |
 | `http://127.0.0.1:8792/api/self-report/latest` | today's self-report |
 | `http://127.0.0.1:8792/api/state`, `/api/robinhood`, `/api/polymarket-us/evidence` | full module state |
+| `http://127.0.0.1:8792/api/telemetry` | live readings only: CPU/RAM, resource lane, RPC health, wallet scorecard (`/api/state` is persisted state, ETag-cacheable, and carries none of these) |
 | `http://127.0.0.1:8792/api/data-coverage` | tape coverage per source |
 | `http://127.0.0.1:8792/api/project-journal` | the Journal's project history |
 | `http://127.0.0.1:8793/api/state`, `/api/health` | Evolution Lab |
