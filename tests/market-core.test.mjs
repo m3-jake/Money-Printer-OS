@@ -804,6 +804,21 @@ test('AI filing summaries: cited, labelled, never truncated, refusals surfaced',
   }finally{if(saved.a===undefined)delete process.env.ANTHROPIC_API_KEY;else process.env.ANTHROPIC_API_KEY=saved.a;if(saved.b!==undefined)process.env.ANTHROPIC_AUTH_TOKEN=saved.b;}
   p.close();
 });
+test('the Anthropic SDK loads on first request, so the engine boot path never pays its 9.4 MB',()=>{
+  // P3.4: `src/core/aiSummary.js` is reachable from the engine boot path (index.js:14 -> core/platform.js:29 ->
+  // aiSummary.js), and the SDK is 9.4 MB of module graph for a feature whose own contract is "summaries are made only
+  // on request". It is reached through a dynamic import now, and no other test would notice if that regressed: every
+  // target still passes while every node process pays ~180 ms of cold import at boot. So the boot module is spawned
+  // under the ESM loader's debug channel and asked what it actually resolved. The platform.js/aiSummary.js assertions
+  // are the control: if that channel ever goes quiet this fails instead of passing because it saw nothing.
+  const child=spawnSync(process.execPath,['--input-type=module','-e',`await import('./src/core/platform.js');`],{cwd:path.resolve('.'),encoding:'utf8',maxBuffer:64*1024*1024,env:{...process.env,NODE_DEBUG:'esm'}});
+  assert.equal(child.status,0,`the boot probe must import cleanly: ${String(child.stderr).slice(-400)}`);
+  const resolved=new Set([...String(child.stderr).matchAll(/Storing (file:\/\/\/[^ ]+) /g)].map(m=>m[1]));
+  assert.ok([...resolved].some(u=>u.endsWith('/src/core/platform.js')),'the probe must see the module it imported');
+  assert.ok([...resolved].some(u=>u.endsWith('/src/core/aiSummary.js')),'the probe must see the module under test');
+  assert.equal([...resolved].filter(u=>u.includes('@anthropic-ai/sdk')).length,0,'importing the boot path must resolve no SDK module (measured: 445 when it was a static import)');
+  console.log(`boot probe: ${resolved.size} modules resolved from platform.js, 0 from @anthropic-ai/sdk`);
+});
 
 test('venue reconciliation: read-only states, confirmed cash opening balance, and live stays locked',async()=>{
   assert.equal(reconcileVenue({venue:'x',ok:false,code:'NO_CREDENTIALS'},null).state,'NO_CREDENTIALS');

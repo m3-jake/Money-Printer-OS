@@ -1,4 +1,11 @@
-import Anthropic from '@anthropic-ai/sdk';
+// The SDK is a 9.4 MB module graph and ~180 ms of cold import — 226 ms for `import '@anthropic-ai/sdk'`
+// against 49 ms for an empty ESM process, measured 2026-09-28 — and this file sits on the engine's boot
+// path: `index.js:14` -> `core/platform.js:29` -> here. The feature it serves is request-only by its own
+// contract ("summaries are made only on request"), so the SDK is imported on first use and cached. The call
+// it enables is a multi-second API request, so the one-off import is off every path measured for cost, and
+// the error classes stay exact because they come from this same resolved module.
+let sdk = null;
+const anthropicSdk = async () => (sdk ||= (await import('@anthropic-ai/sdk')).default);
 
 // AI-assisted filing summaries. Everything returned here is AI-GENERATED ANALYSIS: it is stored and
 // shown apart from the filing facts, carries the model that produced it, and every summary sentence
@@ -31,15 +38,18 @@ PEOPLE AND DEALS - executive changes, agreements, acquisitions, financing, or "N
 RISKS AND CAVEATS - risks or uncertainties the filing itself states, or "None stated".
 Rules: state only what the filing says, with its own figures and dates; do not predict prices, give advice, or infer intent; if something is unclear in the filing, say it is unclear.`;
 
-// client: an Anthropic instance (injectable for tests). facts: the filing facts (form, company, ...).
-export async function summarizeFiling({ text, facts, client = new Anthropic(), model = SUMMARY_MODEL }) {
+// client: an Anthropic instance (injectable for tests; the SDK one is built on first use). facts: the filing facts.
+export async function summarizeFiling({ text, facts, client = null, model = SUMMARY_MODEL }) {
   const body = String(text || '');
   if (body.length < 200) throw new Error('Filing text is too short to summarize (was the document empty?)');
   if (body.length > MAX_FILING_CHARS) throw Object.assign(new Error(`Filing is ${body.length.toLocaleString()} characters, above the ${MAX_FILING_CHARS.toLocaleString()} limit; it is not summarized rather than cut short`), { code: 'TOO_LONG' });
+  // Validation runs first on purpose: a filing refused for length never pays for the SDK import.
+  const Anthropic = await anthropicSdk();
+  const api = client || new Anthropic();
   const title = `${facts?.form || 'Filing'} - ${facts?.company || ''} (${facts?.accession || ''})`.trim();
   let response;
   try {
-    response = await client.beta.messages.create({
+    response = await api.beta.messages.create({
       model, max_tokens: 16000, output_config: { effort: 'medium' },
       // Server-side refusal fallback: if the model declines, the API reruns on a fallback model.
       betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default',

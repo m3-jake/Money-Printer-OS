@@ -396,7 +396,7 @@ Regression sweep after P2.4: `npm run test:all` exit 0 — 30 targets, 961 pass,
       sibling-freeze pair in `test:robinhood-equities` and the trader→Lab Kalshi handoff in `test:upgrade` — both
       untouched here); counts identical to the P2.3 baseline. This entry is docs-only and no target reads `PROGRESS.md`.
 
-## P3 status: 4 of 5 closed (P3.1, P3.2 and P3.3 skipped on measurement, P3.5 done; P3.4 pending)
+## P3 status: complete (P3.1, P3.2 and P3.3 skipped on measurement, P3.4 done as a lazy SDK load, P3.5 done)
 P3.1 — skipped on measurement — — logo PNG → webp: refused by the PNG/colorType-6 contract, and recompression has 0 bytes of headroom
       Both halves of the item were measured against the file and its consumers. `public/assets/money-printer-logo.png`
       is 1024×1024 RGBA, 1,290,441 bytes, 9.85 bpp (30.8 % of raw), 348,696 unique RGBA colors, alpha 0–255, and has
@@ -428,7 +428,6 @@ Regression sweep after P3.1: `npm run test:all` exit 0 — 30 targets, 961 pass,
       sibling-freeze pair in `test:robinhood-equities` and the trader→Lab Kalshi handoff in `test:upgrade` — both
       untouched here); counts identical to the P2.4 baseline, and `test:visual` — the target that pins the logo PNG —
       passed, so `public/assets/` was left byte-for-byte as found.
-P3.4 — pending — — review @anthropic-ai/sdk (aiSummary) off the cycle hot path
 P3.5 — done — 1,290,441 → 369,134 bytes (−71.4 % / 921,307 B) off every drawn slot — sized logo derivative (512 px RGBA PNG) for the ≤120 px dashboard slots, 1024 px master kept
       Queued by P3.1 as "a 256 px derivative"; measuring the boxes first moved it to 512 px. The five places the
       desktop draws the master are all smaller than the queue-time note assumed, and the widest is 120 px, not 108:
@@ -588,3 +587,49 @@ Regression sweep after P3.3: `npm run test:all` exit 0 — 30 targets, 963 pass,
       stderr was empty and the counts are identical to the P3.2 baseline, which is the expected result for a docs-only
       item. Checked before editing that no test or script in `tests/` or `scripts/` reads `AUDIT.md` or `PROGRESS.md`,
       so the edit could not change any target's inputs.
+
+P3.4 — done — ~180 ms and a 9.4 MB module graph off every process that boots the platform — @anthropic-ai/sdk moved off the import path (dynamic, cached, first request) with the resolution pinned by a spawned boot probe
+      The item asked for the SDK off the cycle hot path. Measured, it was never *on* the cycle — a summary is reachable
+      only by request (`http.js:68` `/edgar/summary` → `platform.js:576` `edgarSummary` → `this.summarize` → `aiSummary.js:42`)
+      — but it *was* on the process **boot** path: `src/index.js:14` imports `marketPlatform` from `core/platform.js`, line 29
+      of which imports `./aiSummary.js`, line 1 of which was `import Anthropic from '@anthropic-ai/sdk'`. So every process that
+      boots the engine, and every test target that touches `platform.js`, paid for a feature that only runs on request.
+      What it cost, measured (medians of 5 cold runs, Windows, warm FS, whole process): an empty ESM process 49 ms,
+      `import '@anthropic-ai/sdk'` 226 ms, `import src/core/aiSummary.js` **241 ms**, `import src/core/platform.js` **442 ms**.
+      The SDK is 9,378,760 B on disk and `module.register` sees it as **445 module resolutions** — a whole package graph, not
+      a file. After the change: `aiSummary.js` **58 ms** (an empty process), `platform.js` **267 ms**, and a spawned boot probe
+      resolves **0** SDK modules while still resolving `platform.js` and `aiSummary.js`.
+      The change is in `src/core/aiSummary.js` only: the static import is replaced by a cached dynamic one
+      (`const anthropicSdk = async () => (sdk ||= (await import('@anthropic-ai/sdk')).default)`), `client` defaults to null and
+      the SDK client is constructed where the old default parameter built it, and the call moved from `client.beta…` to `api.beta…`.
+      The load sits **after** the two validation throws (a too-short/empty body, and text over `MAX_FILING_CHARS`), so a refused filing never pays it;
+      the error mapping still uses the SDK's own classes, because they come from the same resolved module. Callers, routes and
+      the stored-result shape are untouched: `platform.edgarSummary` and the `this.summarize` injection point are unchanged.
+      Behaviour was reproduced rather than assumed. Directly: status `OK`, `citedShare` 1, the citation quote, `usage`, the two
+      refusals (`too short`, `TOO_LONG`), the `REFUSED` mapping, `htmlToText`, `aiConfigured({})`, `SUMMARY_MODEL` — all identical
+      to the pre-change values, and the SDK-typed error mapping was exercised with a client-less call against a dead port
+      (`ANTHROPIC_BASE_URL=127.0.0.1:9`, no external request): `API_ERROR: Anthropic API error undefined: Connection error.`
+      Through the suite: the market-core target passes (exit 0) and its assertions are unchanged.
+      Measurement correction worth recording: `NODE_DEBUG=module`, which carried the P3.3 reachability trace, only logs **CJS**
+      resolution — it was blind to this package, which ships ESM (`index.mjs`). Proving the negative needed a `module.register`
+      resolve hook, which sees every module: importing `aiSummary.js` + `platform.js` resolves 108 paths, `platform.js` and
+      `aiSummary.js` among them, and 0 under `node_modules/@anthropic-ai/sdk`; the client-less call resolves exactly the 445.
+      The residue is pinned, because nothing else in the suite can see this regression: a static import restored would leave
+      every target passing while every process paid ~180 ms again. `tests/market-core.test.mjs` gains one test that spawns the
+      boot module under the ESM loader's own debug channel (`NODE_DEBUG=esm`, which logs every stored module URL) and asserts
+      that nothing under `@anthropic-ai/sdk` was resolved — with `platform.js` and `aiSummary.js` asserted **present** as the
+      control, so if that channel ever goes quiet the test fails rather than quietly passing on an empty trace. Proven to bite:
+      with only `src/core/aiSummary.js` reverted to the static import, the new test fails on exactly that assertion (exit 1);
+      with the change in place it passes in 313 ms. Cost of the pin: one spawned node per suite run (~0.3 s, 1.2 MB of captured
+      trace, `maxBuffer` set explicitly).
+      Two variants were rejected. Making the load conditional on `client` being absent would put the SDK's error classes out of
+      reach for a caller that injects a real client — the classification would silently stop applying to the errors it exists
+      for, a behavioural change hiding inside a performance fix. And a source-text assertion alone would pin the mechanism
+      rather than the outcome (this file might legitimately move the loader elsewhere), so the test measures the boot, and the
+      reason is recorded in the source comment where the next reader will meet it.
+      Effect on the suite, since every target imports `platform.js` somewhere: the market-core target went from **5,289.98 ms**
+      with the static import to **4,579.36 ms** with the change (and 4,258.44 ms on the first post-change run) — ~0.7–1.0 s per
+      process, the same import the engine pays once at boot and the dashboard pays with it. Files touched: `src/core/aiSummary.js`
+      (the load) and `tests/market-core.test.mjs` (the pin); no route, no storage, no other module.
+      Sweep after P3.4: **30 targets, 964 pass, 0 fail, 2 `# SKIP`** (stderr file empty) — the P3.2/P3.3 baseline of 963
+      plus exactly the one new test, so the pin is counted by the suite and nothing else moved.
