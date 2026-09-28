@@ -11,6 +11,6 @@
 11 — done — e09b531 — Added signed Kalshi API facade with exact demo-host enforcement, required weather/sports series, and bounded paper book.
 12 — done — 8c2bf97 — Added a paper-only equities/ETF order adapter using the shared paper book and aggressive estimator behind its profile gate.
 13 — done — 60307cd — Added per-asset market regime classification, strategy/regime gates, and route decisions for requested classes.
-14 — done — PENDING — Added separate shadow fill modeling, JSONL output, divergence report, and static assertion that the path has no order transport.
+14 — done — d2abb80 — Added separate shadow fill modeling, JSONL output, divergence report, and static assertion that the path has no order transport.
 15 — pending — — Paper qualification dashboard.
 16 — pending — — README updates.
