@@ -54,7 +54,7 @@ export function solanaCostGate({ pick, sizeSol, solUsd = 0, tp1, config = {}, mu
   const entry = estimatePaperExecution(pick, sizeSol, solUsd, slip, fee);
   const exit = estimatePaperExecution(pick, Number(sizeSol || 0) * (1 + Math.max(0, Number(tp1) || 0) / 100), solUsd, slip, fee);
   const modeledRoundTripPct = roundTripCostPct({ feeBps: fee, entrySlippageBps: entry.slippageBps, exitSlippageBps: exit.slippageBps });
-  const venue = Number(venueRoundTripPct), hasVenue = Number.isFinite(venue) && venue >= 0;
+  const venue = Number(venueRoundTripPct), hasVenue = venueRoundTripPct != null && Number.isFinite(venue) && venue >= 0;
   // A fresh executable Jupiter quote may only make the paper gate stricter, never looser than the simulator.
   const roundTripPct = hasVenue ? Math.max(modeledRoundTripPct, venue) : modeledRoundTripPct;
   const requiredTp1Pct = roundTripPct * multiple;
@@ -122,7 +122,7 @@ export function fairExpectancy(history = [], config = {}) {
 // The HUD's Solana card.
 export function solanaBookView(s = {}, config = {}) {
   const runtime = s.runtime || {};
-  const pr = activeExitPreset(runtime, config);
+  const pr = s.pumpProfitCapture?.currentPolicy?.exit || activeExitPreset(runtime, config);
   const cost = typicalRoundTripPct(s.history, config);
   const be = breakEvenHitRate(pr, cost.pct);
   const floor = baselineRoundTripPct(config);

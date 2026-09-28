@@ -35,9 +35,10 @@ export function bookClosedPnl(s,trade){
   s.realizedLifetimePnlSol=n(s.realizedLifetimePnlSol)+row.pnlSol;
   return row;
 }
-export const markedPositionValue=p=>{const basis=n(p?.remainingSol??p?.sizeSol);if(!basis)return 0;const entry=n(p?.entryPrice),last=n(p?.lastPrice||entry);return entry>0?basis*(last/entry):basis};
-export const markedPositionsValue=s=>(s?.positions||[]).reduce((q,p)=>q+markedPositionValue(p),0);
-export const unrealizedPnl=s=>(s?.positions||[]).reduce((q,p)=>q+(markedPositionValue(p)-n(p?.remainingSol??p?.sizeSol)),0);
+export const solFxRatio=(p,solUsd=null)=>{const entry=n(p?.entrySolUsd),current=n(solUsd??p?.lastSolUsd);return entry>0&&current>0?entry/current:1};
+export const markedPositionValue=(p,solUsd=null)=>{const basis=n(p?.remainingSol??p?.sizeSol);if(!basis)return 0;const entry=n(p?.entryPrice),last=n(p?.lastPrice||entry);return entry>0?basis*(last/entry)*solFxRatio(p,solUsd):basis};
+export const markedPositionsValue=s=>(s?.positions||[]).reduce((q,p)=>q+markedPositionValue(p,s?.market?.solUsd),0);
+export const unrealizedPnl=s=>(s?.positions||[]).reduce((q,p)=>q+(markedPositionValue(p,s?.market?.solUsd)-n(p?.remainingSol??p?.sizeSol)),0);
 export const equity=s=>n(s?.cashSol)+markedPositionsValue(s);
 export function updatePortfolio(s,{now=Date.now()}={}){
   ensurePnlLedger(s);

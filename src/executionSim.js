@@ -27,7 +27,9 @@ export function simulatePumpPaperExecution(candidate,requestedSol,solUsd=0,baseS
   const direction=String(side||'BUY').toUpperCase(),budget=Math.max(0,Number(requestedSol||0));
   const solPrice=Math.max(50,Number(solUsd||0)),priceUsd=Number(candidate?.priceUsd||candidate?.price||0);
   if(!['BUY','SELL'].includes(direction)||!(budget>0)||!(priceUsd>0))return {mode:'PAPER',status:'REJECTED',reason:'invalid-pump-order',filledQuantity:0,fillPrice:null,fillPriceUsd:null,gross:0,feeUsd:0,feeSol:0,fillRatio:0};
-  const estimate=estimatePaperExecution(candidate,budget,solPrice,baseSlippageBps,feeBps),liqUsd=Math.max(1,Number(candidate?.liq||candidate?.liquidity?.usd||0));
+  const observedLiquidity = Number(candidate?.liq ?? candidate?.liquidity?.usd);
+  if (!(observedLiquidity > 0)) return {mode:'PAPER',status:'REJECTED',reason:'missing-or-empty-liquidity',gross:0,feeSol:0,filledQuantity:0,fillRatio:0};
+  const estimate=estimatePaperExecution(candidate,budget,solPrice,baseSlippageBps,feeBps),liqUsd=observedLiquidity;
   const priceSol=priceUsd/solPrice,depthQty=Math.max(1e-12,liqUsd/Math.max(priceUsd,1e-12)),observedAt=Number(candidate?.priceObservedAt??candidate?.bookAt??candidate?.timestamp??now);
   const adapter=new MarketAdapter({venue:'pumpfun',staleMs:30000});
   const market=adapter.normalize({symbol:candidate?.mint||candidate?.symbol||'pump',bids:[{price:priceSol,quantity:depthQty}],asks:[{price:priceSol,quantity:depthQty}],timestamp:observedAt,source:'pumpfun-paper'},{now});
@@ -38,7 +40,20 @@ export function simulatePumpPaperExecution(candidate,requestedSol,solUsd=0,baseS
   const friction=new FrictionModel({venue:'pumpfun',fee:{kind:'bps',bps:Number(feeBps||0)+extraFeeBps},slippage:{...tuned.slippage,kind:'fixed-bps',bps:estimate.slippageBps+extraSlipBps},latency,
     partialFill:{...tuned.partialFill,rejectProbability,minFraction,maxFraction:Math.max(minFraction,Number(tuned.partialFill?.maxFraction||minFraction))},minOrderQty:tuned.minOrderQty,minNotional:economicalMin,maxStaleMs:tuned.maxStaleMs,allowDepthPartial:tuned.allowDepthPartial});
   const sim=new OrderSimulator().simulate({order:{side:direction,notional:budget},market,friction,seed:seed??`pump-runtime:${candidate?.mint||candidate?.symbol||''}:${Math.floor(now/8000)}:${direction}`,now,mode:'PAPER'});
-  return {...sim,requestedSol:budget,feeSol:Number(sim.feeUsd||0),fillPriceUsd:sim.fillPrice==null?null:sim.fillPrice*solPrice,failurePct:estimate.failurePct,feeBps:Number(feeBps||0)+extraFeeBps,executionModel:'shared-paper-core-v2'};
+  // Exact-input SOL is a budget, not a pre-slippage quantity. Do not debit more than requested.
+  if (direction === 'BUY' && sim.gross > 0) {
+    const gross = Math.min(budget, budget * Number(sim.fillRatio || 0));
+    const scale = gross / sim.gross;
+    sim.filledQuantity *= scale;
+    sim.feeUsd *= scale;
+    sim.gross = gross;
+    sim.fills = (sim.fills || []).map(f => ({ ...f, quantity: Number(f.quantity || 0) * scale }));
+    sim.quantityFillRatio = sim.requestedQuantity > 0 ? sim.filledQuantity / sim.requestedQuantity : null;
+  }
+  // Quote observation time is not submission time. Keep both instead of backdating a fill.
+  sim.orderSubmittedAt = now;
+  sim.fillAt = now + Math.max(0, Number(sim.latencyMs || 0));
+  return {...sim,requestedSol:budget,feeSol:Number(sim.feeUsd||0),fillPriceUsd:sim.fillPrice==null?null:sim.fillPrice*solPrice,failurePct:estimate.failurePct,feeBps:Number(feeBps||0)+extraFeeBps,executionModel:'shared-paper-core-v3-budget',evidenceState:'MODELED_NOT_EXECUTABLE_RECEIPT'};
 }
 
 export function deterministicFillAllowed(mint='', ts=Date.now(), failurePct=0) {

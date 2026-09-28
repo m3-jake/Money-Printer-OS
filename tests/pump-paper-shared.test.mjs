@@ -7,7 +7,7 @@ const candidate=(now,patch={})=>({mint:'Mint111111',symbol:'TEST',priceUsd:.002,
 
 test('Pump PAPER entry uses shared depth/friction engine and never idealized mid',()=>{
  const now=1000000,c=candidate(now),r=simulatePumpPaperExecution(c,.02,200,80,25,{now,seed:'pump-entry-test'});
- assert.equal(r.mode,'PAPER');assert.equal(r.status,'FILLED');assert.equal(r.executionModel,'shared-paper-core-v2');
+ assert.equal(r.mode,'PAPER');assert.equal(r.status,'FILLED');assert.equal(r.executionModel,'shared-paper-core-v3-budget');
  assert.ok(r.fillPriceUsd>c.priceUsd);assert.ok(r.gross>0);assert.ok(r.feeSol>0);assert.ok(r.latencyMs>=100);
 });
 

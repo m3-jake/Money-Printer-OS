@@ -1,3 +1,4 @@
+import { pumpProfitView } from './pumpProfitRuntime.js';
 import { handleRobinhoodRequest, startRobinhoodLoops, stopRobinhoodLoops, startPracticeLoop, stopPracticeLoop } from './robinhoodHttp.js';
 import { handleRobinhoodEquitiesRequest, startRobinhoodEquitiesLoop, stopRobinhoodEquitiesLoop } from './robinhoodEquitiesHttp.js';
 import { exitPresets, customExitPolicy, openLimitFor, aggressionParams, customExitBounds, MAX_OPEN_OVERRIDE } from './runtime.js';
@@ -369,6 +370,7 @@ function snapshot() {
     system: systemView(s.system, plane.activeEvolutionPolicy),
     stats: s.stats || {},
     solanaBook: solanaBookView(s, cfg),
+    pumpProfitCapture: pumpProfitView(s),
     portfolio: s.portfolio || null,
     portfolioSeries: compactSeries(s.portfolioSeries,1600,600),
     dailyPnlSol: s.dailyPnlSol || 0,

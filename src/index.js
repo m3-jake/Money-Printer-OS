@@ -1,3 +1,4 @@
+import { initializePumpCapture, persistPumpCapture, effectivePumpPolicy, pumpSizingDecision, recordPumpDecision, applyPumpSafety } from './pumpProfitRuntime.js';
 import { paperCashReceipt } from './paperCashReceipts.js';
 import { exec } from 'node:child_process';
 import { pathToFileURL, fileURLToPath } from 'node:url';
@@ -161,17 +162,21 @@ async function enter(s, pick, manual = false) {
   // F8 (ACCOUNTING-AUDIT §4 RC-C): identical arithmetic to before, except that PAPER sizing is now
   // levered off min(marked equity, cash + cost basis). Live keeps cfg.maxPositionSol /
   // cfg.maxTotalExposureSol exactly as before. See src/positionExecution.js.
-  const { size } = entrySizing({
+  const legacySizing = entrySizing({
     state: s, config: cfg, sizeFactor: ap.sizeFactor, aggression: s.runtime.aggression,
     stopPct: preset(s).stop, paper: isPaper, sprint: sprintPaper,
   });
-  if (size < 0.005) return;
+  const decision = isPaper ? recordPumpDecision(s, pumpSizingDecision(s, cfg, pick, legacySizing), pick) : null;
+  const size = decision ? decision.sizeSol : legacySizing.size;
+  if (size < 0.005) { if(decision) decision.rejected='uneconomic-or-sizing-budget'; return; }
 
   // Cost gate: in paper mode a fresh Jupiter round-trip quote may only make the simulator stricter.
   // This keeps toxic / effectively unsellable Pump.fun tokens out of the evidence the Lab learns from.
   const venueQuote = isPaper ? latestJupiterQuote(path.resolve(process.env.MONEY_PRINTER_DATA_DIR || 'data'), pick.mint) : null;
   const gate = solanaCostGate({ pick, sizeSol: size, solUsd: Number(s.market?.solUsd || 0), tp1: exitPolicy(s).tp1, config: cfg, venueRoundTripPct: venueQuote?.roundTripPct });
+  if (decision) { decision.estimatedRoundTripPct=gate.roundTripPct; decision.costSource=gate.costSource; }
   if (!gate.ok) {
+    if(decision) decision.rejected='costGate';
     s.stats.skipped++;
     s.stats.skipReasons = { ...(s.stats.skipReasons || {}), costGate: Number(s.stats.skipReasons?.costGate || 0) + 1 };
     s.stats.lastCostGate = { at: Date.now(), symbol: pick.symbol, tp1: gate.tp1, roundTripPct: gate.roundTripPct, modeledRoundTripPct: gate.modeledRoundTripPct, venueRoundTripPct: gate.venueRoundTripPct, costSource: gate.costSource, requiredTp1Pct: gate.requiredTp1Pct };
@@ -209,24 +214,28 @@ async function enter(s, pick, manual = false) {
     // pairAddress from the first accepted tick, which can latch onto the wrong pool for good.
     const entryReject = paperEntryRejection(pick);
     if (entryReject) {
+      if(decision) decision.rejected=entryReject;
       s.stats.skipped++;
       appendJournal({ type: 'paper-entry-reject', mint: pick.mint, symbol: pick.symbol, reason: entryReject });
       return;
     }
     const now=Date.now(),sim=simulatePumpPaperExecution(pick,size,Number(s.market?.solUsd||0),cfg.simulatedSlippageBps,cfg.simulatedFeeBps,{side:'BUY',now,seed:`pump-entry:${pick.mint}:${Math.floor(now/8000)}`});
     if(sim.status==='REJECTED'||!(Number(sim.gross)>0)){
+      if(decision) { decision.rejected=sim.reason||'modeled-no-fill'; decision.failedTransactionCostEvidence='UNKNOWN_NOT_CHARGED_AS_A_REAL_TRANSACTION'; }
       s.stats.skipped++;
       appendJournal({type:'paper-fill-failed',mode:'PAPER',pnlMode:'PAPER',mint:pick.mint,symbol:pick.symbol,requestedSizeSol:size,fillReason:sim.reason,simulatedFailurePct:sim.failurePct,slippageBps:sim.slippageBps??null,latencyMs:sim.latencyMs??null});
       return;
     }
     const filledBasis=Math.max(0,Number(sim.gross||0)),entryFee=Math.max(0,Number(sim.feeSol||0)),debit=filledBasis+entryFee;
-    if(!(debit>0)||s.cashSol<debit)return;
+    if(!(debit>0)||s.cashSol-decision.reserveSol+1e-9<debit||filledBasis>decision.allowedSol+1e-9){decision.rejected='execution-budget-or-reserve';return;}
+    decision.filledSol=filledBasis;decision.actualEntryFeeSol=entryFee;decision.executionModel=sim.executionModel;
     const cashReceipt=paperCashReceipt({positionId:`${now}-${pick.mint.slice(0,6)}`,sequence:0,side:'BUY',postedAt:now,modeledFillAt:sim.fillAt,basisSol:filledBasis,grossSol:filledBasis,feeSol:entryFee,cashBeforeSol:s.cashSol,cashAfterSol:s.cashSol-debit});
     s.cashSol-=debit;
     const ep=Number(sim.fillPriceUsd||pick.priceUsd);
     s.positions.push({
       id:`${now}-${pick.mint.slice(0,6)}`,mode:'PAPER',pnlMode:'PAPER',mint:pick.mint,symbol:pick.symbol,name:pick.name,
       paperCashCoverage:'COMPLETE_FROM_ENTRY',paperCashEvents:[cashReceipt],
+      pumpSizing:{...decision},pumpPolicy:effectivePumpPolicy(s,cfg),pumpPolicyPinnedAt:now,pumpPolicyProvenance:'PINNED_AT_ENTRY',entrySolUsd:Number(s.market.solUsd),lastSolUsd:Number(s.market.solUsd),paperTokenQuantity:Number(sim.filledQuantity),valuationModel:'SOL_FX_V1',decimals:pick.risk?.decimals??null,
       sizeSol:filledBasis,remainingSol:filledBasis,requestedSizeSol:size,entryPrice:ep,lastPrice:pick.priceUsd,highPrice:pick.priceUsd,pairAddress:pick.pairAddress||null,
       openedAt:now,score:pick.score,fastEdgeScore:pick.fastEdgeScore||pick.edgeScore||pick.score,riskScore:pick.risk?.score,executionScore:pick.executionScore,strategy,reasons:explain(pick),
       tp1Done:false,tp2Done:false,breakEvenArmed:false,realizedSol:-entryFee,feesSol:entryFee,manual,
@@ -276,6 +285,8 @@ function applyRuntimeControlPatch(s,raw={},opts={}){
   if(raw.customExit!=null)patch.customExit={...(s.runtime.customExit||{}),...sanitizeCustomExit(raw.customExit)};
   if(raw.maxOpenPositions!==undefined){const o=Math.round(Number(raw.maxOpenPositions));patch.maxOpenPositions=raw.maxOpenPositions===null||raw.maxOpenPositions===''||!Number.isFinite(o)?null:Math.max(MAX_OPEN_OVERRIDE[0],Math.min(MAX_OPEN_OVERRIDE[1],o));}
   if(raw.visualIntensity!=null)patch.visualIntensity=Math.max(0,Math.min(100,Number(raw.visualIntensity)||0));
+  if(raw.pumpSafety!=null)patch.pumpSafety=applyPumpSafety(s,raw.pumpSafety);
+  if(raw.pumpExperimentsPaused!=null&&s.pumpProfitCapture)s.pumpProfitCapture.experimentPaused=raw.pumpExperimentsPaused===true;
   Object.assign(s.runtime,patch);
   if(opts.manual){
     s.runtime.followLabBest=false;
@@ -384,12 +395,12 @@ async function actions(s) {
 }
 
 async function updatePositions(s) {
-  const pr=exitPolicy(s);
   const positions = [...s.positions];
   const refreshed = await refreshPositionPairs(positions);
   for (const row of refreshed) {
     if (!row || row.__error || !row.p) continue;
     const { p, pair } = row;
+    const pr=cfg.mode==='paper'&&p.pumpPolicy?.exit?p.pumpPolicy.exit:exitPolicy(s);
     if (!pair) {p.priceStatus='UNAVAILABLE';continue;}
     const price = Number(pair.priceUsd || 0);
     if (!price || !p.entryPrice) continue;
@@ -411,7 +422,8 @@ async function updatePositions(s) {
     if(review.corrected)appendJournal({type:'paper-price-correction',mint:p.mint,symbol:p.symbol,oldPrice:anchor,price,evidence:review.evidence});
     if (!p.pairAddress && pair?.pairAddress) p.pairAddress = pair.pairAddress;
     p.lastPrice = price;
-    p.lastLiquidityUsd = Number(pair.liquidity?.usd || p.lastLiquidityUsd || 0);
+    if(p.entrySolUsd>0&&Number(s.market?.solUsd)>0)p.lastSolUsd=Number(s.market.solUsd);
+    p.lastLiquidityUsd = Number(pair.liquidity?.usd ?? p.lastLiquidityUsd ?? 0);
     const currentPc5 = Number(pair.priceChange?.m5 || 0);
     p.lastPriceAccel = currentPc5 - Number(p.lastPc5 ?? currentPc5);
     p.lastPc5 = currentPc5;
@@ -425,13 +437,13 @@ async function updatePositions(s) {
     p.maxFavorablePct = Math.max(Number(p.maxFavorablePct || 0), ret);
     p.maxAdversePct = Math.min(Number(p.maxAdversePct || 0), ret);
     const profitReturn=netQuote?netQuote.netReturnPct:ret;
-    if (profitReturn >= Math.min(cfg.breakEvenTriggerPct, pr.tp1 * 0.8)) p.breakEvenArmed = true;
+    if (profitReturn >= Math.min(pr.breakEvenTriggerPct ?? cfg.breakEvenTriggerPct, pr.tp1 * 0.8)) p.breakEvenArmed = true;
 
     let action = null;
     let fraction = 1;
     let tpFlag = null;
-    if (!p.tp1Done && ret >= pr.tp1) { action = 'take-profit-1'; fraction = cfg.mode === 'paper' && s.runtime?.profile === 'SPRINT' ? 1 : Math.max(.01,Math.min(1,cfg.takeProfit1SellPct/100)); tpFlag = 'tp1Done'; }
-    else if (!p.tp2Done && ret >= pr.tp2) { action = 'take-profit-2'; fraction = cfg.mode === 'paper' && s.runtime?.profile === 'SPRINT' ? 1 : Math.max(.01,Math.min(1,cfg.takeProfit2SellPct/100)); tpFlag = 'tp2Done'; }
+    if (!p.tp1Done && ret >= pr.tp1) { action = 'take-profit-1'; fraction = pr.tp1Fraction ?? (cfg.mode === 'paper' && s.runtime?.profile === 'SPRINT' ? 1 : Math.max(.01,Math.min(1,cfg.takeProfit1SellPct/100))); tpFlag = 'tp1Done'; }
+    else if (!p.tp2Done && ret >= pr.tp2) { action = 'take-profit-2'; fraction = pr.tp2Fraction ?? (cfg.mode === 'paper' && s.runtime?.profile === 'SPRINT' ? 1 : Math.max(.01,Math.min(1,cfg.takeProfit2SellPct/100))); tpFlag = 'tp2Done'; }
     else if (ret <= -pr.stop) action = 'stop-loss';
     else if (p.breakEvenArmed && profitReturn <= 0) action = 'break-even';
     else if (draw <= -pr.trail && ret > 0) action = 'trailing';
@@ -486,6 +498,9 @@ function refreshRpcHealthAsync() {
 async function cycle() {
   const cycleStart = performance.now();
   const s = loadState();
+  let pinned=0;
+  try{pinned=initializePumpCapture(s,cfg);}catch(e){s.system.profitCaptureError=compactError(e);if(s.pumpProfitCapture)s.pumpProfitCapture.experimentPaused=true;}
+  if(pinned)appendJournal({type:'pump-policy-pinned-at-upgrade',positions:pinned,hash:s.pumpProfitCapture.currentPolicy.hash});
   s.system.lastError = null;
   s.stats.cycles++;
   await actions(s);
@@ -552,6 +567,7 @@ async function cycle() {
     const micro = microFeatures(history);
     const a = analyze(p, riskMap.get(mint) || null, s.snapshots[mint], s.runtime, micro);
     a.priceObservedAt=Number(p.priceObservedAt||0);
+    a.priceObservedAt=Date.now();a.priceEvidenceSource='MARKET_POLL_OBSERVATION_NOT_EXCHANGE_TIMESTAMP';
     const xs = pushTick(s, a);
     a.micro = microFeatures(xs);
     a.explosionScore = explosionScore(a, a.micro);
@@ -714,6 +730,7 @@ async function cycle() {
   s.research.improvementLoop.funnelHistory=[funnel,...(s.research.improvementLoop.funnelHistory||[])].slice(0,240);
 
   s.system.metrics.cycleMs = Math.round(performance.now() - cycleStart);
+  try{persistPumpCapture(s,cfg,ranked);}catch(e){s.system.profitCaptureError=compactError(e);if(s.pumpProfitCapture)s.pumpProfitCapture.experimentPaused=true;}
   s.system.metrics.saveMs = saveState(s) || s.system.metrics.saveMs || 0;
 
   console.clear();

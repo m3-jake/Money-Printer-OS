@@ -1,10 +1,10 @@
 import { estimatePaperExecution, simulatePumpPaperExecution } from './executionSim.js';
-import { equity } from './accounting.js';
+import { equity, solFxRatio } from './accounting.js';
 
 export function paperExitQuote(position,price,simulation,fraction=1) {
   const basis=Number(position.remainingSol??position.sizeSol??0)*Math.max(0,Math.min(1,fraction));
   const exitPrice=Number(price)*(1-Number(simulation.slippageBps)/10000);
-  const gross=basis*exitPrice/Number(position.entryPrice);
+  const gross=basis*exitPrice/Number(position.entryPrice)*solFxRatio(position,simulation.solUsd);
   const fee=Math.max(0,gross*Number(simulation.feeBps)/10000);
   const proceeds=Math.max(0,gross-fee);
   const pnlSol=Number(position.realizedSol||0)+proceeds-basis;
@@ -14,15 +14,15 @@ export function paperExitQuote(position,price,simulation,fraction=1) {
 export function exitSimulation(position,pair,solUsd,slippageBps,feeBps,fraction=1) {
   const basis=Number(position.remainingSol??position.sizeSol??0)*fraction;
   // Exit impact is based on current sale notional, including any gain or loss.
-  const value=basis*Number(pair?.priceUsd||position.lastPrice)/Number(position.entryPrice);
-  return estimatePaperExecution({liq:Number(pair?.liquidity?.usd??position.lastLiquidityUsd??0),
+  const value=basis*Number(pair?.priceUsd||position.lastPrice)/Number(position.entryPrice)*solFxRatio(position,solUsd);
+  return {...estimatePaperExecution({liq:Number(pair?.liquidity?.usd??position.lastLiquidityUsd??0),
     executionScore:Number(position.executionScore||50),micro:position.lastMicro||{},priceAccel:Number(position.lastPriceAccel||0)},
-    value,solUsd,slippageBps,feeBps);
+    value,solUsd,slippageBps,feeBps),solUsd};
 }
 
 export function simulatePaperExit(position,pair,solUsd,slippageBps,feeBps,fraction=1,{now=Date.now(),seed=null}={}){
   const requestedFraction=Math.max(0,Math.min(1,Number(fraction||0))),basis=Number(position.remainingSol??position.sizeSol??0)*requestedFraction;
-  const priceUsd=Number(pair?.priceUsd||position.lastPrice||0),entryPrice=Number(position.entryPrice||0),valueSol=entryPrice>0?basis*priceUsd/entryPrice:0;
+  const priceUsd=Number(pair?.priceUsd||position.lastPrice||0),entryPrice=Number(position.entryPrice||0),valueSol=entryPrice>0?basis*priceUsd/entryPrice*solFxRatio(position,solUsd):0;
   const candidate={mint:position.mint,symbol:position.symbol,priceUsd,priceObservedAt:Number(pair?.priceObservedAt||now),liq:Number(pair?.liquidity?.usd??position.lastLiquidityUsd??0),
     executionScore:Number(position.executionScore||50),micro:position.lastMicro||{},priceAccel:Number(position.lastPriceAccel||0)};
   const sim=simulatePumpPaperExecution(candidate,valueSol,solUsd,slippageBps,feeBps,{side:'SELL',now,seed:seed??`pump-exit:${position.id||position.mint}:${Math.floor(now/8000)}`});
