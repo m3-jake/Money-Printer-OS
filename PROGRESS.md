@@ -396,7 +396,37 @@ Regression sweep after P2.4: `npm run test:all` exit 0 — 30 targets, 961 pass,
       sibling-freeze pair in `test:robinhood-equities` and the trader→Lab Kalshi handoff in `test:upgrade` — both
       untouched here); counts identical to the P2.3 baseline. This entry is docs-only and no target reads `PROGRESS.md`.
 
-P3.1 — pending — — recompress public logo PNG → webp if no code path needs PNG
+## P3 status: 1 of 5 closed (P3.1 skipped on measurement; P3.2–P3.4 pending; P3.5 added by P3.1)
+P3.1 — skipped on measurement — — logo PNG → webp: refused by the PNG/colorType-6 contract, and recompression has 0 bytes of headroom
+      Both halves of the item were measured against the file and its consumers. `public/assets/money-printer-logo.png`
+      is 1024×1024 RGBA, 1,290,441 bytes, 9.85 bpp (30.8 % of raw), 348,696 unique RGBA colors, alpha 0–255, and has
+      no ancillary chunks — there is no metadata to strip.
+      "No code path needs PNG" is false, so the conversion is out. `public/dashboard.html` loads this PNG in five
+      slots — :52 boot mark (64 px), :816 the stacked-bill FX sprite (`stack` → w = 120), :1509 updater brand mark
+      (72 px), :1518 money-surface brand mark (108 px), :1679 glance brand mark — and `tests/visual-assets.test.mjs`
+      :57–59 reads it *as a PNG* and asserts `colorType === 6` (8-bit RGBA) with ≥512×512. The same family is on the
+      packaging path: `desktop/main.cjs:62,295` loads `app-icon.png` for tray and window, and `build/icon.icns`
+      (2,290,233 bytes) is copied into the macOS bundle at `scripts/build-unified.mjs:217–223`. None of that is a
+      webp-capable path. Counterfactual, measured: webp would have saved 34.7 % lossless (842,166 B) or 84.1 % at q90
+      (205,264 B) — real weight, but it would cost the RGBA contract the visual test pins.
+      "Recompress" has nothing left to give: a Pillow re-save with `optimize=True`, and with `compress_level=9`
+      added, returns **1,290,441 bytes — the same size, pixels identical** (RGBA sha256 unchanged, `985a5d00…`), while
+      `compress_level=9` without `optimize` is 6,014 bytes *worse*. No external optimizer is installed (no
+      oxipng/zopfli/pngcrush/optipng/pngquant, and no zopfli in the Python env). The IDAT layout (19 × 65,536 B +
+      1 × 44,972 B) plus the zero headroom say the file was already written by an optimal encoder. The only way down
+      from here is palette quantization, which changes `colorType` from 6 and drops the soft alpha.
+      So the weight is a *placement* problem, not a compression one, and it is queued as P3.5 rather than done under
+      a compression item: a 1024 px RGBA render is drawn in 64–120 px slots. Derivatives measured from the same
+      pixels, RGBA, `optimize=True`: 512 px 370,015 B (−71.3 %), 256 px 103,916 B (−91.9 %), 128 px 29,954 B
+      (−97.7 %) — a 256 px derivative still covers the widest slot (108 px) at ≥2× and would take ≈1.19 MB off the
+      boot path. That is one new asset plus five reference edits and an art check, so it is a separate item.
+
+Regression sweep after P3.1: `npm run test:all` exit 0 — 30 targets, 961 pass, 0 fail, 0 cancelled, every target ran
+      (963 tests, of which the only two not passing are the standing `# SKIP` integration placeholders — the Jupiter
+      sibling-freeze pair in `test:robinhood-equities` and the trader→Lab Kalshi handoff in `test:upgrade` — both
+      untouched here); counts identical to the P2.4 baseline, and `test:visual` — the target that pins the logo PNG —
+      passed, so `public/assets/` was left byte-for-byte as found.
 P3.2 — pending — — stateVersion field + migration stub
 P3.3 — pending — — npm audit in CI as non-blocking telemetry
 P3.4 — pending — — review @anthropic-ai/sdk (aiSummary) off the cycle hot path
+P3.5 — pending — — sized logo derivative (256 px RGBA PNG) for the ≤120 px dashboard slots, keeping the 1024 px original (from P3.1: ≈1.19 MB of the boot path)
