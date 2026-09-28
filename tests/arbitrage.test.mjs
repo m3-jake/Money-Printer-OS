@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { matchMarkets, detectDislocation, proposePairedArbitrage, normalizeKalshiBook, scanArbitrageBooks } from '../src/arbitrage.js';
+import { matchMarkets, detectDislocation, proposePairedArbitrage, normalizeKalshiBook, scanArbitrageBooks, settlePairedArbitrage } from '../src/arbitrage.js';
 
 const pair = () => [{ venue: 'polymarket', id: 'p1', event: 'Will ACME win the 2026 final?', outcome: 'Yes', ask: 0.42 }, { venue: 'kalshi', id: 'k1', event: 'Will ACME win the 2026 final?', outcome: 'Yes', ask: 0.48 }];
 
@@ -36,4 +36,12 @@ test('every opportunity is logged and paper paired proposals keep both legs toge
     const blocked = proposePairedArbitrage({ proposals: [] }, opportunity, { mode: 'live', file: path.join(dir, 'arb.ndjson') });
     assert.equal(blocked.proposal, null); assert.equal(fs.readFileSync(path.join(dir, 'arb.ndjson'), 'utf8').trim().split('\n').length, 2);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('paired paper settlement fills both legs together or cancels both', () => {
+  const [a,b]=pair(), opportunity=detectDislocation(a,b), proposal={kind:'ARBITRAGE_PAIR',status:'PENDING',legs:opportunity.legs.map(x=>({...x,status:'PENDING'}))};
+  const filled=settlePairedArbitrage(proposal,[{ok:true,price:.42,fee:.001},{ok:true,price:.47,fee:.001}],1234);
+  assert.equal(filled.ok,true);assert.equal(filled.proposal.status,'FILLED');assert.deepEqual(filled.proposal.legs.map(x=>x.status),['FILLED','FILLED']);
+  const cancelled=settlePairedArbitrage({...proposal,legs:proposal.legs.map(x=>({...x}))},[{ok:true,price:.42},{ok:false}],2345);
+  assert.equal(cancelled.ok,false);assert.equal(cancelled.proposal.status,'CANCELLED');assert.deepEqual(cancelled.proposal.legs.map(x=>x.status),['CANCELLED','CANCELLED']);
 });

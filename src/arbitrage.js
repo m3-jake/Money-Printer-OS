@@ -64,3 +64,27 @@ export function proposePairedArbitrage(state, opportunity, { mode = 'paper', fil
   Object.assign(parent, proposal);
   return { recorded: row, proposal: parent };
 }
+
+export function settlePairedArbitrage(proposal, executions = [], at = Date.now()) {
+  if (!proposal || proposal.kind !== 'ARBITRAGE_PAIR' || proposal.legs?.length !== 2 || executions.length !== 2) {
+    return { ok: false, reason: 'invalid-pair' };
+  }
+  const fills = executions.map(x => ({
+    ok: x?.ok === true && x?.filled !== false,
+    price: num(x?.price),
+    fee: Math.max(0, num(x?.fee) || 0),
+    at: Number(x?.at || at)
+  }));
+  if (fills.some(x => !x.ok || !(x.price > 0))) {
+    proposal.status = 'CANCELLED';
+    proposal.statusReason = 'atomic-pair-incomplete';
+    proposal.settledAt = at;
+    proposal.legs = proposal.legs.map(leg => ({ ...leg, status: 'CANCELLED', fillPrice: null }));
+    return { ok: false, reason: proposal.statusReason, proposal };
+  }
+  proposal.status = 'FILLED';
+  proposal.statusReason = 'both-paper-legs-filled';
+  proposal.settledAt = at;
+  proposal.legs = proposal.legs.map((leg, i) => ({ ...leg, status: 'FILLED', fillPrice: fills[i].price, fee: fills[i].fee, filledAt: fills[i].at }));
+  return { ok: true, proposal };
+}
