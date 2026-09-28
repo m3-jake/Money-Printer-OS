@@ -3,7 +3,7 @@
 3 — done — 949ee8a — Reused wallet scorecard research and added tracked Pump.fun buy signal tagging, trailing score ranking, and paper-only copy signal logging.
 4 — done — b2eb928 — Added event/outcome matcher, fee/slippage hurdle, opportunity journaling, and paper paired proposal record.
 5 — done — bb89a09 — Added rolling netflow/whale signal derivation and a shared TTL cache with fixture tests.
-6 — done — PENDING — Added half-Kelly sizing gated by the aggressive paper profile and deterministic 2–4 clip planning.
+6 — done — 27e1936 — Added half-Kelly sizing gated by the aggressive paper profile and deterministic 2–4 clip planning.
 7 — pending — — Correlation-aware exposure and drawdown de-risking.
 8 — pending — — Aggressive paper profile and execution model.
 9 — pending — — Pump.fun native integration, sniper and MEV protection.

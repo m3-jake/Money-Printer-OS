@@ -1,0 +1,22 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { halfKelly, sizeFromEdge, splitTranches } from '../src/sizing.js';
+
+test('half Kelly uses expectancy over variance and obeys the configured caps', () => {
+  const x = halfKelly({ expectancy: 0.02, variance: 0.04, equity: 10, floor: 0.1, ceiling: 0.4 });
+  assert.equal(x.kelly, 0.5); assert.equal(x.halfKellyFraction, 0.25); assert.equal(x.finalSize, 0.4);
+  assert.equal(halfKelly({ expectancy: -1, variance: 2, equity: 10 }).finalSize, 0);
+});
+
+test('aggressive sizing is a no-op outside aggressive paper and logs every active decision', () => {
+  assert.deepEqual(sizeFromEdge({ runtime: { profile: 'AGGRESSIVE_PAPER' }, mode: 'live', expectancy: 1, variance: 2, equity: 4 }), { enabled: false, reason: 'aggressive-paper-required', finalSize: null });
+  assert.equal(sizeFromEdge({ runtime: { profile: 'FAIR' }, mode: 'paper' }).enabled, false);
+  const logs = [], d = sizeFromEdge({ runtime: { profile: 'AGGRESSIVE_PAPER' }, mode: 'paper', expectancy: 0.1, variance: 1, equity: 10, logger: x => logs.push(x) });
+  assert.equal(d.enabled, true); assert.equal(logs[0].type, 'sizing-decision'); assert.equal(logs[0].finalSize, d.finalSize);
+});
+
+test('sizes above the threshold split into two to four time-staggered clips', () => {
+  assert.deepEqual(splitTranches(0.2), [{ sizeSol: 0.2, delayMs: 0 }]);
+  const clips = splitTranches(1, { threshold: 0.25, clips: 4, intervalMs: 100 });
+  assert.equal(clips.length, 4); assert.ok(Math.abs(clips.reduce((s, x) => s + x.sizeSol, 0) - 1) < 1e-12); assert.deepEqual(clips.map(x => x.delayMs), [0, 100, 200, 300]);
+});
