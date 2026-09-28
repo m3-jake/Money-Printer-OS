@@ -30,7 +30,7 @@ export function validExactQuote(q, order, now, maxAgeMs = 30000) {
     raw(q.outAmount) && raw(q.otherAmountThreshold) && BigInt(q.otherAmountThreshold) <= BigInt(q.outAmount) && q.requestedAt >= order.submittedAt && q.receivedAt >= q.requestedAt && q.receivedAt <= now && now - q.receivedAt <= maxAgeMs && Array.isArray(q.routePlan) && q.routePlan.length > 0 && q.routePlan.every(r=>typeof r.swapInfo?.ammKey==='string'&&r.swapInfo.ammKey.length>0) && Number.isSafeInteger(q.contextSlot) && q.contextSlot>0;
 }
 
-function settleOrders(book, quotes, experiment, now) {
+export function settleOrders(book, quotes, experiment, now) {
   for (const order of [...book.pending]) {
     if (now > order.expiresAt) { book.pending = book.pending.filter(x => x.id !== order.id); book.missing++; reject(book, 'missing-exact-executable-quote'); continue; }
     const q = quotes.find(q => !book.usedQuotes.includes(q.id) && validExactQuote(q, order, now, experiment.protocol.maxQuoteAgeMs));
@@ -76,7 +76,7 @@ function acceptTick(p, tick, now) {
   if (tick.at > num(p.tickHistory.at(-1)?.ts)) p.tickHistory = [...p.tickHistory, { ts: tick.at, price: tick.priceUsd }].slice(-12);
   return true;
 }
-function observePositions(book, ticks, experiment, now) {
+export function observePositions(book, ticks, experiment, now) {
   for (const p of book.positions) {
     const tick = ticks.find(x => x.mint === p.mint && x.pairAddress === p.pairAddress);
     if (!acceptTick(p, tick, now)) { p.priceEvidence = 'MISSING_OR_QUARANTINED'; continue; }
@@ -101,7 +101,7 @@ function observePositions(book, ticks, experiment, now) {
   }
 }
 
-function offerOpportunity(book, opportunity, experiment, now) {
+export function offerOpportunity(book, opportunity, experiment, now) {
   if (book.seen.includes(opportunity.id)) return;
   book.seen.push(opportunity.id); book.opportunities++;
   if (!opportunity.eligible || now - opportunity.at > 30000 || opportunity.at > now) { reject(book, 'stale-or-ineligible-opportunity'); return; }

@@ -201,7 +201,7 @@ test('hard daily cap: no call beyond it, progress kept, status BUDGET; the cap s
 });
 
 test('spend is paced over the UTC day, the kill flag stops all calls, and keys never reach health', async () => {
-  const mint = key(), rpc = fakeRpc({ getSignaturesForAddress: () => [{ signature: 'p1', blockTime: 1, err: null }, { signature: 'p0', blockTime: 1, err: null }], getTransaction: () => null });
+  const mint = key(), rpc = fakeRpc({ getSignaturesForAddress: () => [{ signature: 'p1', blockTime: 1, err: null }, { signature: 'p0', blockTime: 1, err: null }], getTransaction: () => curveBuy({wallet:key(),mint,blockTime:1}) });
   const early = Date.parse('2026-09-27T00:30:00Z');
   const h = await ti.walletIndexerTick({ dir: tickDir([{ mint, fastEdgeScore: 90 }]), env: { ...ENV, INDEXER_DAILY_CREDITS: '32' }, now: nowAt(early), fetcher: rpc.fetcher, wait: noWait });
   assert.equal(h.status, 'PACING'); assert.equal(rpc.seen.length, 2, '32 x 1.5h/24h = 2 credits allowed at 00:30');
@@ -229,7 +229,7 @@ test('default cap fits the Helius free plan next to the holder cap; enhanced cal
 
 test('the research collector runs the lean indexer tick without the alpha worker', () => {
   const src = fs.readFileSync(new URL('../src/researchCollector.js', import.meta.url), 'utf8');
-  assert.match(src, /import\('\.\/transactionIndexer\.js'\)\)\.then\(m=>m\.walletIndexerTick\(\)\)/);
+  assert.match(src, /import\('\.\/transactionIndexer\.js'\)\)\.then\(m=>m\.walletIndexerTick\(\{onEvents:/);
   assert.doesNotMatch(src, /alphaWorker/);
   assert.doesNotMatch(fs.readFileSync(new URL('../src/transactionIndexer.js', import.meta.url), 'utf8'), /process\.env\.HELIUS_API_KEY\s*=/);
 });

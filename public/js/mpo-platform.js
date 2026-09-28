@@ -21,7 +21,7 @@ window.MPOSPlatform = (() => {
   }
   function platformGlance(id){
     const s=scoreboard?.summary||{},bad=diag?.sources?.filter(x=>!['CONNECTED','IDLE','DISABLED'].includes(x.status)).length||0;
-    if(id==='command')return `<div class="core-app">${window.mpoPumpProfitHTML?.(window.__MPO_PROFIT_CAPTURE)||''}<div class="core-heading"><h2>COMMAND CENTER</h2><span class="mpo-badge">PAPER / RESEARCH</span></div><div class="core-lcd"><span>${scoreboard?.paperSummary?.beating||0} paper books beating baseline</span><span>${scoreboard?.paperSummary?.notBeating||0} paper books not beating</span><span>${scoreboard?.paperSummary?.notEnoughData||0} paper books awaiting evidence</span><span>${bad} data sources need attention</span></div><p class="core-muted">Open Advanced for market desks, diagnostics, Events, risk controls and research detail.</p></div>`;
+    if(id==='command')return `<div class="core-app">${window.mpoPumpProfitHTML?.(window.__MPO_PROFIT_CAPTURE)||''}${window.mpoWalletCrowdHTML?.(window.__MPO_WALLET_CROWD)||''}<div class="core-heading"><h2>COMMAND CENTER</h2><span class="mpo-badge">PAPER / RESEARCH</span></div><div class="core-lcd"><span>${scoreboard?.paperSummary?.beating||0} paper books beating baseline</span><span>${scoreboard?.paperSummary?.notBeating||0} paper books not beating</span><span>${scoreboard?.paperSummary?.notEnoughData||0} paper books awaiting evidence</span><span>${bad} data sources need attention</span></div><p class="core-muted">Open Advanced for market desks, diagnostics, Events, risk controls and research detail.</p></div>`;
     return `<div class="core-app"><div class="core-heading"><h2>${escape(id==='kalshi'?'KALSHI':'POLYMARKET')}</h2><span class="mpo-badge">PAPER</span></div><p class="core-muted">Open Advanced for books, orders, depth and execution detail.</p></div>`;
   }
   const button=(action,label,extra='')=>`<button class="btn" data-core-action="${action}" ${extra} ${busy&&action!=='halt'?'disabled':''}>${label}</button>`;
@@ -78,7 +78,7 @@ window.MPOSPlatform = (() => {
     if(!snapshot)return '<p>Connecting to the common ledger…</p>';
     const r=snapshot.risk,accounts=snapshot.portfolio.accounts;
     const profitCard=window.mpoPumpProfitHTML?.(window.__MPO_PROFIT_CAPTURE,true)||'';
-    return `${profitCard}<div class="core-heading"><span class="core-light ${String(r.state).toLowerCase()}"></span><h2>COMMAND CENTER</h2><span class="mpo-badge">CORE · PAPER</span></div>
+    return `${profitCard}${window.mpoWalletCrowdHTML?.(window.__MPO_WALLET_CROWD,true)||''}<div class="core-heading"><span class="core-light ${String(r.state).toLowerCase()}"></span><h2>COMMAND CENTER</h2><span class="mpo-badge">CORE · PAPER</span></div>
       <div class="core-risk"><strong>${r.state}</strong>${(r.stateReasons||[]).length&&!r.halted?`<span class="core-muted">${r.stateReasons.join(' · ')}</span>`:''}<span>${r.halted?'All further live submissions and core paper fills are stopped.': 'Core paper proposals are checked before every fill.'}</span>${button('halt','STOP ALL LIVE TRADING','class="core-stop"')}</div>
       <p class="core-muted">The stop persists across restarts. Orders already at a venue require reconciliation or cancellation in that program.</p>
       ${r.halted?button('resume','Resume core paper trading'):''}

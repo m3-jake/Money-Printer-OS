@@ -7,10 +7,13 @@ export function observationTargets(books=[],now=Date.now()){
  return [...new Map(rows.filter(p=>p.mint&&p.pairAddress).map(p=>[p.mint+':'+p.pairAddress,{mint:p.mint,pairAddress:p.pairAddress}])).values()];
 }
 export async function collectPumpProfitMarkets({dir,now=Date.now(),refreshImpl=null}={}){
- const request=read(path.join(dir,'pump-profit-requests.json'),null);
+ const primary=read(path.join(dir,'pump-profit-requests.json'),null),crowd=read(path.join(dir,'wallet-crowd-requests.json'),null);
+ const active=r=>r?.mode==='PAPER'&&r.liveExecutionAllowed===false&&r.expiresAt>=now;
+ const p=active(primary)?primary:null,c=crowd?.schema==='mpo.wallet-crowd.v1'&&active(crowd)?crowd:null;
+ const request=p||c?{...(p||c),observations:[...(p?.observations||[]),...(c?.observations||[])]}:null;
  if(request?.mode!=='PAPER'||request.liveExecutionAllowed!==false||request.expiresAt<now)return {calls:0,reason:'no-active-paper-study'};
  const file=path.join(dir,'pump-profit-markets.json'),old=read(file,null);
- const cache=old?.protocolHash===request.protocolHash?old:{protocolHash:request.protocolHash,lastAt:0,calls:0,ticks:[],errors:[]};
+ const cache=old&&Number.isFinite(old.calls)?old:{protocolHash:request.protocolHash,lastAt:0,calls:0,ticks:[],errors:[]};
  if(now-cache.lastAt<15000||cache.calls>=20000)return {calls:0,totalCalls:cache.calls,reason:'bounded-rate-or-total-budget'};
  const seen=new Map(cache.ticks.map(t=>[t.mint+':'+t.pairAddress,t.at]));
  const targets=[...new Map((request.observations||[]).filter(p=>/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(p.mint)&&/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(p.pairAddress)).map(p=>[p.mint+':'+p.pairAddress,p])).values()].sort((a,b)=>(seen.get(a.mint+':'+a.pairAddress)||0)-(seen.get(b.mint+':'+b.pairAddress)||0)).slice(0,30);

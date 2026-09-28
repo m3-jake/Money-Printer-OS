@@ -157,25 +157,39 @@ function rpcCaller(c,{ledger,fetcher=(...a)=>globalThis.fetch(...a),wait=sleep,n
   const j=await res.json();if(j.error)throw new Error(`indexer ${method}: ${j.error.message||j.error.code}`);return j.result;
  };
 }
-export async function pullMint(m,{call,c}){
- const sigs=[];let before=null,reached=false;
- for(let p=0;p<c.sigPages;p++){
-  const page=await call('getSignaturesForAddress',[m.mint,{limit:1000,commitment:'confirmed',...(m.cursorSig?{until:m.cursorSig}:{}),...(before?{before}:{})}])||[];
-  sigs.push(...page);if(page.length<1000){reached=true;break}before=page.at(-1).signature;
- }
- const oldest=sigs.at(-1);
- if(!m.cursorSig&&oldest){m.firstTs=Number(oldest.blockTime||0)*1000;m.historyComplete=reached}
- else if(m.cursorSig&&!reached){m.gaps=(m.gaps||0)+1;m.firstGapTs||=Number(oldest?.blockTime||0)*1000}
- const events=[];let fetched=0;
- for(const s of sigs.filter(x=>!x.err).reverse().slice(0,c.txPerPull)){
-  const tx=await call('getTransaction',[s.signature,{encoding:'jsonParsed',maxSupportedTransactionVersion:0,commitment:'confirmed'}]);
-  for(const e of parseSwapEvents(tx,m.mint,{signature:s.signature}))events.push({...e,ts:e.ts||Number(s.blockTime||0)*1000});
-  m.cursorSig=s.signature;fetched++;
- }
- // Failed signatures are skipped; if nothing was fetched the cursor still advances past them.
- if(!fetched&&sigs.length&&!sigs.some(x=>!x.err))m.cursorSig=sigs[0].signature;
- m.txFetched=(m.txFetched||0)+fetched;m.events=(m.events||0)+events.length;
- return events;
+// Finalized JSON-parsed transactions support legacy, v0 and v1 without deserializing/signing.
+// Emit each successful transaction before the next RPC: a later budget/error cannot lose it.
+export async function pullMint(m,{call,c,now=Date.now,onEvents=()=>{}}){
+ const sigs=[];let before=null,reached=false;const oldCursor=m.cursorSig,startedAt=now();
+ const batch=m.lastBatch={mint:m.mint,startedAt,finishedAt:null,scope:'ASSET_MINT_REFERENCES',commitment:'finalized',complete:false,backlog:0,gaps:[],signatures:0,fetched:0};
+ try {
+  for(let p=0;p<c.sigPages;p++){
+   const page=await call('getSignaturesForAddress',[m.mint,{limit:1000,commitment:'finalized',...(oldCursor?{until:oldCursor}:{}),...(before?{before}:{})}])||[];
+   sigs.push(...page);if(page.length<1000){reached=true;break}before=page.at(-1).signature;
+  }
+  const ordered=[...new Map(sigs.map(x=>[x.signature,x])).values()].reverse(),oldest=ordered[0];
+  batch.signatures=ordered.length;batch.backlog=ordered.length;
+  batch.fromTs=Number(oldest?.blockTime||0)*1000;batch.toTs=Number(ordered.at(-1)?.blockTime||0)*1000;
+  if(!oldCursor&&oldest){m.firstTs=batch.fromTs;m.historyComplete=reached;}
+  if(!reached){m.gaps=(m.gaps||0)+1;m.firstGapTs||=batch.fromTs;batch.gaps.push('pagination-window-incomplete');}
+  const events=[];
+  for(const sig of ordered.slice(0,c.txPerPull)){
+   if(sig.err){batch.failed=(batch.failed||0)+1;m.cursorSig=sig.signature;batch.backlog--;continue;}
+   const tx=await call('getTransaction',[sig.signature,{encoding:'jsonParsed',maxSupportedTransactionVersion:1,commitment:'finalized'}]);
+   if(!tx){batch.gaps.push('transaction-unavailable-retry');m.nullRetries=m.nullRetries?.signature===sig.signature?{signature:sig.signature,count:m.nullRetries.count+1}:{signature:sig.signature,count:1};if(m.nullRetries.count>=3){m.gaps=(m.gaps||0)+1;m.firstGapTs||=Number(sig.blockTime||0)*1000;batch.gaps.push('quarantined-after-three-unavailable-reads');m.cursorSig=sig.signature;batch.backlog--;m.nullRetries=null;continue;}break;}
+   if(!['legacy',0,1,undefined].includes(tx.version)){batch.gaps.push('unsupported-transaction-version');break;}
+   const observedAt=now();
+   const rows=parseSwapEvents(tx,m.mint,{signature:sig.signature}).map(e=>({...e,ts:e.ts||Number(sig.blockTime||0)*1000,
+    raw:{...e.raw,firstObservedAt:observedAt,ingestedAt:observedAt,confirmation:'finalized',transactionVersion:tx.version??'legacy',observationProvenance:'lean-indexer-forward-receipt',
+     tokenDecimals:[...(tx.meta?.postTokenBalances||[]),...(tx.meta?.preTokenBalances||[])].find(b=>b.mint===m.mint)?.uiTokenAmount?.decimals??null,changedAssets:[...new Set([...(tx.meta?.preTokenBalances||[]),...(tx.meta?.postTokenBalances||[])].filter(b=>b.owner===e.wallet&&b.mint!==WSOL_MINT).map(b=>b.mint))]}}));
+   onEvents(rows);events.push(...rows);m.cursorSig=sig.signature;m.nullRetries=null;batch.fetched++;batch.backlog--;
+   m.txFetched=(m.txFetched||0)+1;m.events=(m.events||0)+rows.length;
+  }
+  batch.complete=reached&&batch.backlog===0&&batch.gaps.length===0;
+  // This is only a bounded mint-reference interval, NOT all holders, all pools or all followers.
+  return events;
+ } catch(error){batch.gaps.push(error instanceof BudgetStop?'budget-or-pacing-stop':'rpc-or-parser-error');throw error;}
+ finally {batch.finishedAt=now();batch.elapsedMs=batch.finishedAt-startedAt;batch.cursor=m.cursorSig;}
 }
 function trackMints(st,watch,c,t){
  for(const x of Object.values(st.mints))if(!x.retired&&t-x.addedAt>c.trackMs)x.retired=true;
@@ -190,7 +204,7 @@ export function scoreIndexedWallets({now=Date.now(),c=indexerConfig(),mints={}}=
  const mintMeta={};for(const m of Object.values(mints))mintMeta[m.mint]={historyComplete:!!m.historyComplete,firstGapTs:m.firstGapTs||null};
  return scoreWallets(events,{asOf:now,mintMeta,minTrips:MIN_GRADED_ROUND_TRIPS});
 }
-export async function walletIndexerTick({dir=dataDir(),env=process.env,now=Date.now,fetcher,wait}={}){
+export async function walletIndexerTick({dir=dataDir(),env=process.env,now=Date.now,fetcher,wait,onEvents=null}={}){
  const c=indexerConfig(env),stateFile=path.join(dir,'wallet-indexer-state.json'),ledger=creditLedger({file:path.join(dir,'wallet-indexer-budget.json'),env,now});
  const st=readJson(stateFile,{})||{};st.mints||={};st.health||={};const t=now();
  const base={updatedAt:t,provider:c.provider,dedicated:c.dedicated,enabled:c.enabled,requestsPerMinute:c.requestsPerMinute,trackedMints:0,...ledger.health()};
@@ -200,14 +214,15 @@ export async function walletIndexerTick({dir=dataDir(),env=process.env,now=Date.
  let status=st.health.status==='OFF'?'IDLE':(st.health.status||'IDLE'),lastError=st.health.lastError||null,added=0;
  if(due){
   const events=[];
-  try{due.lastPullAt=t;due.pulls++;events.push(...await pullMint(due,{call:rpcCaller(c,{ledger,fetcher,wait,now}),c}));status='OK';st.health.lastOkAt=now()}
+  try{due.lastPullAt=t;due.pulls++;await pullMint(due,{call:rpcCaller(c,{ledger,fetcher,wait,now}),c,now,onEvents:rows=>events.push(...rows)});status=due.lastBatch?.complete?'OK':'PARTIAL';lastError=null;st.health.lastOkAt=now()}
   catch(e){if(e instanceof BudgetStop)status=e.message;else{status=/\b429\b|too many/i.test(String(e?.message))?'RATE_LIMITED':'ERROR';lastError=redact(e);st.health.lastErrorAt=now()}}
   // Events parsed before a stop are kept; the cursor only moved past transactions that were fetched.
   if(events.length){alphaTransaction(()=>{for(const e of events)upsertTxEvent(e)});added=events.length}
+  if(typeof onEvents==='function')try{await onEvents(events,due.lastBatch)}catch(e){st.health.crowdCaptureError=redact(e);st.health.crowdCaptureGapAt=now()}
  }else status='IDLE';
  const today=st.health.day===base.day?st.health:{};
  st.health={...st.health,...base,...ledger.health(),status,lastError,trackedMints:Object.values(st.mints).filter(x=>!x.retired).length,
-  eventsToday:Number(today.eventsToday||0)+added,lastPullMint:due?.mint||st.health.lastPullMint||null};
+  coverage:due?.lastBatch||st.health.coverage||null,eventsToday:Number(today.eventsToday||0)+added,lastPullMint:due?.mint||st.health.lastPullMint||null};
  if(t-Number(st.lastScoreAt||0)>=c.scoreMs){
   st.lastScoreAt=t;
   try{const card=scoreIndexedWallets({now:t,c,mints:st.mints});writeJson(path.join(dir,'wallet-scorecard.json'),{schema:'mpo.wallet-scorecard.v1',asOf:t,summary:card.summary,wallets:card.wallets.slice(0,50)});st.health.lastScoreAt=t}

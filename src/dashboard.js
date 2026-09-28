@@ -1,3 +1,4 @@
+import { crowdRuntimeView,setCrowdControl } from './crowdRuntime.js';
 import { pumpProfitView } from './pumpProfitRuntime.js';
 import { handleRobinhoodRequest, startRobinhoodLoops, stopRobinhoodLoops, startPracticeLoop, stopPracticeLoop } from './robinhoodHttp.js';
 import { handleRobinhoodEquitiesRequest, startRobinhoodEquitiesLoop, stopRobinhoodEquitiesLoop } from './robinhoodEquitiesHttp.js';
@@ -376,6 +377,7 @@ function snapshot() {
     stats: s.stats || {},
     solanaBook: solanaBookView(s, cfg),
     pumpProfitCapture: pumpProfitView(s),
+    walletCrowd: crowdRuntimeView(DATA_DIR),
     portfolio: s.portfolio || null,
     portfolioSeries: compactSeries(s.portfolioSeries,1600,600),
     dailyPnlSol: s.dailyPnlSol || 0,
@@ -503,6 +505,7 @@ export function startDashboard() {
         res.setHeader('etag', tag);
         return json(res, snapshot(), 200, { etag: tag });
       }
+      if (req.method === 'GET' && u.pathname === '/api/wallet-crowd') return json(res,crowdRuntimeView(DATA_DIR));
       if (req.method === 'GET' && u.pathname === '/api/health') {
         const s = loadState();
         return json(res, {
@@ -574,6 +577,7 @@ export function startDashboard() {
       // Server-to-server revenue ingestion above retains its explicit bearer authentication.
       // Every desktop mutation below, including legacy queues and updater requests, is local JSON.
       if(!localMutationAllowed(req))return json(res,{ok:false,error:'Local same-origin JSON request required'},403);
+      if (u.pathname === '/api/wallet-crowd/control'){const b=await body(req);if(b.__error)return json(res,{ok:false,error:b.__error},400);try{return json(res,{ok:true,control:setCrowdControl(b,{dir:DATA_DIR})});}catch(e){return json(res,{ok:false,error:e.message},400);}}
       if (u.pathname === '/api/pause') { const a = queue('toggle-pause'); return json(res, { ok: true, queued: true, actionId: a.id }); }
       if (u.pathname === '/api/kill') { const a = queue('toggle-kill'); return json(res, { ok: true, queued: true, actionId: a.id }); }
       if (u.pathname === '/api/reset') {

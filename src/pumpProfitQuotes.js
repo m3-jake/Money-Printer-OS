@@ -9,10 +9,14 @@ const read = (file, fallback) => { try { return JSON.parse(fs.readFileSync(file,
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 export async function collectPumpProfitQuotes({ dir, fetchImpl = globalThis.fetch, now = Date.now(), sleep = wait, maxBatch = 4 } = {}) {
   if (String(process.env.MODE || 'paper').toLowerCase() !== 'paper') return { calls: 0, reason: 'paper-only' };
-  const requests = read(path.join(dir, 'pump-profit-requests.json'), null);
+  const primary=read(path.join(dir,'pump-profit-requests.json'),null),crowd=read(path.join(dir,'wallet-crowd-requests.json'),null);
+  const active=r=>r?.mode==='PAPER'&&r.liveExecutionAllowed===false&&r.expiresAt>=now&&typeof r.protocolHash==='string';
+  const p=active(primary)?primary:null,c=crowd?.schema==='mpo.wallet-crowd.v1'&&active(crowd)?crowd:null;
+  // One unchanged shared quote budget. Existing study requests win ties; exits precede entries.
+  const requests=p||c?{...(p||c),requests:[...(p?.requests||[]),...(c?.requests||[])].sort((a,b)=>(a.side==='SELL'?0:1)-(b.side==='SELL'?0:1))}:null;
   if (requests?.mode !== 'PAPER' || requests.liveExecutionAllowed !== false || requests.expiresAt < now || !requests.protocolHash) return { calls: 0, reason: 'no-active-paper-batch' };
   const file = path.join(dir, 'pump-profit-quotes.json'), prior = read(file, null);
-  const cache = prior?.protocolHash === requests.protocolHash ? prior : { schema: 'mpo.pump-profit-quotes.v1', protocolHash: requests.protocolHash, calls: 0, quotes: [], errors: [], hour: 0, callsThisHour: 0, backoffUntil: 0, lastCallAt: 0 };
+  const cache = prior && Number.isFinite(prior.calls) ? prior : { schema: 'mpo.pump-profit-quotes.v1', protocolHash: requests.protocolHash, calls: 0, quotes: [], errors: [], hour: 0, callsThisHour: 0, backoffUntil: 0, lastCallAt: 0 };
   const hour = Math.floor(now / 3600000); if (cache.hour !== hour) { cache.hour = hour; cache.callsThisHour = 0; }
   if (now < cache.backoffUntil) return { calls: 0, reason: 'provider-backoff' };
   const budget = Math.max(0, Math.min(4096 - cache.calls, 180 - cache.callsThisHour, maxBatch, 4));

@@ -1,3 +1,4 @@
+import { captureCrowdEvents,crowdRuntimeTick } from './crowdRuntime.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -21,7 +22,7 @@ const RAW_KEEP_DAYS=Math.max(3,Number(process.env.MPO_RAW_KEEP_DAYS||45));
 const RAW_BUDGET_BYTES=Math.max(256,Number(process.env.MPO_RAW_BUDGET_MB||20480))*1024*1024;
 const PRUNE_MS=60*60*1000;
 // Jupiter quote tape (public quote GETs only): every JUP_MS, up to JUP_TARGETS tokens, JUP_DAILY calls a UTC day.
-let profitQuoteApi=null,profitMarketApi=null,lastProfitQuoteAt=0;
+let profitQuoteApi=null,profitMarketApi=null,lastProfitQuoteAt=0,lastCrowdAt=0;
 const JUP_ON=String(process.env.MPO_JUP_QUOTES??'true').toLowerCase()!=='false';
 const JUP_MS=Math.max(30_000,Number(process.env.MPO_JUP_QUOTE_MS||120_000));
 const JUP_TARGETS=Math.max(1,Math.min(20,Number(process.env.MPO_JUP_QUOTE_TARGETS||6)));
@@ -180,9 +181,10 @@ async function run(){
   // RPC cannot stall the tape. WALLET_INDEXER_ENABLED=false turns it off (the tick then only reports OFF).
   if(!walletBusy&&Date.now()-lastWallet>=WALLET_MS){
    lastWallet=Date.now();walletBusy=true;
-   (walletIdx ||= import('./transactionIndexer.js')).then(m=>m.walletIndexerTick()).then(h=>{status.walletIndexer=h})
+   (walletIdx ||= import('./transactionIndexer.js')).then(m=>m.walletIndexerTick({onEvents:(events,window)=>captureCrowdEvents(events,window,{dir:DATA_DIR})})).then(h=>{status.walletIndexer=h})
     .catch(e=>{status.walletIndexer={...(status.walletIndexer||{}),error:String(e?.message||e),lastErrorAt:Date.now()}}).finally(()=>{walletBusy=false});
   }
+  if(Date.now()-lastCrowdAt>=10000){lastCrowdAt=Date.now();try{status.walletCrowd=crowdRuntimeTick({dir:DATA_DIR});}catch(e){status.walletCrowd={state:'INTEGRITY_BLOCKED',error:String(e.message).slice(0,300),liveExecutionAllowed:false};}}
   // A transient Windows rename refusal (Dropbox/AV holding the file) must not kill the collector.
   try{cursor.updatedAt=Date.now();atomicJson(CURSOR_FILE,cursor);atomicJson(STATUS_FILE,{...status,updatedAt:Date.now(),bytesTotal:cursor.stats.bytes,rawDir:RAW_DIR})}
   catch(e){status.lastWriteError={message:String(e?.message||e),at:Date.now()}}

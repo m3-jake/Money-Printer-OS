@@ -1,3 +1,4 @@
+import { writeCrowdBaselineFeed } from './crowdRuntime.js';
 import { initializePumpCapture, persistPumpCapture, effectivePumpPolicy, pumpSizingDecision, recordPumpDecision, applyPumpSafety } from './pumpProfitRuntime.js';
 import { paperCashReceipt } from './paperCashReceipts.js';
 import { exec } from 'node:child_process';
@@ -810,6 +811,7 @@ async function cycle() {
 
   s.system.metrics.cycleMs = Math.round(performance.now() - cycleStart);
   try{persistPumpCapture(s,cfg,ranked);}catch(e){s.system.profitCaptureError=compactError(e);if(s.pumpProfitCapture)s.pumpProfitCapture.experimentPaused=true;}
+  try{writeCrowdBaselineFeed(s,cfg,ranked);}catch(e){s.system.crowdCaptureError=compactError(e);}
   s.system.metrics.saveMs = saveState(s) || s.system.metrics.saveMs || 0;
 
   console.clear();

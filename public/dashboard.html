@@ -12,6 +12,7 @@
 <script src="/js/mpo-hud-runtime.js"></script>
 <script src="/js/mpo-viz.js"></script>
 <link rel="stylesheet" href="/css/mpo-platform.css">
+<script src="/js/wallet-crowd.js"></script>
 <script src="/js/mpo-platform.js"></script>
 <script src="/js/mpo-polymarket.js"></script>
 <script src="/js/mpo-stocks.js"></script>
@@ -1786,7 +1787,7 @@ async function refreshState(){
  const t0=performance.now();
  try{
    const sr=await fetch('/api/state',{cache:'no-store'});
-   if(sr.status!==304){const parseStart=performance.now(),next=await sr.json();perf.parseMs=performance.now()-parseStart;window.MPOHud.measure('stateParse',perf.parseMs);if(!next||typeof next!=='object'||Array.isArray(next)||!next.system)throw Error('Invalid trading service snapshot');const prev=state;state=next;window.__MPO_PROFIT_CAPTURE=state.pumpProfitCapture;trackDesktopStateEvents(prev,next);$('#runningVersion').textContent=state?.build?.version?'v'+state.build.version:'';perf.stateKB=Number(sr.headers.get('x-payload-bytes')||0)/1024;perf.lastStateAt=Date.now();perf.stateError=null}
+   if(sr.status!==304){const parseStart=performance.now(),next=await sr.json();perf.parseMs=performance.now()-parseStart;window.MPOHud.measure('stateParse',perf.parseMs);if(!next||typeof next!=='object'||Array.isArray(next)||!next.system)throw Error('Invalid trading service snapshot');const prev=state;state=next;window.__MPO_PROFIT_CAPTURE=state.pumpProfitCapture;window.__MPO_WALLET_CROWD=state.walletCrowd;trackDesktopStateEvents(prev,next);$('#runningVersion').textContent=state?.build?.version?'v'+state.build.version:'';perf.stateKB=Number(sr.headers.get('x-payload-bytes')||0)/1024;perf.lastStateAt=Date.now();perf.stateError=null}
    perf.refreshMs=performance.now()-t0;trackRealizedProfitBurst();updateDesktopEffects();renderAll();
  }catch(e){if(e.name!=='AbortError')perf.stateError=e.message;paintReadStatus()}
 }
