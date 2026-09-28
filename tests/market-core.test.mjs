@@ -162,7 +162,7 @@ test('emergency stop persists across connections/processes and blocks a previous
     assert.equal(p.executePaper('one','EXECUTE PAPER ORDER').status,'REJECTED');assert.throws(()=>assertGlobalTradingNotHalted({dataDir:dir}),/HALTED/);
     const child=spawnSync(process.execPath,['--input-type=module','-e',`import {assertGlobalTradingNotHalted} from './src/core/executionBoundary.js'; assertGlobalTradingNotHalted({dataDir:process.argv[1]});`,dir],{cwd:path.resolve('.'),encoding:'utf8'});assert.notEqual(child.status,0);assert.match(child.stderr,/HALTED/);
     p.close();const reopened=fixturePlatform(file);assert.equal(reopened.risk.state().halted,true);assert.throws(()=>reopened.risk.resumePaper('yes'));reopened.risk.resumePaper('RESUME PAPER TRADING');assert.doesNotThrow(()=>assertGlobalTradingNotHalted({dataDir:dir}));reopened.close();
-  }finally{fs.rmSync(dir,{recursive:true,force:true});}
+  }finally{fs.rmSync(dir,{recursive:true,force:true,maxRetries:8,retryDelay:50});}
 });
 test('core mutations reject cross-origin browser requests and remote clients',()=>{
   const req={socket:{remoteAddress:'127.0.0.1'},headers:{host:'127.0.0.1:8897','content-type':'application/json',origin:'http://127.0.0.1:8897'}};
@@ -240,7 +240,7 @@ test('Lab champions mirror into the registry through the common gate, never past
   res=Object.fromEntries(syncLabChampions(r,dir).map(x=>[x.id,x]));
   assert.equal(res['lab-robinhood'].state,'PAUSED');assert.equal(r.history('lab-robinhood').length,n);
   assert.equal(LAB_CHAMPION_SOURCES.every(x=>r.get(x.id)?.state!=='LIVE'),true);
-  s.close();fs.rmSync(dir,{recursive:true,force:true});
+  s.close();fs.rmSync(dir,{recursive:true,force:true,maxRetries:8,retryDelay:50});
 });
 
 test('combo performance: empty is unknown, not zero; rates, interval, edge and calibration are exact',()=>{
@@ -446,7 +446,7 @@ test('Market Lab runs are reproducible experiment records (fingerprint, code ver
   const r=await p.labReplayStart({source:'tape',key:'BTC-USD',start:q.start,end:q.end});assert.equal(r.visible.length,1);
   const st=p.labReplayStep({id:r.id,ms:30000});assert.equal(st.revealed,3);
   await assert.rejects(fetchAlpacaMinutes({symbol:'AAPL',start:1,end:2,env:{}}),/Alpaca/);
-  p.close();fs.rmSync(dir,{recursive:true,force:true});
+  p.close();fs.rmSync(dir,{recursive:true,force:true,maxRetries:8,retryDelay:50});
 });
 
 test('macro vintages: a revision is invisible before it was published; values count from end of publication day (ET)',()=>{
@@ -702,7 +702,7 @@ test('Monte Carlo is seeded and reproducible; evidence attaches without promotin
   assert.equal(res.attached.evidence.labRunId,res.id);assert.ok(res.checks.PAPER.blockers.length>0);// 400 samples is far below the gate
   assert.equal(p.labRuns()[0].strategy,'walkforward:mean-reversion');assert.equal(p.labRuns()[0].seed,'3');
   assert.equal(p.strategies.history('mr').at(-1).reason.startsWith('Market Lab walk-forward'),true);
-  p.close();fs.rmSync(dir,{recursive:true,force:true});
+  p.close();fs.rmSync(dir,{recursive:true,force:true,maxRetries:8,retryDelay:50});
 });
 
 test('legacy mirror: Solana book with partial exits reconciles, progresses by deltas, and detects a reset',()=>{

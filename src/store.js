@@ -498,6 +498,8 @@ export function drainActions(limit = 1000) {
 export function resetPaper(startSol = cfg.paperStartSol, persist = true) {
   const amount = Number(startSol);
   const s = merge(fresh(Number.isFinite(amount) && amount > 0 ? amount : cfg.paperStartSol));
+  s.paperBookId=randomUUID();
+  s.paperBookStartedAt=Date.now();
   if (persist) saveState(s);
   return s;
 }

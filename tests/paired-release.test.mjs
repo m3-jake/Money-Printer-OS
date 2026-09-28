@@ -18,7 +18,25 @@ test('Lab smoke fails on wrong bytes, provenance, service, dirty source and live
 });
 test('paired updater checks both archives and zero-credit state before accepting a release',()=>{
   const source=fs.readFileSync(new URL('../scripts/update-local-install.ps1',import.meta.url),'utf8');
-  assert.match(source,/scripts\\smoke-lab-archive\.mjs/);assert.match(source,/\[switch\]\$NonInteractive/);
+  assert.match(source,/scripts\\run-lab-archive-smoke\.mjs/);assert.match(source,/\[switch\]\$NonInteractive/);
   assert.match(source,/researchState\.budget\.paidModelsEnabled/);assert.match(source,/researchState\.cache\.paidModelsEnabled/);
-  assert.ok(source.indexOf('smoke-lab-archive.mjs')<source.indexOf("Stop-App 'Money Printer OS'"));
+  assert.ok(source.indexOf('run-lab-archive-smoke.mjs')<source.indexOf("Stop-App 'Money Printer OS'"));
+});
+
+test('Lab process wrapper rejects zero exit without evidence, stale receipts and failed children',async()=>{
+  const os=await import('node:os'),path=await import('node:path'),{spawnSync}=await import('node:child_process');
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'mpo-smoke-wrapper-test-'));
+  try {
+    for(const [name,stub,expected] of [
+      ['missing','process.exit(0);',/without a verification receipt/],
+      ['failed','process.exit(9);',/process failed: exit 9/],
+      ['stale',"import fs from 'node:fs';import path from 'node:path';const archive=process.argv[3];fs.writeFileSync(path.join(path.dirname(archive),'WINDOWS-ENGINE-SMOKE.json'),JSON.stringify({success:true,at:'2000-01-01T00:00:00Z',archive}));",/stale/]
+    ]) {
+      const dir=path.join(root,name);fs.mkdirSync(dir);const archive=path.join(dir,'fixture.asar');fs.writeFileSync(archive,'synthetic test archive');
+      const wrapper=path.join(dir,'run-lab-archive-smoke.mjs');fs.copyFileSync(new URL('../scripts/run-lab-archive-smoke.mjs',import.meta.url),wrapper);
+      fs.writeFileSync(path.join(dir,'smoke-lab-archive.mjs'),stub);
+      const result=spawnSync(process.execPath,[wrapper,'--asar',archive,'--exe',process.execPath],{encoding:'utf8',timeout:10000,windowsHide:true});
+      assert.notEqual(result.status,0);assert.match(result.stderr,expected);
+    }
+  } finally {fs.rmSync(root,{recursive:true,force:true});}
 });

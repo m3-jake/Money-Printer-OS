@@ -75,13 +75,7 @@ Pop-Location
 if (-not (Test-Path $labAsar)) { Fail "no Lab app.asar at $labAsar" }
 
 Run 'Boot-testing the new Evolution Lab archive' {
-  $previousElectronMode = $env:ELECTRON_RUN_AS_NODE
-  try {
-    $env:ELECTRON_RUN_AS_NODE = '1'
-    & (Join-Path $labApp 'Money Printer Evolution Lab.exe') (Join-Path $mpoRepo 'scripts\smoke-lab-archive.mjs') --asar $labAsar
-  } finally {
-    $env:ELECTRON_RUN_AS_NODE = $previousElectronMode
-  }
+  node (Join-Path $mpoRepo 'scripts\run-lab-archive-smoke.mjs') --asar $labAsar --exe (Join-Path $labApp 'Money Printer Evolution Lab.exe')
 }
 
 $mpoBuildInfo = Join-Path $mpoAsarDir 'BUILD-INFO.json'

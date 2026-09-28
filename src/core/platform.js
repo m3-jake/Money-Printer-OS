@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { CoreDatabase } from './database.js';
+import { solanaResetEvidence, solanaSourceIntegrity } from './legacyReset.js';
 import { UnifiedLedger } from './ledger.js';
 import { MarketEventBus } from './eventBus.js';
 import { RiskGovernor } from './risk.js';
@@ -216,19 +217,29 @@ export class MarketPlatform {
       if(!book){results.push({source,status:'UNAVAILABLE',reason:'Book not loaded'});return;}
       let row=this.store.db.prepare('SELECT * FROM legacy_sync WHERE source=?').get(source)||{source,epoch:1};
       let account=`legacy-${row.epoch}`,mirrored=this.mirroredFor(venue,account);
+      let priorDeposit=this.store.db.prepare('SELECT * FROM ledger WHERE mode=? AND venue=? AND account=? AND kind=? ORDER BY seq LIMIT 1').get('PAPER',venue,account,'DEPOSIT');
+      const lastLedgerAt=this.store.db.prepare('SELECT MAX(at) at FROM ledger WHERE mode=? AND venue=? AND account=?').get('PAPER',venue,account)?.at||0;
+      const previous=row.detail?JSON.parse(row.detail):{};
+      const resetEvidence=source==='solana'?solanaResetEvidence(book,{priorDeposit,priorBookId:previous.bookId,mirrored,lastLedgerAt,venue}):null;
       const notes=[];
-      if(mirrored.size&&isReset(book)){row={...row,epoch:row.epoch+1};account=`legacy-${row.epoch}`;mirrored=new Map();notes.push(`Book reset detected; mirroring into a new account (${account}).`);}
+      if(resetEvidence||(source!=='solana'&&mirrored.size&&isReset(book))){row={...row,epoch:row.epoch+1};account=`legacy-${row.epoch}`;mirrored=new Map();priorDeposit=null;notes.push(`Book reset detected; mirroring into a new account (${account}). ${resetEvidence||'Empty practice book'}`);}
       const p=plan(book,{epoch:row.epoch,mirrored,venue,account});notes.push(...p.notes);
+      // The first observation time is immutable even when older history is compacted.
+      const opening=p.entries.find(e=>e.kind==='DEPOSIT');if(priorDeposit&&opening)opening.at=priorDeposit.at;
       let appended=0,failed=null;
-      for(const e of p.entries.sort((a,b)=>a.at-b.at||(['DEPOSIT','SELL','FEE','BUY'].indexOf(a.kind)-['DEPOSIT','SELL','FEE','BUY'].indexOf(b.kind)))){
-        try{if(this.ledger.append(e).appended)appended++;}catch(err){failed=`${e.sourceKey}: ${err.message}`;break;}
-      }
+      try {this.store.transaction(()=>{
+        for(const e of p.entries.sort((a,b)=>a.at-b.at||(['DEPOSIT','SELL','FEE','BUY'].indexOf(a.kind)-['DEPOSIT','SELL','FEE','BUY'].indexOf(b.kind)))){
+          try{if(this.ledger.append(e).appended)appended++;}catch(err){throw new Error(e.sourceKey+': '+err.message);}
+        }
+      });}catch(err){failed=err.message;appended=0;}
+      const sourceIntegrity=source==='solana'?solanaSourceIntegrity(book):null;
+      if(failed&&sourceIntegrity?.identityVerified&&!sourceIntegrity.postingHistoryComplete)notes.push('Source paper cash identity is valid, but historical partial-posting receipts are incomplete. Mirror remains unverified; no synthetic funding or reordered fills were inserted.');
       const acct=this.ledger.portfolio('PAPER').accounts.find(a=>a.venue===venue&&a.account===account),ledgerCash=acct?Number(acct.cash):null;
       const diff=ledgerCash===null?null:Math.round((ledgerCash-p.expectedCash)*1e6)/1e6,tol=1e-6*(p.entries.length+1)+1e-6;
       const status=failed?'FAILED':diff!==null&&Math.abs(diff)<=tol?'RECONCILED':'DIFFERENCE';
       if(status==='DIFFERENCE')notes.push('Ledger cash differs from the book. Older history may have been compacted out of the book, or the book changed outside its normal flow. Nothing was booked to hide it.');
-      this.store.db.prepare('INSERT INTO legacy_sync VALUES(?,?,?,?,?) ON CONFLICT(source) DO UPDATE SET epoch=excluded.epoch,synced_at=excluded.synced_at,status=excluded.status,detail=excluded.detail').run(source,row.epoch,now,status,JSON.stringify({ledgerCash,bookCash:p.expectedCash,diff,appended,failed,notes}));
-      results.push({source,venue,account,currency:p.currency,status,appended,ledgerCash,bookCash:p.expectedCash,diff,failed,notes});
+      this.store.db.prepare('INSERT INTO legacy_sync VALUES(?,?,?,?,?) ON CONFLICT(source) DO UPDATE SET epoch=excluded.epoch,synced_at=excluded.synced_at,status=excluded.status,detail=excluded.detail').run(source,row.epoch,now,status,JSON.stringify({ledgerCash,bookCash:p.expectedCash,diff,appended,failed,notes,sourceIntegrity,bookId:source==='solana'?(book.paperBookId||null):null,resetEvidence}));
+      results.push({source,venue,account,currency:p.currency,status,appended,ledgerCash,bookCash:p.expectedCash,diff,failed,notes,sourceIntegrity});
     };
     run('solana','solana-paper',()=>this.legacyReaders.solana?.(),solanaPlan,s=>!(s.positions||[]).length&&!(s.history||[]).length);
     run('robinhood-practice','robinhood-practice',()=>{const x=this.legacyReaders.robinhoodPracticeBook?.();return x||null;},practicePlan,b=>!(b.positions||[]).length&&!(b.history||[]).length);

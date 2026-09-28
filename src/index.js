@@ -1,3 +1,4 @@
+import { paperCashReceipt } from './paperCashReceipts.js';
 import { exec } from 'node:child_process';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import fs from 'node:fs';
@@ -99,7 +100,10 @@ function paperSell(s, p, fraction, price, reason, final = false, market = null) 
     return false;
   }
   const soldBasis=Math.min(rem,Number(sim.filledBasisSol)),fee=Math.max(0,Number(sim.feeSol||0)),proceeds=Math.max(0,Number(sim.gross||0)-fee),exit=Number(sim.fillPriceUsd||price);
+  const cashReceipt=paperCashReceipt({positionId:String(p.id),sequence:(p.paperCashEvents||[]).length,side:'SELL',postedAt:now,modeledFillAt:sim.fillAt,basisSol:soldBasis,grossSol:proceeds+fee,feeSol:fee,cashBeforeSol:s.cashSol,cashAfterSol:s.cashSol+proceeds});
   s.cashSol += proceeds;
+  p.paperCashCoverage ||= 'PARTIAL_FROM_FIRST_RECORDED_POSTING';
+  (p.paperCashEvents ||= []).push(cashReceipt);
   p.remainingSol = Math.max(0, rem - soldBasis);
   p.realizedSol = (p.realizedSol || 0) + (proceeds - soldBasis);
   p.feesSol = (p.feesSol || 0) + fee;
@@ -217,10 +221,12 @@ async function enter(s, pick, manual = false) {
     }
     const filledBasis=Math.max(0,Number(sim.gross||0)),entryFee=Math.max(0,Number(sim.feeSol||0)),debit=filledBasis+entryFee;
     if(!(debit>0)||s.cashSol<debit)return;
+    const cashReceipt=paperCashReceipt({positionId:`${now}-${pick.mint.slice(0,6)}`,sequence:0,side:'BUY',postedAt:now,modeledFillAt:sim.fillAt,basisSol:filledBasis,grossSol:filledBasis,feeSol:entryFee,cashBeforeSol:s.cashSol,cashAfterSol:s.cashSol-debit});
     s.cashSol-=debit;
     const ep=Number(sim.fillPriceUsd||pick.priceUsd);
     s.positions.push({
       id:`${now}-${pick.mint.slice(0,6)}`,mode:'PAPER',pnlMode:'PAPER',mint:pick.mint,symbol:pick.symbol,name:pick.name,
+      paperCashCoverage:'COMPLETE_FROM_ENTRY',paperCashEvents:[cashReceipt],
       sizeSol:filledBasis,remainingSol:filledBasis,requestedSizeSol:size,entryPrice:ep,lastPrice:pick.priceUsd,highPrice:pick.priceUsd,pairAddress:pick.pairAddress||null,
       openedAt:now,score:pick.score,fastEdgeScore:pick.fastEdgeScore||pick.edgeScore||pick.score,riskScore:pick.risk?.score,executionScore:pick.executionScore,strategy,reasons:explain(pick),
       tp1Done:false,tp2Done:false,breakEvenArmed:false,realizedSol:-entryFee,feesSol:entryFee,manual,

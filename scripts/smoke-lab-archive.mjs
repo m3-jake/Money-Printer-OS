@@ -11,7 +11,10 @@ if (!process.versions.electron) throw new Error('Run this verification with Elec
 const at=process.argv.indexOf('--asar'),archive=at>=0&&process.argv[at+1]?path.resolve(process.argv[at+1]):'';
 if (!archive || !fs.existsSync(archive)) throw new Error('--asar <Lab app.asar> required');
 const manifest=JSON.parse(fs.readFileSync(archive+'.build.json','utf8'));
-const archiveSha256=createHash('sha256').update(fs.readFileSync(archive)).digest('hex');
+// Read the archive itself as bytes, not as an Electron virtual directory.
+const priorNoAsar=process.noAsar;let archiveBytes;
+try { process.noAsar=true;archiveBytes=fs.readFileSync(archive); } finally { process.noAsar=priorNoAsar; }
+const archiveSha256=createHash('sha256').update(archiveBytes).digest('hex');
 if (archiveSha256!==manifest.archiveSha256) throw new Error('Archive does not match its external build receipt');
 const temp=fs.mkdtempSync(path.join(os.tmpdir(),'mpo-lab-archive-'));
 Object.assign(process.env,{MPO_LAB_DATA_DIR:path.join(temp,'lab'),MONEY_PRINTER_DATA_DIR:path.join(temp,'lab'),MPO_LAB_TRADER_DATA_DIR:path.join(temp,'trader'),MPO_COMPUTE_BUDGET_FILE:path.join(temp,'budget.json'),MONEY_PRINTER_BRIDGE_DIR:'',MONEY_PRINTER_BRIDGE_KEY:''});
