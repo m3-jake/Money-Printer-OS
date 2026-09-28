@@ -843,3 +843,50 @@ P4.3 — done (the brain is drivable; the extraction the row asked for was decli
       `package.json` (1 line: the new member of `test:recovery`), `AUDIT.md` (exec #5 annotated disproven-in-part with the
       measurements, new §0 row *Trade-path reach*), this entry.
 
+## P5 — the documents of record after the pass (P5.1 done, 2026-09-28)
+
+**P5.1 — three documents and one test comment still described the pre-remediation tree.** Status: done.
+
+P4.3 disproved the premise "`src/index.js` calls `main()` at import time and exports nothing, so it
+cannot be imported by a test" — and corrected it inside `src/positionExecution.js`. It missed the
+places a reader actually trusts, all of which went on asserting the premise as current fact:
+
+- `MONEY_PRINTER_STATUS.md` architecture line: the realpath main-guard "at `:702`", and "exports only
+  `main`". Measured: the guard is at `:834`, and the surface is `main`, `cycle`, `enter`,
+  `updatePositions`.
+- `MONEY_PRINTER_STATUS.md` tests line: "54 files in `tests/`". Measured: 103 suites across 30 targets.
+- `MONEY_PRINTER_STATUS.md` **open item**: `enter()` "still has no direct end-to-end test", blocked
+  because "importing the engine pulls in config, store and network modules". Measured:
+  `tests/trade-path.test.mjs` calls `enter()` ×3, `updatePositions()` ×2 and `cycle()` ×1, and no
+  injection of config, store or network was needed.
+- `.agent-state/KNOWN_BUGS.md` item 2: "calls `main()` at import time and exports nothing, so it cannot
+  be imported by a test", plus the 2026-09-25 update "an `enter()` test still needs injection". Both
+  disproven; the guard has held since `bbc8f4d`.
+- `tests/accounting-integrity.test.mjs`: the same premise, as the stated reason the entry rails are
+  proven by grep rather than by running them.
+
+Fixes: each stale premise is replaced by the measured value; the open item leaves the open list with its
+residue *recorded rather than deleted* (the stub owns the two market hosts, so the real network round
+trip is still not exercised there); and the two ledger-style corrections stay in place with the
+disproof in the same paragraph, so the next reader cannot resolve the contradiction wrongly.
+
+**Pinned, so it cannot drift back.** New `tests/doc-drift.test.mjs` (4 tests, added to `test:wiring`,
+which runs first) reads each claim from its source of truth instead of restating it: the export list
+from `src/index.js`, the suite count from `tests/`, the target count by walking `test:all` the same way
+`test-wiring.test.mjs` walks it, and — for the premise — any paragraph that mentions `src/index.js` and
+repeats a disproven phrase must also say it was disproven. `AUDIT.md` and `PROGRESS.md` are excluded
+from that scan on purpose: quoting a finding in order to disprove it is what the ledger does.
+
+**Bite-proof (mutated, then restored):** appending "`src/index.js` exports nothing, so it cannot be
+imported by a test" to `MONEY_PRINTER_STATUS.md` → red at `paragraph 222`; removing `updatePositions`
+from the export list → red with "the export surface moved — name the new set here and in the Engine /
+HUD line together". Both restored byte-exactly (`git diff --name-only src/index.js` empty, and the
+status-doc diff is the six intended hunks). The count assertion also caught its own author on the first
+run: the line said 102 suites, the tree had 103, because adding this suite moved the number.
+
+**Full sweep after P5.1:** `npm run test:all` → exit 0, 30 targets, **984 tests / 982 pass / 0 fail / 2
+skipped** in 57 s — P4.3's 980/978/0/2 plus these four. Touched: `MONEY_PRINTER_STATUS.md`,
+`.agent-state/KNOWN_BUGS.md`, `tests/accounting-integrity.test.mjs`, `package.json` (`test:wiring`), new
+`tests/doc-drift.test.mjs`, and these two ledger entries.
+
+

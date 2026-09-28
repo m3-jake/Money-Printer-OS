@@ -83,9 +83,13 @@ test('missing lifetime pnl is reconstructed and absurd equity is flagged', () =>
 });
 
 // ---------------------------------------------------------------------------------------------
-// ACCOUNTING-AUDIT F2 / F7 / F8. src/index.js calls main() at import time and exports nothing, so
-// the entry-side rails live in src/positionExecution.js and index.js calls into them; the wiring
-// is asserted by source grep below, the behaviour by the helpers themselves.
+// ACCOUNTING-AUDIT F2 / F7 / F8. The entry-side rails live in src/positionExecution.js and index.js
+// calls into them; the wiring is asserted by source grep below, the behaviour by the helpers.
+// This block proved them that way because "src/index.js calls main() at import time and exports
+// nothing" is what was believed at the time — that premise was disproven by P4.3: the isMainModule
+// guard has held since bbc8f4d, and index.js now exports cycle/enter/updatePositions, which
+// tests/trade-path.test.mjs calls in-process. The helpers keep the arithmetic because it is pure
+// and therefore testable without an engine at all.
 // ---------------------------------------------------------------------------------------------
 const execution = await import('../src/positionExecution.js');
 const indexSource = fs.readFileSync(new URL('../src/index.js', import.meta.url), 'utf8');

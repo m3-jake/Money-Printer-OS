@@ -30,34 +30,57 @@ the private repository has no configured `MONEY_PRINTER_UPDATE_TOKEN`. Mac verif
 claimed while the Mac is offline, and no literal 24-hour soak is claimed from this repair session.
 Historical entries below are retained.
 
+The 2026-09-28 remediation pass — audit `AUDIT.md`, ledger `PROGRESS.md`, items P0–P5 — is the most
+recent work on this tree. It changed cycle error recovery, the market-request budget, the per-cycle
+budget, the `/api/state` contract, the legacy-book coverage claim, the engine's export surface, and
+these documents of record. Read it before re-inventorying anything below.
+
 **Read this first.** It is the entry point for each new session. Deeper history lives in `.agent-state/`
 (`CURRENT_TASKS.md`, `KNOWN_BUGS.md`, `PROJECT_STATE.md`, `RELEASE_STATUS.md`) and in `reports/NEXT-STEPS-2026-09-25.md`.
 Don't re-inventory the repo. Update this file at the end of every batch.
 
-Last updated: 2026-09-27, alpha.67 / Evolution Lab alpha.11 paired Windows release. Version `0.5.0-alpha.67`.
+Last updated: 2026-09-28, remediation pass P0–P5 on the `v0.5.0-alpha.71` tree. The alpha.67 /
+Evolution Lab alpha.11 paired Windows release described above is unchanged, and no release pair was
+built, signed or installed in this pass. Version `0.5.0-alpha.71`.
 
 ## Architecture (inventoried once)
 
 - **Desktop shell:** `desktop/main.cjs` (Electron). It supervises child processes (engine `src/index.js`, `src/networkMesh.js`, and optionally `src/researchCollector.js`) and restarts them with backoff. Research services policy: `desktop/research-supervision.cjs` (`MPO_RESEARCH_COLLECTOR`, default on).
-- **Engine / HUD:** `src/index.js` (Solana meme paper engine; has a realpath main-guard at `:702`, exports only `main`), `src/dashboard.js` (HTTP API + `public/dashboard.html`).
+- **Engine / HUD:** `src/index.js` (Solana meme paper engine; `main()` sits behind the realpath `isMainModule` guard, so importing the file starts nothing; exports `main`, `cycle`, `enter`, `updatePositions` — P4.3), `src/dashboard.js` (HTTP API + `public/dashboard.html`; persisted state at `/api/state`, live readings at `/api/telemetry` — P1.2).
 - **Books:** `src/store.js` holds paper state and its accounting invariants. Atomic writes go through `src/atomicRename.js`.
 - **Polymarket:** one live-combo panel over `src/polymarketUSCombos.js` (see `docs/POLYMARKET-COMBOS.md`). `src/polymarketUS.js` serves only credentials and the session arm. `src/polymarket.js` (paper) is detached from the dashboard and kept for the collector and tests. Auth currently fails with `keyNotFound`.
 - **Robinhood (this branch):** `src/robinhood*.js`, paper only. Real execution isn't installed. See `docs/ROBINHOOD-AUTO-TRADER.md` and `docs/ROBINHOOD-RECOVERY-2026-09-25.md`.
 - **Research/evidence:** `src/researchCollector.js` writes the tape to `<data>/research-evidence/raw/*.ndjson`. Around it sit `researchEvidenceGate/Store`, `researchControlPlane` and `polymarketResearchEval`. The gate is intentionally not wired into the live app.
 - **Evolution Lab** lives in a separate repo, `money-printer-evolution-lab`, and is the shared research brain for every module: Solana (labLoop/BEAST), plus parallel `module-robinhood` and `module-polymarket` workers (`src/moduleResearch.js`). Valid module ids come from its `src/researchModules.js`. It writes `<trader data>/lab-link/modules/<id>.json` and paper-only `<id>-champion.json`. It is NOT the dropped "agent lab" harness.
-- **Tests:** 54 files in `tests/`, run by `npm run test:all`. Everything is mocked and uses temp dirs.
+- **Tests:** 103 suites in `tests/` across 30 targets, run by `npm run test:all` (green end to end since P1.4; `test:wiring` fails first if a suite becomes unreachable). Everything is mocked and uses temp dirs.
 
 ## Confirmed working (2026-09-25)
 
 - Every test file passes when run one by one: **520 pass, 0 fail**. `node src/selftest.js` reports SELFTEST PASS with an isolated data dir.
 - The collector was run end to end against live public Polymarket data in a temp dir: 179 depth rows, the lock yields to a second instance, and a stale lock is taken over.
 
+## Confirmed working (2026-09-28, remediation pass P4.3)
+
+- **The trade path is drivable by a test.** `tests/trade-path.test.mjs` (7 tests, ~0.6 s, in
+  `test:recovery`) imports `src/index.js` in-process and calls `enter()`, `updatePositions()` and
+  `cycle()` directly — a paper entry with its cash and fee reconciliation, a duplicate-entry refusal,
+  a stale-purge close and a stop-loss close through the real exit ladder, and one full cycle that
+  persists its counters. The engine had no behavioural oracle before this; the suite's only other
+  access to the file was string/line matching plus two full-process spawns.
+- **Importing the engine is side-effect-free.** `main()` has been behind the realpath `isMainModule`
+  guard since `bbc8f4d`, so `import('../src/index.js')` costs ~0.55 s, starts no timers, sockets or
+  dashboard, and runs no cycle. The engine's own comments claimed the opposite ("calls `main()` on
+  import and exports nothing") until P4.3 disproved it.
+- **Honest limits of that suite:** the stub owns the two market hosts the path reaches
+  (`api.dexscreener.com`, `127.0.0.1`), so no real network read, RPC round trip or dashboard request
+  is exercised there, and the F7/F8 entry arithmetic is still proven through
+  `src/positionExecution.js` rather than through `enter()`.
+
 ## Broken / unfinished / open (details in `.agent-state/KNOWN_BUGS.md`)
 
 - Polymarket US API key returns 401 `keyNotFound`. Only bing can fix it by regenerating the key.
 - Combo/RFQ access is gated by a beta allow-list on Polymarket's side.
 - The research evidence gate isn't wired in (deliberate). The Polymarket strategy family loses after fees (report section 1).
-- `enter()` in `src/index.js` still has no direct end-to-end test. The main-guard exists; the blocker is that importing the engine pulls in config, store and network modules. F7/F8 are covered through `positionExecution.js`. Low priority.
 - The alpha.54 build hasn't been installed. Signing and publishing are bing-only.
 - The collector's cursor file can still be lost if it was already NUL-filled before this fix. The only effect is duplicate Solana ticks (bounded by `tickHistory`).
 
