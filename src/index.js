@@ -330,15 +330,17 @@ async function actions(s) {
       applyRuntimeControlPatch(s,raw,{profile:raw.profile,manual:true});
       appendJournal({type:'control-settings',source:'MANUAL',profile:s.runtime.profile,aggression:s.runtime.aggression,entryFrequency:s.runtime.entryFrequency,exitPreset:s.runtime.exitPreset,maxCandidates:s.runtime.maxCandidates,maxOpenPositions:s.runtime.maxOpenPositions});
     } else if (a.type === 'lab-sync') {
-      const champion=cfg.mode==='paper'?evolutionChampionPolicy(s,{ignoreFollowSetting:true}):null;
-      if(champion){
-        s.runtime.followLabBest=true;
-        s.runtime.controlMode='LAB_AUTO';
-        s.runtime.controlUpdatedAt=Date.now();
-        s.runtime.labSyncedChampionId=champion.id;
-        appendJournal({type:'control-settings',source:'EVOLUTION_LAB',championId:champion.id,threshold:champion.threshold,takePct:champion.takePct,stopPct:champion.stopPct,maxHoldMin:champion.maxHoldMin});
+      if(cfg.mode!=='paper'){
+        appendJournal({type:'action-rejected',actionType:a.type,reason:'Lab champion sync is paper-only.'});
       }else{
-        appendJournal({type:'action-rejected',actionType:a.type,reason:cfg.mode==='paper'?'No validated Evolution Lab champion is currently eligible for paper use.':'Lab champion sync is paper-only.'});
+        const champion=evolutionChampionPolicy(s,{ignoreFollowSetting:true});
+        s.runtime.followLabBest=true;
+        s.runtime.controlMode=champion?'LAB_AUTO':'LAB_WAITING';
+        s.runtime.controlUpdatedAt=Date.now();
+        s.runtime.labSyncedChampionId=champion?.id||null;
+        appendJournal(champion
+          ?{type:'control-settings',source:'EVOLUTION_LAB',championId:champion.id,threshold:champion.threshold,takePct:champion.takePct,stopPct:champion.stopPct,maxHoldMin:champion.maxHoldMin}
+          :{type:'control-settings',source:'EVOLUTION_LAB_WAITING',message:'Auto-follow enabled; waiting for the next validated paper champion.'});
       }
     } else if (a.type === 'evolution-sync') {
       appendJournal({ type: 'action-rejected', actionType: a.type, reason: 'Legacy evolution sync is retired; use the validated Lab link.' });

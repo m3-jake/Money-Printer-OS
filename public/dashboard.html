@@ -1046,19 +1046,19 @@ function renderControl(){
  const profiles=['FAIR','CALM','FAST','DEGEN','MAX','SPRINT','RESEARCH'];
  const presets=ec.presets||['fair','scalper','runner','yolo','custom'];
  const labMeta=lab?`${polyEscape(lab.id)} · ${polyEscape(lab.sourceStage||'PAPER')} · threshold ${fmt(lab.threshold,0)}`:'No validated paper champion is available right now.';
- const labRules=lab?`Take ${fmt(lab.takePct,1)}% · stop ${fmt(lab.stopPct,1)}% · max hold ${fmt(lab.maxHoldMin,0)}m`:'Evolution Lab will keep researching; this control becomes available when a champion clears the paper evidence gates.';
+ const labRules=lab?`Take ${fmt(lab.takePct,1)}% · stop ${fmt(lab.stopPct,1)}% · max hold ${fmt(lab.maxHoldMin,0)}m`:'Evolution Lab will keep researching. Auto-follow can stay armed and adopt the next champion that clears the paper evidence gates.';
  setBody('control',`<div class="mpo-surface-light control-bay">
   <div class="mpo-status control-bay__status"><b>CONTROL BAY</b><b class="mpo-badge ${mode==='LIVE'?'mpo-badge--armed':'mpo-badge--paper'}">${polyEscape(mode)}</b><b class="mpo-badge ${sourceClass}">${sourceLabel}</b><span class="muted">${s.evolutionLoop?.status?`Evolution ${polyEscape(s.evolutionLoop.status)}`:'Pump.fun / Solana controls'}</span></div>
   <div class="control-source-grid">
    <section class="control-source-card ${following?'is-active':''}">
     <div class="control-source-card__head"><div><b>Evolution Lab Best</b><div class="muted">Use the current validated champion and automatically follow future winners.</div></div><b class="mpo-badge ${lab?'mpo-badge--live':'mpo-badge--degraded'}">${lab?'READY':'WAITING'}</b></div>
     <div class="control-source-card__champ"><b>${labMeta}</b><span>${labRules}</span></div>
-    <button class="btn control-primary" id="ctlLabSync" ${!lab||mode!=='PAPER'?'disabled':''}>${following&&lab?'Following Lab Best ✓':'Sync + Auto-Follow Best'}</button>
+    <button class="btn control-primary" id="ctlLabSync" ${mode!=='PAPER'?'disabled':''}>${following?(lab?'Following Lab Best ✓':'Waiting for Lab Best ✓'):(lab?'Sync + Auto-Follow Best':'Auto-Follow Next Lab Best')}</button>
    </section>
    <section class="control-source-card ${!following?'is-active':''}">
     <div class="control-source-card__head"><div><b>Manual Tuning</b><div class="muted">Choose a preset as a starting point, then override anything below.</div></div><b class="mpo-badge ${!following?'mpo-badge--armed':'mpo-badge--degraded'}">${!following?'ACTIVE':'STANDBY'}</b></div>
     <div class="control-source-card__champ"><b>${polyEscape(r.profile||'FAIR')} base</b><span>Aggression ${fmt(r.aggression,0)} · ${polyEscape(r.entryFrequency||'normal')} entries · ${polyEscape(r.exitPreset||'fair')} exits</span></div>
-    <div class="muted">Applying manual settings pauses Lab auto-follow until you press “Sync + Auto-Follow Best” again.</div>
+    <div class="muted">Applying manual settings pauses Lab auto-follow until you turn the Lab source back on.</div>
    </section>
   </div>
 
@@ -1086,7 +1086,7 @@ function renderControl(){
       <div><span>Stop / trail</span><b>${fmt(eff.stop,1)} / ${fmt(eff.trail,1)}%</b></div>
       <div><span>Max hold</span><b>${fmt(eff.maxHold,0)}m</b></div>
      </div>
-     ${lab&&following?`<div class="control-note control-note--lab"><b>Lab override active.</b> The champion’s learned weights, threshold and exit rules are the effective paper policy. Manual values remain saved as your fallback.</div>`:`<div class="control-note"><b>Manual policy active.</b> The values in the left panel are what Pump.fun will use after Apply.</div>`}
+     ${lab&&following?`<div class="control-note control-note--lab"><b>Lab override active.</b> The champion’s learned weights, threshold and exit rules are the effective paper policy. Manual values remain saved as your fallback.</div>`:following?`<div class="control-note control-note--lab"><b>Lab auto-follow armed.</b> No champion currently clears the paper evidence gates, so the saved manual policy remains the fallback until one qualifies.</div>`:`<div class="control-note"><b>Manual policy active.</b> The values in the left panel are what Pump.fun will use after Apply.</div>`}
     </div></section>
 
     <section class="mpo-module"><header><span>Paper bankroll</span></header><div class="mpo-module-body">
@@ -1131,7 +1131,7 @@ function renderControl(){
   controlDraftDirty=false;controlPendingActionId=out?.actionId||null;controlPendingKind='manual';controlPendingSince=Date.now();setCtlStatus('Queued — waiting for engine acknowledgement…','is-pending');
  });
  $('#ctlLabSync')?.addEventListener('click',async()=>{
-  setCtlStatus('Syncing validated Lab champion…','is-pending');
+  setCtlStatus('Enabling Lab auto-follow…','is-pending');
   const out=await post('/api/lab-sync',{});
   if(out?.ok===false)return setCtlStatus(out.error||'Lab sync rejected','is-error');
   controlDraftDirty=false;controlPendingActionId=out?.actionId||null;controlPendingKind='lab';controlPendingSince=Date.now();setCtlStatus('Lab auto-follow queued…','is-pending');
