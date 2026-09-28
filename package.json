@@ -22,7 +22,7 @@
     "doctor": "node src/doctor.js",
     "health": "node scripts/health-check.mjs",
     "backtest": "node src/backtest.js",
-    "test:recovery": "node --test tests/store-recovery.test.mjs tests/cycle-recovery.test.mjs tests/cycle-budget.test.mjs",
+    "test:recovery": "node --test tests/store-recovery.test.mjs tests/cycle-recovery.test.mjs tests/cycle-budget.test.mjs tests/journal-append-contract.test.mjs",
     "test:discovery": "node --test tests/discovery-budget.test.mjs",
     "test:turnover": "node --test tests/sports-turnover.test.mjs tests/update-auth.test.cjs",
     "test:updater": "node --test tests/update-channel.test.cjs tests/update-fetch.test.cjs tests/sign-manifest.test.mjs tests/release-tools.test.mjs",

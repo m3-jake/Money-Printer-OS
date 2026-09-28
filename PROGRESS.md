@@ -252,7 +252,7 @@ Regression sweep after P1.5 (`npm run test:all`, exit 0, this machine — every 
 **30 targets, 947 tests, 0 failures.** Before P1.4 the same command died at `test:robinhood` and the
 five targets after it never ran.
 
-## P2 status: 1 of 4 done (P2.1)
+## P2 status: 2 of 4 done (P2.1, P2.2)
 
 P2.1 — done — — research-state.json backup/validate parity, with the one asymmetry documented
       Measured first, on a temp data dir: `state.json` listing `research.externalized`, the sections in
@@ -281,7 +281,38 @@ P2.1 — done — — research-state.json backup/validate parity, with the one a
       not read back are refused, the preceding publication is the backup and an unreadable primary
       never becomes it, repair resumes publication, and the account-vs-research asymmetry in one
       assertion.
-P2.2 — pending — — async batched journal appends (state.json semantics byte-for-byte)
+P2.2 — done — — journal appends measured (2 per cycle, ~1 ms) — the async-batched change declined on evidence
+      Measured first, on a temp data dir with one real paper cycle (`node src/index.js --once`, default
+      profile): the cycle appends **twice** — one `appendJournalBatch` carrying the whole cycle volume
+      (30 scan-candidate rows + the scan-summary) and one `appendJournal` per event (that cycle: `trade-open`)
+      — 28,529 bytes / 32 rows / ~1 ms of a 4,575 ms cycle (0.02%; `riskMs` 4,311 was 94% of it,
+      `discoveryMs` 185, `saveMs` < 1). The micro-measurement explains the shape: one append
+      (open+write+close) costs 0.29–0.37 ms, so the same rows appended one at a time cost ~70x the batch —
+      and no code path does that. The 30 scan rows are one array handed to one call (`src/index.js:658–671`)
+      and all 24 other call sites in the engine are per event, none inside a per-row loop (the Polymarket
+      autopilot's `noteAuto` collapses identical consecutive skips and runs a few times per run).
+      So the item's premise — per-row synchronous appends on the cycle path — is **false for the real
+      volume**, and no source changed: the measurement is the deliverable. What the audit objected to about
+      the journal is its *footprint* (~98% scan-candidate bytes, ~1 GB/day measured on the research machine),
+      which rotation (3 × 128 MB) and `MPO_JOURNAL_SCAN_CANDIDATES=false` already bound — not append
+      latency. Making the path async would trade that 1 ms for the one durability property P0.1 rests on
+      (the row is on disk before the state save, so a cycle that dies mid-flight is still readable from the
+      journal), which is the wrong trade at 0.02%.
+      The item's own acceptance criterion is executable instead — `tests/journal-append-contract.test.mjs`,
+      6 tests, `test:recovery` 48 → 54: the cycle volume is one append for 30 rows and one per event
+      (syscall-counted, `fs.appendFileSync` patched — Node implements `appendFileSync` over `writeFileSync`,
+      so the counter does not double-count the internal write); a batch writes byte-for-byte the bytes a run
+      of single appends writes, with `ts` stamped once per row and a caller's `ts` never rewritten; journal
+      activity cannot change `state.json` (no write/append/rename targets it during a 33-row burst, its bytes
+      are unchanged, and a save after the burst is byte-identical to one before it — `saveMs` aside, the
+      previous save's measured duration by design); per-row appends cost an order of magnitude more than the
+      batch (relative bound, holds on a slow disk: 1000 rows, 1.6 ms batched vs 608 ms per-row, 388x, printed
+      as telemetry); and the engine batches the cycle volume while appending one row per event (source-level
+      wiring in the style of `cycle-budget.test.mjs`, verified by mutation: replacing the batch with a per-row
+      loop fails the wiring test, and adding a field to the batched row shape fails both byte-equivalence
+      tests).
+      Regression sweep after P2.2: `npm run test:all` exit 0 — 30 targets, 961 pass, 0 fail, nothing skipped
+      (per-target identical to the P2.1 baseline's 955 apart from `test:recovery`).
 P2.3 — pending — — split robinhoodAutoTrader.js by seam (behavior-preserving)
 P2.4 — pending — — split core/platform.js by seam if clean, else skip + note
 P3.1 — pending — — recompress public logo PNG → webp if no code path needs PNG
