@@ -37,7 +37,8 @@ export function fitnessDoc(module, parts = {}, { now = Date.now() } = {}) {
   if (!FITNESS_MODULES.includes(module)) throw new Error(`unknown fitness module ${module}`);
   const e = parts.evidence || {};
   const evidence = { executablePrices: e.executablePrices === true, spanDays: round(e.spanDays, 3) ?? 0, closes: fin(e.closes) ?? 0,
-    venueShare: round(e.venueShare), syntheticShare: round(e.syntheticShare), quoteSources: e.quoteSources && typeof e.quoteSources === 'object' ? { ...e.quoteSources } : {} };
+    venueShare: round(e.venueShare), syntheticShare: round(e.syntheticShare), roundTripPct: round(e.roundTripPct, 4), quoteRows: fin(e.quoteRows) ?? null,
+    quoteSources: e.quoteSources && typeof e.quoteSources === 'object' ? { ...e.quoteSources } : {} };
   const mayPropose = laneMayPropose(evidence);
   const park = parts.park ? String(parts.park) : null;
   const blockers = [...new Set([...(park ? [park] : []), ...(parts.blockers || []).filter(Boolean).map(String), ...mayPropose.blockers])];
@@ -70,6 +71,7 @@ export function solanaFitnessParts(state = {}, config = {}, { now = Date.now(), 
     paperRecord: paperRecordFrom(rows, { unit: 'SOL', startBalance: fin(state.portfolio?.startSol ?? state.portfolio?.startingSol), now }),
     evidence: { executablePrices: executable, spanDays: evidenceSpan, closes: rows.length,
       venueShare: executable ? fin(jupiter?.venueShare) : null, syntheticShare: executable ? fin(jupiter?.syntheticShare) : null,
+      roundTripPct: executable ? fin(jupiter?.medianRoundTripPct) : null, quoteRows,
       quoteSources: { 'simulated-marks': rows.length, 'jupiter-quote': quoteRows } },
     park: fair.verdict === 'PARK' ? `FAIR: upper 95% hit rate ${round(fair.hitRate95?.high, 3)} < break-even ${round(fair.breakEvenHitRate, 3)} after ${fair.closes} closes` : null,
     blockers: executable ? [] : [quoteRows

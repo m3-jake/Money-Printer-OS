@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { summarizeJupiterEvidence } from '../src/jupiterEvidence.js';
+import { summarizeJupiterEvidence, latestJupiterQuote } from '../src/jupiterEvidence.js';
 import { fitnessDoc, solanaFitnessParts } from '../src/fitnessLedger.js';
 
 const DAY = 864e5;
@@ -27,6 +27,9 @@ test('Jupiter tape becomes executable-price evidence only when rows validate and
     assert.equal(s.quoteRows, 20); assert.equal(s.invalidRows, 0);
     assert.equal(s.executablePrices, true); assert.equal(s.venueShare, 1); assert.equal(s.syntheticShare, 0);
     assert.ok(s.spanDays >= 7.9); assert.equal(s.mintCount, 1);
+    const latest = latestJupiterQuote(dir, rows[0].mint, { now: now + 1000 });
+    assert.equal(latest.roundTripPct, 7); assert.equal(latest.source, 'jupiter-quote'); assert.ok(latest.ageMs <= 1000);
+    assert.equal(latestJupiterQuote(dir, rows[0].mint, { now: now + 10 * 60_000 }), null, 'stale per-token quote cannot tighten a new entry');
     assert.equal(summarizeJupiterEvidence(dir, { now: now + 2 * DAY }).executablePrices, false, 'stale tape fails closed');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
