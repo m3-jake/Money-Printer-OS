@@ -1,0 +1,48 @@
+# PROGRESS — Money-Printer-OS remediation pass
+
+Format: `P<n>.<m> — done|partial|blocked — <sha> — <note>` (one line per item).
+Mode: **paper-only**. Live gates untouched. `src/executionSim.js` never modified.
+
+## Baseline (before any change)
+
+- HEAD `416ded8` (tag `v0.5.0-alpha.71`), clean tree except untracked `AUDIT.md`.
+- `npm ci` run in this pass (node_modules was absent → every test failed at import).
+- Full suite `npm run test:all` fails at **one** pre-existing target: `test:robinhood`
+  → its first step `node scripts/sync-robinhood-panel.mjs --check` throws
+  `Error: Robinhood panel boundaries not found` (`scripts/sync-robinhood-panel.mjs`, `indexOf('// BEGIN ROBINHOOD PAPER PANEL') < 0`).
+  Because `test:all` chains with `&&`, `test:robinhood-equities`, `test:lane-contracts`,
+  `test:fitness`, `test:unattended`, `test:upgrade` do **not** run in a plain `test:all` run.
+  All other targets reached report `fail 0`.
+- Baseline evidence log: `%TEMP%\mpo-baseline.log` (this machine).
+
+## VERIFY-FIRST verdicts (details + evidence in AUDIT.md § Verifications)
+
+- V1 saveState-in-catch crash + lost error counter — CONFIRMED
+- V2 discovery fan-out over rate cap — CONFIRMED (cap is per host, 60 s window)
+- V3 Solana kill switch gates entries only — CONFIRMED
+- V4 no per-cycle abort signal — CONFIRMED
+- V5 legacy float book vs core BigInt ledger not reconciled — CONFIRMED (legacyBooks.js reports side-by-side, never sums)
+- V6 `/api/state` ETag volatile by design — CONFIRMED
+- V7 "tradeSizeSol is not binding" — **DISPROVEN** (tradeSizeSol *is* binding at defaults; riskPerTradePct binds only below ≈0.4 SOL equity)
+- V8 tick band one-sided, ratio 5 — CONFIRMED
+
+## Items
+
+P0.1 — pending — — cycle catch-path crash + lost error counter
+P0.2 — pending — — /api/health escalation after N consecutive cycle errors
+P0.3 — pending — — discovery rate budget reconciliation
+P0.4 — pending — — per-cycle abort signal
+P0.5 — pending — — documented panic path
+P1.1 — pending — — reconciliation check (legacy float vs core ledger) + promotion refusal
+P1.2 — pending — — split /api/state (keep ETag pure state, add /api/telemetry)
+P1.3 — pending — — sizing dial readout (premise corrected by V7)
+P1.4 — pending — — test hygiene (`npm test`, wire 2 suites, skip-safe visual test, coverage telemetry)
+P1.5 — pending — — rejected-by-band counter in the funnel
+P2.1 — pending — — research-state.json backup/validate parity or documented asymmetry
+P2.2 — pending — — async batched journal appends (state.json semantics byte-for-byte)
+P2.3 — pending — — split robinhoodAutoTrader.js by seam (behavior-preserving)
+P2.4 — pending — — split core/platform.js by seam if clean, else skip + note
+P3.1 — pending — — recompress public logo PNG → webp if no code path needs PNG
+P3.2 — pending — — stateVersion field + migration stub
+P3.3 — pending — — npm audit in CI as non-blocking telemetry
+P3.4 — pending — — review @anthropic-ai/sdk (aiSummary) off the cycle hot path
