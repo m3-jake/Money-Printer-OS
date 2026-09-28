@@ -10,7 +10,7 @@ import { appendJournal } from './store.js';
 
 export function createPumpfunPaperLane({ adapter = createNativePaperAdapter(), dataDir = process.env.MONEY_PRINTER_DATA_DIR || 'data', now = Date.now, logger = appendJournal, simulator = simulateAggressivePaperExecution } = {}) {
   const file = path.resolve(dataDir, 'pumpfun-sniper-paper.json'), decide = createSniper();
-  let queue = Promise.resolve(), pending = 0, lastMarkAt = 0;
+  let queue = Promise.resolve(), pending = 0, lastMarkAt = 0, markCursor = 0;
   function read() {
     if (!fs.existsSync(file)) return { mode: 'PAPER', cashSol: cfg.paperStartSol, open: [], history: [], proposals: [] };
     const b = JSON.parse(fs.readFileSync(file));
@@ -44,22 +44,26 @@ export function createPumpfunPaperLane({ adapter = createNativePaperAdapter(), d
         return { accepted: false, reason: sim.reason || 'paper-cash-reserve', orderSubmitted: false };
       }
       const p = { id: proposal.id, proposalId: proposal.id, mode: 'PAPER', mint: event.mint, user: event.user, symbol: event.symbol || 'NEW', strategy: 'PUMPFUN_SNIPER', source: 'pumpfun:sniper', openedAt: at,
-        rawAmount: String(raw), basisSol: sim.gross, costSol: cost, entryPriceSolPerRaw: cost / raw, plan: quote.plan, quoteSource: quote.source, execution: sim, orderSubmitted: false };
+        rawAmount: String(raw), basisSol: sim.gross, costSol: cost, entryPriceSolPerRaw: cost / raw, plan: quote.plan, quoteSource: quote.source, execution: sim, paperRuntime: {profile: 'AGGRESSIVE_PAPER'}, exitPolicy: {take: cfg.takeProfit1Pct, stop: cfg.stopLossPct, maxHold: cfg.maxHoldMin}, orderSubmitted: false };
       proposal.status = 'PAPER_SIMULATED'; book.cashSol -= cost; book.open.push(p); write(book);
       logger({ type: 'trade-open', mode: 'PAPER', ...p, sizeSol: p.basisSol, nativeQuote: quote, orderSubmitted: false });
       return { accepted: true, position: p, orderSubmitted: false };
     });
   }
   async function maintain({ runtime, mode = 'paper', solUsd } = {}) {
-    if (!isAggressivePaper(runtime, mode) || !(solUsd > 0) || now() - lastMarkAt < 15000) return { ordersSubmitted: 0 };
+    if (mode !== 'paper' || !fs.existsSync(file) || !(solUsd > 0) || now() - lastMarkAt < 15000) return { ordersSubmitted: 0 };
     lastMarkAt = now();
     return serialize(async () => {
       const book = read(), errors = []; let closed = 0;
-      for (const p of [...book.open].slice(0, 4)) {
+      const held=[...book.open], selected=held.length?Array.from({length:Math.min(4,held.length)},(_,i)=>held[(markCursor+i)%held.length]):[];
+      markCursor += selected.length;
+      for (const p of selected) {
         try {
-          const q = await adapter.quote({ mint: p.mint, user: p.user, action: 'SELL', rawAmount: p.rawAmount, runtime, mode });
+          const q = await adapter.quote({ mint: p.mint, user: p.user, action: 'SELL', rawAmount: p.rawAmount, runtime: p.paperRuntime || {profile:'AGGRESSIVE_PAPER'}, mode });
           const net = q.solAmount - networkCost(q), change = (net / p.costSol - 1) * 100;
-          const reason = change >= cfg.takeProfit1Pct ? 'take-profit' : change <= -cfg.stopLossPct ? 'stop-loss' : now() - p.openedAt >= cfg.maxHoldMin * 60000 ? 'max-hold' : null;
+          const policy=p.exitPolicy || {take:cfg.takeProfit1Pct,stop:cfg.stopLossPct,maxHold:cfg.maxHoldMin};
+          p.markedNetSol=net; p.lastQuoteAt=q.observedAt;
+          const reason = change >= policy.take ? 'take-profit' : change <= -policy.stop ? 'stop-loss' : now() - p.openedAt >= policy.maxHold * 60000 ? 'max-hold' : null;
           if (!reason) continue;
           const candidate = { mint: p.mint, priceUsd: q.priceSolPerRaw * solUsd, priceObservedAt: q.observedAt, liq: Number(q.liquiditySol || q.solAmount) * solUsd, executionScore: 90 };
           const sim = simulator(candidate, q.solAmount, solUsd, { side: 'SELL', now: now(), seed: `native-paper-exit:${p.id}:${Math.floor(now() / 15000)}` });
@@ -70,6 +74,7 @@ export function createPumpfunPaperLane({ adapter = createNativePaperAdapter(), d
           logger({ type: 'trade-close', mode: 'PAPER', trade }); closed++;
         } catch (e) { errors.push(String(e.message)); }
       }
+      write(book);
       return { closed, errors, ordersSubmitted: 0 };
     });
   }

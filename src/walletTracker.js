@@ -25,16 +25,16 @@ export function parseTrackedPumpBuy(tx,wallet,{signature='',ts=Date.now()}={}){
 
 // Stream tracked wallet logs and fetch only their confirmed transactions. Connections and
 // subscriptions are bounded; callbacks receive decoded buy events and no transaction is sent.
-export function startTrackedWalletStream(onBuy=()=>{},{wallets=smartWallets(),url=cfg.rpcUrl,WebSocketImpl=WebSocket,fetcher=globalThis.fetch,now=Date.now,maxPerMinute=30}={}){
+export function startTrackedWalletStream(onBuy=()=>{},{wallets=smartWallets(),url=cfg.rpcUrl,WebSocketImpl=WebSocket,fetcher=globalThis.fetch,now=Date.now,maxPerMinute=30,reconnectMs=2500}={}){
  const tracked=[...new Set(wallets)].filter(isWalletAddress);if(!tracked.length)return{enabled:false,close(){}};
- let socket=null,retry=null,closed=false,id=0,used=0,windowAt=now();const subscriptions=new Map(),seen=new Set(),wsUrl=String(url).replace(/^http/,'ws');
- const connect=()=>{if(closed)return;socket=new WebSocketImpl(wsUrl);socket.on('open',()=>tracked.forEach(wallet=>socket.send(JSON.stringify({jsonrpc:'2.0',id:++id,method:'logsSubscribe',params:[{mentions:[wallet]},{commitment:'confirmed'}]}))));
-  socket.on('message',async buf=>{try{const msg=JSON.parse(String(buf));if(msg.id&&msg.result!=null){subscriptions.set(Number(msg.result),tracked[Number(msg.id)-1]);return}if(msg.method!=='logsNotification')return;const value=msg.params?.result?.value||{},wallet=subscriptions.get(Number(msg.params?.subscription)),signature=value.signature;if(!wallet||!signature||value.err)return;
+ let socket=null,retry=null,closed=false,id=0,used=0,windowAt=now();const subscriptions=new Map(),requests=new Map(),seen=new Set(),wsUrl=String(url).replace(/^http/,'ws');
+ const connect=()=>{if(closed)return;socket=new WebSocketImpl(wsUrl);socket.on('open',()=>tracked.forEach(wallet=>{const requestId=++id;requests.set(requestId,wallet);socket.send(JSON.stringify({jsonrpc:'2.0',id:requestId,method:'logsSubscribe',params:[{mentions:[wallet]},{commitment:'confirmed'}]}));}));
+  socket.on('message',async buf=>{try{const msg=JSON.parse(String(buf));if(msg.id&&msg.result!=null){const wallet=requests.get(Number(msg.id));if(wallet)subscriptions.set(Number(msg.result),wallet);requests.delete(Number(msg.id));return}if(msg.method!=='logsNotification')return;const value=msg.params?.result?.value||{},wallet=subscriptions.get(Number(msg.params?.subscription)),signature=value.signature;if(!wallet||!signature||value.err)return;
    const t=now();if(t-windowAt>=60_000){windowAt=t;used=0}if(used>=maxPerMinute)return;used++;
    const key=`${wallet}:${signature}`;if(seen.has(key))return;seen.add(key);if(seen.size>5000)seen.clear();
-   const response=await fetcher(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:++id,method:'getTransaction',params:[signature,{encoding:'jsonParsed',maxSupportedTransactionVersion:0,commitment:'confirmed'}]})});
+   const response=await fetcher(url,{method:'POST',headers:{'content-type':'application/json'},signal:AbortSignal.timeout(10000),body:JSON.stringify({jsonrpc:'2.0',id:++id,method:'getTransaction',params:[signature,{encoding:'jsonParsed',maxSupportedTransactionVersion:0,commitment:'confirmed'}]})});
    if(!response.ok)return;const tx=(await response.json()).result;for(const event of parseTrackedPumpBuy(tx,wallet,{signature,ts:t}))onBuy(event);
-  }catch{}});socket.on('close',()=>{subscriptions.clear();if(!closed)retry=setTimeout(connect,2500)});socket.on('error',()=>{});
+  }catch{}});socket.on('close',()=>{subscriptions.clear();requests.clear();if(!closed)retry=setTimeout(connect,reconnectMs)});socket.on('error',()=>{});
  };
  connect();return{enabled:true,wallets:tracked.length,close(){closed=true;clearTimeout(retry);try{socket?.close()}catch{}}};
 }

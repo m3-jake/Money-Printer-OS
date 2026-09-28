@@ -58,7 +58,7 @@ test('launch-to-fill-to-exit paper lane accounts for cash and stays unreachable 
     assert.equal((await lane.onLaunch({ mint, slot: 1 }, { runtime, mode: 'live', solUsd: 200 })).accepted, false); assert.equal(calls, 0);
     assert.equal((await lane.onLaunch({ mint, slot: 1 }, { runtime, mode: 'paper', solUsd: 200 })).accepted, true);
     assert.equal(lane.view().open.length, 1); assert.ok(lane.view().cashSol >= .02); assert.equal(lane.view().open[0].orderSubmitted, false);
-    multiplier = 1.5; at += 20000; assert.equal((await lane.maintain({ runtime, solUsd: 200 })).closed, 1);
+    multiplier = 1.5; at += 20000; assert.equal((await lane.maintain({ runtime: {profile:'FAIR'}, solUsd: 200 })).closed, 1);
     assert.equal(lane.view().open.length, 0); assert.ok(lane.view().cashSol > 1); assert.ok(rows.some(r => r.type === 'trade-close'));
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

@@ -109,3 +109,19 @@ export function createShadowCollector({platform,dataDir=process.env.MONEY_PRINTE
 }
 const collectors=new WeakMap();
 export function runShadowTick(platform,state,mode){if(!collectors.has(platform))collectors.set(platform,createShadowCollector({platform}));return collectors.get(platform).tick({state,mode});}
+
+// Quote collection is read-only and may be slow. Never await it in the trading cycle.
+const scheduledCollectors = new WeakMap();
+export function scheduleShadowTick(platform, state, mode, runner = runShadowTick) {
+  if (mode !== 'paper') return { enabled: false, ordersSubmitted: 0 };
+  let job = scheduledCollectors.get(platform);
+  if (!job) { job = { running: false, result: { enabled: true, observations: 0, ordersSubmitted: 0 } }; scheduledCollectors.set(platform, job); }
+  if (!job.running) {
+    job.running = true;
+    Promise.resolve().then(() => runner(platform, state, mode)).then(result => {
+      if (!result?.cached) job.result = result;
+    }).catch(error => { job.result = { enabled: true, error: String(error.message), ordersSubmitted: 0 }; })
+      .finally(() => { job.running = false; });
+  }
+  return { ...job.result, collecting: job.running };
+}

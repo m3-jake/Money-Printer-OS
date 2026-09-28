@@ -19,7 +19,7 @@ test('single paper book reserves virtual cash, prices Yes and No from public BBO
   assert.equal(yes.outcome,'Yes');assert.ok(yes.quantity>0);assert.ok(yes.feeUsd>0);
   const no=placePaperSingle({market:{slug:'event-no',ask:.4,bid:.38},outcome:'No',stakeUsd:10,file,now:2});
   assert.equal(no.ask,.62);assert.equal(no.bid,.6);
-  const marked=markPaperSingles([{slug:'event',bid:.5},{slug:'event-no',bid:.6}],{file});
+  const marked=markPaperSingles([{slug:'event',bid:.5},{slug:'event-no',ask:.61,bid:.6}],{file});
   assert.equal(marked.length,2);assert.ok(marked.every(x=>Number.isFinite(x.unrealizedUsd)));
   assert.equal(paperSinglesBookView({file}).openCount,2);
   assert.throws(()=>placePaperSingle({market:{slug:'bad',ask:.9,bid:.8},stakeUsd:501,file}),/required/);

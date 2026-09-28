@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Money Printer OS · Quant research</title>
+<style>
+body{margin:0;background:#0c1620;color:#dce8ef;font:14px system-ui,sans-serif}main{max-width:1150px;margin:auto;padding:28px}h1{font-size:26px}a{color:#73dbe5}button,input,select{font:inherit;padding:9px;background:#172c38;color:#dce8ef;border:1px solid #547280;border-radius:3px}form{display:flex;flex-wrap:wrap;gap:10px;margin:22px 0}input{flex:1;min-width:220px}.muted{color:#a6bac6}article,details{padding:15px;border:1px solid #36515e;margin:12px 0}summary{cursor:pointer;font-weight:600}table{width:100%;border-collapse:collapse}td,th{text-align:left;border-bottom:1px solid #36515e;padding:12px;vertical-align:top}td small{display:block;color:#a6bac6;margin-top:6px}.scroll{overflow:auto}nav{display:flex;gap:15px;align-items:center;margin:18px 0}li{margin:8px 0}
+</style></head><body><main>
+<a href="/">← Workstation</a><h1>Quant research library</h1>
+<p id="inventory" role="status">Loading strategy index…</p>
+<p class="muted">Research ideas awaiting validation. Priority reflects fit with the workstation, not expected profit. Source snippets have not been run.</p>
+<details open><summary>Best fits and implementation gaps</summary><div id="shortlist"></div></details>
+<details><summary>Research checklist</summary><div id="protocol"></div></details>
+<form id="search"><input id="query" aria-label="Search strategies" placeholder="Search momentum, ATR, grid…"><select id="source" aria-label="Repository"><option value="">Both repositories</option value="specs">101 strategy specs</option><option value="vault">Trading Vault</option></select><select id="language" aria-label="Language"><option value="">All languages</option><option>pinescript</option><option>python</option><option>javascript</option><option>specification</option><option>mylanguage</option><option>cpp</option></select><button>Search</button></form>
+<p id="results" role="status"></p><div class="scroll"><table><thead><tr><th>Strategy / source</th><th>Language / family</th><th>Review flags</th></tr></thead><tbody id="rows"></tbody></table></div><nav><button id="previous">Previous</button><span id="page"></span><button id="next">Next</button></nav>
+</main><script type="module">
+const $=id=>document.getElementById(id);let offset=0,total=0,request=0;
+const el=(tag,text)=>{const node=document.createElement(tag);node.textContent=text;return node};
+function sourceLink(row){const a=el('a',row.title);a.href=row.url;a.target='_blank';a.rel='noopener noreferrer';return a}
+async function load(){
+ const token=++request;$('results').textContent='Loading…';
+ try{
+  const params=new URLSearchParams({q:$('query').value,source:$('source').value,language:$('language').value,offset:String(offset),limit:'25'});
+  const response=await fetch('/api/quant-research?'+params,{signal:AbortSignal.timeout(8000)});if(!response.ok)throw new Error('Library unavailable');const data=await response.json();if(token!==request)return;
+  total=data.total;$('inventory').textContent=`${data.summary.total.toLocaleString()} indexed documents · ${data.summary.shortlisted} shortlisted · all unvalidated`;
+  $('rows').replaceChildren(...data.entries.map(row=>{const tr=el('tr',''),name=el('td','');name.append(sourceLink(row),el('small',row.source+' · UNVALIDATED'));tr.append(name,el('td',row.language+' · '+(row.families.join(', ')||'unclassified')),el('td',row.reviewFlags.join(', ')||'No automatic flags; manual review still needed'));return tr}));
+  $('shortlist').replaceChildren(...data.shortlist.map(pick=>{const card=el('article','');card.append(el('b',pick.id.replace(/^(specs|vault):/,'').replaceAll('-',' ')),el('p',pick.lane+' · '+pick.fit),el('p',pick.adaptation),el('small','Needs: '+pick.prerequisites.join('; ')));return card}));
+  const list=el('ol','');list.append(...data.protocol.stages.map(stage=>el('li',stage.replaceAll('-',' '))));$('protocol').replaceChildren(list,el('p','Required evidence: '+data.protocol.requiredEvidence.join('; ')),el('p',data.protocol.note));
+  $('results').textContent=total.toLocaleString()+' matches · flags indicate review needs, not confirmed defects';$('page').textContent=total?`${offset+1}–${Math.min(offset+25,total)} of ${total}`:'0 matches';$('previous').disabled=offset===0;$('next').disabled=offset+25>=total;
+ }catch(error){if(token===request)$('results').textContent='Could not load the research library: '+error.message;}
+}
+$('search').addEventListener('submit',event=>{event.preventDefault();offset=0;load()});$('previous').addEventListener('click',()=>{offset=Math.max(0,offset-25);load()});$('next').addEventListener('click',()=>{if(offset+25<total){offset+=25;load()}});load();
+</script></body></html>

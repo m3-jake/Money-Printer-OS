@@ -1,4 +1,4 @@
-export const finite = value => Number.isFinite(Number(value)) ? Number(value) : null;
+export const finite = value => value !== null && value !== undefined && value !== '' && typeof value !== 'boolean' && Number.isFinite(Number(value)) ? Number(value) : null;
 
 export function tradeRows(rows = []) {
   return (Array.isArray(rows) ? rows : []).map(row => {

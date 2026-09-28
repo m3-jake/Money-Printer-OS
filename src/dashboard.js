@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { loadState, loadStateCached, stateStamp, readJournal, enqueueAction } from './store.js';
 import { cfg } from './config.js';
 import { readEvidenceMonitor } from './researchEvidenceStore.js';
+import { queryQuantResearch, quantResearchSummary } from './quantResearchCatalog.js';
 import { readResearchControlPlane, attachControlPlaneToMonitor, leaderboardRows, championPublicationView, controlPlaneFiles } from './researchControlPlane.js';
 import { seedProjectJournal } from './projectJournal.js';
 import { fitnessSnapshot, writeFitnessFiles, solanaFitnessParts, polymarketFitnessParts } from './fitnessLedger.js';
@@ -453,6 +454,10 @@ export function startDashboard() {
         });
         return res.end(html);
       }
+      if (req.method === 'GET' && u.pathname === '/quant-research') {
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'x-frame-options': 'DENY' });
+        return res.end(fs.readFileSync(path.join(ROOT, 'public', 'quant-research.html'), 'utf8'));
+      }
       if (req.method === 'GET' && u.pathname.startsWith('/assets/')) {
         const rel = decodeURIComponent(u.pathname.slice('/assets/'.length));
         const base = path.join(ROOT, 'public', 'assets');
@@ -546,7 +551,8 @@ export function startDashboard() {
       if (req.method === 'GET' && u.pathname === '/api/polymarket-us/combos') { const snap=await usComboSnapshot(); let paper=null; try{paper=paperBookView()}catch(e){paper={error:String(e.message||e)}} return json(res, {...snap,paper}); }
       if (req.method === 'GET' && u.pathname === '/api/polymarket-us/paper') return json(res, paperBookView());
       if (req.method === 'GET' && u.pathname === '/api/update') return json(res, updaterState());
-      if (req.method === 'GET' && u.pathname === '/api/research-monitor') return json(res, researchMonitorState());
+      if (req.method === 'GET' && u.pathname === '/api/research-monitor') return json(res, { ...researchMonitorState(), quantResearch: quantResearchSummary() });
+      if (req.method === 'GET' && u.pathname === '/api/quant-research') return json(res, queryQuantResearch({ query: u.searchParams.get('q') || '', source: u.searchParams.get('source') || '', family: u.searchParams.get('family') || '', language: u.searchParams.get('language') || '', offset: u.searchParams.get('offset') ?? 0, limit: u.searchParams.get('limit') ?? 50 }));
       if (req.method === 'GET' && u.pathname === '/api/research-control-plane') return json(res, researchPlane());
       if (req.method === 'GET' && u.pathname === '/api/fitness') return json(res, await fitnessNow());
       if (req.method === 'GET' && u.pathname === '/api/self-report/latest') { const r = latestSelfReport(DATA_DIR); return r ? json(res, r) : json(res, { ok: false, error: 'No self-report yet; the first one is written about a minute after start.' }, 404); }

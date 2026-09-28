@@ -1,3 +1,9 @@
+# Current integration — OS alpha.76 / Lab alpha.16
+
+The interrupted 16-task paper package and uncommitted quant library are integrated. Full source checks: OS 1,021 pass; Lab 279 pass. See reports/COMPLETION-2026-09-28.md. Installed status is established only by PAIRED-RELEASE.json and runtime commits after the paired installer succeeds. Historical records below do not override this entry. Real-money and paid-model execution stay disabled.
+
+---
+
 # Resumed source checkpoint - alpha.73 / Lab alpha.14
 
 See reports/RESUMED-RECOVERY-2026-09-28.md for the Desktop Commander continuation, tests, observed-depth practice valuation repair and remaining historical/external boundaries. Exact installed commits and hashes are recorded in PAIRED-RELEASE.json in both install roots after verification. Historical records below do not override that receipt.
@@ -26,9 +32,9 @@ authentic executable-price/tape evidence rather than weakening qualification gat
 paper-bankroll resets and the requested desktop/logo polish are part of this release, not follow-up
 tasks.
 
-## Profit Lab queue — 2026-09-27
+## Profit Lab queue — refreshed 2026-09-28
 
-Highest-leverage unfinished profitability task: Research Pro monetization v1. Revenue/funnel instrumentation already exists; do not duplicate it. Implement only on the isolated Profit Lab branch and keep monetization disabled by default. Gate read-only research detail, never trading/risk/execution. Exact scope: `docs/PROFIT-LAB-MONETIZATION-2026-09-27.md`. Acceptance requires the focused monetization suite plus the full `npm run test:all` before merge.
+Highest-leverage unfinished profitability task: Research Pro monetization v1. Revenue/funnel instrumentation already exists; do not duplicate it. Fresh GitHub verification: `main` = `eba1bc5bd905688c6ca36fe8b2858250ce983922` / `0.5.0-alpha.75`; monetization is still absent, and the Profit Lab monetization branch is 0 ahead / 23 behind. Refresh the isolated branch to that verified main before applying the alpha.75 package staged at `W:\money-printer-audit-artifacts\profit-lab\research-pro-v1-alpha75`. Keep monetization disabled by default and gate read-only research detail only, never trading/risk/execution. Acceptance requires `git diff --check`, the focused monetization suite, and the full `npm run test:all` before merge.
 
 Implementation and verification of the September 26 upgrade remain recorded in
 `reports/UPGRADE-IMPLEMENTATION-2026-09-26.md`; current operator documentation is

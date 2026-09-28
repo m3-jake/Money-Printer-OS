@@ -27,7 +27,7 @@ import { recordUniverse, postmortemTrade } from './research.js';
 import { supervisorTick } from './supervisor.js';
 import { proposeTrade, proposeExit, resolveProposal, expireProposals } from './proposals.js';
 import { runArbitragePaperTick } from './arbitragePoller.js';
-import { runShadowTick } from './shadowCollector.js';
+import { scheduleShadowTick } from './shadowCollector.js';
 import { routePaperProposal } from './paperRouting.js';
 import { memeIndex } from './indexer.js';
 import { mapLimit, sleep, compactError } from './utils.js';
@@ -188,7 +188,7 @@ async function enter(s, pick, manual = false) {
   const decision = isPaper ? recordPumpDecision(s, pumpSizingDecision(sizingState, effectiveConfig, pick, legacySizing), pick) : null;
   let size = decision ? decision.sizeSol : legacySizing.size;
   if (isAggressivePaper(s.runtime)) {
-    const returns=(s.history||[]).filter(t=>Number.isFinite(Number(t.returnPct))).slice(-40).map(t=>Number(t.returnPct)/100);
+    const returns=(s.history||[]).filter(t=>Number.isFinite(Number(t.returnPct))).slice(0,40).map(t=>Number(t.returnPct)/100);
     const avg=returns.length?returns.reduce((a,b)=>a+b,0)/returns.length:0;
     const variance=returns.length>1?returns.reduce((q,x)=>q+(x-avg)**2,0)/(returns.length-1):0;
     const cap=Math.min(Number(effectiveConfig.maxPositionSol||3),Number(decision?.allowedSol??3));
@@ -262,7 +262,7 @@ async function enter(s, pick, manual = false) {
     }
     const now=Date.now(),clips=isAggressivePaper(s.runtime)?splitTranches(size,{threshold:.25,clips:3,intervalMs:5000}):[{sizeSol:size,delayMs:0}],initialSize=clips[0].sizeSol;
     const routedExecution=estimateRoutedPaperExecution(pick,initialSize,Number(s.market?.solUsd||0),s.runtime,cfg.mode,(c,z,usd)=>estimatePaperExecution(c,z,usd,cfg.simulatedSlippageBps,cfg.simulatedFeeBps)),execModel=routedExecution.selected;
-    const sim=isAggressivePaper(s.runtime)?simulateAggressivePaperExecution(pick,initialSize,Number(s.market?.solUsd||0),{side:'BUY',now,seed:`pump-entry:${pick.mint}:${Math.floor(now/8000)}`}):simulatePumpPaperExecution(pick,initialSize,Number(s.market?.solUsd||0),execModel.slippageBps,execModel.feeBps,{side:'BUY',now,seed:`pump-entry:${pick.mint}:${Math.floor(now/8000)}`});
+    const sim=isAggressivePaper(s.runtime)?simulateAggressivePaperExecution(pick,initialSize,Number(s.market?.solUsd||0),{side:'BUY',now,seed:`pump-entry:${pick.mint}:${Math.floor(now/8000)}`}):simulatePumpPaperExecution(pick,initialSize,Number(s.market?.solUsd||0),cfg.simulatedSlippageBps,cfg.simulatedFeeBps,{side:'BUY',now,seed:`pump-entry:${pick.mint}:${Math.floor(now/8000)}`});
     if(sim.status==='REJECTED'||!(Number(sim.gross)>0)){
       if(decision) { decision.rejected=sim.reason||'modeled-no-fill'; decision.failedTransactionCostEvidence='UNKNOWN_NOT_CHARGED_AS_A_REAL_TRANSACTION'; }
       resolvePaperProposal('REJECTED');
@@ -498,13 +498,13 @@ async function updatePositions(s) {
     if(!action&&cfg.mode==='paper'&&Array.isArray(p.stagedTranches)&&p.stagedTranches.length&&Date.now()>=Number(p.stagedTranches[0].dueAt||0)){
       const clip=p.stagedTranches.shift(),clipSize=Math.max(0,Number(clip.sizeSol||0));
       const candidate={mint:p.mint,symbol:p.symbol,priceUsd:price,priceObservedAt:review.at,liq:Number(pair.liquidity?.usd||p.lastLiquidityUsd||0),executionScore:p.executionScore};
-      const trancheNow=Date.now(),sim=isAggressivePaper(s.runtime)?simulateAggressivePaperExecution(candidate,clipSize,Number(s.market?.solUsd||0),{side:'BUY',now:trancheNow,seed:`paper-tranche:${p.id}:${p.stagedTranches.length}`}):simulatePumpPaperExecution(candidate,clipSize,Number(s.market?.solUsd||0),cfg.simulatedSlippageBps,cfg.simulatedFeeBps,{side:'BUY',now:trancheNow,seed:`paper-tranche:${p.id}:${p.stagedTranches.length}`});
+      const trancheNow=Date.now(),sim=p.paperExecution?.model==='AGGRESSIVE_PAPER_V1'?simulateAggressivePaperExecution(candidate,clipSize,Number(s.market?.solUsd||0),{side:'BUY',now:trancheNow,seed:`paper-tranche:${p.id}:${p.stagedTranches.length}`}):simulatePumpPaperExecution(candidate,clipSize,Number(s.market?.solUsd||0),cfg.simulatedSlippageBps,cfg.simulatedFeeBps,{side:'BUY',now:trancheNow,seed:`paper-tranche:${p.id}:${p.stagedTranches.length}`});
       const basis=Math.max(0,Number(sim.gross||0)),fee=Math.max(0,Number(sim.feeSol||0)),debit=basis+fee,reserve=Number(p.pumpSizing?.reserveSol||cfg.minSolReserve);
       p.stagedRemainingSol=Math.max(0,Number(p.stagedRemainingSol||0)-clipSize);
       if(sim.status!=='REJECTED'&&basis>0&&s.cashSol-reserve+1e-9>=debit&&Number(p.sizeSol||0)+basis<=Number(p.pumpSizing?.allowedSol||p.requestedSizeSol)+1e-8){
         const before=Number(p.sizeSol||0),quantity=Math.max(0,Number(sim.filledQuantity||0)),oldQty=Math.max(0,Number(p.paperTokenQuantity||0));
         const receipt=paperCashReceipt({positionId:String(p.id),sequence:(p.paperCashEvents||[]).length,side:'BUY',postedAt:Date.now(),modeledFillAt:sim.fillAt,basisSol:basis,grossSol:basis,feeSol:fee,cashBeforeSol:s.cashSol,cashAfterSol:s.cashSol-debit});
-        s.cashSol-=debit;p.sizeSol=before+basis;p.remainingSol=Number(p.remainingSol||0)+basis;p.paperTokenQuantity=oldQty+quantity;p.entryPrice=(Number(p.entryPrice||price)*before+Number(sim.fillPriceUsd||price)*basis)/Math.max(1e-9,p.sizeSol);p.realizedSol=Number(p.realizedSol||0)-fee;p.feesSol=Number(p.feesSol||0)+fee;p.paperCashEvents.push(receipt);
+        s.cashSol-=debit;p.sizeSol=before+basis;p.remainingSol=Number(p.remainingSol||0)+basis;p.paperTokenQuantity=oldQty+quantity;p.entryPrice=(Number(p.entryPrice||price)*oldQty+Number(sim.fillPriceUsd||price)*quantity)/Math.max(1e-12,oldQty+quantity);p.realizedSol=Number(p.realizedSol||0)-fee;p.feesSol=Number(p.feesSol||0)+fee;p.paperCashEvents.push(receipt);
         (p.paperExecution.tranches||=[]).push({basisSol:basis,feeSol:fee,fillAt:sim.fillAt,slippageBps:sim.slippageBps});
         appendJournal({type:'paper-tranche-fill',mode:'PAPER',mint:p.mint,symbol:p.symbol,basisSol:basis,feeSol:fee,remainingStagedSol:p.stagedRemainingSol,executionModel:sim.executionModel});
       }else appendJournal({type:'paper-tranche-missed',mode:'PAPER',mint:p.mint,symbol:p.symbol,requestedSol:clipSize,reason:sim.reason||'reserve-or-sizing-cap',remainingStagedSol:p.stagedRemainingSol});
@@ -669,7 +669,7 @@ async function cycle() {
     const flows=flowSnapshot.value||[];s.system.onchainFlow={at:flowSnapshot.at,cached:flowSnapshot.cached,assets:flows.length,signals:flows.reduce((n,x)=>n+(x.signals||[]).length,0)};
     const byMint=new Map(flows.filter(x=>x.asset!=='SOL').map(x=>[x.asset,x]));
     for(const a of ranked){const flow=byMint.get(a.mint);if(!flow)continue;a.onchainSignals=flow.signals||[];if(a.onchainSignals.length)a.signalSource=a.onchainSignals[0].source;}
-    for(const f of flows)for(const signal of f.signals||[])appendJournal({type:'onchain-flow-signal',mode:'PAPER',asset:f.asset,...signal,at:flowSnapshot.at,cached:flowSnapshot.cached});
+    if(!flowSnapshot.cached)for(const f of flows)for(const signal of f.signals||[])appendJournal({type:'onchain-flow-signal',mode:'PAPER',asset:f.asset,...signal,at:flowSnapshot.at,cached:flowSnapshot.cached});
   }
   ranked.sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || b.fastEdgeScore - a.fastEdgeScore || b.explosionScore - a.explosionScore || b.executionScore - a.executionScore);
   s.system.metrics.analysisMs = Math.round(performance.now() - analysisStart);
@@ -763,7 +763,7 @@ async function cycle() {
   catch (e) { s.system.arbitragePaper = { error: compactError(e), ordersSubmitted: 0 }; }
   try { s.system.pumpfunPaper = await pumpfunPaperLane().maintain({ runtime: s.runtime, mode: cfg.mode, solUsd: s.market?.solUsd }); }
   catch (e) { s.system.pumpfunPaper = { error: compactError(e), ordersSubmitted: 0 }; }
-  try { s.system.shadowPaper = await runShadowTick(marketPlatform(), s, cfg.mode); }
+  try { s.system.shadowPaper = scheduleShadowTick(marketPlatform(), s, cfg.mode); }
   catch (e) { s.system.shadowPaper = { error: compactError(e), ordersSubmitted: 0 }; }
   if(cfg.mode==='paper'&&s.runtime?.profile==='AGGRESSIVE_PAPER'&&s.system.portfolioRisk?.some(x=>x.flatten)){
     for(const p of [...s.positions])paperSell(s,p,1,Number(p.lastPrice||p.entryPrice),'portfolio-drawdown-tier3',true);
@@ -828,7 +828,7 @@ async function main() {
   if (!once) openBrowser();
   const nativePaperLane = pumpfunPaperLane();
   const stream = once ? null : startProgramStream(event => {
-    appendJournal(event);
+    // startProgramStream owns bounded log persistence; do not duplicate every event.
     if(!event.programHints?.includes(PUMPFUN_PROGRAM_ID))return;
     const launch=parsePumpfunLaunch(event.logs,{signature:event.signature,ts:event.ts});if(!launch)return;
     const state = loadState();

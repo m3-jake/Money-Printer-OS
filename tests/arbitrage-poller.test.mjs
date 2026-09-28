@@ -25,7 +25,7 @@ test('recurring public-book scan creates a funded paper pair and settles both ob
     const account = JSON.parse(fs.readFileSync(poller.file)); assert.equal(account.open.length, 1); assert.ok(account.cashUsd < 1000);
     assert.equal(state.proposals[0].status, 'FILLED'); assert.equal(account.open[0].realVenueAtomicity, false);
     assert.equal((await poller.tick({ state, mode: 'paper' })).cached, true);
-    resolved = true; now += 60000; platform.arbitrageCandidates = () => ({ pairs: [] });
+    resolved = true; state.runtime.profile='FAIR'; now += 60000; platform.arbitrageCandidates = () => ({ pairs: [] });
     const closed = await poller.tick({ state, mode: 'paper' }); assert.equal(closed.settled, 1);
     const settled = JSON.parse(fs.readFileSync(poller.file)); assert.equal(settled.open.length, 0); assert.equal(settled.history[0].payoutUsd, 1); assert.ok(settled.cashUsd > 1000);
     assert.match(fs.readFileSync(poller.journal, 'utf8'), /arbitrage-paper-settlement/);

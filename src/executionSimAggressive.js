@@ -29,5 +29,5 @@ export function simulateAggressivePaperExecution(candidate, requestedSol, solUsd
   const sim=new OrderSimulator().simulate({order:{side:direction,notional:budget},market,friction,seed:seed||`aggressive-paper:${candidate?.mint||''}:${Math.floor(now/8000)}:${direction}`,now,mode:'PAPER'});
   if(direction==='BUY'&&sim.gross>0){const gross=Math.min(budget,budget*Number(sim.fillRatio||0)),scale=gross/sim.gross;sim.filledQuantity*=scale;sim.feeUsd*=scale;sim.gross=gross;sim.fills=(sim.fills||[]).map(f=>({...f,quantity:Number(f.quantity||0)*scale}));}
   sim.orderSubmittedAt=now;sim.fillAt=now+Math.max(0,Number(sim.latencyMs||0));
-  return {...sim,requestedSol:budget,feeSol:Number(sim.feeUsd||0),feeBps:estimate.feeBps,failurePct:estimate.failurePct,executionModel:'AGGRESSIVE_PAPER_V1',evidenceState:'MODELED_NOT_EXECUTABLE_RECEIPT'};
+  return {...sim,requestedSol:budget,feeSol:Number(sim.feeUsd||0),fillPriceUsd:sim.fillPrice==null?null:sim.fillPrice*solPrice,feeBps:estimate.feeBps,failurePct:estimate.failurePct,executionModel:'AGGRESSIVE_PAPER_V1',evidenceState:'MODELED_NOT_EXECUTABLE_RECEIPT'};
 }

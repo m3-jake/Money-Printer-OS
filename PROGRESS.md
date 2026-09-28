@@ -11,6 +11,8 @@
 11 — done — 6a0fbd1 — Added signed Kalshi API facade with exact demo-host enforcement, required weather/sports series, and bounded paper book.
 12 — done — 6f26d00 — Added a paper-only equities/ETF adapter and shared-book recorder; no broker order route is used.
 13 — done — 3ff047b — Shared proposeTrade routing now covers scanner, native sniper, prediction venues, and equities; per-class regimes preserve unknown observations, aggressive-paper-only strategy gates, manual venue contracts, unique IDs, and durable route records.
-14 — done — PENDING — Bounded recurring read-only shadow collection covers prediction, arbitrage, native, Solana, crypto and equities; observed depth and fee provenance recorded, unavailable inputs never fabricate divergence, No BBO corrected.
+14 — done — fbf9552 — Bounded recurring read-only shadow collection covers prediction, arbitrage, native, Solana, crypto and equities; observed depth and fee provenance recorded, unavailable inputs never fabricate divergence, No BBO corrected.
 15 — done — ddf5493 — Added a read-only dashboard qualification badge backed by paper metrics; it never changes live authority.
 16 — done — 5f09801 — Added a concise AGGRESSIVE_PAPER note, journal locations, Kalshi demo variables, LIVE IS STILL LOCKED callout, and progress pointer.
+
+Integration completed in alpha.76: all 16 checkpoints recovered into one release. See reports/COMPLETION-2026-09-28.md for regression fixes, source tests, and release boundaries. Experimental mode is opt-in; FAIR and existing bankroll/history are preserved.
