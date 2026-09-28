@@ -27,6 +27,7 @@ import { recordUniverse, postmortemTrade } from './research.js';
 import { supervisorTick } from './supervisor.js';
 import { proposeTrade, proposeExit, resolveProposal, expireProposals } from './proposals.js';
 import { runArbitragePaperTick } from './arbitragePoller.js';
+import { runShadowTick } from './shadowCollector.js';
 import { routePaperProposal } from './paperRouting.js';
 import { memeIndex } from './indexer.js';
 import { mapLimit, sleep, compactError } from './utils.js';
@@ -762,6 +763,8 @@ async function cycle() {
   catch (e) { s.system.arbitragePaper = { error: compactError(e), ordersSubmitted: 0 }; }
   try { s.system.pumpfunPaper = await pumpfunPaperLane().maintain({ runtime: s.runtime, mode: cfg.mode, solUsd: s.market?.solUsd }); }
   catch (e) { s.system.pumpfunPaper = { error: compactError(e), ordersSubmitted: 0 }; }
+  try { s.system.shadowPaper = await runShadowTick(marketPlatform(), s, cfg.mode); }
+  catch (e) { s.system.shadowPaper = { error: compactError(e), ordersSubmitted: 0 }; }
   if(cfg.mode==='paper'&&s.runtime?.profile==='AGGRESSIVE_PAPER'&&s.system.portfolioRisk?.some(x=>x.flatten)){
     for(const p of [...s.positions])paperSell(s,p,1,Number(p.lastPrice||p.entryPrice),'portfolio-drawdown-tier3',true);
     appendJournal({type:'portfolio-risk-flatten',mode:'PAPER',reason:'drawdown-tier3'});

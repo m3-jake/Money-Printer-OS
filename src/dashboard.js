@@ -29,7 +29,7 @@ import { paperSinglesBookView, placePaperSingle, markPaperSingles, resetPaperSin
 import { placePaperCombo, settlePaperCombos, setPaperAutopilot, resetPaperBook, paperBookView, startPaperLoops, stopPaperLoops, setPaperLabPolicy, rollbackPaperLabPolicy } from './polymarketUSPaper.js';
 import { usComboJournalView, usComboSnapshot, buildUSCombo, quoteUSCombo, placeUSCombo, cancelUSRfq, setUSComboSettings, settleUSCombos, forgetUSCombo, startUSComboLoops, setUSComboAutopilot } from './polymarketUSCombos.js';
 import { readApiUnitEconomics } from './apiUnitEconomics.js';
-import { shadowFill, appendShadowRowOnce } from './shadowLive.js';
+import { recordUSSingleShadow } from './shadowCollector.js';
 import { readShadowRows, shadowDivergenceReport } from './shadowReport.js';
 import { pumpfunPaperLane } from './pumpfunPaper.js';
 import { productEconomics, productIngestionAuthorized, productReadAuthorized } from './productEconomics.js';
@@ -536,11 +536,8 @@ export function startDashboard() {
       if (req.method === 'GET' && u.pathname === '/api/polymarket-us/account') return json(res, await polymarketUSAccount());
       if (req.method === 'GET' && u.pathname === '/api/polymarket-us/singles/markets') { const snap=await polymarketUSSnapshot();const wanted=(u.searchParams.get('category')||'').split(',').filter(Boolean);return json(res,{at:snap.at,categories:wanted.length?wanted:['weather','sports','culture','politics'],markets:filterUSMarketsByCategory(snap.opportunities||[],wanted.length?wanted:undefined)}); }
       if (req.method === 'GET' && u.pathname === '/api/polymarket-us/singles/paper') {
-        const started=Date.now(),book=paperSinglesBookView(),snap=await polymarketUSSnapshot(),markets=snap.opportunities||[],open=markPaperSingles(markets),byId=new Map(markets.map(m=>[String(m.slug||m.id||''),m]));
-        for(const p of open){const m=byId.get(p.marketId),bid=Number(m?.bid),ask=Number(m?.ask);if(!(bid>0&&ask>0&&p.ask>0))continue;
-          const fee=Number(m.takerFeePerContract||0),trade={id:p.id,mint:p.marketId,side:'BUY',price:p.ask,slippageBps:0},row=shadowFill({trade,liveBook:{bid,ask},latency:{p50Ms:Date.now()-started},feesBps:fee>0?fee/p.ask*10000:0,data:{bid,ask,observedAt:Number(snap.at||Date.now())}});
-          appendShadowRowOnce({...row,source:'polymarket-us-public-bbo',category:p.category,flagged:Number(row.divergenceBps)>100});
-        }
+        const started=Date.now(),book=paperSinglesBookView(),snap=await polymarketUSSnapshot(),markets=snap.opportunities||[],open=markPaperSingles(markets);
+        recordUSSingleShadow(open,snap,{file:path.join(DATA_DIR,'shadow-live.ndjson'),now:Date.now(),latencyMs:Date.now()-started});
         return json(res,{...book,open,shadowSource:'polymarket-us-public-bbo',orderPlaced:false});
       }
       if (req.method === 'GET' && u.pathname === '/api/shadow-report') { const rows=await readShadowRows(path.join(DATA_DIR,'shadow-live.ndjson'));return json(res,{...shadowDivergenceReport(rows,100),orderPlaced:false}); }
