@@ -2,7 +2,7 @@
 2 — done — 717a14b — Added journal analytics, confidence and decay summaries, cross-source price validation, and report/replay:journal CLI.
 3 — done — 949ee8a — Reused wallet scorecard research and added tracked Pump.fun buy signal tagging, trailing score ranking, and paper-only copy signal logging.
 4 — done — b2eb928 — Added event/outcome matcher, fee/slippage hurdle, opportunity journaling, and paper paired proposal record.
-5 — done — PENDING — Added rolling netflow/whale signal derivation and a shared TTL cache with fixture tests.
+5 — done — bb89a09 — Added rolling netflow/whale signal derivation and a shared TTL cache with fixture tests.
 6 — pending — — Kelly sizing and tranched entries.
 7 — pending — — Correlation-aware exposure and drawdown de-risking.
 8 — pending — — Aggressive paper profile and execution model.
