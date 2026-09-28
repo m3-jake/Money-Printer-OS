@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { matchMarkets, detectDislocation, proposePairedArbitrage } from '../src/arbitrage.js';
+import { matchMarkets, detectDislocation, proposePairedArbitrage, normalizeKalshiBook, scanArbitrageBooks } from '../src/arbitrage.js';
 
 const pair = () => [{ venue: 'polymarket', id: 'p1', event: 'Will ACME win the 2026 final?', outcome: 'Yes', ask: 0.42 }, { venue: 'kalshi', id: 'k1', event: 'Will ACME win the 2026 final?', outcome: 'Yes', ask: 0.48 }];
 
@@ -17,6 +17,14 @@ test('dislocation signal clears fee and slippage hurdle and orders cheap buy bef
   const [a, b] = pair(), result = detectDislocation(a, b, { feesBps: 50, slippageBps: 40, bufferBps: 10 });
   assert.equal(result.ok, true); assert.equal(result.legs[0].action, 'BUY'); assert.equal(result.legs[0].venue, 'polymarket'); assert.equal(result.legs[1].action, 'SELL');
   assert.equal(detectDislocation(a, { ...b, ask: 0.421 }, { feesBps: 50 }).reason, 'edge-below-costs');
+});
+
+test('uses executable asks and bids and normalizes Kalshi cents into contract prices',()=>{
+ const a={venue:'polymarket',id:'p',event:'Final',outcome:'Yes',ask:.4,bid:.38},b={venue:'kalshi',id:'k',event:'Final',outcome:'Yes',yes_ask:45,yes_bid:43};
+ const rows=scanArbitrageBooks({polymarket:[a],kalshi:[b],feesBps:100});
+ assert.equal(rows[0].legs[0].venue,'polymarket');assert.equal(rows[0].legs[1].price,.43);
+ assert.ok(Math.abs(rows[0].grossEdgeBps-750)<1e-8);assert.equal(normalizeKalshiBook(b).ask,.45);
+ assert.equal(detectDislocation({...a,ask:.44},{...b,yes_bid:43}).ok,false);
 });
 
 test('every opportunity is logged and paper paired proposals keep both legs together', () => {
