@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import BN from 'bn.js';
 import { PublicKey } from '@solana/web3.js';
-import { PUMP_SDK, PUMP_PROGRAM_ID, pumpIdl } from '@pump-fun/pump-sdk';
+import { PUMP_SDK, PUMP_PROGRAM_ID, pumpIdl } from '../src/pumpSdk.js';
 import { parsePumpfunLaunch } from '../src/pumpfun.js';
 import { buildNativePaperPlan, createNativePaperAdapter } from '../src/pumpfunNativePaper.js';
 import { createPumpfunPaperLane } from '../src/pumpfunPaper.js';

@@ -24,3 +24,6 @@ The installed FAIR profile is not switched to AGGRESSIVE_PAPER. Existing cash, l
 
 ## Release provenance and external limits
 Both installed archives were backed up before source editing. The paired updater must build clean committed source, smoke-test each archive, install as a verified pair, and write PAIRED-RELEASE.json in both application roots. Retain rollback archives and the source Git bundles. The Mac was offline at discovery; Mac installation is not claimed. This task does not forge signing keys, publish an unsigned updater manifest, accumulate a literal 24-hour observation window, or implement the separately queued Research Pro monetization project. The Lab repository has no origin remote; its verified local commit is preserved rather than inventing a remote destination.
+
+## Packaged-runtime compatibility follow-up
+The first alpha.76 archive smoke failed before any installation: an SDK transitive ESM import expected an Anchor named BN export unavailable in Electron Node 22.22.0. src/pumpSdk.js selects the SDK's published CommonJS export with createRequire, preserving the application's ESM modules and paper transport restrictions. All four native adapter tests then passed under the installed Electron runtime. A fresh clean-source build and paired archive smoke are still required before installation is considered complete.

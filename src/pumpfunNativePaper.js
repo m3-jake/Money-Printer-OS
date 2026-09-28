@@ -1,6 +1,6 @@
 import BN from 'bn.js';
 import { Connection, PublicKey, ComputeBudgetProgram, SystemProgram } from '@solana/web3.js';
-import { PUMP_SDK, PUMP_PROGRAM_ID, OnlinePumpSdk, getBuyTokenAmountFromSolAmount, getSellSolAmountFromTokenAmount } from '@pump-fun/pump-sdk';
+import { PUMP_SDK, PUMP_PROGRAM_ID, OnlinePumpSdk, getBuyTokenAmountFromSolAmount, getSellSolAmountFromTokenAmount } from './pumpSdk.js';
 import { cfg } from './config.js';
 import { isAggressivePaper } from './runtime.js';
 import { quoteRoundTrip, quoteExactInput, SOL_MINT } from './jupiterQuoteSampler.js';

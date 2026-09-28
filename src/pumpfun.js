@@ -1,4 +1,4 @@
-import { PUMP_SDK, PUMP_PROGRAM_ID, pumpIdl } from '@pump-fun/pump-sdk';
+import { PUMP_SDK, PUMP_PROGRAM_ID, pumpIdl } from './pumpSdk.js';
 import { isAggressivePaper } from './runtime.js';
 export const PUMPFUN_PROGRAM_ID = PUMP_PROGRAM_ID.toBase58();
 const CREATE_DISCRIMINATOR = Buffer.from(pumpIdl.events.find(x => x.name === 'CreateEvent').discriminator);
