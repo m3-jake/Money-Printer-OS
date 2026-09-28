@@ -140,3 +140,72 @@ test('a process killed mid-write still reports the error on the next boot', asyn
   assert.doesNotThrow(() => store.saveState(store.loadState()));
 });
 
+// P0.2: a streak of failures must stop /api/health saying ok, and one clean cycle must clear it.
+test('a streak of cycle errors degrades health until a clean cycle clears it', async () => {
+  const { store, recovery } = await fixture();
+  const threshold = recovery.cycleRecoveryView({ journal: store.readJournal }).degradeAfter;
+  assert.ok(threshold >= 1, 'the threshold comes from CYCLE_ERROR_DEGRADE_AFTER');
+  const record = () => recovery.recordCycleError({ error: new Error('cycle failed'), load: store.loadState, save: store.saveState, journal: store.appendJournal });
+  for (let i = 1; i < threshold; i++) {
+    const result = record();
+    assert.equal(result.consecutive, i);
+    assert.equal(result.degraded, false, `${i} failure(s) is below the ${threshold}-failure threshold`);
+    assert.notEqual(store.loadState().system.health, 'DEGRADED');
+  }
+
+  const failing = record();
+  assert.equal(failing.consecutive, threshold);
+  assert.equal(failing.degraded, true);
+  let persisted = store.loadState();
+  assert.equal(persisted.system.health, 'DEGRADED');
+  const diagnostic = persisted.system.diagnostics.find(d => d.code === recovery.CYCLE_ERROR_CODE);
+  assert.equal(diagnostic.level, 'ERROR', 'supervisorTick derives DEGRADED from ERROR diagnostics');
+  assert.match(diagnostic.message, new RegExp(`${threshold} consecutive cycle errors`));
+  assert.equal(persisted.system.health !== 'DEGRADED', false, 'this is the value /api/health turns into ok:false');
+
+  const view = recovery.cycleRecoveryView({ state: persisted, journal: store.readJournal });
+  assert.equal(view.degraded, true);
+  assert.equal(view.health, 'DEGRADED');
+  assert.equal(view.consecutive, threshold);
+  assert.equal(view.lastError, 'cycle failed');
+  assert.ok(view.lastErrorAt > 0);
+
+  // One cycle that finishes without throwing is enough to recover.
+  const clean = recovery.markCleanCycle({ state: persisted, save: store.saveState });
+  assert.deepEqual({ changed: clean.changed, cleared: clean.cleared, health: clean.health }, { changed: true, cleared: true, health: 'HEALTHY' });
+  persisted = store.loadState();
+  assert.equal(persisted.system.cycleErrors.consecutive, 0);
+  assert.equal(persisted.system.health, 'HEALTHY');
+  assert.equal(persisted.system.diagnostics.some(d => d.code === recovery.CYCLE_ERROR_CODE), false);
+  assert.equal(recovery.cycleRecoveryView({ state: persisted, journal: store.readJournal }).degraded, false);
+});
+
+test('a clean cycle with no streak writes nothing', async () => {
+  const { store, recovery } = await fixture();
+  let saves = 0;
+  const clean = recovery.markCleanCycle({ state: store.loadState(), save: () => { saves++; } });
+  assert.deepEqual(clean, { changed: false, cleared: false, consecutive: 0 });
+  assert.equal(saves, 0, 'the per-cycle reset must not add a second state write');
+});
+
+test('clearing the streak does not clear an unrelated degraded flag', async () => {
+  const { store, recovery } = await fixture();
+  const state = store.loadState();
+  state.system.diagnostics = [{ level: 'ERROR', code: 'RPC_DOWN', message: 'all RPC endpoints unhealthy' }];
+  state.system.health = 'DEGRADED';
+  state.system.cycleErrors = { consecutive: 2, total: 2 };
+  const clean = recovery.markCleanCycle({ state, save: store.saveState });
+  assert.equal(clean.changed, true);
+  assert.equal(clean.health, 'DEGRADED', 'the streak clears, the RPC failure does not');
+  assert.equal(store.loadState().system.health, 'DEGRADED');
+  assert.equal(store.loadState().system.cycleErrors.consecutive, 0);
+});
+
+test('the degradation threshold is configurable per call', async () => {
+  const { store, recovery } = await fixture();
+  const record = () => recovery.recordCycleError({ error: new Error('nope'), degradeAfter: 2, load: store.loadState, save: store.saveState, journal: store.appendJournal });
+  assert.equal(record().degraded, false);
+  assert.equal(record().degraded, true);
+  assert.equal(store.loadState().system.health, 'DEGRADED');
+});
+

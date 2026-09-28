@@ -36,7 +36,13 @@ P0.1 — done — — cycle catch-path crash + lost error counter
       mid-save-loop case that proves state.json is never torn and the journal row survives the restart.
       Fixed while writing it: `now = Date.now` (function, not timestamp) made timestamps vanish from
       journal rows via `JSON.stringify`.
-P0.2 — pending — — /api/health escalation after N consecutive cycle errors
+P0.2 — done — — /api/health escalation after N consecutive cycle errors
+      `CYCLE_ERROR_DEGRADE_AFTER` (default 3) in config; `recordCycleError` pushes a level `ERROR`
+      diagnostic `CYCLE_ERROR_STREAK` at the threshold, which is the input supervisorTick already
+      derives `DEGRADED` from, and `/api/health` now reports health/streak/lastError/degraded under
+      `cycleRecovery`. `markCleanCycle({state})` resets the streak on the first cycle that does not
+      throw — reusing the state the loop already loads, and writing nothing when no streak is set.
+      4 tests added; `test:recovery` 31 pass.
 P0.3 — pending — — discovery rate budget reconciliation
 P0.4 — pending — — per-cycle abort signal
 P0.5 — pending — — documented panic path

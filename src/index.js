@@ -7,7 +7,7 @@ import { discoverCandidates, refreshPair, refreshPositionPairs, discoveryHealth,
 import { analyze, explain, marketRegime } from './strategy.js';
 import { mintRisk, benchmarkRpcs } from './rpc.js';
 import { loadState, saveState, appendJournal, appendJournalBatch, drainActions, resetPaper } from './store.js';
-import { recordCycleError } from './cycleRecovery.js';
+import { recordCycleError, markCleanCycle } from './cycleRecovery.js';
 import { buyWithSol, sellTokenForSol, walletSolBalance } from './jupiter.js';
 import { startDashboard } from './dashboard.js';
 import { marketPlatform } from './core/platform.js';
@@ -759,6 +759,8 @@ async function main() {
     }
     if (once) { shutdown(); break; }
     const current = loadState();
+    // A cycle that did not throw clears the failure streak; nothing is written unless one was set.
+    markCleanCycle({ state: current });
     const sprintPaperLoop = cfg.mode === 'paper' && current.runtime?.profile === 'SPRINT';
     const systemCpu = Number(current.system?.metrics?.cpuPct || 0);
     let sprintIntervalSec = Math.min(cfg.scanIntervalSec, 2);

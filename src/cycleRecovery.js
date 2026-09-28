@@ -14,11 +14,15 @@
 // Nothing in this module throws: the caller is already handling a failure, and a throwing
 // recovery path is exactly the bug this file exists to remove.
 import { compactError } from './utils.js';
+import { cfg } from './config.js';
 import { loadState, saveState, appendJournal, readJournal } from './store.js';
 
 // Rows that prove a cycle failed even when state.json never changed.
 export const ERROR_JOURNAL_TYPES = Object.freeze(['error', 'error-persist-failed']);
 const ERROR_TYPES = new Set(ERROR_JOURNAL_TYPES);
+// The diagnostic that carries a failing streak into s.system.health, which supervisorTick derives
+// from diagnostics (ERROR -> DEGRADED, WARN -> CAUTION) and /api/health reports as ok: false.
+export const CYCLE_ERROR_CODE = 'CYCLE_ERROR_STREAK';
 
 // In-memory, process-lifetime: the last recovery save that could not be written.
 let saveFailure = null;
@@ -31,7 +35,10 @@ function safeJournal(journal, row) {
 
 // Records one failed cycle. Returns what actually survived, so the caller can log the truth
 // instead of assuming the state was written.
-export function recordCycleError({ error, load = loadState, save = saveState, journal = appendJournal, now = Date.now() } = {}) {
+// Mirrors supervisorTick's own derivation so a cleared streak cannot leave a stale DEGRADED behind.
+const healthFromDiagnostics = diagnostics => (diagnostics.some(d => d?.level === 'ERROR') ? 'DEGRADED' : diagnostics.some(d => d?.level === 'WARN') ? 'CAUTION' : 'HEALTHY');
+
+export function recordCycleError({ error, degradeAfter = cfg.cycleErrorDegradeAfter, load = loadState, save = saveState, journal = appendJournal, now = Date.now() } = {}) {
   const text = compactError(error);
   const code = codeOf(error);
   // 1. Journal first: this is the only write that cannot be refused by accounting validation.
@@ -63,6 +70,18 @@ export function recordCycleError({ error, load = loadState, save = saveState, jo
   };
   s.system.cycleErrors = cycleErrors;
 
+  // Consecutive failures are a different animal from one bad cycle: after `degradeAfter` in a row the
+  // engine is not scanning, so /api/health must stop saying ok. supervisorTick rebuilds health from
+  // diagnostics every cycle, so the diagnostic (not just the flag) is what keeps this honest.
+  const degraded = cycleErrors.consecutive >= degradeAfter;
+  if (degraded) {
+    s.system.diagnostics ||= [];
+    if (!s.system.diagnostics.some(d => d?.code === CYCLE_ERROR_CODE)) {
+      s.system.diagnostics.push({ level: 'ERROR', code: CYCLE_ERROR_CODE, message: `${cycleErrors.consecutive} consecutive cycle errors (last: ${text})` });
+    }
+    s.system.health = healthFromDiagnostics(s.system.diagnostics);
+  }
+
   // 3. Best-effort persist. A refusal is evidence, not a crash.
   try { save(s); }
   catch (saveError) {
@@ -73,11 +92,31 @@ export function recordCycleError({ error, load = loadState, save = saveState, jo
     };
     safeJournal(journal, { type: 'error-persist-failed', ...failure });
     saveFailure = failure;
-    return { journaled, persisted: false, saveFailed: true, stage: 'save', message: text, code, errors: s.stats.errors, consecutive: cycleErrors.consecutive, failure };
+    return { journaled, persisted: false, saveFailed: true, stage: 'save', message: text, code, errors: s.stats.errors, consecutive: cycleErrors.consecutive, degraded, failure };
   }
 
   saveFailure = null;
-  return { journaled, persisted: true, saveFailed: false, message: text, code, errors: s.stats.errors, consecutive: cycleErrors.consecutive };
+  return { journaled, persisted: true, saveFailed: false, message: text, code, errors: s.stats.errors, consecutive: cycleErrors.consecutive, degraded };
+}
+
+// A cycle that finished without throwing resets the streak, which is what un-degrades the engine.
+// The caller already has the state in hand (index.js loads it right after the cycle), so this costs
+// no extra read, and it writes nothing unless a streak is actually set.
+export function markCleanCycle({ state = null, load = loadState, save = saveState, now = Date.now() } = {}) {
+  let s = state;
+  try { s ||= load(); }
+  catch { return { changed: false, cleared: false, consecutive: 0 }; }
+  const previous = Number(s?.system?.cycleErrors?.consecutive || 0);
+  if (!previous) return { changed: false, cleared: false, consecutive: 0 };
+  s.system.cycleErrors = { ...s.system.cycleErrors, consecutive: 0, clearedAt: now };
+  s.system.diagnostics = (s.system.diagnostics || []).filter(d => d?.code !== CYCLE_ERROR_CODE);
+  // Only the streak's own degradation is cleared: any other ERROR diagnostic keeps the engine DEGRADED.
+  if (s.system.health === 'DEGRADED') s.system.health = healthFromDiagnostics(s.system.diagnostics);
+  try { save(s); }
+  catch (saveError) {
+    return { changed: true, cleared: false, consecutive: previous, clearedStreak: true, saveFailed: true, message: compactError(saveError) };
+  }
+  return { changed: true, cleared: true, consecutive: 0, previous, health: s.system.health };
 }
 
 // Called after a cycle that did not throw. Kept here so /api/health has one place to ask.
@@ -89,15 +128,25 @@ export function resetRecoverySaveFailure() { saveFailure = null; }
 
 // Live view for /api/health: memory plus the journal tail, so a refused save is visible even
 // after a restart (the journal row outlives the process that could not persist the counter).
-export function cycleRecoveryView({ journal = readJournal, limit = 200, now = Date.now(), windowMs = 10 * 60_000 } = {}) {
+// Pass the state in and it also reports the streak that /api/health turns into ok: false.
+export function cycleRecoveryView({ state = null, degradeAfter = cfg.cycleErrorDegradeAfter, journal = readJournal, limit = 200, now = Date.now(), windowMs = 10 * 60_000 } = {}) {
   let rows = [];
   try { rows = journal(limit) || []; } catch { rows = []; }
   const recent = rows.filter(row => ERROR_TYPES.has(row?.type) && now - Number(row?.ts || 0) <= windowMs);
+  const consecutive = cycleErrorStreak(state);
+  const health = state?.system?.health || null;
   return {
     ok: !saveFailure,
     saveFailed: !!saveFailure,
     lastSaveFailure: saveFailure,
     pendingErrorRows: recent.length,
     lastErrorRow: recent.length ? recent[recent.length - 1] : null,
+    health: health || 'UNKNOWN',
+    consecutive,
+    degradeAfter,
+    lastError: state?.system?.lastError || null,
+    lastErrorAt: state?.system?.lastErrorAt || null,
+    // What /api/health's own ok:false is about, stated once so the HUD does not have to infer it.
+    degraded: health === 'DEGRADED' || consecutive >= degradeAfter,
   };
 }

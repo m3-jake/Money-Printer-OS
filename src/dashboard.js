@@ -500,7 +500,7 @@ export function startDashboard() {
           diagnostics: s.system?.diagnostics || [],
           // A cycle error whose recovery save was refused is invisible in state.json; this is where
           // it becomes visible (in-memory flag + the journal rows that outlive the process).
-          cycleRecovery: cycleRecoveryView(),
+          cycleRecovery: cycleRecoveryView({ state: s }),
           switches: traderSwitches({ readiness: (() => { try { return robinhoodReadiness(); } catch { return null; } })(), state: s }),
         });
       }
