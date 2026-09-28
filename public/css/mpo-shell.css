@@ -270,8 +270,8 @@ img.sky-cloud,
   right: 18px;
   bottom: calc(var(--task) + 10px);
   z-index: 7;
-  width: min(520px, calc(100vw - 128px));
-  max-height: 180px;
+  width: min(620px, calc(100vw - 128px));
+  max-height: 300px;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
@@ -289,6 +289,19 @@ img.sky-cloud,
   background: linear-gradient(90deg, #001c1699, #001c1644 72%, transparent);
   border-left: 2px solid #66ff66;
   white-space: normal;
+  animation: moneyEventLife 75s linear both;
+  animation-delay: var(--event-age, 0s);
+}
+@keyframes moneyEventLife {
+  0%, 58% { opacity: 1; transform: translateX(0); }
+  82% { opacity: .38; }
+  100% { opacity: 0; transform: translateX(10px); }
+}
+.mpo-low-motion .money-event { animation-name: moneyEventFadeOnly; }
+@keyframes moneyEventFadeOnly {
+  0%, 58% { opacity: 1; }
+  82% { opacity: .38; }
+  100% { opacity: 0; }
 }
 .money-event span { color: #9db5aa; font-weight: 400; margin-right: 5px; }
 .money-event.ambient { color: #c7ffd0; border-left-color: #5eefff; }

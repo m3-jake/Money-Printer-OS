@@ -203,6 +203,25 @@ test('integrated FX is profit-only money rain/pile with no fire', () => {
   assert.match(css, /prefers-reduced-motion/);
 });
 
+test('desktop keeps only platform-scale launchers; Command Center owns the supporting desks', () => {
+  for (const [id, label] of [['arbitrage','Arbitrage'],['stocks','Stocks'],['macro','Macro'],['edgar','EDGAR'],['weather','Weather'],['sports','Sports'],['wire','Wire']]) {
+    assert.match(html, new RegExp("\\['" + id + "','" + label + "'[^\\]]*,'command'\\]"));
+  }
+  const desktop = html.match(/const DESKTOP_ICONS=\[([^\]]+)\]/)?.[1] || '';
+  for (const id of ['arbitrage','stocks','macro','edgar','weather','sports','wire']) assert.doesNotMatch(desktop, new RegExp("['\"]" + id + "['\"]"));
+  assert.match(desktop, /['"]command['"]/);
+});
+
+test('desktop event feed is roomier, expires entries, and money shares the cloud breeze direction', () => {
+  assert.match(html, /MONEY_EVENT_LIFE_MS=75000/);
+  assert.match(html, /moneyEvents\.slice\(-12\)/);
+  assert.match(css, /max-height:\s*300px/);
+  assert.match(css, /@keyframes moneyEventLife/);
+  assert.match(css, /animation-delay:\s*var\(--event-age/);
+  assert.match(html, /function fxWind\(t\)\{return 34\+/);
+  assert.match(html, /b\.vx=fxRand\(14,30\)/);
+});
+
 test('Journal is a first-class desktop surface', () => {
   assert.match(html, /\['journal','Journal','JRN','dark'\]/);
   assert.match(html, /DESKTOP_ICONS=\[[^\]]*['"]journal['"]/);
