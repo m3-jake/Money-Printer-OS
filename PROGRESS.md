@@ -252,7 +252,7 @@ Regression sweep after P1.5 (`npm run test:all`, exit 0, this machine — every 
 **30 targets, 947 tests, 0 failures.** Before P1.4 the same command died at `test:robinhood` and the
 five targets after it never ran.
 
-## P2 status: 3 of 4 done (P2.1, P2.2, P2.3)
+## P2 status: complete (P2.1–P2.4; P2.4 measured and skipped, see its ledger entry)
 
 P2.1 — done — — research-state.json backup/validate parity, with the one asymmetry documented
       Measured first, on a temp data dir: `state.json` listing `research.externalized`, the sections in
@@ -354,7 +354,48 @@ P2.3 — done — — split robinhoodAutoTrader.js by seam: 922 lines → 709 + 
       (963 tests, of which the only two not passing are the standing `# SKIP` integration placeholders — the Jupiter
       sibling-freeze pair in `test:robinhood-equities` and the trader→Lab Kalshi handoff in `test:upgrade` — both
       untouched by this change; counts otherwise identical to the P2.2 baseline).
-P2.4 — pending — — split core/platform.js by seam if clean, else skip + note
+P2.4 — skipped on measurement — — split core/platform.js by seam: no clean seam (597 lines, 71,350 bytes, 53 members)
+      Measured first, with a member/field parser over the file and a call probe over `src/`, against the rule P2.3
+      used: a module may move only if it owns no live loop state and no real order path, and only behind an
+      injected-deps seam, so callers see no change. `core/platform.js` turns out to be a *facade*, not a tangle:
+      `store` is read by 33 of its 53 members, `bus` and `providers` by 11, `ledger` and `dataDir` by 10,
+      `legacyReaders` by 9. 43 of the 53 are called from `src/` outside the class — `src/core/http.js`, the
+      `/api/platform/*` dispatcher, reaches all of them except `publishPredictionHandoff` and `setLegacyReaders`
+      (wired from `dashboard.js:448,458`), `src/scoreboard.js` drives the same instance — and 37 members have no
+      internal caller at all. The file's size is the breadth of a public surface, so any split has to be judged by
+      what it actually de-couples, not by the line count.
+      The money-adjacent part cannot move at all: `src/core/brokers.js` and `src/core/paperTrading.js` hold the
+      platform and re-enter it as fields and calls (`platform.store` ×6, `platform.risk` ×6, `platform.strategies`
+      ×3, `platform.deposit` ×2, `platform.executePaper` ×2, plus `.ledger`, `.propose`, `.snapshot`), i.e. the paper
+      order path runs *through* those fields; a seam there would change callers by definition.
+      Sized by cluster: trading core (book/propose/execute/pairs) 120 lines/22 %, Market Lab + prediction 88/14 %,
+      legacy accounting + strategies 77/11 %, stocks adapters 15/2 %, diagnostics + close 38/7 %, research/event
+      pages 219/**40 %**. The 40 % cluster is the one worth moving and the one the rule forbids: it owns six mutable
+      caches (`macroCache`, `weatherCache`, `sportsCache`, `wireFeeds`, `whaleSeenTs`, `eventsCache`) whose ages
+      `diagnostics` reports, and its fetchers are per-instance injection points that *tests* assign —
+      `p.macroPaceMs=0` (tests/market-core.test.mjs:541,582), `p.sportsFetch=…` (:588), `p.wireFetch=…` (:617),
+      `p.edgar={…}` + `p.summarize=…` (:796). `strategies` has to stay a field regardless, whatever is extracted
+      (`platform.strategies`, src/core/http.js:20,21,54; `p.strategies.register/transition/history`,
+      tests/market-core.test.mjs:699,704). Extracting that cluster means moving the caches' owner and rewriting the
+      tests' injection points — a refactor of the injection contract, not a seam.
+      The one cluster that does pass the rule is Market Lab + prediction: 88 lines / 9,991 bytes (14.0 %), owning its
+      own state (`replays`, `labPool`, touched nowhere outside the class), needing only `{store, dataDir, strategies}`
+      as deps, holding no order path, and acyclic (platform → platformLab → replay.js / labWorker.js /
+      predictionExperiment.js). Declined as a lateral move rather than a de-coupling: 597 → ≈520 lines and 71,350 →
+      ≈62 KB (still fourth in the largest-module table, AUDIT.md:40) while still on `store`/`strategies`, at the cost
+      of a second facade layer (`http.js → platform.labRun → platformLab.labRun → replay.js`, against today's one),
+      eleven delegating wrappers, `CODE_VERSION` through the deps bag, and two extra seam calls from
+      `diagnostics`/`close`. Recorded as the first extraction if the file grows a fourth surface group, or once the
+      research cluster's fetchers and caches stop being per-instance injection points.
+      Why nothing tests this: no file in `tests/` or `scripts/` reads `core/platform.js` as source text or pins its
+      layout — the only `readFileSync` of a `platform.js` in the suite is the HUD panel, `public/js/mpo-platform.js`
+      (tests/hud-resilience.test.mjs:57,64) — so the file's shape is not a contract, and the decision was made on
+      the coupling measurements above rather than on a gate. `PROGRESS.md` is read by no target.
+Regression sweep after P2.4: `npm run test:all` exit 0 — 30 targets, 961 pass, 0 fail, 0 cancelled, every target ran
+      (963 tests, of which the only two not passing are the standing `# SKIP` integration placeholders — the Jupiter
+      sibling-freeze pair in `test:robinhood-equities` and the trader→Lab Kalshi handoff in `test:upgrade` — both
+      untouched here); counts identical to the P2.3 baseline. This entry is docs-only and no target reads `PROGRESS.md`.
+
 P3.1 — pending — — recompress public logo PNG → webp if no code path needs PNG
 P3.2 — pending — — stateVersion field + migration stub
 P3.3 — pending — — npm audit in CI as non-blocking telemetry
