@@ -63,7 +63,34 @@ P0.4 — done — — per-cycle abort signal
       clean cycle; `shutdown()` aborts the live budget so a fetch cannot hold the process open.
       Live smoke: one real cycle (`--once`, temp data dir) → exit 0, health HEALTHY, 0 errors, no
       aborts; `fanoutBatches` 3 vs the old 32 and `budgetRejects` 0 (see below).
-P0.5 — pending — — documented panic path
+P0.5 — done — — documented panic path
+      `docs/RUNBOOK-PANIC.md`: the kill switch is documented as an *entry* gate (not a stop button),
+      the process stop paths (desktop supervisor stdin, SIGINT/SIGTERM → `shutdown()` → exit 0), how
+      to read `/api/health` during an incident (every field of P0.1–P0.4 plus `ok`/`health`/
+      `lastCycle`/`diagnostics`), what a refused save leaves behind versus backup recovery versus
+      `STATE_RECOVERY_REQUIRED` (exit 1), the reset/clear-error actions, the switches, and the exit
+      codes. `tests/panic-runbook.test.mjs` is a drift test: it fails if the runbook names an
+      endpoint, action, diagnostic code, journal row, exit code or default that the source no longer
+      has (it already caught two of my own doc gaps). Wired into `test:unattended` (16 pass).
+      README "More" now links both the runbook and this ledger.
+
+## P0 status: complete (P0.1–P0.5)
+
+All five items are done, one commit each, on top of `5ff94a0` (verification) — `d034c69`, `d3cf886`,
+`7f141ef`, `dc30bfa`, and the P0.5 commit. Verified per item by the targets named above plus a real
+one-cycle run (`--once`, temp data dir, paper mode): exit 0, `HEALTHY`, 0 errors, 0 aborts,
+`budgetRejects` 0, fan-out 3 batches instead of 32.
+
+Two things to know before P1:
+
+- **V7 was disproven**, so P1.3's premise changes: `tradeSizeSol` — not `riskPerTradePct` — is the
+  binding constraint at the default profile. The fix (a sizing readout) is still worth doing; the
+  *comment* must state the measured truth.
+- **The `test:all` baseline still fails on `test:robinhood`** (pre-existing, `sync-robinhood-panel
+  --check` cannot find the panel markers in `public/dashboard.html`), which skips the five targets
+  chained after it. P1.4 is the item that addresses test wiring; it should either fix the panel
+  markers or make that target's failure not hide the rest.
+
 P1.1 — pending — — reconciliation check (legacy float vs core ledger) + promotion refusal
 P1.2 — pending — — split /api/state (keep ETag pure state, add /api/telemetry)
 P1.3 — pending — — sizing dial readout (premise corrected by V7)
