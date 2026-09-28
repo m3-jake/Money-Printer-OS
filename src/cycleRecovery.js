@@ -34,11 +34,12 @@ function safeJournal(journal, row) {
   try { journal(row); return true; } catch { return false; }
 }
 
-// Records one failed cycle. Returns what actually survived, so the caller can log the truth
-// instead of assuming the state was written.
-// Mirrors supervisorTick's own derivation so a cleared streak cannot leave a stale DEGRADED behind.
+// Mirrors supervisorTick's own derivation (ERROR -> DEGRADED, WARN -> CAUTION), so clearing a streak
+// cannot leave a stale DEGRADED behind.
 const healthFromDiagnostics = diagnostics => (diagnostics.some(d => d?.level === 'ERROR') ? 'DEGRADED' : diagnostics.some(d => d?.level === 'WARN') ? 'CAUTION' : 'HEALTHY');
 
+// Records one failed cycle. Returns what actually survived, so the caller can log the truth
+// instead of assuming the state was written.
 export function recordCycleError({ error, degradeAfter = cfg.cycleErrorDegradeAfter, load = loadState, save = saveState, journal = appendJournal, now = Date.now() } = {}) {
   const text = compactError(error);
   const code = codeOf(error);

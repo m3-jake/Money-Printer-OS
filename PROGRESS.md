@@ -91,6 +91,29 @@ Two things to know before P1:
   chained after it. P1.4 is the item that addresses test wiring; it should either fix the panel
   markers or make that target's failure not hide the rest.
 
+## Regression sweep after P0.5 (every target, this machine)
+
+All green except the one pre-existing failure, which reports the *same* error as the pre-P0 baseline
+(`Error: Robinhood panel boundaries not found`), so it is not a regression:
+
+| Target | Result | Target | Result |
+|---|---|---|---|
+| test:recovery | 40 pass | test:research | 46 pass |
+| test:discovery | 7 pass | test:evidence | 60 pass |
+| test:solana | 28 pass | test:poly-research-eval | 14 pass |
+| test:turnover | 8 pass | test:visual | 66 pass |
+| test:updater | 24 pass | test:release-gate | 7 pass |
+| test:execution | 11 pass | test:latency | 7 pass |
+| test:unit-economics | 14 pass | **test:robinhood** | **exit 1 — pre-existing** |
+| test:product-economics | 13 pass | test:robinhood-equities | 15 pass |
+| test:settlement | 18 pass | test:lane-contracts | 90 pass |
+| test:polymarket-us | 18 pass | test:fitness | 22 pass |
+| test:combos | 73 pass | test:unattended | 16 pass |
+| test:edge-robustness | 5 pass | test:upgrade | 21 pass |
+| test:accounting | 13 pass | test:evolution | 15 pass |
+| test:replay | 24 pass | test:lab-link | 28 pass |
+| test:experiments | 9 pass | | |
+
 P1.1 — pending — — reconciliation check (legacy float vs core ledger) + promotion refusal
 P1.2 — pending — — split /api/state (keep ETag pure state, add /api/telemetry)
 P1.3 — pending — — sizing dial readout (premise corrected by V7)
