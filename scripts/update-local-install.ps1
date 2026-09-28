@@ -3,11 +3,11 @@
 # Run by double-clicking "Update Money Printer.cmd" on the Desktop. Unsigned local builds, as before.
 # Rollback: each resources folder keeps app.asar.backup-<timestamp>; copy it back over app.asar.
 #   -BuildOnly   build and boot-test only; never stops, swaps or starts anything (for testing this script).
-param([switch]$BuildOnly)
+param([switch]$BuildOnly, [switch]$NonInteractive)
 $ErrorActionPreference = 'Stop'
 # One run at a time: a second double-click while this one is working just says so and exits.
 $mutex = New-Object System.Threading.Mutex($false, 'Local\MoneyPrinterLocalUpdate')
-if (-not $mutex.WaitOne(0)) { Write-Host 'An update is already running in another window. Let that one finish.' -ForegroundColor Yellow; Read-Host 'Press Enter to close'; exit 1 }
+if (-not $mutex.WaitOne(0)) { Write-Host 'An update is already running in another window. Let that one finish.' -ForegroundColor Yellow; if (-not $NonInteractive) { Read-Host 'Press Enter to close' }; exit 1 }
 $stamp  = Get-Date -Format 'yyyyMMdd-HHmmss'
 $mpoRepo = 'W:\money-printer-os'
 $labRepo = 'W:\money-printer-evolution-lab'
@@ -17,7 +17,7 @@ $work   = Join-Path $env:USERPROFILE "Desktop\Money Printer OS\update-$stamp"
 New-Item -ItemType Directory -Force $work | Out-Null
 $log = Join-Path $work 'update.log'
 function Say($m, $c = 'Gray') { Write-Host $m -ForegroundColor $c; Add-Content $log $m -Encoding UTF8 }
-function Fail($m) { Say "FAILED: $m" Red; Say "Nothing installed was changed unless noted above. Log: $log" Yellow; Read-Host 'Press Enter to close'; exit 1 }
+function Fail($m) { Say "FAILED: $m" Red; Say "Nothing installed was changed unless noted above. Log: $log" Yellow; if (-not $NonInteractive) { Read-Host 'Press Enter to close' }; exit 1 }
 # Node/npm print warnings (e.g. DEP0190) on stderr. Windows PowerShell 5.1 turns redirected stderr
 # into error records, which 'Stop' made fatal and silently killed the first version of this script.
 # Here stderr is just output; only the exit code decides success.
@@ -29,7 +29,7 @@ function Run($what, [scriptblock]$cmd) {
   Add-Content $log ($out -join "`r`n") -Encoding UTF8
   if ($code -ne 0) { Fail "$what (exit $code)" }
 }
-trap { Say "FAILED: unexpected error: $($_.Exception.Message)" Red; Say "Log: $log" Yellow; Read-Host 'Press Enter to close'; exit 1 }
+trap { Say "FAILED: unexpected error: $($_.Exception.Message)" Red; Say "Log: $log" Yellow; if (-not $NonInteractive) { Read-Host 'Press Enter to close' }; exit 1 }
 
 Say "Money Printer local update  $stamp" Green
 Say "Build folder: $work"
@@ -74,6 +74,16 @@ Run 'Building Evolution Lab' { node scripts/package-windows.mjs --asar-only "$la
 Pop-Location
 if (-not (Test-Path $labAsar)) { Fail "no Lab app.asar at $labAsar" }
 
+Run 'Boot-testing the new Evolution Lab archive' {
+  $previousElectronMode = $env:ELECTRON_RUN_AS_NODE
+  try {
+    $env:ELECTRON_RUN_AS_NODE = '1'
+    & (Join-Path $labApp 'Money Printer Evolution Lab.exe') (Join-Path $mpoRepo 'scripts\smoke-lab-archive.mjs') --asar $labAsar
+  } finally {
+    $env:ELECTRON_RUN_AS_NODE = $previousElectronMode
+  }
+}
+
 $mpoBuildInfo = Join-Path $mpoAsarDir 'BUILD-INFO.json'
 $labBuildInfo = "$labAsar.build.json"
 if (-not (Test-Path $mpoBuildInfo)) { Fail "Money Printer build provenance missing: $mpoBuildInfo" }
@@ -83,7 +93,7 @@ $labBuild = Get-Content $labBuildInfo -Raw | ConvertFrom-Json
 $mpoCommit = if ($mpoBuild.sourceCommit) { $mpoBuild.sourceCommit } else { $mpoBuild.commit }
 $labCommit = $labBuild.commit
 Say "Release pair: MPO $($mpoBuild.packageVersion) @ $($mpoCommit.Substring(0,7)) + Lab $($labBuild.packageVersion) @ $($labCommit.Substring(0,7))" Green
-if ($BuildOnly) { Say "`nBuild-only run: both archives built and the MPO build booted. Nothing installed was touched." Green; exit 0 }
+if ($BuildOnly) { Say "`nBuild-only run: both archives built and both archived engines boot-tested. Nothing installed was touched." Green; exit 0 }
 
 # 2. Stop both apps: ask politely, then force whatever is left (children included).
 function Stop-App($name) {
@@ -141,7 +151,7 @@ function Wait-Health($url, $seconds = 35) {
   while ((Get-Date) -lt $deadline) {
     try {
       $h = Invoke-RestMethod -Uri $url -TimeoutSec 2
-      if ($h.ok -eq $true) { return $h }
+      if ($h.ok -eq $true -and ((-not $h.PSObject.Properties['health']) -or $h.health -in @('HEALTHY','DEGRADED'))) { return $h }
     } catch {}
     Start-Sleep -Milliseconds 500
   }
@@ -161,6 +171,7 @@ Start-Process (Join-Path $mpoApp 'Money Printer OS.exe')
 $mpoHealth = Wait-Health 'http://127.0.0.1:8792/api/health'
 $mpoState = Wait-Json 'http://127.0.0.1:8792/api/state'
 $labHealth = Wait-Health 'http://127.0.0.1:8793/api/health'
+$researchState = Wait-Json 'http://127.0.0.1:8792/api/platform/intelligence'
 $healthError = $null
 if (-not $mpoHealth) { $healthError = 'Money Printer OS health endpoint did not recover' }
 elseif (-not $mpoState) { $healthError = 'Money Printer OS state endpoint did not recover' }
@@ -168,6 +179,7 @@ elseif ($mpoHealth.switches.paperOnlyBuild -ne $true -or $mpoHealth.switches.rea
 elseif ($mpoState.build.version -ne $mpoBuild.packageVersion) { $healthError = "Money Printer OS version mismatch: expected $($mpoBuild.packageVersion), got $($mpoState.build.version)" }
 elseif ($mpoState.build.provenance.sourceCommit -ne $mpoCommit) { $healthError = "Money Printer OS commit mismatch: expected $mpoCommit, got $($mpoState.build.provenance.sourceCommit)" }
 elseif ($mpoState.build.provenance.sourceDirty -eq $true) { $healthError = 'Money Printer OS reports a dirty packaged source' }
+elseif (-not $researchState -or $researchState.budget.paidModelsEnabled -ne $false -or $researchState.cache.paidModelsEnabled -ne $false) { $healthError = 'Money Printer OS zero-credit research safety check failed' }
 elseif (-not $labHealth) { $healthError = 'Evolution Lab health endpoint did not recover' }
 elseif ($labHealth.service -ne 'money-printer-evolution-lab') { $healthError = 'port 8793 answered, but it was not Evolution Lab' }
 elseif ($labHealth.version -ne $labBuild.packageVersion) { $healthError = "Evolution Lab version mismatch: expected $($labBuild.packageVersion), got $($labHealth.version)" }
@@ -195,7 +207,7 @@ $pair = [ordered]@{
   machine = $env:COMPUTERNAME
   moneyPrinterOS = [ordered]@{ version = $mpoBuild.packageVersion; commit = $mpoCommit; sha256 = $mpoHash }
   evolutionLab = [ordered]@{ version = $labBuild.packageVersion; commit = $labCommit; sha256 = $labHash }
-  safety = [ordered]@{ paperOnlyBuild = $true; realEnabled = $false; liveActivationAllowed = $false }
+  safety = [ordered]@{ paperOnlyBuild = $true; realEnabled = $false; liveActivationAllowed = $false; paidModelsEnabled = $false }
 }
 $pairJson = $pair | ConvertTo-Json -Depth 6
 Set-Content (Join-Path $mpoApp 'PAIRED-RELEASE.json') $pairJson -Encoding UTF8
@@ -206,4 +218,4 @@ Copy-Item $labBuildInfo (Join-Path $labApp 'BUILD-INFO.json') -Force
 Say "`nDone. Verified pair: MPO $($mpoBuild.packageVersion) + Lab $($labBuild.packageVersion)." Green
 Say "Both live health endpoints passed; paired receipt written to both installs." Green
 Say "To undo: quit both, then restore BOTH resources\app.asar.backup-$stamp files as a pair." Yellow
-Read-Host 'Press Enter to close'
+if (-not $NonInteractive) { Read-Host 'Press Enter to close' }

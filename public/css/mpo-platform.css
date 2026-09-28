@@ -24,3 +24,5 @@
 .core-app form.core-inline{display:flex;gap:3px;align-items:center;flex-wrap:wrap}.core-app form.core-inline input{width:90px}
 .event-card.kind-sports{border-left-color:#7fe39a}.event-card.kind-weather{border-left-color:#7fd3ff}.event-card.kind-corporate{border-left-color:#ff8f8f}
 .edgar-ai{background:#141d2b;border:1px solid #4a5a7e;border-left:3px solid #a58cff;padding:6px 8px;font-size:11px}.edgar-ai .ai-uncited{opacity:.55}.edgar-ai .ai-cited{border-bottom:1px dotted #a58cff}
+
+.mission-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px}.mission-desk{padding:10px;border:1px solid #506760;background:#11231f}.mission-desk p{margin:8px 0;font-size:11px}.mission-desk .btn{width:100%;text-align:left}

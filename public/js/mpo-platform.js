@@ -6,7 +6,7 @@ window.MPOSPlatform = (() => {
   const when = v => v?new Date(v).toLocaleString():'Unavailable';
   const states={kalshi:{rows:[],cursor:null,search:'',category:'',detail:null},predictionmarkets:{rows:[],cursor:null,search:'',category:'',detail:null}};
   let snapshot=null,contracts=[],comparison=null,candidates=null,lastPair=null,error='',busy=false,hostApi=null;
-  let scoreboard=null,scoreboardError='';
+  let scoreboard=null,scoreboardError='',intelligence=null;
   const venues={kalshi:'kalshi',predictionmarkets:'polymarket'};
   const ids=['command','kalshi','arbitrage','predictionmarkets'];
   const hostOf=id=>id==='predictionmarkets'?'sportsbook':id==='arbitrage'?'command':id;
@@ -17,7 +17,7 @@ window.MPOSPlatform = (() => {
   }
   function platformGlance(id){
     const s=scoreboard?.summary||{},bad=diag?.sources?.filter(x=>!['CONNECTED','IDLE'].includes(x.status)).length||0;
-    if(id==='command')return `<div class="core-app"><div class="core-heading"><h2>COMMAND CENTER</h2><span class="mpo-badge">PAPER / RESEARCH</span></div><div class="core-lcd"><span>${s.beating||0} modules beating baseline</span><span>${s.notBeating||0} not beating</span><span>${s.notEnoughData||0} awaiting evidence</span><span>${bad} data sources need attention</span></div><p class="core-muted">Open Advanced for market desks, diagnostics, Events, risk controls and research detail.</p></div>`;
+    if(id==='command')return `<div class="core-app"><div class="core-heading"><h2>COMMAND CENTER</h2><span class="mpo-badge">PAPER / RESEARCH</span></div><div class="core-lcd"><span>${scoreboard?.paperSummary?.beating||0} paper books beating baseline</span><span>${scoreboard?.paperSummary?.notBeating||0} paper books not beating</span><span>${scoreboard?.paperSummary?.notEnoughData||0} paper books awaiting evidence</span><span>${bad} data sources need attention</span></div><p class="core-muted">Open Advanced for market desks, diagnostics, Events, risk controls and research detail.</p></div>`;
     return `<div class="core-app"><div class="core-heading"><h2>${escape(id==='kalshi'?'KALSHI':'POLYMARKET')}</h2><span class="mpo-badge">PAPER</span></div><p class="core-muted">Open Advanced for books, orders, depth and execution detail.</p></div>`;
   }
   const button=(action,label,extra='')=>`<button class="btn" data-core-action="${action}" ${extra} ${busy&&action!=='halt'?'disabled':''}>${label}</button>`;
@@ -38,15 +38,27 @@ window.MPOSPlatform = (() => {
     const rows=scoreboard.rows.map(r=>{const pf=r.profitFactor==='infinity'?'∞':r.profitFactor===null||r.profitFactor===undefined?'—':Number(r.profitFactor).toFixed(2),f=r.freshness||{};
       return `<tr class="sb-${led(r.beatsBaseline)}"><td><span class="core-led ${led(r.beatsBaseline)}" aria-hidden="true"></span>${escape(r.module)}<small>${escape(r.mode|| (r.kind==='lab'?'BACKTEST':'PAPER'))} · ${escape(r.book)}${r.kind==='lab'?' · '+escape(r.state):''}</small></td>
         <td class="num">${sbAmount(r.netPnl,r.unit)}${sbSpark(r.curve)}</td><td class="num">${r.closes}${r.per==='session'?'<small>sessions</small>':''}</td>
-        <td class="num">${r.hitRate===null||r.hitRate===undefined?'—':(r.hitRate*100).toFixed(0)+'%'} · ${pf}</td><td class="num">${sbAmount(r.netPerTrade,r.unit)}</td>
+        <td class="num">${r.hitRate===null||r.hitRate===undefined?'—':(r.hitRate*100).toFixed(0)+'%'} · ${pf}</td><td class="num">${sbAmount(r.netPerTrade,r.unit)}<small>avg win ${sbAmount(r.averageWin,r.unit)} / loss ${sbAmount(r.averageLoss,r.unit)} · closed-outcome DD ${sbAmount(r.realizedDrawdown,r.unit)}</small></td>
         <td>${escape(r.baseline.label)}<small>${r.baseline.netPnl===null?'unavailable':sbAmount(r.baseline.netPnl,r.unit)}</small></td>
         <td title="${escape(r.reason||'')}"><b class="sb-verdict">${escape(r.beatsBaseline)}</b></td>
         <td class="num${r.outlier?' sb-outlier':''}" title="${r.bestTrade?'Best trade '+sbAmount(r.bestTrade.pnl,r.unit):''}">${sbAmount(r.netWithoutBest,r.unit)}${r.outlier?'<small>ONE TRADE</small>':''}</td>
         <td class="sb-fresh ${escape(String(f.status||'').toLowerCase())}">${escape(f.status||'—')}<small>${sbAge(f.ageMs)}</small></td></tr>`;}).join('');
     return `<h3>Scoreboard <small>Is each module working? Net after fees, against its own baseline. Paper and shadow only.</small></h3>
-      <div class="core-lcd" role="status"><span><span class="core-led yes"></span>${s.beating} beating</span><span><span class="core-led no"></span>${s.notBeating} not</span><span><span class="core-led wait"></span>${s.notEnoughData} not enough data</span><span>${s.outlierDriven} one-trade</span><span>${s.stale} stale</span></div>
+      <div class="core-lcd" role="status"><span><span class="core-led yes"></span>${scoreboard.paperSummary?.beating??s.beating} paper books beating</span><span><span class="core-led no"></span>${scoreboard.paperSummary?.notBeating??s.notBeating} paper books not</span><span><span class="core-led wait"></span>${scoreboard.paperSummary?.notEnoughData??s.notEnoughData} paper books awaiting evidence</span><span>${s.outlierDriven} one-trade</span><span>${s.stale} stale</span></div>
       ${table(['Module / mode / book','Net after fees','Closes','Hit · PF','Net / trade','Baseline','Beats?','Without best','Data'],rows,'No modules reported.')}
       <p class="core-muted">${escape(scoreboard.rules)}${scoreboard.errors?.length?' Unreadable: '+escape(scoreboard.errors.map(e=>e.source).join(', '))+'.':''}</p>`;
+  }
+  function missionCard(){
+    const desks=[['kalshi','Kalshi','Kalshi'],['poly','Polymarket','Polymarket'],['pump','Pump.fun','Pump.fun'],['robinhood','Robinhood','Robinhood crypto'],['stocks','Stocks','Robinhood equities'],['lab','Market Lab',null],['evolution','Evolution Lab','Evolution Lab']];
+    const cards=desks.map(([id,label,match])=>{const rows=(scoreboard?.rows||[]).filter(r=>match&&r.module.startsWith(match)&&!r.id.startsWith('platform-robinhood'));
+      return `<section class="mission-desk">${button('open-'+id,label)}<small>${rows.length?rows.length+' reported books / lanes':id==='lab'?'Replay / walk-forward validation':'No paper results reported'}</small>${rows.slice(0,3).map(r=>`<p>${escape(r.book)}<br><b>${sbAmount(r.netPnl,r.unit)}</b> · n=${r.closes}<small>${escape(r.freshness?.status||'UNKNOWN')} · ${escape(r.beatsBaseline)}</small></p>`).join('')}</section>`;}).join('');
+    const b=intelligence?.budget;
+    return `<h3>Mission control <small>Paper execution only · real-money promotion requires future approval</small></h3><div class="mission-grid">${cards}</div>
+      <h3>Research attention <small>Local evidence triage · no model calls · findings never auto-promote strategies</small></h3>
+      ${intelligence?.lastError?'<p class="core-error">'+escape(intelligence.lastError)+'</p>':''}
+      ${table(['Priority / module','Why now','Finding / next test'],(intelligence?.research||[]).filter(r=>r.status==='NEEDS_EVIDENCE').slice(0,8).map(r=>`<tr><td>${r.priority} · ${escape(r.module)}<small>${escape(r.book)}</small></td><td>${escape(r.reason)}<small>${when(r.at)}</small></td><td>${escape(r.nextTest)}</td></tr>`).join(''),'No new evidence problems identified; continue forward observation.')}
+      ${b?`<p class="core-muted">Paid models DISABLED / local research enabled. SEC adapter budget: ${b.calls}/${b.limits.calls} calls · ${b.reservedTokens}/${b.limits.tokens} reserved tokens · ${b.actualTokens} reported tokens · ${b.uncertain} uncertain calls. ${escape(b.scope)}.</p>`:''}
+      <details><summary>Cross-venue opportunity memory</summary>${table(['Markets','Status','Conditional payoff','Evidence / blockers'],(intelligence?.opportunities||[]).map(o=>`<tr><td>${escape(o.market.join(' / '))}</td><td>${o.stale?'STALE':escape(o.status)}</td><td>${dollars(o.conditionalPayoffUsd)}</td><td>${escape([...o.supportingEvidence,...o.contradictingEvidence].join(' · '))}</td></tr>`).join(''),'Compare contracts in Arbitrage to record observed differences.')}<p class="core-muted">Conditional payoffs are not expected returns. Quotes expire after 30 seconds; settlement and non-atomic execution risks remain.</p></details>`;
   }
   function capabilityCard(value){
     const rows=Array.isArray(value)?value:value?.rows;if(!Array.isArray(rows))return '';
@@ -66,8 +78,9 @@ window.MPOSPlatform = (() => {
       <p class="core-muted">The stop persists across restarts. Orders already at a venue require reconciliation or cancellation in that program.</p>
       ${r.halted?button('resume','Resume core paper trading'):''}
       <div class="core-toolbar">${button('open-kalshi','Kalshi')}${button('open-poly','Polymarket')}${button('open-arbitrage','Arbitrage')}${button('refresh','Refresh')}</div>
-      ${eventsCard()}
+      ${missionCard()}
       ${scoreboardCard()}
+      <details><summary>Cross-market events and supporting evidence</summary>${eventsCard()}</details>
       ${markedRiskCard(r.metrics)}
       ${capabilityCard(snapshot.capabilities)}
       <h3>Ledger accounts <small>PAPER simulated funds · P/L below is PAPER</small></h3>
@@ -176,7 +189,7 @@ window.MPOSPlatform = (() => {
       <div class="core-toolbar">${['ALL','MACRO','SPORTS','WEATHER','CORPORATE'].map(k=>`<button class="btn ${eventKind===k?'on':''}" type="button" data-core-action="event-kind" data-kind="${k}">${k}${k!=='ALL'&&events.counts?` <small>${events.counts[k]??0}</small>`:''}</button>`).join('')}</div><div class="event-list">${(events.pages||[]).filter(p=>eventKind==='ALL'||p.kind===eventKind).map(card).join('')||'<p class="core-muted">No upcoming events with Kalshi ladders.</p>'}</div>${(events.errors||[]).length?`<p class="core-muted">${events.errors.map(escape).join(' · ')}</p>`:''}`;
   }
   let refreshing=null;
-  function refresh(){if(refreshing)return refreshing;refreshing=(async()=>{const [s,e,d]=await Promise.all([request('/status'),request('/entities?kind=Contract'),request('/diagnostics').catch(()=>null),refreshScoreboard()]);snapshot=s;contracts=e.entities;diag=d;error='';loadEvents();render();})().finally(()=>{refreshing=null});return refreshing;}
+  function refresh(){if(refreshing)return refreshing;refreshing=(async()=>{const [s,e,d,i]=await Promise.all([request('/status'),request('/entities?kind=Contract'),request('/diagnostics').catch(()=>null),request('/intelligence').catch(e=>({lastError:e.message})),refreshScoreboard()]);intelligence=i;snapshot=s;contracts=e.entities;diag=d;error='';loadEvents();render();})().finally(()=>{refreshing=null});return refreshing;}
   async function action(fn){if(busy)return;busy=true;error='';render();try{await fn();await refresh();}catch(e){error=e.message;}finally{busy=false;render();}}
   function install(api){
     hostApi=api;
@@ -186,7 +199,7 @@ window.MPOSPlatform = (() => {
       if(a==='event'){openEvent=openEvent===btn.dataset.id?null:btn.dataset.id;render();return;}
       if(a==='event-kind'){eventKind=btn.dataset.kind;render();return;}
       if(a==='halt'){request('/risk/halt',{}).then(refresh).catch(e=>{error=e.message;render();});return;}
-      if(a.startsWith('open-')){const dest={kalshi:'kalshi',poly:'predictionmarkets',arbitrage:'arbitrage'}[a.slice(5)];api.open(dest);render();return;}
+      if(a.startsWith('open-')){const dest={kalshi:'kalshi',poly:'predictionmarkets',arbitrage:'arbitrage',pump:'trade',robinhood:'robinhood',stocks:'stocks',lab:'marketlab',evolution:'evolution'}[a.slice(5)];api.open(dest);render();return;}
       action(async()=>{
         if(a==='refresh'){loadEvents(true);return;}
         if(a==='legacy-sync'){await request('/legacy/sync',{});return;}

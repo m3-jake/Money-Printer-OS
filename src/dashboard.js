@@ -425,6 +425,9 @@ export function startDashboard() {
   // Lab champions -> strategy registry, once now and every minute. Failures stay in the snapshot, never thrown.
   // Lab champions -> registry and legacy books -> ledger mirror, now and every minute.
   const syncLab=()=>{try{marketPlatform().syncLab();}catch{}try{marketPlatform().syncLegacyLedger();}catch{}try{marketPlatform().publishPredictionHandoff();}catch{}};syncLab();const labSyncTimer=setInterval(syncLab,60_000);labSyncTimer.unref();
+  let intelligenceBusy=false,intelligenceClosed=false;
+  const observePaper=async()=>{if(intelligenceBusy)return;intelligenceBusy=true;try{const {readScoreboard}=await import('./scoreboard.js');const board=await readScoreboard();if(!intelligenceClosed){marketPlatform().intelligence.observe(board);marketPlatform().intelligenceError=null;}}catch(e){if(!intelligenceClosed)marketPlatform().intelligenceError=String(e.message).slice(0,200);}finally{intelligenceBusy=false;}};
+  const intelligenceTimer=setInterval(observePaper,60_000);intelligenceTimer.unref();observePaper();
   // Catch the project journal up with this build's history (packaged builds ship it; no git there).
   const seeded = seedProjectJournal({ journalFile: controlPlaneFiles(DATA_DIR).journal, appRoot: ROOT });
   if (seeded.appended || seeded.error) console.log(`[journal] +${seeded.appended} from ${seeded.source || 'none'}${seeded.error ? ' error: ' + seeded.error : ''}`);
@@ -621,7 +624,7 @@ export function startDashboard() {
   try { startPaperLoops(); } catch { /* paper loops are optional */ }
   startRobinhoodLoops();
   startPracticeLoop({ dataDir: DATA_DIR });
-  server.on('close',()=>{ clearInterval(labSyncTimer); stopPaperLoops(); stopRobinhoodLoops(); stopPracticeLoop(); closeMarketPlatform(); });
+  server.on('close',()=>{ intelligenceClosed=true;clearInterval(intelligenceTimer);clearInterval(labSyncTimer); stopPaperLoops(); stopRobinhoodLoops(); stopPracticeLoop(); closeMarketPlatform(); });
   startRobinhoodEquitiesLoop();
   // The Lab reads <data>/lab-link/fitness/*.json; refresh it every minute (first write shortly after start).
   const writeFitness = () => fitnessNow().then(snap => writeFitnessFiles(DATA_DIR, snap)).catch(() => {});

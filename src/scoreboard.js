@@ -39,7 +39,9 @@ export function closeStats(closes = []) {
     if (c.pnl > 0) { wins++; grossWin += c.pnl; } else grossLoss += -c.pnl;
     if (!best || c.pnl > best.pnl) best = c;
   }
-  return fromAggregate({ closes: rows.length, wins, grossWin, grossLoss, net, best: best ? best.pnl : null, bestAt: best?.at ?? null, lastCloseAt: rows.at(-1)?.at ?? null, curve });
+  const base=fromAggregate({ closes: rows.length, wins, grossWin, grossLoss, net, best: best ? best.pnl : null, bestAt: best?.at ?? null, lastCloseAt: rows.at(-1)?.at ?? null, curve });
+  const losses=rows.filter(r=>r.pnl<0).length;
+  return {...base,losses,breakevens:rows.length-wins-losses,averageLoss:losses?round(-grossLoss/losses):null};
 }
 
 // Same shape from totals a module already aggregated (the core ledger's closeStats).
@@ -50,6 +52,10 @@ export function fromAggregate({ closes = 0, wins = 0, grossWin = 0, grossLoss = 
   const bestShare = b !== null && total > 0 && b > 0 ? b / total : null;
   return {
     closes: n, wins: w, losses: n - w,
+    averageWin: w ? round(gw / w) : null,
+    averageLoss: n-w ? round(-gl / (n-w)) : null,
+    realizedDrawdown: curve.length ? round((()=>{let peak=0,dd=0;for(const v of curve){peak=Math.max(peak,v);dd=Math.max(dd,peak-v);}return dd;})()) : null,
+    measurementScope: 'Closed outcomes only; drawdown excludes unrealized intraperiod marks',
     hitRate: n ? round(w / n, 4) : null,
     profitFactor: !n ? null : gl > 0 ? round(gw / gl, 3) : gw > 0 ? 'infinity' : null,
     netPnl: round(total), netPerTrade: n ? round(total / n) : null,
@@ -95,7 +101,7 @@ export function scoreRow({ id, module, book, unit, stats, baseline, fresh, minCl
     id, module, book, kind, mode: kind === 'lab' ? 'BACKTEST' : 'PAPER', unit,
     ...stats,
     baseline: { kind: baseline?.kind || 'cash', label: baseline?.label || 'Cash (0)', netPnl: baseline?.netPnl === null || baseline?.netPnl === undefined ? null : round(Number(baseline.netPnl)), note: baseline?.note || null },
-    edgeVsBaseline: finite(baseline?.netPnl) === null ? null : round(stats.netPnl - Number(baseline.netPnl)),
+    edgeVsBaseline: finite(stats.netPnl) === null || finite(baseline?.netPnl) === null ? null : round(stats.netPnl - Number(baseline.netPnl)),
     minCloses, ...v, freshness: fresh, note, ...extra,
   };
 }
@@ -290,6 +296,7 @@ export function buildScoreboard(inputs = {}, { now = Date.now() } = {}) {
     schema: SCOREBOARD_SCHEMA, at: now, paperOnly: true, minCloses: MIN_CLOSES, outlierShare: OUTLIER_SHARE,
     summary: { rows: rows.length, beating: count(VERDICT.YES), notBeating: count(VERDICT.NO), notEnoughData: count(VERDICT.NOT_ENOUGH),
       outlierDriven: rows.filter(r => r.outlier).length, stale: rows.filter(r => ['STALE', 'NO_DATA'].includes(r.freshness?.status)).length },
+    paperSummary: { books: rows.filter(r=>r.kind!=='lab').length, beating: rows.filter(r=>r.kind!=='lab'&&r.beatsBaseline===VERDICT.YES).length, notBeating: rows.filter(r=>r.kind!=='lab'&&r.beatsBaseline===VERDICT.NO).length, notEnoughData: rows.filter(r=>r.kind!=='lab'&&r.beatsBaseline===VERDICT.NOT_ENOUGH).length, researchRowsExcluded: rows.filter(r=>r.kind==='lab').length },
     rows, errors,
     rules: 'Net is after every modeled fee. YES/NO needs at least ' + MIN_CLOSES + ' closes (' + EQUITY_MIN_SESSIONS + ' sessions for equities); YES also has to hold without the single best trade. Units differ per module and are never summed.',
   };

@@ -1,3 +1,9 @@
+# Current recovery source - September 28, 2026
+
+Money Printer OS 0.5.0-alpha.72 / Evolution Lab 0.1.0-alpha.14 supersedes the historical source records below. See reports/ZERO-CREDIT-RECOVERY-2026-09-28.md for recovered work and test evidence. Runtime acceptance is recorded by the paired installer in PAIRED-RELEASE.json at both installation roots, with exact commits and archive hashes. Do not infer installed status from package versions alone. Both archive engines must pass smoke tests; paid model execution and real-money execution must remain disabled.
+
+---
+
 # Current findings — 2026-09-26
 
 See `reports/UPGRADE-IMPLEMENTATION-2026-09-26.md` for the current issue ledger and

@@ -14,6 +14,7 @@ export async function handlePlatformRequest(req,res,url,{json,body,platform=mark
   try{
     if(req.method==='GET'){
       if(route==='/status')return json(res,{ok:true,...platform.snapshot()});
+      if(route==='/intelligence')return json(res,{ok:true,...platform.intelligence.snapshot(),budget:platform.researchBudget.snapshot(),cache:platform.researchCache.snapshot(),lastError:platform.intelligenceError||null});
       if(route==='/markets')return json(res,{ok:true,...await platform.markets(url.searchParams.get('venue')||'kalshi',{cursor:url.searchParams.get('cursor')||'',offset:Number(url.searchParams.get('cursor')||0)||0,series:url.searchParams.get('series')||'',eventTicker:url.searchParams.get('event')||''})});
       if(route==='/book')return json(res,{ok:true,...await platform.book(url.searchParams.get('venue'),url.searchParams.get('id'))});
       if(route==='/entities')return json(res,{ok:true,entities:platform.store.list({kind:url.searchParams.get('kind')||null,provider:url.searchParams.get('provider')||null})});

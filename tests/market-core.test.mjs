@@ -32,7 +32,7 @@ import { tokenGraph,whaleFlow,walletView } from '../src/core/whales.js';
 import { buildEventPages,sportsPages,weatherPages,corporatePages } from '../src/core/correlation.js';
 import { solanaPlan,practicePlan } from '../src/core/legacyImport.js';
 import { LabPool,computeTask } from '../src/core/labWorker.js';
-import { summarizeFiling,htmlToText,MAX_FILING_CHARS } from '../src/core/aiSummary.js';
+import { summarizeFiling,summaryRequest,parseSummaryResponse,htmlToText,MAX_FILING_CHARS } from '../src/core/aiSummary.js';
 import { reconcileVenue } from '../src/core/accountReconcile.js';
 import { StrategyRegistry,promotionCheck,labChampionLifecycle,strategyEvidenceIdentity } from '../src/core/strategies.js';
 import { assertGlobalTradingNotHalted } from '../src/core/executionBoundary.js';
@@ -779,27 +779,29 @@ test('Market Lab worker pool: same results as inline, and the main thread keeps 
   assert.equal(pool.status().failed,1);await pool.close();fs.rmSync(leaseDir,{recursive:true,force:true});
 });
 
-test('AI filing summaries: cited, labelled, never truncated, refusals surfaced',async()=>{
+test('local filing research and disabled paid adapter: citations, limits and cache',async()=>{
   assert.equal(htmlToText('<html><style>x{}</style><p>Revenue&nbsp;rose&amp;fell</p><script>a()</script><div>Q3</div></html>'),'Revenue rose&fell\nQ3');
+  const summarizeAdapterFixture=async opts=>parseSummaryResponse(await opts.client.beta.messages.create(summaryRequest(opts)),opts.model);
   let sent=null;const fake=(content,stop='end_turn')=>({beta:{messages:{create:async req=>{sent=req;return {model:'claude-opus-5',stop_reason:stop,stop_details:stop==='refusal'?{category:'cyber',explanation:'x'}:null,usage:{input_tokens:1000,output_tokens:50},content};}}}});
   const text='Apple Inc. reported revenue of $94.9 billion for the quarter. '.repeat(10);
-  const ok=await summarizeFiling({text,facts:{form:'8-K',company:'Apple Inc.',accession:'1'},client:fake([{type:'text',text:'WHAT HAPPENED\n'},{type:'text',text:'Revenue was $94.9 billion.',citations:[{type:'char_location',cited_text:'Apple Inc. reported revenue of $94.9 billion',start_char_index:0,end_char_index:44,document_index:0}]}])});
+  const ok=await summarizeAdapterFixture({text,facts:{form:'8-K',company:'Apple Inc.',accession:'1'},client:fake([{type:'text',text:'WHAT HAPPENED\n'},{type:'text',text:'Revenue was $94.9 billion.',citations:[{type:'char_location',cited_text:'Apple Inc. reported revenue of $94.9 billion',start_char_index:0,end_char_index:44,document_index:0}]}])});
   assert.equal(ok.status,'OK');assert.equal(ok.blocks[1].citations[0].quote,'Apple Inc. reported revenue of $94.9 billion');assert.equal(ok.citedShare,1);
-  assert.equal(sent.model,'claude-opus-5');assert.equal(sent.fallbacks,'default');assert.deepEqual(sent.betas,['server-side-fallback-2026-07-01']);
+  assert.equal(sent.model,'claude-opus-5');assert.equal(sent.fallbacks,undefined);assert.equal(sent.betas,undefined);assert.equal(sent.max_tokens,2048);
   assert.equal(sent.messages[0].content[0].citations.enabled,true);assert.equal(sent.messages[0].content[0].source.data,text);// the whole filing, not a cut
-  const ref=await summarizeFiling({text,facts:{},client:fake([],'refusal')});assert.equal(ref.status,'REFUSED');assert.equal(ref.category,'cyber');
-  await assert.rejects(summarizeFiling({text:'x'.repeat(MAX_FILING_CHARS+1),facts:{},client:fake([])}),/not summarized rather than cut short/);
-  await assert.rejects(summarizeFiling({text:'short',facts:{},client:fake([])}),/too short/);
-  // Platform: stored apart from facts, cached, and refused without a key.
+  const ref=await summarizeAdapterFixture({text,facts:{},client:fake([],'refusal')});assert.equal(ref.status,'REFUSED');assert.equal(ref.category,'cyber');
+  await assert.rejects(summarizeAdapterFixture({text:'x'.repeat(MAX_FILING_CHARS+1),facts:{},client:fake([])}),/not summarized rather than cut short/);
+  await assert.rejects(summarizeAdapterFixture({text:'short',facts:{},client:fake([])}),/too short/);
+  await assert.rejects(summarizeFiling({text,facts:{},client:fake([])}),e=>e.code==='PAID_AI_DISABLED');
+  // Platform: no model call or credential is required; derived excerpts stay separate from filing facts.
   const p=new MarketPlatform({providers:new ProviderRegistry()});
   p.recordFilings([{facts:{form:'8-K',company:'Apple Inc.',cik:'320193',ticker:'AAPL',accession:'0000320193-26-000101',acceptedAt:1000,items:[],url:'https://www.sec.gov/Archives/edgar/data/320193/x/a.htm',indexUrl:null}}]);
   let calls=0;p.edgar={document:async()=>'<p>'+text+'</p>',status:()=>({})};p.summarize=async a=>{calls++;return {status:'OK',model:'claude-opus-5',blocks:[{text:'x',citations:[]}],usage:{}};};
   const saved={a:process.env.ANTHROPIC_API_KEY,b:process.env.ANTHROPIC_AUTH_TOKEN};delete process.env.ANTHROPIC_API_KEY;delete process.env.ANTHROPIC_AUTH_TOKEN;
   try{
-    await assert.rejects(p.edgarSummary({accession:'0000320193-26-000101'}),/ANTHROPIC_API_KEY/);
+    assert.equal((await p.edgarSummary({accession:'0000320193-26-000101'})).kind,'LOCAL_EXTRACTIVE_SUMMARY');
     process.env.ANTHROPIC_API_KEY='test-key';
     const s1=await p.edgarSummary({accession:'0000320193-26-000101'}),s2=await p.edgarSummary({accession:'0000320193-26-000101'});
-    assert.equal(s1.kind,'AI_GENERATED_ANALYSIS');assert.equal(s2.cached,true);assert.equal(calls,1);
+    assert.equal(s1.kind,'LOCAL_EXTRACTIVE_SUMMARY');assert.equal(s2.cached,true);assert.equal(calls,0);assert.ok(s1.blocks.every(b=>text.includes(b.citations[0].quote)));
     assert.equal(p.store.get(stableId('Filing','sec','0000320193-26-000101')).data.summary,undefined);// facts untouched
   }finally{if(saved.a===undefined)delete process.env.ANTHROPIC_API_KEY;else process.env.ANTHROPIC_API_KEY=saved.a;if(saved.b!==undefined)process.env.ANTHROPIC_AUTH_TOKEN=saved.b;}
   p.close();

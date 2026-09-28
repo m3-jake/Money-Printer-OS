@@ -25,7 +25,10 @@ import fs from 'node:fs';
 import { createHash } from 'node:crypto';
 import { MACRO_INDICATORS,FredSource,transform as macroTransform,impliedLadder,asOf as macroAsOf,indicator as macroIndicator } from './macro.js';
 import { EdgarSource,analyseFiling } from './edgar.js';
-import { summarizeFiling,htmlToText,aiConfigured,SUMMARY_MODEL } from './aiSummary.js';
+import { summarizeFiling,htmlToText,aiConfigured,SUMMARY_MODEL,SUMMARY_OUTPUT_TOKENS } from './aiSummary.js';
+import { ResearchBudget } from './researchBudget.js';
+import { PAID_AI_BUILD_ENABLED, ResearchCache, localFilingSummary } from './localResearch.js';
+import { Intelligence } from './intelligence.js';
 import { moduleCapabilities } from './capabilities.js';
 import { BUILD_PROVENANCE } from '../buildInfo.js';
 import { evaluatePredictionEpisodes, PREDICTION_EXPERIMENT_SCHEMA } from '../predictionExperiment.js';
@@ -61,6 +64,8 @@ export class MarketPlatform {
       CREATE TRIGGER IF NOT EXISTS lab_runs_no_delete BEFORE DELETE ON lab_runs BEGIN SELECT RAISE(ABORT,'Experiment records are append-only'); END;`);this.stocks=new PaperBroker({platform:this,...(stockQuotes?{quotes:stockQuotes}:{}),...(stockClock?{clock:stockClock}:{}),...(stockSession?{session:stockSession}:{})});this.dataDir=dataDir;
     this.providers=providers||new ProviderRegistry();if(!providers){this.providers.register(new KalshiProvider());this.providers.register(new PolymarketProvider());console.info('[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED');}
     this.journalError=null;
+    this.researchBudget=new ResearchBudget(this.store);this.researchCache=new ResearchCache(this.store);this.summaryRequests=new Map();
+    this.intelligence=new Intelligence(this.store,this.bus);
     if(dataDir)this.bus.on('RISK_STATE_CHANGED',event=>{
       try{appendProjectJournal(path.join(dataDir,'project-journal.ndjson'),{kind:'risk',title:`Risk Governor: ${event.data.state}`,detail:event.data.reason||'Paper execution resumed',at:event.at});}
       catch(e){this.journalError='Could not append risk milestone';throw e;}
@@ -165,7 +170,8 @@ export class MarketPlatform {
     // INVERTED: YES on A pays when NO on B pays, so B's sides are swapped before pricing complements.
     const bookB=match.orientation==='INVERTED'?swapSides(right.book):right.book;
     const fees={a:left.contract.data.feeModel||null,b:right.contract.data.feeModel||null};
-    return {a:left.contract,b:right.contract,fees:{a:describeFeeModel(fees.a,left.contract.data.feeModelReason),b:describeFeeModel(fees.b,right.contract.data.feeModelReason)},...arbitrageQuote(left.contract.data,right.contract.data,left.book,bookB,{quantity:Number(quantity),match,feeModels:fees})};
+    const result={a:left.contract,b:right.contract,fees:{a:describeFeeModel(fees.a,left.contract.data.feeModelReason),b:describeFeeModel(fees.b,right.contract.data.feeModelReason)},...arbitrageQuote(left.contract.data,right.contract.data,left.book,bookB,{quantity:Number(quantity),match,feeModels:fees})};
+    this.intelligence.recordComparison(result);return result;
   }
   verifyPair({a,b,confirmation,note=''}){
     if(confirmation!==VERIFY_PHRASE)throw new Error(`Type "${VERIFY_PHRASE}" to attest`);
@@ -551,7 +557,7 @@ export class MarketPlatform {
     let dbBytes=null;try{const f=this.store.db.prepare('PRAGMA page_count').get().page_count*this.store.db.prepare('PRAGMA page_size').get().page_size;dbBytes=f;}catch{}
     const counts=Object.fromEntries(['entities','entity_versions','relationships','ledger','proposals','core_events','lab_runs','strategies'].map(t=>{try{return [t,this.store.db.prepare(`SELECT COUNT(*) n FROM ${t}`).get().n];}catch{return [t,null];}}));
     const sources=[...this.providers.status().map(p=>({id:p.id,kind:'prediction venue',status:p.status,lastSuccess:p.lastSuccess,lastError:p.lastError,latencyMs:p.latencyMs,queueDepth:p.queueDepth,websocket:p.websocket})),
-      {id:'alpaca-iex',kind:'stock quotes',...this.stocks.quoteSource.status()},{id:'fred',kind:'macro',...this.fred.status()},{id:'nws',kind:'weather',...this.weather.status()},{id:'sec-edgar',kind:'filings',...this.edgar.status()},{id:'anthropic',kind:'AI summaries',status:aiConfigured()?'IDLE':'NOT CONFIGURED',lastSuccess:null,lastError:null},
+      {id:'alpaca-iex',kind:'stock quotes',...this.stocks.quoteSource.status()},{id:'fred',kind:'macro',...this.fred.status()},{id:'nws',kind:'weather',...this.weather.status()},{id:'sec-edgar',kind:'filings',...this.edgar.status()},{id:'anthropic',kind:'AI summaries',status:PAID_AI_BUILD_ENABLED?(aiConfigured()?'IDLE':'AUTH REQUIRED'):'DISABLED',note:'Paid models are locked; cached research and local excerpts remain available',lastSuccess:null,lastError:null},
       ...(this.sportsCache?.data?.feeds||[]).map(f=>({id:f.sport.toLowerCase()+'-live',kind:'sports live',status:f.status,lastSuccess:this.sportsCache.at,lastError:f.error||null})),
       ...[...this.wireFeeds.values()].map(v=>({id:'rss-'+v.status.id,kind:'wire feed',status:v.status.status,lastSuccess:v.status.status==='CONNECTED'?v.at:null,lastError:v.status.error||null}))];
     // Journal: the first time each source connects in this data dir is a project milestone.
@@ -569,12 +575,27 @@ export class MarketPlatform {
   // AI filing summary (aiSummary.js): on request only, stored in ai_summaries apart from the Filing facts.
   async edgarSummary({accession,force=false}){
     const acc=String(accession||'').trim();if(!/^[\d-]{10,25}$/.test(acc))throw new Error('Accession number required');
+    if(this.summaryRequests.has(acc))return this.summaryRequests.get(acc);
+    const work=this.runEdgarSummary(acc,force);this.summaryRequests.set(acc,work);
+    try{return await work;}finally{this.summaryRequests.delete(acc);}
+  }
+  async runEdgarSummary(acc,force){
+    const identity='sec:'+acc;
+    const cached=!force&&this.researchCache.get(identity);if(cached)return {...cached,accession:acc};
     const prior=this.store.db.prepare('SELECT * FROM ai_summaries WHERE accession=?').get(acc);
     if(prior&&!force)return {...JSON.parse(prior.result),accession:acc,at:prior.at,cached:true,kind:'AI_GENERATED_ANALYSIS'};
-    if(!aiConfigured())throw Object.assign(new Error('AI summaries need ANTHROPIC_API_KEY in %APPDATA%\\Money Printer OS\\.env (each summary costs API usage)'),{code:'NOT_CONFIGURED'});
     const f=this.store.get(stableId('Filing','sec',acc));if(!f)throw new Error('Load this filing in EDGAR first');
     const text=htmlToText(await this.edgar.document(f.data.url));
-    const result=await this.summarize({text,facts:f.data});
+    if(!PAID_AI_BUILD_ENABLED){
+      const result=this.researchCache.put(identity,localFilingSummary({text,facts:{...f.data,accession:acc}}));
+      this.bus.publish('RESEARCH_COMPLETED',{id:identity,source:'sec',contentHash:result.contentHash,kind:result.kind,at:result.at,cost:result.cost},{id:identity+':'+result.contentHash,source:'sec',marketRelevance:result.marketsAffected});
+      return {...result,accession:acc,chars:text.length};
+    }
+    if(!aiConfigured())throw Object.assign(new Error('AI summaries need ANTHROPIC_API_KEY in %APPDATA%\\Money Printer OS\\.env (each summary costs API usage)'),{code:'NOT_CONFIGURED'});
+    const reservation=this.researchBudget.reserve(acc,text,SUMMARY_OUTPUT_TOKENS);
+    let result;
+    try{result=await this.summarize({text,facts:f.data});this.researchBudget.finish(reservation,result);}
+    catch(error){this.researchBudget.finish(reservation,null,error);throw error;}
     this.store.db.prepare('INSERT INTO ai_summaries VALUES(?,?,?,?,?,?) ON CONFLICT(accession) DO UPDATE SET at=excluded.at,model=excluded.model,status=excluded.status,chars=excluded.chars,result=excluded.result')
       .run(acc,Date.now(),result.model||SUMMARY_MODEL,result.status,text.length,JSON.stringify(result));
     return {...result,accession:acc,at:Date.now(),cached:false,chars:text.length,kind:'AI_GENERATED_ANALYSIS'};
