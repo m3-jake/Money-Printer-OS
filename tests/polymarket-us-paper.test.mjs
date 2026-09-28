@@ -18,6 +18,7 @@ globalThis.fetch=async url=>{throw new Error(`unexpected fetch ${url}`)};
 test.after(()=>{globalThis.fetch=savedFetch;fs.rmSync(DIR,{recursive:true,force:true})});
 
 const SETTINGS={priceMin:0.6,maxMinutesLeft:15,maxLegs:3,window:'NEAR_END'};
+test('paper bounds support single stakes and expanded open/leg limits',()=>{assert.deepEqual(paper.PAPER_BOUNDS,{startUsd:{min:1,max:1_000_000},stakeUsd:{min:1,max:500},maxOpen:{min:1,max:25},maxLegs:{min:1,max:6}})});
 function cand(i,price=0.9,over={}){
  return {key:`k${i}`,symbol:`mkt-${i}`,side:'SIDE_BUY',event:`Game ${i}`,eventSlug:`ev-${i}`,outcome:`Team ${i}`,price,
   freshnessSec:1,at:Date.now(),liveState:{period:'Q4',score:'1-0'},etaMinutes:5,nearEndScore:1,rank:10-i,eligible:true,feeCoefficient:0.06,...over};
@@ -45,7 +46,7 @@ test('a game with an open paper combo cannot be used again, and stake bounds hol
  const cands=[cand(1),cand(2),cand(3)];
  paper.placePaperCombo({legKeys:['k1','k2'],stakeUsd:5,candidates:cands,settings:SETTINGS});
  assert.throws(()=>paper.placePaperCombo({legKeys:['k1','k3'],stakeUsd:5,candidates:cands,settings:SETTINGS}),/already has an open paper combo/);
- assert.throws(()=>paper.placePaperCombo({legKeys:['k2','k3'],stakeUsd:500,candidates:cands,settings:SETTINGS}),/Paper stake/);
+ assert.throws(()=>paper.placePaperCombo({legKeys:['k2','k3'],stakeUsd:501,candidates:cands,settings:SETTINGS}),/Paper stake/);
  assert.throws(()=>paper.placePaperCombo({legKeys:['k3'],stakeUsd:5,candidates:cands,settings:SETTINGS}),/at least 2 legs/);
 });
 

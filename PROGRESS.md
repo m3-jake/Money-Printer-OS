@@ -5,9 +5,9 @@
 5 — done — bb89a09 — Added rolling netflow/whale signal derivation and a shared TTL cache with fixture tests.
 6 — done — 27e1936 — Added half-Kelly sizing gated by the aggressive paper profile and deterministic 2–4 clip planning.
 7 — done — 24890dd — Added correlation and narrative exposure gates, persistent equity peak tracking, tiered paper size cuts, entry halts, and flatten handling.
-8 — done — a4d2925 — Added AGGRESSIVE_PAPER profile overrides, paper-only estimator routing, and opt-in learner threshold relaxation while preserving default thresholds.
-9 — partial — a9ac2d7 — Added launch parsing and paper-only sniper gates; native transaction builder, Jito integration, and order submission remain unavailable.
-10 — pending — — Polymarket singles and category filters.
+8 — done — ed4677c — Added AGGRESSIVE_PAPER profile overrides, paper-only estimator routing, and opt-in learner threshold relaxation while preserving default thresholds.
+9 — partial — 77ffc73 — Added launch parsing and paper-only sniper gates; native transaction builder, Jito integration, and order submission remain unavailable.
+10 — done — 368fb66 — Raised Polymarket US paper bounds and added weather, sports, culture, and politics filters; existing real-order rails remain unchanged.
 11 — pending — — Kalshi demo integration and paper book.
 12 — pending — — Robinhood equities paper trading.
 13 — pending — — Regime-conditional central routing.

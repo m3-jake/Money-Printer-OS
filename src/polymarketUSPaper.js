@@ -16,7 +16,7 @@ const DATA_DIR=path.resolve(process.env.MONEY_PRINTER_DATA_DIR||path.join(ROOT,'
 export const PAPER_FILE=path.join(DATA_DIR,'polymarket-us-paper.json');
 export const PAPER_SCHEMA='mpo.polymarket-us-paper.v1';
 export const PAPER_START_USD=100;
-export const PAPER_BOUNDS={startUsd:{min:1,max:1000000},stakeUsd:{min:1,max:50},maxOpen:{min:1,max:10},maxLegs:{min:2,max:4}};
+export const PAPER_BOUNDS={startUsd:{min:1,max:1000000},stakeUsd:{min:1,max:500},maxOpen:{min:1,max:25},maxLegs:{min:1,max:6}};
 export const PAPER_AUTO_MS=30_000,PAPER_SETTLE_MS=60_000,PAPER_COOLDOWN_MS=180_000;
 export const PAPER_STRATEGY_VERSION='polymarket-us-paper-combo.v2';
 const AUTOSTART=()=>String(process.env.POLYMARKET_AUTOSTART??'true').toLowerCase()!=='false';

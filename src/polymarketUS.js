@@ -35,6 +35,8 @@ export function usLastAuth(){return {...lastAuth}}
 const n=v=>Number.isFinite(Number(v))?Number(v):0;
 const val=x=>n(x?.value??x);
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+export const US_CATEGORIES=Object.freeze(['weather','sports','culture','politics']);
+export function filterUSMarketsByCategory(markets=[],categories=US_CATEGORIES){const allowed=new Set(categories.map(x=>String(x).toLowerCase()));return markets.filter(m=>{const c=String(m.category||m.eventCategory||m.sport||'').toLowerCase();return allowed.has(c)||[...allowed].some(x=>c.includes(x))})}
 
 function creds(){return {keyId:String(process.env.POLYMARKET_KEY_ID||'').trim(),secretKey:String(process.env.POLYMARKET_SECRET_KEY||'').trim()}}
 function client(){const c=creds(),k=c.keyId+'|'+c.secretKey;if(!c.keyId||!c.secretKey)return null;if(!authClient||k!==authKey){authClient=new PolymarketUS({...c,timeout:20000});authKey=k}return authClient}
