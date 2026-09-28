@@ -170,7 +170,26 @@ P1.3 — done — — sizing dial readout (V7 premise corrected by measurement)
       crossover 0.4), the inversion below the crossover (0.3 SOL → 0.0375 SOL), the limp-ramp and SPRINT
       cases, live sizing (flat target, no mark), and that the snapshot publishes the readout —
       `test:accounting` 14 pass, `test:visual` 71, `test:lane-contracts` 96.
-P1.4 — pending — — test hygiene (`npm test`, wire 2 suites, skip-safe visual test, coverage telemetry)
+P1.4 — done — — test hygiene: the suite actually runs now (the P0 blocker is fixed, not bypassed)
+      Root cause of the P0-discovered failure: `scripts/sync-robinhood-panel.mjs --check` searched for
+      `// BEGIN ROBINHOOD PAPER PANEL\n`, so a CRLF checkout (`core.autocrlf=true` here) reported
+      "boundaries not found" for a panel that was embedded and byte-identical — the panel was never
+      missing. Because `test:all` chains with `&&`, that threw away `test:robinhood`,
+      `test:robinhood-equities`, `test:lane-contracts`, `test:fitness`, `test:unattended` and
+      `test:upgrade`. The gate now matches and compares on LF-normalized text and writes back the file's
+      own EOL.
+      The same LF assumption hid **two real failures** in `tests/robinhood-http.test.mjs` and
+      `tests/robinhood-hud.test.mjs` (`html.split('// BEGIN …\n')[1]` → `TypeError: … reading 'split'`
+      on undefined); both normalize at the read boundary now and pass.
+      Two suites had never been wired into any target: `tests/paper-trading-core.test.mjs` →
+      `test:lane-contracts`, `tests/pump-paper-shared.test.mjs` → `test:execution` (both passed on the
+      first run, so they were pure coverage loss).
+      New drift test `tests/test-wiring.test.mjs` (`test:wiring`, first step of `test:all`): every
+      `tests/*.test.*` on disk must be reachable from `test:all` through the `npm run` chain, every path
+      a script names must exist, no target may name a file twice, the panel gate must normalize line
+      endings — and it prints the coverage map (99 suites across 31 targets) as telemetry.
+      `npm run test:all` is green end to end for the first time: **30 targets, 946 tests, 0 failures**
+      (`test:robinhood` alone is 207).
 P1.5 — pending — — rejected-by-band counter in the funnel
 P2.1 — pending — — research-state.json backup/validate parity or documented asymmetry
 P2.2 — pending — — async batched journal appends (state.json semantics byte-for-byte)

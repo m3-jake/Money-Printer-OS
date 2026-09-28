@@ -83,7 +83,10 @@ test('invalid JSON and unknown routes fail cleanly; missing Robinhood keys still
  const r=await post('/api/robinhood/paper-order',{symbol:'BTC-USD',usd:10});assert.equal(r.status,200);const body=await r.json();assert.equal(body.result.position.quoteSource,'coinbase-public-paper');
 });
 test('panel ships inline, preserves desktop layout, posts real routes only with typed phrases',async()=>{
- const html=await (await fetch(base+'/')).text();const panel=fs.readFileSync(new URL('../public/assets/robinhood-panel.js',import.meta.url),'utf8');
+ // Line endings are normalized before the marker split: the checkout may be CRLF (core.autocrlf=true),
+ // which is not a difference in the panel itself (P1.4).
+ const lf=s=>s.replace(/\r\n/g,'\n');
+ const html=lf(await (await fetch(base+'/')).text()),panel=lf(fs.readFileSync(new URL('../public/assets/robinhood-panel.js',import.meta.url),'utf8'));
  const embedded=html.split('// BEGIN ROBINHOOD PAPER PANEL\n')[1].split('// END ROBINHOOD PAPER PANEL')[0];assert.equal(embedded.trim(),panel.trim());
  assert.match(html,/\['robinhood','Robinhood','RH','dark'\]/);assert.match(html,/DEFAULT_OPEN=\['trade'\]/);assert.match(html,/LAYOUT_VERSION='2026-09-26-glance'/);
  for(const a of ['order','cancel','cancel-all','forget','arm','config','preview','reconcile','autopilot','autopilot/run','evolve/run','evolve/apply'])assert.ok(panel.includes("rhAction('"+a+"'"),a);assert.match(panel,/mpo-danger-fieldset/);assert.match(panel,/confirmation==='RESET PAPER'/);
