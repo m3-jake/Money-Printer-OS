@@ -209,3 +209,41 @@ test('the degradation threshold is configurable per call', async () => {
   assert.equal(store.loadState().system.health, 'DEGRADED');
 });
 
+// P0.4: an abandoned cycle is not a crashed cycle - it must not inflate the error streak, but it must
+// still be visible, and a *streak* of aborts means the engine is not scanning either.
+test('an abandoned cycle is counted apart from errors, and a streak of them degrades', async () => {
+  const { store, recovery } = await fixture();
+  const threshold = recovery.cycleRecoveryView({ journal: store.readJournal }).degradeAfter;
+
+  const first = recovery.recordCycleBudgetAbort({ error: Object.assign(new Error('discovery exceeded the 45000ms cycle budget'), { code: 'CYCLE_BUDGET_EXCEEDED', stage: 'discovery', budgetMs: 45000, elapsedMs: 45001 }), load: store.loadState, save: store.saveState, journal: store.appendJournal });
+  assert.equal(first.persisted, true);
+  assert.equal(first.aborts, 1);
+  assert.equal(first.degraded, false, 'one slow cycle is a warning, not a degradation');
+  let persisted = store.loadState();
+  assert.equal(persisted.system.cycleErrors?.consecutive || 0, 0, 'the error streak is untouched');
+  assert.equal(persisted.system.cycleBudget.lastStage, 'discovery');
+  assert.equal(persisted.system.health, 'CAUTION');
+  const rows = store.readJournal(200).filter(row => row.type === 'cycle-budget');
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].stage, 'discovery');
+  assert.equal(recovery.cycleRecoveryView({ state: persisted, journal: store.readJournal }).pendingErrorRows, 0, 'an abort is not an error row');
+  assert.equal(recovery.cycleRecoveryView({ state: persisted, journal: store.readJournal }).aborts, 1);
+
+  for (let i = 2; i <= threshold; i++) {
+    const streak = recovery.recordCycleBudgetAbort({ error: Object.assign(new Error('budget exceeded again'), { code: 'CYCLE_BUDGET_EXCEEDED', stage: 'enrichment', budgetMs: 45000 }), load: store.loadState, save: store.saveState, journal: store.appendJournal });
+    assert.equal(streak.abortStreak, i);
+    assert.equal(streak.degraded, i >= threshold);
+  }
+  persisted = store.loadState();
+  assert.equal(persisted.system.health, 'DEGRADED', 'the engine is not scanning, so health says so');
+  assert.equal(persisted.system.diagnostics.find(d => d.code === 'CYCLE_BUDGET_EXCEEDED').level, 'ERROR');
+  assert.equal(recovery.cycleRecoveryView({ state: persisted, journal: store.readJournal }).degraded, true);
+
+  const clean = recovery.markCleanCycle({ state: persisted, save: store.saveState });
+  assert.equal(clean.changed, true);
+  persisted = store.loadState();
+  assert.equal(persisted.system.cycleBudget.abortStreak, 0, 'a cycle that completes clears the abort streak too');
+  assert.equal(persisted.system.cycleBudget.aborts, threshold, 'the lifetime count stays');
+  assert.equal(persisted.system.health, 'HEALTHY');
+});
+

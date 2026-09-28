@@ -3,11 +3,12 @@ import { pathToFileURL, fileURLToPath } from 'node:url';
 import fs from 'node:fs';
 import path from 'node:path';
 import { cfg } from './config.js';
-import { discoverCandidates, refreshPair, refreshPositionPairs, discoveryHealth, discoveryFanout, solUsdPrice, batchTokenPrices } from './dexscreener.js';
+import { discoverCandidates, refreshPair, refreshPositionPairs, discoveryHealth, discoveryFanout, setCycleSignal, solUsdPrice, batchTokenPrices } from './dexscreener.js';
 import { analyze, explain, marketRegime } from './strategy.js';
 import { mintRisk, benchmarkRpcs } from './rpc.js';
 import { loadState, saveState, appendJournal, appendJournalBatch, drainActions, resetPaper } from './store.js';
-import { recordCycleError, markCleanCycle } from './cycleRecovery.js';
+import { recordCycleError, markCleanCycle, recordCycleBudgetAbort } from './cycleRecovery.js';
+import { createCycleBudget, isCycleBudgetError } from './cycleBudget.js';
 import { buyWithSol, sellTokenForSol, walletSolBalance } from './jupiter.js';
 import { startDashboard } from './dashboard.js';
 import { marketPlatform } from './core/platform.js';
@@ -478,8 +479,12 @@ function refreshRpcHealthAsync() {
   benchmarkRpcs().then(rows => { latestRpcHealth = rows; }).catch(() => {}).finally(() => { rpcBenchInFlight = false; });
 }
 
-async function cycle() {
+async function cycle(budget = null) {
   const cycleStart = performance.now();
+  // P0.4: the deadline for this cycle. The signal reaches the market requester through
+  // dexscreener.setCycleSignal (one hook covers every dex/gecko read), and the phase boundaries
+  // below stop a cycle that ran past it instead of letting it drag the loop's cadence.
+  budget?.assertAlive('actions');
   const s = loadState();
   s.system.lastError = null;
   s.stats.cycles++;
@@ -506,6 +511,7 @@ async function cycle() {
   }else if(cfg.mode==='paper'){s.runtime.activeEvolutionChampionId='BASE';s.system.activeEvolutionPolicy={id:'BASE',stage:'BASE',hotReload:true,applied:false,liveActivationAllowed:false,automaticLivePromotionAllowed:false,liveExecution:'manual'};}
   else {const existing=s.system.activeEvolutionPolicy||{};s.system.activeEvolutionPolicy={...existing,hotReload:false,applied:false,liveActivationAllowed:false,automaticLivePromotionAllowed:false,liveExecution:'manual'};}
   if (['paper', 'live'].includes(cfg.mode)) await updatePositions(s);
+  budget?.assertAlive('positions');
 
   if (s.stats.cycles === 1 || Date.now() - lastRpcBenchAt >= 120_000) refreshRpcHealthAsync();
   const solPricePromise = solUsdPrice().catch(() => Number(s.market?.solUsd || 0));
@@ -513,6 +519,7 @@ async function cycle() {
   const max = Math.max(30, Math.min(600, Number(s.runtime.maxCandidates) || cfg.maxCandidates));
   const discoveryStart = performance.now();
   const pairs = await discoverCandidates(max);
+  budget?.assertAlive('discovery');
   s.system.metrics.discoveryMs = Math.round(performance.now() - discoveryStart);
   // P0.3: the fan-out is sized from what is left of the per-minute budget, and the refusal counter
   // is compared cycle over cycle so a budget that is still tripping shows up in the funnel instead
@@ -638,6 +645,8 @@ async function cycle() {
     for (const a of ranked) if (socialMap.has(a.mint)) a.social = socialMap.get(a.mint);
   }
 
+  budget?.assertAlive('enrichment');
+
   const now = Date.now();
   for (const a of ranked) s.snapshots[a.mint] = { liq: a.liq, priceUsd: a.priceUsd, v5: a.v5, flow5: a.flow5, pc5: a.pc5, score: a.score, ts: now };
 
@@ -689,8 +698,8 @@ async function cycle() {
   if(requestHealth&&!requestHealth.ok){s.system.diagnostics.push({level:'WARN',code:'MARKET_RATE_LIMIT',message:'Market provider rate-limited; retry backoff is active'});if(s.system.health==='HEALTHY')s.system.health='CAUTION';}
   // P0.3: a refused call is a dropped candidate, not just a slow one, so say so. Diagnostics are
   // rebuilt each cycle by supervisorTick above, which is why this is pushed here and not earlier.
-  const budget= s.system.marketBudget||{};
-  if(Number(budget.rejectsDelta||0)>0){s.system.diagnostics.push({level:'WARN',code:'MARKET_BUDGET_REJECTED',message:`${budget.rejectsDelta} market request(s) refused by the ${budget.requestsPerMinute}/min budget last discovery; fan-out allowed ${budget.fanoutBatches ?? '?'} batch(es) after ${budget.fanoutUsedInWindow ?? '?'} call(s) in the window`});if(s.system.health==='HEALTHY')s.system.health='CAUTION';}
+  const marketBudget= s.system.marketBudget||{};
+  if(Number(marketBudget.rejectsDelta||0)>0){s.system.diagnostics.push({level:'WARN',code:'MARKET_BUDGET_REJECTED',message:`${marketBudget.rejectsDelta} market request(s) refused by the ${marketBudget.requestsPerMinute}/min budget last discovery; fan-out allowed ${marketBudget.fanoutBatches ?? '?'} batch(es) after ${marketBudget.fanoutUsedInWindow ?? '?'} call(s) in the window`});if(s.system.health==='HEALTHY')s.system.health='CAUTION';}
 
   const block = blockStatus(s);
   const rejectionReasons={score:0,invalidMarket:0,riskUnverified:0,execution:0,cooldown:0,alreadyOpen:0,blacklist:0};
@@ -744,9 +753,12 @@ async function main() {
   if (!once) openBrowser();
   const stream = once ? null : startProgramStream(() => appendJournal({ type: 'program-stream-event' }));
   let shuttingDown = false;
+  let activeBudget = null;
   const shutdown = () => {
     if (shuttingDown) return;
     shuttingDown = true;
+    // P0.4: cancel in-flight cycle work (a fetch holding the loop open would delay the exit).
+    try { activeBudget?.abort('shutdown'); } catch {}
     try { stream?.close?.(); } catch {}
     try { stopAlphaWorker(); } catch {}
     try { dashboard?.close?.(); } catch {}
@@ -764,15 +776,27 @@ async function main() {
 
   do {
     const loopStarted = Date.now();
+    const budget = createCycleBudget();
+    activeBudget = budget;
+    setCycleSignal(budget.signal);
     try {
-      await cycle();
+      await cycle(budget);
     } catch (error) {
-      // A refused recovery save must never end the loop: recordCycleError journals first, then
-      // tries state.json, then flags /api/health in memory (see cycleRecovery.js).
-      const recovery = recordCycleError({ error });
-      console.error(recovery.saveFailed
-        ? `${recovery.message} [recovery save refused at ${recovery.stage}: ${recovery.failure?.message}]`
-        : recovery.message);
+      if (isCycleBudgetError(error)) {
+        // Abandoned at its budget, not broken: its own journal type and counter, so a slow provider
+        // never looks like an engine error (recordCycleBudgetAbort degrades only if it repeats).
+        const aborted = recordCycleBudgetAbort({ error, budgetMs: budget.budgetMs });
+        console.error(`${compactError(error)} [aborted ${aborted.aborts} time(s), streak ${aborted.abortStreak}]`);
+      } else {
+        // A refused recovery save must never end the loop: recordCycleError journals first, then
+        // tries state.json, then flags /api/health in memory (see cycleRecovery.js).
+        const recovery = recordCycleError({ error });
+        console.error(recovery.saveFailed
+          ? `${recovery.message} [recovery save refused at ${recovery.stage}: ${recovery.failure?.message}]`
+          : recovery.message);
+      }
+    } finally {
+      setCycleSignal(null);
     }
     if (once) { shutdown(); break; }
     const current = loadState();

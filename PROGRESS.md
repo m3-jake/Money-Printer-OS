@@ -53,7 +53,16 @@ P0.3 — done — — discovery rate budget reconciliation
       more breadth now requires raising `MARKET_REQUESTS_PER_MINUTE`, which is the documented lever.
       New target `test:discovery` (7 pass) wired into `test:all`; the simulation reproduces the old
       overrun so the fix cannot silently regress.
-P0.4 — pending — — per-cycle abort signal
+P0.4 — done — — per-cycle abort signal
+      `CYCLE_BUDGET_MS` (default 45000) + `src/cycleBudget.js`: each loop iteration builds a budget
+      whose `AbortSignal` reaches every dex/gecko read through `dexscreener.setCycleSignal` and the
+      new `signal` option on `marketRequests.get` (a caller abort is a cancellation, not a provider
+      timeout, so it does not inflate `timeouts`/`failures`). `cycle(budget)` asserts the deadline at
+      five phase boundaries; the loop records an abandoned cycle with its own journal type
+      (`cycle-budget`), counter and health treatment, degrades only on a *streak*, and clears on a
+      clean cycle; `shutdown()` aborts the live budget so a fetch cannot hold the process open.
+      Live smoke: one real cycle (`--once`, temp data dir) → exit 0, health HEALTHY, 0 errors, no
+      aborts; `fanoutBatches` 3 vs the old 32 and `budgetRejects` 0 (see below).
 P0.5 — pending — — documented panic path
 P1.1 — pending — — reconciliation check (legacy float vs core ledger) + promotion refusal
 P1.2 — pending — — split /api/state (keep ETag pure state, add /api/telemetry)

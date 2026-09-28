@@ -9,6 +9,10 @@ configureApiSpendPolicy({dailySpendCapUsd:cfg.apiDailySpendCapUsd,roiValueUsd:cf
 const BASE = 'https://api.dexscreener.com';
 const GECKO = 'https://api.geckoterminal.com/api/v2';
 const requests = createMarketRequester({requestsPerMinute:cfg.marketRequestsPerMinute});
+// P0.4: every dex/gecko read in this module (seeds, fan-out, refreshes, prices) inherits the
+// per-cycle budget signal, so an over-budget cycle cancels in-flight work instead of waiting it out.
+let cycleSignal = null;
+export function setCycleSignal(signal) { cycleSignal = signal || null; }
 const SEED_TTL_MS = 45_000;
 const STALE_SEED_TTL_MS = 10 * 60_000;
 
@@ -30,7 +34,7 @@ export async function solUsdPrice() {
 
 async function getJson(url, label = 'market feed', ttlMs = 20000, purpose = 'scan') {
   const costPerRequestUsd=url.startsWith(GECKO)?cfg.geckoTerminalCostPerRequestUsd:cfg.dexScreenerCostPerRequestUsd;
-  return requests.get(url,label,{ttlMs,costPerRequestUsd,purpose,headers:{accept:url.startsWith(GECKO)?'application/json;version=20230203':'application/json','user-agent':'SolanaMemeScout/9.0'}});
+  return requests.get(url,label,{ttlMs,costPerRequestUsd,purpose,signal:cycleSignal,headers:{accept:url.startsWith(GECKO)?'application/json;version=20230203':'application/json','user-agent':'SolanaMemeScout/9.0'}});
 }
 
 async function feed(path, source, health) {

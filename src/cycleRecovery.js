@@ -15,6 +15,7 @@
 // recovery path is exactly the bug this file exists to remove.
 import { compactError } from './utils.js';
 import { cfg } from './config.js';
+import { CYCLE_BUDGET_CODE } from './cycleBudget.js';
 import { loadState, saveState, appendJournal, readJournal } from './store.js';
 
 // Rows that prove a cycle failed even when state.json never changed.
@@ -99,6 +100,55 @@ export function recordCycleError({ error, degradeAfter = cfg.cycleErrorDegradeAf
   return { journaled, persisted: true, saveFailed: false, message: text, code, errors: s.stats.errors, consecutive: cycleErrors.consecutive, degraded };
 }
 
+// P0.4: a cycle that ran past its budget was abandoned, not broken. It gets its own journal type, its
+// own counter and its own health treatment, so a slow provider cannot masquerade as an engine error -
+// while repeated aborts still degrade, because either way the engine is not scanning.
+export function recordCycleBudgetAbort({ error, stage = null, budgetMs = null, now = Date.now(), degradeAfter = cfg.cycleErrorDegradeAfter, load = loadState, save = saveState, journal = appendJournal } = {}) {
+  const text = compactError(error);
+  const where = stage || error?.stage || 'cycle';
+  const limit = budgetMs ?? error?.budgetMs ?? cfg.cycleBudgetMs;
+  const journaled = safeJournal(journal, { type: 'cycle-budget', error: text, stage: where, budgetMs: limit, elapsedMs: error?.elapsedMs ?? null, at: now });
+
+  let s = null;
+  try { s = load(); }
+  catch (loadError) {
+    const failure = { stage: 'load', at: now, code: codeOf(loadError), message: compactError(loadError), cycleError: text };
+    safeJournal(journal, { type: 'error-persist-failed', ...failure });
+    saveFailure = failure;
+    return { journaled, persisted: false, saveFailed: true, stage: 'load', message: text, failure };
+  }
+
+  s.stats ||= {};
+  s.system ||= {};
+  const previous = s.system.cycleBudget || {};
+  const abortStreak = Number(previous.abortStreak || 0) + 1;
+  s.system.cycleBudget = {
+    aborts: Number(previous.aborts || 0) + 1, abortStreak, budgetMs: limit,
+    lastAbortAt: now, lastStage: where, lastElapsedMs: error?.elapsedMs ?? null, lastError: text,
+  };
+  s.system.lastError = text;
+  s.system.lastErrorAt = now;
+
+  const degraded = abortStreak >= degradeAfter;
+  s.system.diagnostics ||= [];
+  const existing = s.system.diagnostics.find(d => d?.code === CYCLE_BUDGET_CODE);
+  const diagnostic = { level: degraded ? 'ERROR' : 'WARN', code: CYCLE_BUDGET_CODE, message: `${abortStreak} cycle(s) abandoned at ${where}: ${text}` };
+  if (existing) Object.assign(existing, diagnostic);
+  else s.system.diagnostics.push(diagnostic);
+  s.system.health = healthFromDiagnostics(s.system.diagnostics);
+
+  try { save(s); }
+  catch (saveError) {
+    const failure = { stage: 'save', at: now, code: codeOf(saveError), message: compactError(saveError), cycleError: text, aborts: s.system.cycleBudget.aborts };
+    safeJournal(journal, { type: 'error-persist-failed', ...failure });
+    saveFailure = failure;
+    return { journaled, persisted: false, saveFailed: true, stage: 'save', message: text, aborts: s.system.cycleBudget.aborts, abortStreak, degraded, failure };
+  }
+
+  saveFailure = null;
+  return { journaled, persisted: true, saveFailed: false, message: text, aborts: s.system.cycleBudget.aborts, abortStreak, degraded };
+}
+
 // A cycle that finished without throwing resets the streak, which is what un-degrades the engine.
 // The caller already has the state in hand (index.js loads it right after the cycle), so this costs
 // no extra read, and it writes nothing unless a streak is actually set.
@@ -107,9 +157,11 @@ export function markCleanCycle({ state = null, load = loadState, save = saveStat
   try { s ||= load(); }
   catch { return { changed: false, cleared: false, consecutive: 0 }; }
   const previous = Number(s?.system?.cycleErrors?.consecutive || 0);
-  if (!previous) return { changed: false, cleared: false, consecutive: 0 };
+  const abortStreak = Number(s?.system?.cycleBudget?.abortStreak || 0);
+  if (!previous && !abortStreak) return { changed: false, cleared: false, consecutive: 0 };
   s.system.cycleErrors = { ...s.system.cycleErrors, consecutive: 0, clearedAt: now };
-  s.system.diagnostics = (s.system.diagnostics || []).filter(d => d?.code !== CYCLE_ERROR_CODE);
+  if (s.system.cycleBudget) s.system.cycleBudget = { ...s.system.cycleBudget, abortStreak: 0, clearedAt: now };
+  s.system.diagnostics = (s.system.diagnostics || []).filter(d => d?.code !== CYCLE_ERROR_CODE && d?.code !== CYCLE_BUDGET_CODE);
   // Only the streak's own degradation is cleared: any other ERROR diagnostic keeps the engine DEGRADED.
   if (s.system.health === 'DEGRADED') s.system.health = healthFromDiagnostics(s.system.diagnostics);
   try { save(s); }
@@ -144,6 +196,10 @@ export function cycleRecoveryView({ state = null, degradeAfter = cfg.cycleErrorD
     health: health || 'UNKNOWN',
     consecutive,
     degradeAfter,
+    // P0.4: aborts are counted apart from errors - a cycle abandoned at its budget is not a crash.
+    aborts: Number(state?.system?.cycleBudget?.aborts || 0),
+    abortStreak: Number(state?.system?.cycleBudget?.abortStreak || 0),
+    lastAbort: state?.system?.cycleBudget || null,
     lastError: state?.system?.lastError || null,
     lastErrorAt: state?.system?.lastErrorAt || null,
     // What /api/health's own ok:false is about, stated once so the HUD does not have to infer it.
