@@ -396,7 +396,7 @@ Regression sweep after P2.4: `npm run test:all` exit 0 — 30 targets, 961 pass,
       sibling-freeze pair in `test:robinhood-equities` and the trader→Lab Kalshi handoff in `test:upgrade` — both
       untouched here); counts identical to the P2.3 baseline. This entry is docs-only and no target reads `PROGRESS.md`.
 
-## P3 status: 3 of 5 closed (P3.1 and P3.2 skipped on measurement, P3.5 done; P3.3–P3.4 pending)
+## P3 status: 4 of 5 closed (P3.1, P3.2 and P3.3 skipped on measurement, P3.5 done; P3.4 pending)
 P3.1 — skipped on measurement — — logo PNG → webp: refused by the PNG/colorType-6 contract, and recompression has 0 bytes of headroom
       Both halves of the item were measured against the file and its consumers. `public/assets/money-printer-logo.png`
       is 1024×1024 RGBA, 1,290,441 bytes, 9.85 bpp (30.8 % of raw), 348,696 unique RGBA colors, alpha 0–255, and has
@@ -428,7 +428,6 @@ Regression sweep after P3.1: `npm run test:all` exit 0 — 30 targets, 961 pass,
       sibling-freeze pair in `test:robinhood-equities` and the trader→Lab Kalshi handoff in `test:upgrade` — both
       untouched here); counts identical to the P2.4 baseline, and `test:visual` — the target that pins the logo PNG —
       passed, so `public/assets/` was left byte-for-byte as found.
-P3.3 — pending — — npm audit in CI as non-blocking telemetry
 P3.4 — pending — — review @anthropic-ai/sdk (aiSummary) off the cycle hot path
 P3.5 — done — 1,290,441 → 369,134 bytes (−71.4 % / 921,307 B) off every drawn slot — sized logo derivative (512 px RGBA PNG) for the ≤120 px dashboard slots, 1024 px master kept
       Queued by P3.1 as "a 256 px derivative"; measuring the boxes first moved it to 512 px. The five places the
@@ -524,3 +523,68 @@ Regression sweep after P3.2: `npm run test:all` exit 0 — 30 targets, 963 pass,
       pair in `test:robinhood-equities` and the trader→Lab Kalshi handoff in `test:upgrade` — both untouched here); that
       is the P3.5 baseline (964 tests, 962 pass, 2 `# SKIP`) plus exactly the one new `store-recovery` test, which makes
       `test:recovery` 55/55. No `src/` file was touched, so no target's runtime behaviour could move.
+
+P3.3 — skipped on measurement — — npm audit in CI as non-blocking telemetry: the four advisories cannot be reached from any path this app loads, and npm can offer no fix to act on
+      Measured on the installed tree: `npm audit --json` and `npm audit --omit=dev --json` are **byte-identical**
+      (same SHA-256) because this package has no devDependencies at all — **4 moderate, 0 high, 0 critical**, and all
+      four come from one chain under `@solana/web3.js@1.99.0` → `jayson@4.3.0` → `stream-json@1.9.1` + `uuid@8.3.2`.
+      `@solana/web3.js` and `jayson` carry no advisory of their own; npm lists them only as `effects` of the two below.
+      Reachability was traced rather than reasoned about, twice and independently: a `Module._load` hook around the CJS
+      build, and `NODE_DEBUG=module` (649 load lines) over the ESM loader while importing the app's own Solana modules —
+      `src/rpc.js`, `src/jupiter.js`, `src/walletScorecard.js`, `src/transactionIndexer.js`.
+        • `stream-json` — **0 load lines, ever**, in either trace. Its only importer in the whole tree is
+          `jayson/lib/utils.js:3-4`; the only jayson entry point `@solana/web3.js` touches is
+          `jayson/lib/client/browser` (all six `node_modules/@solana/web3.js/lib/*.js` bundles: that one path, no
+          other), and the browser client pulls `jayson/lib/generateRequest.js` plus `uuid` — not `utils.js`. So the
+          O(depth²)-filter DoS advisory, the only one in the set with an impact story that matters, is on no path this
+          repo can take; the filters it concerns (`pick`/`ignore`/`filter`/`replace`) appear nowhere in the tree either.
+        • `uuid@8.3.2` — loads, from exactly three parents: `jayson/lib/client/browser/index.js`,
+          `jayson/lib/generateRequest.js`, `rpc-websockets/dist/index.cjs`. The advisory is a missing buffer bounds
+          check in v3/v5/v6 **when `buf` is provided**; jayson's two call sites are `require('uuid').v4`
+          (`client/browser/index.js:3`, `utils.js:6`), and v4 takes no `buf`. Nothing in `src/`, `scripts/`, `tests/`,
+          `desktop/` or `public/` imports `uuid` — nor `jayson` nor `stream-json`; every `uuid` hit in the tree is
+          `node:crypto.randomUUID` (`store.js:2`, `core/platform.js:2`, `robinhoodJournal.js:8`, …).
+          `rpc-websockets` ships its own `uuid@14.0.2`, past the `<11.1.1` range and not in the report.
+        • Weight, for the record: `jayson` 1,111,467 B + `stream-json` 90,323 B + `uuid` 116,098 B under an
+          `@solana/web3.js` of 11,520,649 B — a package whose weight already has an owner and a plan
+          (`reports/SOLANA-ROBINHOOD-LAB-REVIEW-2026-09-26.md:84`, "Keep; lazy-load it once Solana is parked").
+      Nothing in the report can be acted on, which is what makes a permanent line the wrong surface. `fixAvailable`
+      for all four is `@solana/web3.js@0.0.3` (`isSemVerMajor: true`) — npm's own proposed remedy is a **downgrade
+      from 1.99.0 to a pre-release** — so `npm audit fix` has no move to make and the step can never be cleared by
+      acting on it. A non-blocking line that is permanently yellow and un-actionable is a line people learn to skip,
+      and "telemetry we look at" was the item's whole value proposition.
+      The consumer is the other half of the measurement. `ci.yml` has no artifact upload and no notification step, so a
+      non-blocking audit line would be read by nobody unless a human opens the run page. The repo's telemetry idiom is
+      exactly that — a line a human reads: `$GITHUB_STEP_SUMMARY` (`release.yml:91-101`), and its in-test sibling
+      `test-wiring.test.mjs:48-60`, titled "the coverage map is complete and printed (telemetry, not a guess)". Both
+      earn their readers because they change when the repo changes. An audit line does not: advisories are published
+      against the registry on the registry's schedule, so a push that touched no dependency can turn it yellow. The
+      only change that can *introduce* an advisory is a `package.json`/`package-lock.json` bump — which is precisely
+      the diff of the PR that makes it, since everything else is frozen by `npm ci` (lockfile 18,878 B). The repo also
+      settled the adjacent question twice and symmetrically: both workflows install with **`--no-audit`**
+      (`ci.yml:53`, `release.yml:69`), i.e. audit output is deliberately kept out of build logs, and `ci.yml`'s header
+      states the job's purpose as "Same checks a contributor runs locally" — an audit step is not in README's
+      `## Running it` list (`npm ci`, `selftest`, `doctor`, `test:all`, `test:updater`), so adding one would silently
+      divorce CI from the documented local check list. Nothing pins those two together either: no test or script reads
+      either workflow file.
+      One variant is not pure noise, and it is not this item. A *gate* at `--audit-level=high` (measured: exit 0 today,
+      `0 high`, `0 critical`; same for `--audit-level=critical`) would be green now and would speak up on a future
+      high/critical in a runtime dependency. It was declined with the CI step because the queued item is non-blocking
+      by definition, and because a registry-drift gate reddens CI on a push that changed nothing — the same defect with
+      a worse failure mode attached to a green baseline. If it is ever wanted, build the causal trigger instead:
+      diff the lockfile in the PR, not the registry on every push.
+      Residue: the reachability analysis is the part that cost something to establish and that nothing in the tree
+      recorded, so it is recorded with its reproduce command in `AUDIT.md` §0 beside the existing "Runtime deps" row
+      (whose companion "Installed state" row was corrected too: `node_modules/` is present now and was absent when §0
+      was written). No test and no script were added, unlike P3.2 — here no invariant rests on an unpinned rule in this
+      repo's own source. The reachability lives in `node_modules/`, and a test that asserted a dependency's internal
+      import graph would be pinning a coincidence that any `@solana/web3.js` bump invalidates: the same reasoning P2.4
+      used to decline a split that existed only because of test injection. Files touched: `AUDIT.md` (one new snapshot
+      row, one corrected); no code, no test.
+
+Regression sweep after P3.3: `npm run test:all` exit 0 — 30 targets, 963 pass, 0 fail, 0 cancelled, every target ran
+      (965 tests, of which the only two not passing are the standing `# SKIP` placeholders — the Jupiter sibling-freeze
+      pair in `test:robinhood-equities` and the trader→Lab Kalshi handoff in `test:upgrade` — both untouched here);
+      stderr was empty and the counts are identical to the P3.2 baseline, which is the expected result for a docs-only
+      item. Checked before editing that no test or script in `tests/` or `scripts/` reads `AUDIT.md` or `PROGRESS.md`,
+      so the edit could not change any target's inputs.
