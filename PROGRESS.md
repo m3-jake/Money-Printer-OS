@@ -8,7 +8,7 @@
 8 — done — ed4677c — Added AGGRESSIVE_PAPER profile overrides, paper-only estimator routing, and opt-in learner threshold relaxation while preserving default thresholds.
 9 — partial — 77ffc73 — Added launch parsing and paper-only sniper gates; native transaction builder, Jito integration, and order submission remain unavailable.
 10 — done — 368fb66 — Raised Polymarket US paper bounds and added weather, sports, culture, and politics filters; existing real-order rails remain unchanged.
-11 — pending — — Kalshi demo integration and paper book.
+11 — done — PENDING — Added signed Kalshi API facade with exact demo-host enforcement, required weather/sports series, and bounded paper book.
 12 — pending — — Robinhood equities paper trading.
 13 — pending — — Regime-conditional central routing.
 14 — pending — — Shadow live measurement without orders.
