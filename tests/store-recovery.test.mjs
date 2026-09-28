@@ -439,3 +439,48 @@ test('P2.1 an empty-but-valid section never turns into an account recovery', asy
   assert.ok(Number(s.research.learner.weights.edge) > 0, 'the learner section is repaired in memory');
 });
 
+// ----------------------------------------------------------------------------------------------
+// P3.2, skipped on measurement: the queue asked for a `stateVersion` field plus a migration stub.
+// Measured, the field has nothing to do here -- no reader anywhere in the tree, and measured inert in
+// both directions (a file carrying `stateVersion: 99` loads as 99 and saves back as 99), because every
+// migration in store.js is keyed on field presence (`!Array.isArray(s.pnlLedger)`,
+// `research.externalized`, `pnlLedgerTruncatedBefore`), which is finer-grained than one integer.
+// The capability the counter would uniquely add -- refusing an unknown version -- is the wrong answer
+// on this document: loadState() is the engine's load path (index.js:489), and its rule is load the
+// account and record the anomaly, never refuse it.
+// What a counter would have been *for* is downgrade safety: a build must not lose what a newer build
+// wrote. That already holds, and it holds by two rules measured in the downgrade probe -- the
+// `...s` spread in merge() keeps unknown top-level keys, and attachResearch() takes the section list
+// from the file it reads rather than from a hardcoded one, so a section this build cannot name still
+// reattaches. Both are pinned here so a later refactor cannot quietly drop either.
+const newerBuildState = cashSol => ({
+  cashSol, paperStartSol: 10, positions: [], history: [],
+  stateVersion: 7,                                  // a field this build has no reader for
+  futureTopLevel: { keep: 'me' },                   // and a top-level key it cannot name
+  research: { autonomyLevel: 1, externalized: ['learner', 'futureSection'], lessons: [{ id: 'kept' }] },
+});
+
+test('P3.2 state written by a newer build survives this one, counter or no counter', async () => {
+  const f = await fixture(newerBuildState(7));
+  fs.writeFileSync(path.join(f.dir, 'research-state.json'), JSON.stringify({
+    learner: { outcomes: [{ ts: 9, horizonMin: 5 }] }, futureSection: { keep: 'me-too' },
+  }));
+  const s = f.loadState();
+  assert.equal(s.cashSol, 7);
+  assert.equal(s.research.learner.outcomes[0].ts, 9, 'a section this build knows reattaches');
+  assert.deepEqual(s.research.futureSection, { keep: 'me-too' }, 'and one it does not know comes back too');
+  assert.deepEqual(s.futureTopLevel, { keep: 'me' }, 'an unknown top-level key is not a reason to refuse the account');
+  f.saveState(s);
+  const state = JSON.parse(f.read('state.json'));
+  assert.equal(state.stateVersion, 7, 'and not a reason to rewrite it either');
+  assert.deepEqual(state.futureTopLevel, { keep: 'me' });
+  assert.deepEqual(state.research.futureSection, { keep: 'me-too' }, 'the unknown section is still on disk after this build republishes');
+  assert.deepEqual(f.loadState().research.futureSection, { keep: 'me-too' }, 'and after reload');
+  // This build re-derives the externalized list from the sections it knows (store.js:501), so the unknown
+  // one leaves the list -- and that is safe only because its data was written inline on the same save.
+  // A reader must therefore take the list from the file, never assume its own list is the whole list.
+  assert.ok(state.research.externalized.includes('learner'), 'the sections this build knows are still externalized');
+  assert.ok(!state.research.externalized.includes('futureSection'), 'and the one it cannot name is not claimed as external');
+  assert.deepEqual(JSON.parse(f.read('research-state.json')).lessons, [{ id: 'kept' }], 'a heavy section this build owns moved out as usual');
+});
+

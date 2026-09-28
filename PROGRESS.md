@@ -396,7 +396,7 @@ Regression sweep after P2.4: `npm run test:all` exit 0 — 30 targets, 961 pass,
       sibling-freeze pair in `test:robinhood-equities` and the trader→Lab Kalshi handoff in `test:upgrade` — both
       untouched here); counts identical to the P2.3 baseline. This entry is docs-only and no target reads `PROGRESS.md`.
 
-## P3 status: 2 of 5 closed (P3.1 skipped on measurement, P3.5 done; P3.2–P3.4 pending)
+## P3 status: 3 of 5 closed (P3.1 and P3.2 skipped on measurement, P3.5 done; P3.3–P3.4 pending)
 P3.1 — skipped on measurement — — logo PNG → webp: refused by the PNG/colorType-6 contract, and recompression has 0 bytes of headroom
       Both halves of the item were measured against the file and its consumers. `public/assets/money-printer-logo.png`
       is 1024×1024 RGBA, 1,290,441 bytes, 9.85 bpp (30.8 % of raw), 348,696 unique RGBA colors, alpha 0–255, and has
@@ -428,7 +428,6 @@ Regression sweep after P3.1: `npm run test:all` exit 0 — 30 targets, 961 pass,
       sibling-freeze pair in `test:robinhood-equities` and the trader→Lab Kalshi handoff in `test:upgrade` — both
       untouched here); counts identical to the P2.4 baseline, and `test:visual` — the target that pins the logo PNG —
       passed, so `public/assets/` was left byte-for-byte as found.
-P3.2 — pending — — stateVersion field + migration stub
 P3.3 — pending — — npm audit in CI as non-blocking telemetry
 P3.4 — pending — — review @anthropic-ai/sdk (aiSummary) off the cycle hot path
 P3.5 — done — 1,290,441 → 369,134 bytes (−71.4 % / 921,307 B) off every drawn slot — sized logo derivative (512 px RGBA PNG) for the ≤120 px dashboard slots, 1024 px master kept
@@ -474,3 +473,54 @@ Regression sweep after P3.5: `npm run test:all` exit 0 — 30 targets, 962 pass,
       pair in `test:robinhood-equities` and the trader→Lab Kalshi handoff in `test:upgrade` — both untouched here);
       that is the P3.1 baseline (963 tests, 961 pass) plus exactly the one new `visual-assets` test. `test:visual` — the
       target that pins the logo contract — ran 72/72.
+
+P3.2 — skipped on measurement — — stateVersion field + migration stub: the load path has no version to dispatch on, and the one capability a counter adds is the wrong answer on this document
+      `stateVersion` appears exactly once in the tree — in this file, as the queue line — so nothing was half-built and
+      nothing is waiting for the field. `src/store.js:304` is the whole load path: `merge(validateAccount(
+      attachResearch(JSON.parse(...))))`, with no version dispatch anywhere, and `fresh()` writes no version either.
+      Measured, that is the field's behaviour: a state.json carrying `stateVersion: 99` loads as 99, saves back as 99,
+      and changes nothing.
+      The stub has nothing to dispatch on, because this document already migrates on *field presence*, which is
+      finer-grained than one integer. Seven legacy shapes were run through the real store (probes kept outside the
+      tree; none of them carries a version field):
+        • `{cashSol, paperStartSol, positions, history}` — the pre-everything shape `tests/store-recovery.test.mjs:21`
+          already uses: cash kept, `pnlLedger` rebuilt `[]`, `realizedLifetimePnlSol` 0 (correct for no history),
+          research backfilled to 16 sections.
+        • pre-`pnlLedger` with 3 closed trades: ledger rebuilt with exactly 3 rows, `realizedLifetimePnlSol` = 3 (the
+          exact sum) and `pnlLedgerTruncatedBefore` = 1000 — the F1/F3 reconstruction, keyed on
+          `!Array.isArray(s.pnlLedger)` (`store.js:102`) and already pinned by `tests/accounting-integrity.test.mjs:66`.
+        • pre-split inline research (heavy sections inside state.json, no research-state.json): loads with
+          lessons/universe/outcomes intact, and the next save externalizes all 11 `RESEARCH_HEAVY` keys — state.json
+          gets `research.externalized` and research-state.json carries the same counts. `store.js:18` claims this; it
+          is now measured rather than asserted.
+        • `research: null`: no throw, 16 sections backfilled — every writer in the tree uses `|| {}` / `|| []`.
+        • wrong-typed sections (`learner: []`): tolerated — not repaired into an object, but nothing throws and no
+          pause or recovery fires. A counter would not catch it either: an array-valued section has no version to read.
+        • an `externalized` list whose research file was deleted: inline fields kept, the heavy sections rebuilt empty
+          by design (`store.js:238` — a missing file is a fresh install, a pre-split file or a reset).
+      The one capability a counter uniquely adds — refusing an unknown version — is the wrong response on this
+      document. `loadState()` is the engine's load path (`src/index.js:489`, `:809`, `src/optimizer.js:3`), and it
+      refuses only *impossible* state (`validateAccount`: non-finite or negative cash, missing arrays), throwing
+      `STATE_RECOVERY_REQUIRED` with both files preserved for repair (`store.js:320–325`). A `stateVersion > CURRENT →
+      throw` gate would turn a shape question into a hard boot failure on the money path — a new failure mode with no
+      measured need, against the tree's own rule (load the account, record the anomaly, never zero or refuse it: F1/F2/F3,
+      `system.recovery`, `system.researchRecovery`). The field can also rot silently: with no second source of truth, a
+      forgotten bump asserts a false invariant, and no test can detect a forgotten bump.
+      What the item was really reaching for is downgrade safety — an older build must not lose what a newer build
+      wrote — and that already holds, structurally. Measured by handing this build a newer build's files: an unknown
+      field (`stateVersion: 7`), an unknown top-level key (`futureTopLevel`) and an unknown *heavy* section
+      (`futureSection`) listed in the newer `externalized` list all survived load → save → reload. The section
+      reattaches because `attachResearch` (`store.js:275–281`) takes the wanted list **from the file it is reading**
+      rather than from a hardcoded one; on republish this build re-derives the list from its own keys (`store.js:501`)
+      and writes the unknown section inline instead of leaving it dangling, so it changes address, it is not lost.
+      Nothing was invented and nothing dropped, in either direction.
+      So the residue of this item is a guard, not a field: that property rested on two rules and nothing pinned either.
+      `tests/store-recovery.test.mjs` (+1 test, no production change) now asserts the newer build's unknown field, key
+      and section across a full load → save → reload, plus the list behaviour that makes the move safe. Files touched:
+      `tests/store-recovery.test.mjs` (+1 test); `src/store.js` byte-for-byte unchanged.
+
+Regression sweep after P3.2: `npm run test:all` exit 0 — 30 targets, 963 pass, 0 fail, 0 cancelled, every target ran
+      (965 tests, of which the only two not passing are the standing `# SKIP` placeholders — the Jupiter sibling-freeze
+      pair in `test:robinhood-equities` and the trader→Lab Kalshi handoff in `test:upgrade` — both untouched here); that
+      is the P3.5 baseline (964 tests, 962 pass, 2 `# SKIP`) plus exactly the one new `store-recovery` test, which makes
+      `test:recovery` 55/55. No `src/` file was touched, so no target's runtime behaviour could move.
