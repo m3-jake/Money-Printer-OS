@@ -91,6 +91,37 @@ export function reviewPositionPrice(p,pair,{paper=false,now=Date.now(),ticks=nul
 // entry-side arithmetic lives here and index.js calls into it.
 // ---------------------------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------------------------
+// P1.5 / V8 — how often the tick band actually fires.
+// The band rejects only a price ABOVE TICK_BAND_MAX_RATIO times the recent tick median; an unbounded
+// drop passes it (that asymmetry is V8, and it is not changed here). Before deciding whether to make it
+// two-sided, the funnel has to say whether it ever rejects at all, so this counts what the review
+// returned instead of leaving it invisible in a per-position `priceStatus` field.
+export function emptyPriceReviewTally() {
+  return { reviewed: 0, accepted: 0, rejected: 0, reasons: {}, bandRejects: 0, bandMedianRatioMin: null, bandMedianRatioMax: null, lastBandAt: null };
+}
+export function tallyPriceReview(tally, review, at = Date.now()) {
+  const t = tally || emptyPriceReviewTally();
+  t.reviewed++;
+  if (review?.accepted) t.accepted++;
+  else {
+    t.rejected++;
+    const reason = review?.reason || 'unknown';
+    t.reasons[reason] = Number(t.reasons[reason] || 0) + 1;
+    if (reason === 'price-outside-tick-band') {
+      t.bandRejects++; t.lastBandAt = Number(at) || Date.now();
+      const mr = Number(review?.medianRatio);
+      // The minimum ratio is the evidence for the one-sidedness: it can never be below the band maximum,
+      // because a price below the median is accepted whatever it is.
+      if (Number.isFinite(mr)) {
+        if (t.bandMedianRatioMin === null || mr < t.bandMedianRatioMin) t.bandMedianRatioMin = mr;
+        if (t.bandMedianRatioMax === null || mr > t.bandMedianRatioMax) t.bandMedianRatioMax = mr;
+      }
+    }
+  }
+  return t;
+}
+
 // A paper position with no pool binding accepts a price from ANY pool of that mint
 // (reviewPositionPrice only enforces the pair when p.pairAddress is truthy), and index.js
 // back-fills pairAddress from the FIRST accepted tick, so it can latch onto the wrong pool

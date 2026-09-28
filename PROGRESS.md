@@ -190,7 +190,23 @@ P1.4 — done — — test hygiene: the suite actually runs now (the P0 blocker 
       endings — and it prints the coverage map (99 suites across 31 targets) as telemetry.
       `npm run test:all` is green end to end for the first time: **30 targets, 946 tests, 0 failures**
       (`test:robinhood` alone is 207).
-P1.5 — pending — — rejected-by-band counter in the funnel
+P1.5 — done — — rejected-by-band counter in the funnel (V8 made observable, not changed)
+      `src/positionExecution.js`: `emptyPriceReviewTally()` + `tallyPriceReview()` count every position
+      price review — accepted/rejected per reason, plus `bandRejects` with the min/max
+      `bandMedianRatio` seen and `lastBandAt`. Purely additive: `reviewPositionPrice` is untouched, so
+      the band is exactly as asymmetric as V8 found it.
+      `src/index.js`: the cycle creates one tally, passes it into `updatePositions(s, reviewTally)`
+      (tallied beside the existing per-position `priceStatus` and journal writes, one call site) and
+      publishes it as `system.opportunityFunnel.priceReviews`, so it lands in `funnelHistory` as well.
+      HUD: the Pump.fun glance foot shows `price rejects N · band M` when anything was rejected.
+      The counter is a measurement, not a fix: the minimum `bandMedianRatio` it can ever record stays
+      above `TICK_BAND_MAX_RATIO`, which is the observable proof that the band never rejects downward;
+      making it two-sided is a later decision with its own evidence.
+      Tests: `tests/execution-turnover.test.mjs` — a band rejection is counted with its ratio, a crash far
+      below the median is *not* counted as a band rejection but is counted by reason, accepted and stale
+      reviews land in the same tally, a missing tally is created rather than thrown on, and the
+      engine/HUD wiring is asserted (16 pass). One-cycle engine run: exit 0, HEALTHY, 0 errors, funnel
+      carries `priceReviews`.
 P2.1 — pending — — research-state.json backup/validate parity or documented asymmetry
 P2.2 — pending — — async batched journal appends (state.json semantics byte-for-byte)
 P2.3 — pending — — split robinhoodAutoTrader.js by seam (behavior-preserving)

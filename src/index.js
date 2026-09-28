@@ -36,7 +36,7 @@ const enqueueAlphaEvent = row => { if (cfg.alphaWorkerEnabled) enqueueAlphaRaw(r
 const LAB_LINK = String(process.env.MPO_LAB_LINK ?? 'true').toLowerCase() === 'true';
 import { solanaCostGate, paperProfileDemotion } from './solanaEconomics.js';
 import { latestJupiterQuote } from './jupiterEvidence.js';
-import { exitSimulation, simulatePaperExit, paperExitQuote, reviewPositionPrice, entrySizing, paperEntryRejection } from './positionExecution.js';
+import { exitSimulation, simulatePaperExit, paperExitQuote, reviewPositionPrice, entrySizing, paperEntryRejection, emptyPriceReviewTally, tallyPriceReview } from './positionExecution.js';
 import { apiUnitEconomicsSnapshot, persistApiUnitEconomics, attributeScanCycle, strategyNetPnlAfterDataCost } from './apiUnitEconomics.js';
 
 const once = process.argv.includes('--once');
@@ -379,7 +379,7 @@ async function actions(s) {
   expireProposals(s);
 }
 
-async function updatePositions(s) {
+async function updatePositions(s, reviewTally = null) {
   const pr=exitPolicy(s);
   const positions = [...s.positions];
   const refreshed = await refreshPositionPairs(positions);
@@ -394,6 +394,7 @@ async function updatePositions(s) {
     const anchor = Number(p.lastPrice || p.entryPrice || 0);
     const tickRatio = anchor > 0 ? price / anchor : 1;
     const review=reviewPositionPrice(p,pair,{paper:cfg.mode==='paper',ticks:s.tickHistory?.[p.mint]});
+    if (reviewTally) tallyPriceReview(reviewTally, review, Date.now());
     if (!review.accepted) {
       p.priceStatus=review.reason;
       p.priceIntegrityRejects = Number(p.priceIntegrityRejects || 0) + 1;
@@ -510,7 +511,10 @@ async function cycle(budget = null) {
     s.runtime.activeEvolutionChampionId=hotPolicy.id;s.system.activeEvolutionPolicy={...hotPolicy,stage:'PAPER_CANARY',hotReload:true,applied:true,liveActivationAllowed:false,automaticLivePromotionAllowed:false,liveExecution:'manual'};
   }else if(cfg.mode==='paper'){s.runtime.activeEvolutionChampionId='BASE';s.system.activeEvolutionPolicy={id:'BASE',stage:'BASE',hotReload:true,applied:false,liveActivationAllowed:false,automaticLivePromotionAllowed:false,liveExecution:'manual'};}
   else {const existing=s.system.activeEvolutionPolicy||{};s.system.activeEvolutionPolicy={...existing,hotReload:false,applied:false,liveActivationAllowed:false,automaticLivePromotionAllowed:false,liveExecution:'manual'};}
-  if (['paper', 'live'].includes(cfg.mode)) await updatePositions(s);
+  // P1.5: what the position price review returned this cycle, per reason — the tick band's rejection
+  // count is published in the funnel instead of only living in each position's priceStatus field.
+  const priceReviews=emptyPriceReviewTally();
+  if (['paper', 'live'].includes(cfg.mode)) await updatePositions(s, priceReviews);
   budget?.assertAlive('positions');
 
   if (s.stats.cycles === 1 || Date.now() - lastRpcBenchAt >= 120_000) refreshRpcHealthAsync();
@@ -728,7 +732,10 @@ async function cycle(budget = null) {
     scorePassed:ranked.filter(x=>Number(x.fastEdgeScore||0)>=Number(x.entryThreshold||0)).length,eligible:ranked.filter(x=>x.eligible).length,
     executionPassed:ranked.filter(x=>x.eligible&&Number(x.executionScore||0)>=15).length,approved,
     opened:Number(s.stats.signals||0)-signalsBefore,blocked:postBlock.blocked,blockReasons:postBlock.reasons,rejectionReasons,
-    openPositions:s.positions.length,openLimit:postBlock.openLimit,capitalDeploymentPct:exposure(s)/eqNow*100,cashPct:Number(s.cashSol||0)/eqNow*100};
+    openPositions:s.positions.length,openLimit:postBlock.openLimit,capitalDeploymentPct:exposure(s)/eqNow*100,cashPct:Number(s.cashSol||0)/eqNow*100,
+    // P1.5: position price reviews (accepted/rejected per reason). `bandRejects` with
+    // `bandMedianRatioMin/Max` shows how often and how far the one-sided tick band fired (V8).
+    priceReviews:{...priceReviews,reasons:{...priceReviews.reasons}}};
   s.system.opportunityFunnel=funnel;
   s.research.improvementLoop ||= {iteration:0,funnelHistory:[]};
   s.research.improvementLoop.iteration=Number(s.research.improvementLoop.iteration||0)+1;
