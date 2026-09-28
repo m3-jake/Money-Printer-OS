@@ -34,6 +34,28 @@ trap { Say "FAILED: unexpected error: $($_.Exception.Message)" Red; Say "Log: $l
 Say "Money Printer local update  $stamp" Green
 Say "Build folder: $work"
 
+# 0. A release comes only from clean source. If a repo has an origin, fast-forward it first;
+# local commits may be ahead, but a diverged history is never merged by an unattended updater.
+function Assert-CleanRepo($repo, $label) {
+  if (-not (Test-Path (Join-Path $repo '.git'))) { Fail "$label repo missing at $repo" }
+  $dirty = @(git -C $repo status --porcelain)
+  if ($dirty.Count) { Fail "$label source has uncommitted changes. Finish/commit them before updating." }
+}
+function Update-Repo($repo, $label) {
+  Assert-CleanRepo $repo $label
+  $branch = (git -C $repo branch --show-current).Trim()
+  $origin = git -C $repo remote get-url origin 2>$null
+  if ($LASTEXITCODE -ne 0 -or -not $origin) { Say "$label has no origin remote; using the clean local commit on $branch." Yellow; return }
+  Run "Fetching latest $label source" { git -C $repo fetch origin $branch --prune }
+  $behind = [int](git -C $repo rev-list --count "HEAD..origin/$branch")
+  $ahead  = [int](git -C $repo rev-list --count "origin/$branch..HEAD")
+  if ($behind -gt 0 -and $ahead -gt 0) { Fail "$label local branch diverged from origin/$branch; refusing an automatic merge." }
+  if ($behind -gt 0) { Run "Fast-forwarding $label to origin/$branch" { git -C $repo merge --ff-only "origin/$branch" } }
+  Assert-CleanRepo $repo $label
+}
+Update-Repo $mpoRepo 'Money Printer OS'
+Update-Repo $labRepo 'Evolution Lab'
+
 # 1. Build both archives while the apps keep running.
 $mpoAsarDir = Join-Path $work 'mpo'
 Push-Location $mpoRepo
@@ -50,6 +72,16 @@ Push-Location $labRepo
 Run 'Building Evolution Lab' { node scripts/package-windows.mjs --asar-only "$labAsar" }
 Pop-Location
 if (-not (Test-Path $labAsar)) { Fail "no Lab app.asar at $labAsar" }
+
+$mpoBuildInfo = Join-Path $mpoAsarDir 'BUILD-INFO.json'
+$labBuildInfo = "$labAsar.build.json"
+if (-not (Test-Path $mpoBuildInfo)) { Fail "Money Printer build provenance missing: $mpoBuildInfo" }
+if (-not (Test-Path $labBuildInfo)) { Fail "Evolution Lab build provenance missing: $labBuildInfo" }
+$mpoBuild = Get-Content $mpoBuildInfo -Raw | ConvertFrom-Json
+$labBuild = Get-Content $labBuildInfo -Raw | ConvertFrom-Json
+$mpoCommit = if ($mpoBuild.sourceCommit) { $mpoBuild.sourceCommit } else { $mpoBuild.commit }
+$labCommit = $labBuild.commit
+Say "Release pair: MPO $($mpoBuild.packageVersion) @ $($mpoCommit.Substring(0,7)) + Lab $($labBuild.packageVersion) @ $($labCommit.Substring(0,7))" Green
 if ($BuildOnly) { Say "`nBuild-only run: both archives built and the MPO build booted. Nothing installed was touched." Green; exit 0 }
 
 # 2. Stop both apps: ask politely, then force whatever is left (children included).
@@ -57,9 +89,16 @@ function Stop-App($name) {
   $p = Get-Process -Name $name -ErrorAction SilentlyContinue
   if (-not $p) { return }
   Say "Stopping $name..."
-  $p | ForEach-Object { try { $_.CloseMainWindow() | Out-Null } catch {} }
-  for ($i = 0; $i -lt 20 -and (Get-Process -Name $name -ErrorAction SilentlyContinue); $i++) { Start-Sleep -Milliseconds 500 }
-  Get-Process -Name $name -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+  if ($name -eq 'Money Printer Evolution Lab') {
+    # Closing the Lab window intentionally leaves its furnace running. New Lab builds accept this
+    # second-instance flag and run the normal before-quit/will-quit path, which records a clean boot.
+    try { Start-Process (Join-Path $labApp 'Money Printer Evolution Lab.exe') -ArgumentList '--quit-for-update' -WindowStyle Hidden } catch {}
+  } else {
+    $p | ForEach-Object { try { $_.CloseMainWindow() | Out-Null } catch {} }
+  }
+  for ($i = 0; $i -lt 30 -and (Get-Process -Name $name -ErrorAction SilentlyContinue); $i++) { Start-Sleep -Milliseconds 500 }
+  $left = Get-Process -Name $name -ErrorAction SilentlyContinue
+  if ($left) { Say "$name did not exit cleanly; forcing the remaining process tree." Yellow; $left | Stop-Process -Force -ErrorAction SilentlyContinue }
   for ($i = 0; $i -lt 20 -and (Get-Process -Name $name -ErrorAction SilentlyContinue); $i++) { Start-Sleep -Milliseconds 500 }
   if (Get-Process -Name $name -ErrorAction SilentlyContinue) { Fail "$name would not stop" }
 }
@@ -67,25 +106,88 @@ Say "`n== Stopping the running apps" Cyan
 Stop-App 'Money Printer OS'
 Stop-App 'Money Printer Evolution Lab'
 
-# 3. Back up and swap, verifying the copied file's hash.
-function Swap($appDir, $newAsar, $label) {
+# 3. Back up and swap as one transaction. If either copy fails, restore both old archives.
+function Swap($appDir, $newAsar, $label, $bak) {
   $res = Join-Path $appDir 'resources'; $cur = Join-Path $res 'app.asar'
-  if (-not (Test-Path $cur)) { Fail "$label is not installed at $appDir" }
-  $bak = Join-Path $res "app.asar.backup-$stamp"
+  if (-not (Test-Path $cur)) { throw "$label is not installed at $appDir" }
   Copy-Item $cur $bak
   Copy-Item $newAsar $cur -Force
   $want = (Get-FileHash $newAsar -Algorithm SHA256).Hash; $got = (Get-FileHash $cur -Algorithm SHA256).Hash
-  if ($want -ne $got) { Copy-Item $bak $cur -Force; Fail "$label copy did not verify; restored the backup" }
+  if ($want -ne $got) { throw "$label copy did not verify" }
   Say "$label installed (sha256 $($got.Substring(0,12))...). Backup: $bak" Green
 }
-Say "`n== Installing" Cyan
-Swap $mpoApp $mpoAsar 'Money Printer OS'
-Swap $labApp $labAsar 'Evolution Lab'
+function Restore-Pair($why) {
+  Say "Rolling back the pair: $why" Yellow
+  foreach ($x in @(@($mpoApp, $mpoBak), @($labApp, $labBak))) {
+    $cur = Join-Path $x[0] 'resources\app.asar'
+    if (Test-Path $x[1]) { Copy-Item $x[1] $cur -Force }
+  }
+}
+$mpoBak = Join-Path $mpoApp "resources\app.asar.backup-$stamp"
+$labBak = Join-Path $labApp "resources\app.asar.backup-$stamp"
+Say "`n== Installing paired release" Cyan
+try {
+  Swap $mpoApp $mpoAsar 'Money Printer OS' $mpoBak
+  Swap $labApp $labAsar 'Evolution Lab' $labBak
+} catch {
+  Restore-Pair $_.Exception.Message
+  Fail "paired install failed; previous Money Printer OS + Evolution Lab archives were restored"
+}
 
-# 4. Relaunch.
-Say "`n== Starting both apps" Cyan
+# 4. Relaunch and prove both halves of the pair are healthy before declaring success.
+function Wait-Health($url, $seconds = 35) {
+  $deadline = (Get-Date).AddSeconds($seconds)
+  while ((Get-Date) -lt $deadline) {
+    try {
+      $h = Invoke-RestMethod -Uri $url -TimeoutSec 2
+      if ($h.ok -eq $true) { return $h }
+    } catch {}
+    Start-Sleep -Milliseconds 500
+  }
+  return $null
+}
+Say "`n== Starting and verifying paired release" Cyan
 Start-Process (Join-Path $labApp 'Money Printer Evolution Lab.exe')
 Start-Process (Join-Path $mpoApp 'Money Printer OS.exe')
-Say "`nDone. Both apps are starting with the new builds." Green
-Say "To undo: quit both, then copy each resources\app.asar.backup-$stamp back over app.asar." Yellow
+$mpoHealth = Wait-Health 'http://127.0.0.1:8792/api/health'
+$labHealth = Wait-Health 'http://127.0.0.1:8793/api/health'
+$healthError = $null
+if (-not $mpoHealth) { $healthError = 'Money Printer OS health endpoint did not recover' }
+elseif ($mpoHealth.switches.paperOnlyBuild -ne $true -or $mpoHealth.switches.realEnabled -eq $true) { $healthError = 'Money Printer OS did not come back in the expected paper-only safety state' }
+elseif (-not $labHealth) { $healthError = 'Evolution Lab health endpoint did not recover' }
+elseif ($labHealth.service -ne 'money-printer-evolution-lab') { $healthError = 'port 8793 answered, but it was not Evolution Lab' }
+elseif ($labHealth.version -ne $labBuild.packageVersion) { $healthError = "Evolution Lab version mismatch: expected $($labBuild.packageVersion), got $($labHealth.version)" }
+elseif ($labHealth.build.commit -ne $labCommit) { $healthError = "Evolution Lab commit mismatch: expected $labCommit, got $($labHealth.build.commit)" }
+
+if ($healthError) {
+  Say $healthError Red
+  Stop-App 'Money Printer OS'
+  Stop-App 'Money Printer Evolution Lab'
+  Restore-Pair $healthError
+  Start-Process (Join-Path $labApp 'Money Printer Evolution Lab.exe')
+  Start-Process (Join-Path $mpoApp 'Money Printer OS.exe')
+  Fail 'new pair failed post-install verification; previous pair restored and relaunched'
+}
+
+# The installed bytes were already hash-verified. Record one authoritative receipt in BOTH app roots
+# so future audits never have to reconcile stale single-app sidecars again.
+$mpoHash = (Get-FileHash (Join-Path $mpoApp 'resources\app.asar') -Algorithm SHA256).Hash.ToLower()
+$labHash = (Get-FileHash (Join-Path $labApp 'resources\app.asar') -Algorithm SHA256).Hash.ToLower()
+$pair = [ordered]@{
+  schema = 'mpo.paired-release.v1'
+  installedAt = (Get-Date).ToUniversalTime().ToString('o')
+  machine = $env:COMPUTERNAME
+  moneyPrinterOS = [ordered]@{ version = $mpoBuild.packageVersion; commit = $mpoCommit; sha256 = $mpoHash }
+  evolutionLab = [ordered]@{ version = $labBuild.packageVersion; commit = $labCommit; sha256 = $labHash }
+  safety = [ordered]@{ paperOnlyBuild = $true; realEnabled = $false; liveActivationAllowed = $false }
+}
+$pairJson = $pair | ConvertTo-Json -Depth 6
+Set-Content (Join-Path $mpoApp 'PAIRED-RELEASE.json') $pairJson -Encoding UTF8
+Set-Content (Join-Path $labApp 'PAIRED-RELEASE.json') $pairJson -Encoding UTF8
+Copy-Item $mpoBuildInfo (Join-Path $mpoApp 'BUILD-INFO.json') -Force
+Copy-Item $labBuildInfo (Join-Path $labApp 'BUILD-INFO.json') -Force
+
+Say "`nDone. Verified pair: MPO $($mpoBuild.packageVersion) + Lab $($labBuild.packageVersion)." Green
+Say "Both live health endpoints passed; paired receipt written to both installs." Green
+Say "To undo: quit both, then restore BOTH resources\app.asar.backup-$stamp files as a pair." Yellow
 Read-Host 'Press Enter to close'
