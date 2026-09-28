@@ -189,7 +189,7 @@ P1.4 — done — — test hygiene: the suite actually runs now (the P0 blocker 
       a script names must exist, no target may name a file twice, the panel gate must normalize line
       endings — and it prints the coverage map (99 suites across 31 targets) as telemetry.
       `npm run test:all` is green end to end for the first time: **30 targets, 946 tests, 0 failures**
-      (`test:robinhood` alone is 207).
+      (`test:robinhood` alone is 207; 947 after P1.5 adds its own test).
 P1.5 — done — — rejected-by-band counter in the funnel (V8 made observable, not changed)
       `src/positionExecution.js`: `emptyPriceReviewTally()` + `tallyPriceReview()` count every position
       price review — accepted/rejected per reason, plus `bandRejects` with the min/max
@@ -207,6 +207,51 @@ P1.5 — done — — rejected-by-band counter in the funnel (V8 made observable
       reviews land in the same tally, a missing tally is created rather than thrown on, and the
       engine/HUD wiring is asserted (16 pass). One-cycle engine run: exit 0, HEALTHY, 0 errors, funnel
       carries `priceReviews`.
+
+## P1 status: complete (P1.1–P1.5)
+
+Done, one commit each, on top of the P0 workstream (`a01f6b7`, `133f05a`, `758d459`, `0f504e4`,
+`831058d`). Not one of the five changed a money-moving number by accident: P1.1 derives a claim that
+was a literal, P1.2 moves live samples off a cached endpoint, P1.3 adds a readout over the existing
+sizing arithmetic, P1.4 fixes test wiring, P1.5 counts what was already happening.
+
+Three things a reader of the audit should know:
+
+- **V7 was inverted, and P1.3 says so in the code**: at the default profile `tradeSizeSol` binds
+  (0.052 SOL) while `riskPerTradePct` would allow 0.125 SOL, and risk sizing only takes over below
+  0.4 SOL of equity. The readout reports the crossover for whatever profile is running, so the same
+  statement stays true when the profile changes (SPRINT: it never takes over).
+- **P1.1 can refuse a claim the platform used to make unconditionally.** `coverage.legacyBooks` was the
+  literal `MIRRORED_AND_RECONCILED_WHERE_POSSIBLE`; it is now derived from a five-field comparison per
+  book and flips to `MIRRORED_WITH_UNRECONCILED_DIFFERENCE` with the disagreeing fields named when the
+  mirror and the book disagree. On real data that can happen; it is not a regression, it is the item.
+- **P1.4's root cause was a line ending, not a missing panel.** `sync-robinhood-panel.mjs --check`
+  searched for a marker with `\n` in a CRLF checkout, so `test:all` (which chains with `&&`) silently
+  skipped six targets and hid two real failures plus two suites that no target ran at all.
+
+Regression sweep after P1.5 (`npm run test:all`, exit 0, this machine — every target, none skipped):
+
+| Target | Result | Target | Result |
+|---|---|---|---|
+| test:wiring | 4 pass | test:research | 46 pass |
+| test:recovery | 40 pass | test:evidence | 60 pass |
+| test:discovery | 7 pass | test:poly-research-eval | 14 pass |
+| test:solana | 28 pass | test:evolution | 15 pass |
+| test:turnover | 8 pass | test:lab-link | 28 pass |
+| test:updater | 24 pass | test:visual | 71 pass |
+| test:execution | 16 pass | test:release-gate | 7 pass |
+| test:unit-economics | 14 pass | test:latency | 7 pass |
+| test:product-economics | 13 pass | test:robinhood | 207 pass |
+| test:settlement | 18 pass | test:robinhood-equities | 15 pass |
+| test:polymarket-us | 18 pass | test:lane-contracts | 103 pass |
+| test:combos | 73 pass | test:fitness | 22 pass |
+| test:edge-robustness | 5 pass | test:unattended | 16 pass |
+| test:accounting | 14 pass | test:upgrade | 21 pass |
+| test:replay | 24 pass | test:experiments | 9 pass |
+
+**30 targets, 947 tests, 0 failures.** Before P1.4 the same command died at `test:robinhood` and the
+five targets after it never ran.
+
 P2.1 — pending — — research-state.json backup/validate parity or documented asymmetry
 P2.2 — pending — — async batched journal appends (state.json semantics byte-for-byte)
 P2.3 — pending — — split robinhoodAutoTrader.js by seam (behavior-preserving)
