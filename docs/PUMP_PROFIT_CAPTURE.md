@@ -1,4 +1,4 @@
-# Pump profit capture: alpha.74 + Evolution Lab alpha.15
+# Pump profit capture: alpha.75 + Evolution Lab alpha.16
 
 This is a PAPER-only, paired-system instrumentation and bounded research release. It does not establish that a larger bet is profitable and does not promote a new profit-capture champion.
 
@@ -25,3 +25,5 @@ The release has no qualified profit-capture publication and does not wire unvali
 Recovery: `pump-profit-checkpoint.json`, `pump-profit-experiments.json`, `pump-profit-report.json` in the trader data directory; `pump-profit-evaluation.json` in the Lab data directory. Local release uses the existing transactional paired installer. Never reset or rewrite the authoritative paper book to make a study pass.
 
 Tests: `npm run test:pump-profit` in each repository, plus each application's existing `npm run test:all`. The shared pure contracts are byte-identical between the two existing projects. Test fixtures are not trading-performance evidence.
+
+Installed-UI follow-up: exact-pool observations continue when experimental positions leave the active watchlist, including fixed post-exit horizons. Requests are deduplicated across books, capped at 30 pools per 15 seconds and 20,000 public market calls per study. Existing missing observations remain missing; the study and its baseline are not reset.

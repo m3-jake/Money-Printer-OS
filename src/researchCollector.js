@@ -21,7 +21,7 @@ const RAW_KEEP_DAYS=Math.max(3,Number(process.env.MPO_RAW_KEEP_DAYS||45));
 const RAW_BUDGET_BYTES=Math.max(256,Number(process.env.MPO_RAW_BUDGET_MB||20480))*1024*1024;
 const PRUNE_MS=60*60*1000;
 // Jupiter quote tape (public quote GETs only): every JUP_MS, up to JUP_TARGETS tokens, JUP_DAILY calls a UTC day.
-let profitQuoteApi=null,lastProfitQuoteAt=0;
+let profitQuoteApi=null,profitMarketApi=null,lastProfitQuoteAt=0;
 const JUP_ON=String(process.env.MPO_JUP_QUOTES??'true').toLowerCase()!=='false';
 const JUP_MS=Math.max(30_000,Number(process.env.MPO_JUP_QUOTE_MS||120_000));
 const JUP_TARGETS=Math.max(1,Math.min(20,Number(process.env.MPO_JUP_QUOTE_TARGETS||6)));
@@ -152,7 +152,7 @@ async function run(){
   }
   if(Date.now()-lastProfitQuoteAt>=8000){
    lastProfitQuoteAt=Date.now();
-   try {profitQuoteApi ||= await import('./pumpProfitQuotes.js'); status.pumpProfitQuotes=await profitQuoteApi.collectPumpProfitQuotes({dir:DATA_DIR});}
+   try {profitMarketApi ||= await import('./pumpProfitMarkets.js');status.pumpProfitMarkets=await profitMarketApi.collectPumpProfitMarkets({dir:DATA_DIR});profitQuoteApi ||= await import('./pumpProfitQuotes.js'); status.pumpProfitQuotes=await profitQuoteApi.collectPumpProfitQuotes({dir:DATA_DIR});}
    catch(e){status.pumpProfitQuotes={error:String(e.message||e),paidCalls:0,liveExecutionAllowed:false};}
   }
   if(JUP_ON&&Date.now()-lastJup>=JUP_MS&&Date.now()>=jupBackoffUntil){

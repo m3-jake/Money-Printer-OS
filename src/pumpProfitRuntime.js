@@ -1,3 +1,4 @@
+import {observationTargets} from './pumpProfitMarkets.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { writeFileAtomicSync } from './atomicRename.js';
@@ -90,6 +91,9 @@ export function persistPumpCapture(s, config, ranked = [], now = Date.now()) {
   if (!experimentCache || experimentDirectory !== dir) initializePumpCapture(s, config, now);
   if (!c.experimentPaused) {
     const markets = [...ranked, ...(s.positions || [])].map(x => observedMarket(x, num(s.market?.solUsd), now));
+    const followup=read(path.join(dir,'pump-profit-markets.json'),{});
+    if(followup.protocolHash===experimentCache.protocolHash)markets.push(...(followup.ticks||[]).filter(t=>t.at<=now&&now-t.at<=30000));
+    markets.sort((a,b)=>a.at-b.at);
     const tracked = new Set(experimentCache.books.flatMap(b => [...b.positions, ...b.history.filter(p => now - p.closedAt < 121 * 60000)].map(p => p.mint)));
     const ticks = [...new Map(markets.filter(x => tracked.has(x.mint)).map(x => [`${x.mint}:${x.pairAddress}`, x])).values()];
     const hourStart = Math.floor(now / 3600000) * 3600000, recent = experimentCache.opportunities.filter(o => o.at >= hourStart).length;
@@ -108,7 +112,7 @@ export function persistPumpCapture(s, config, ranked = [], now = Date.now()) {
   c.experiments = profitExperimentView(experimentCache);
   const requests = c.experimentPaused ? [] : profitQuoteRequests(experimentCache);
   write(path.join(dir, 'pump-profit-requests.json'), { schema: 'mpo.pump-profit-requests.v1', protocolHash: experimentCache.protocolHash, mode: 'PAPER',
-    createdAt: experimentCache.createdAt, expiresAt: experimentCache.protocol.validation.end, maxCalls: 4096, maxCallsPerHour: 180, requests, liveExecutionAllowed: false });
+    createdAt: experimentCache.createdAt, expiresAt: experimentCache.protocol.validation.end, maxCalls: 4096, maxCallsPerHour: 180, requests, observations:c.experimentPaused?[]:observationTargets(experimentCache.books,now), liveExecutionAllowed: false });
   write(path.join(dir, 'pump-profit-experiments.json'), experimentCache);
   write(path.join(dir, 'pump-profit-report.json'), pumpProfitView(s));
   write(path.join(dir, 'pump-profit-checkpoint.json'), { stage: c.experiments.state, at: now, baselineHash: c.baseline.policy.hash,

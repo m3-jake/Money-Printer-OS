@@ -30,3 +30,16 @@ test('production state store preserves safety limits and capital across restart'
  r=spawnSync(process.execPath,['--input-type=module','-e',read],{env,encoding:'utf8'});assert.equal(r.status,0,r.stderr);
  fs.rmSync(dir,{recursive:true,force:true});
 });
+
+test('experimental positions and fixed-horizon observations remain tracked outside the active book',async()=>{
+ const {observationTargets,collectPumpProfitMarkets}=await import('../src/pumpProfitMarkets.js');
+ const dir=tmp(),now=Date.now(),mint='A'.repeat(32),pool='B'.repeat(32),position={mint,pairAddress:pool};
+ const targets=observationTargets([{positions:[position],history:[]},{positions:[position],history:[{mint:'C'.repeat(32),pairAddress:'D'.repeat(32),closedAt:now-60000}]}],now);
+ assert.equal(targets.length,2);fs.writeFileSync(path.join(dir,'state.json'),JSON.stringify({market:{solUsd:100},positions:[],watchlist:[]}));
+ fs.writeFileSync(path.join(dir,'pump-profit-requests.json'),JSON.stringify({mode:'PAPER',liveExecutionAllowed:false,protocolHash:'test',expiresAt:now+60000,observations:targets}));
+ let calls=0;const r=await collectPumpProfitMarkets({dir,now,refreshImpl:async xs=>{calls++;return xs.map(p=>({p,pair:{pairAddress:p.pairAddress,baseToken:{address:p.mint},priceUsd:'1',priceObservedAt:now,liquidity:{usd:1000}}}))}});
+ assert.equal(r.observations,2);assert.equal(r.paidCalls,0);assert.equal(calls,1);
+ assert.equal((await collectPumpProfitMarkets({dir,now:now+1000,refreshImpl:async()=>{throw Error('rate bypass')}})).calls,0);
+ const cache=JSON.parse(fs.readFileSync(path.join(dir,'pump-profit-markets.json')));assert.equal(cache.ticks[0].integrityPassed,true);assert.equal(cache.ticks[0].solUsd,100);
+ fs.rmSync(dir,{recursive:true,force:true});
+});
