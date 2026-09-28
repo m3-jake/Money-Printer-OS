@@ -26,6 +26,7 @@ import { aggressionParams, exitPresets, operatingProfiles, customExitPolicy, san
 import { recordUniverse, postmortemTrade } from './research.js';
 import { supervisorTick } from './supervisor.js';
 import { proposeTrade, proposeExit, resolveProposal, expireProposals } from './proposals.js';
+import { runArbitragePaperTick } from './arbitragePoller.js';
 import { memeIndex } from './indexer.js';
 import { mapLimit, sleep, compactError } from './utils.js';
 import { fastEdgeScore, queueOutcomeSamples, settleOutcomeSamples, dueOutcomeMints, learnerSnapshot, evolutionChampionPolicy, evolutionChampionScore } from './learner.js';
@@ -752,6 +753,8 @@ async function cycle() {
   const lead=ranked[0];
   s.system.lastCycle = Date.now();
   supervisorTick(s, ranked);
+  try { s.system.arbitragePaper = await runArbitragePaperTick(marketPlatform(), s, cfg.mode); }
+  catch (e) { s.system.arbitragePaper = { error: compactError(e), ordersSubmitted: 0 }; }
   if(cfg.mode==='paper'&&s.runtime?.profile==='AGGRESSIVE_PAPER'&&s.system.portfolioRisk?.some(x=>x.flatten)){
     for(const p of [...s.positions])paperSell(s,p,1,Number(p.lastPrice||p.entryPrice),'portfolio-drawdown-tier3',true);
     appendJournal({type:'portfolio-risk-flatten',mode:'PAPER',reason:'drawdown-tier3'});
