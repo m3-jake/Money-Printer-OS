@@ -60,3 +60,18 @@ test('a reader exception invalidates the practice mark without taking down the w
     const r=p.risk.state(now);assert.equal(r.state,'RED');assert.equal(p.practiceMarkSync.status,'UNAVAILABLE');assert.equal(p.practiceMarkSync.marks,0);
   }finally{p.close();}
 });
+
+test('a slightly future venue clock remains blocked until reached, then can be used without rewriting either timestamp',()=>{
+  const {p,book}=fixture();try{
+    const q=book.telemetry.lastQuotes['ETH-USD'];q.at=now+500;q.venueAt=q.at;q.receivedAt=now;q.timeQuality='FUTURE_VENUE_TIME';
+    assert.equal(p.risk.state(now).state,'RED');assert.equal(p.risk.state(now+1000).state,'GREEN');
+    assert.equal(q.at,now+500);assert.equal(q.receivedAt,now);assert.equal(q.timeQuality,'FUTURE_VENUE_TIME');
+    assert.equal(p.risk.state(now+16000).state,'RED','receipt expiry still blocks use even after the venue clock catches up');
+  }finally{p.close();}
+});
+
+test('old receipt times and mismatched quote symbols cannot masquerade as a fresh position mark',()=>{
+  for(const patch of [{receivedAt:now-30000},{receivedAt:now+1000},{symbol:'BTC-USD'},{venueAt:now-2000}]){
+    const {p,book}=fixture();try{Object.assign(book.telemetry.lastQuotes['ETH-USD'],patch);assert.equal(p.risk.state(now).state,'RED');assert.equal(p.practiceMarkSync.marks,0);}finally{p.close();}
+  }
+});

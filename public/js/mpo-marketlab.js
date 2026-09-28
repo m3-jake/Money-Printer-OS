@@ -7,9 +7,9 @@
   const pctv = v => v === null || v === undefined ? '—' : Number(v).toFixed(2) + '%';
   const tone = v => Number(v) > 0 ? 'pm-up' : Number(v) < 0 ? 'pm-down' : '';
   const localInput = ms => { const d = new Date(ms - new Date(ms).getTimezoneOffset() * 60000); return d.toISOString().slice(0, 16); };
-  let wf = null, strategies = [], sources = null, runs = [], result = null, replay = null, error = '', busy = false, stamp = 0, drawn = '', form = { source: 'tape', key: '', start: null, minutes: 60, strategy: 'momentum', lookback: 20, thresholdBps: 10, stepMs: 15000, feeBps: 10, cash: 1000 }, timer = null, speed = 60;
+  let wf = null, strategies = [], sources = null, runs = [], result = null, replay = null, error = '', busy = false, stamp = 0, drawn = '', form = { source: 'tape', key: '', start: null, minutes: 60, strategy: 'momentum', lookback: 20, thresholdBps: 10, stepMs: 15000, feeBps: 10, cash: 1000 }, timer = null, speed = 60, loadAfter = 0;
 
-  const api = async (p, body) => { const r = await fetch('/api/platform' + p, body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : { cache: 'no-store' }); const j = await r.json(); if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`); return j; };
+  const api = async (p, body) => { const r = await fetch('/api/platform' + p, body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(120000) } : { cache: 'no-store', signal: AbortSignal.timeout(10000) }); const j = await r.json(); if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`); return j; };
   const table = (head, rows, empty) => `<div class="core-table-wrap"><table class="table"><thead><tr>${head.map(h => `<th>${escape(h)}</th>`).join('')}</tr></thead><tbody>${rows || `<tr><td colspan="${head.length}">${escape(empty)}</td></tr>`}</tbody></table></div>`;
   const btn = (a, label, attrs = '') => `<button class="btn" type="button" data-lab="${a}" ${attrs}>${escape(label)}</button>`;
   const keysFor = src => src === 'tape' ? (sources?.tape || []) : src === 'book' ? (sources?.books || []) : [];
@@ -66,7 +66,7 @@
     if (window.MPOViz && replay) MPOViz.set('lab-replay', 'lines', { series: [{ label: replay.key, color: '#7fe39a', points: replay.mids.slice(-600) }], empty: 'Nothing revealed yet', zero: false });
     r.scrollTop = top;
   }
-  async function load() { try { const [s, h, st] = await Promise.all([api('/lab/sources'), api('/lab/runs'), api('/strategies')]); sources = s; runs = h.runs; strategies = st.strategies || []; error = ''; } catch (e) { error = e.message; } stamp++; draw(); }
+  async function load() { try { const [s, h, st] = await Promise.all([api('/lab/sources'), api('/lab/runs'), api('/strategies')]); sources = s; runs = h.runs; strategies = st.strategies || []; error = ''; loadAfter = 0; } catch (e) { error = e.message; loadAfter = Date.now() + 30000; } stamp++; draw(); }
   async function act(fn) { if (busy) return; busy = true; error = ''; stamp++; draw(true); try { await fn(); } catch (e) { error = e.message; } finally { busy = false; stamp++; draw(true); } }
   const readForm = () => { const f = root()?.querySelector('[data-lab-form=run]'); if (!f) return; const i = Object.fromEntries(new FormData(f)); Object.assign(form, { source: i.source, key: i.key, strategy: i.strategy, minutes: Number(i.minutes) || 60, feeBps: Number(i.feeBps) || 0, cash: Number(i.cash) || 1000, stepMs: (Number(i.stepSec) || 15) * 1000, start: i.start ? new Date(i.start).getTime() : form.start }); if (i.lookback) form.lookback = Number(i.lookback); if (i.thresholdBps) form.thresholdBps = Number(i.thresholdBps); };
   const query = () => ({ source: form.source, key: form.key, start: form.start, end: form.start + form.minutes * 60000 });
@@ -104,5 +104,5 @@
     }
     act(async () => { result = (await api('/lab/run', { ...query(), strategy: form.strategy, params: { lookback: form.lookback, thresholdBps: form.thresholdBps }, stepMs: form.stepMs, feeBps: form.feeBps, cash: form.cash })).result; runs = (await api('/lab/runs')).runs; });
   });
-  window.MPOMarketLab = { render() { if (!visible()) return; if (!sources && !busy) { busy = true; load().finally(() => { busy = false; }); } draw(); } };
+  window.MPOMarketLab = { render() { if (!visible()) return; if (!sources && !busy && Date.now() >= loadAfter) { busy = true; load().finally(() => { busy = false; stamp++; draw(true); }); } draw(); } };
 })();

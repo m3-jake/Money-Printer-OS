@@ -116,7 +116,7 @@ export function savePracticeBook(dataDir, book) {
 
 function freshQuote(q, now, maxAgeMs) {
   const at = finite(q?.at);
-  return !!q && q.auctionMode!==true && q.timeQuality!=='FUTURE_VENUE_TIME' && finite(q.bid, 0) > 0 && finite(q.ask, 0) >= finite(q.bid, 0) && at !== null && at > 0 && at <= now && now - at <= maxAgeMs;
+  return !!q && q.auctionMode!==true && finite(q.bid, 0) > 0 && finite(q.ask, 0) >= finite(q.bid, 0) && at !== null && at > 0 && at <= now && now - at <= maxAgeMs;
 }
 function quoteRecord(q, now) {
   return { symbol: String(q.symbol).toUpperCase(), bid: finite(q.bid), ask: finite(q.ask), at: finite(q.at), source: String(q.source || 'public-observed'),
