@@ -2,8 +2,8 @@
 2 — done — 717a14b — Added journal analytics, confidence and decay summaries, cross-source price validation, and report/replay:journal CLI.
 3 — done — 5338e98 — Added bounded tracked-wallet websocket ingestion, Pump.fun buy parsing, paper-only source signals, scanner attribution, and trailing-scorecard demotion.
 4 — partial — 0c62542 — Added Polymarket/Kalshi book normalizers, executable bid/ask dislocation math, and atomic paired paper proposal metadata; public venue polling and paired paper fill settlement remain unwired.
-5 — done — PENDING — Connected TTL-cached SOL and mint flow derivation to indexed transaction rows, candidate signals, and the paper journal without extra RPC calls.
-6 — partial — b7f1669 — Added gated half-Kelly math and tranche planning; runtime sizing and staged fills are not connected to the engine.
+5 — done — dc5c9d7 — Connected TTL-cached SOL and mint flow derivation to indexed transaction rows, candidate signals, and the paper journal without extra RPC calls.
+6 — partial — b7f1669 — Resuming: wire half-Kelly sizing to aggressive paper entries; staged fills remain outstanding.
 7 — done — 6749f84 — Added correlation/narrative exposure gates, persistent equity peak tracking, tiered paper cuts, entry halts, and flatten handling.
 8 — partial — ed4677c — Added AGGRESSIVE_PAPER profile overrides and gated estimate routing; the shared fill simulator still applies generic impact and speed/thin penalties.
 9 — partial — 77ffc73 — Added launch parsing and paper-only sniper gates; native transaction builder, Jito integration, and order submission remain unavailable.
