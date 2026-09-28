@@ -1,8 +1,8 @@
 1 — done — 5e6150c — Created the 16-task checkpoint ledger, paper-aggression branch, and verified secret-file ignore rules.
 2 — done — 717a14b — Added journal analytics, confidence and decay summaries, cross-source price validation, and report/replay:journal CLI.
 3 — done — 5338e98 — Added bounded tracked-wallet websocket ingestion, Pump.fun buy parsing, paper-only source signals, scanner attribution, and trailing-scorecard demotion.
-4 — partial — PENDING — Added Polymarket/Kalshi book normalizers, executable bid/ask dislocation math, and atomic paired paper proposal metadata; public venue polling and paired paper fill settlement remain unwired.
-5 — partial — 13e4d1d — Added rolling netflow/whale derivation and TTL caching; RPC source acquisition is injected rather than connected to a live flow feed.
+4 — partial — 0c62542 — Added Polymarket/Kalshi book normalizers, executable bid/ask dislocation math, and atomic paired paper proposal metadata; public venue polling and paired paper fill settlement remain unwired.
+5 — partial — 13e4d1d — Resuming: wire cached flow derivation to the existing transaction-index database and candidate journal.
 6 — partial — b7f1669 — Added gated half-Kelly math and tranche planning; runtime sizing and staged fills are not connected to the engine.
 7 — done — 6749f84 — Added correlation/narrative exposure gates, persistent equity peak tracking, tiered paper cuts, entry halts, and flatten handling.
 8 — partial — ed4677c — Added AGGRESSIVE_PAPER profile overrides and gated estimate routing; the shared fill simulator still applies generic impact and speed/thin penalties.
