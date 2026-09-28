@@ -1,6 +1,6 @@
 {
   "name": "money-printer-os",
-  "version": "0.5.0-alpha.66",
+  "version": "0.5.0-alpha.65",
   "description": "Money Printer OS â€” native retro trading workstation with continuous research, monitoring, and desktop supervision.",
   "type": "module",
   "dependencies": {

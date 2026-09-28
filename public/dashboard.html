@@ -598,7 +598,7 @@ function initLogoStretch(){
  const logo=$('.mpo-logo'),img=logo?.querySelector('.brand-logo');if(!logo||!img)return;
  let drag=null,anim=null;
  const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
- const neutral=()=>{for(const [k,v] of [['--logo-dx','0px'],['--logo-dy','0px'],['--logo-sx','1'],['--logo-sy','1'],['--logo-rot','0deg'],['--logo-ox','50%'],['--logo-oy','50%']])logo.style.setProperty(k,v)};
+ const neutral=()=>{for(const [k,v] of [['--logo-dx','0px'],['--logo-dy','0px'],['--logo-stretch','1'],['--logo-squash','1'],['--logo-angle','0deg'],['--logo-tilt','0deg'],['--logo-ox','50%'],['--logo-oy','50%']])logo.style.setProperty(k,v)};
  const release=()=>{
   if(!drag)return;drag=null;logo.classList.remove('is-stretching');
   const from=getComputedStyle(img).transform;neutral();
@@ -607,16 +607,18 @@ function initLogoStretch(){
  };
  logo.addEventListener('pointerdown',e=>{
   if(motionReduced()||e.button!==0)return;e.preventDefault();anim?.cancel();
-  const r=img.getBoundingClientRect();drag={id:e.pointerId,x:e.clientX,y:e.clientY};
+  const r=img.getBoundingClientRect(),grabX=clamp((e.clientX-r.left)/Math.max(1,r.width),0,1),grabY=clamp((e.clientY-r.top)/Math.max(1,r.height),0,1);
+  drag={id:e.pointerId,x:e.clientX,y:e.clientY,grabX,grabY};
   logo.classList.add('is-stretching');logo.setPointerCapture?.(e.pointerId);
-  logo.style.setProperty('--logo-ox',clamp((e.clientX-r.left)/Math.max(1,r.width)*100,0,100)+'%');
-  logo.style.setProperty('--logo-oy',clamp((e.clientY-r.top)/Math.max(1,r.height)*100,0,100)+'%');
+  logo.style.setProperty('--logo-ox',((1-grabX)*100).toFixed(1)+'%');
+  logo.style.setProperty('--logo-oy',((1-grabY)*100).toFixed(1)+'%');
  });
  logo.addEventListener('pointermove',e=>{
-  if(!drag||e.pointerId!==drag.id)return;const dx=clamp(e.clientX-drag.x,-150,150),dy=clamp(e.clientY-drag.y,-110,110);
-  const sx=clamp(1+Math.abs(dx)/230-Math.abs(dy)/900,.84,1.58),sy=clamp(1+Math.abs(dy)/185-Math.abs(dx)/950,.84,1.52);
-  logo.style.setProperty('--logo-dx',(dx*.22).toFixed(1)+'px');logo.style.setProperty('--logo-dy',(dy*.22).toFixed(1)+'px');
-  logo.style.setProperty('--logo-sx',sx.toFixed(3));logo.style.setProperty('--logo-sy',sy.toFixed(3));logo.style.setProperty('--logo-rot',clamp(dx/65,-3,3).toFixed(2)+'deg');
+  if(!drag||e.pointerId!==drag.id)return;const dx=clamp(e.clientX-drag.x,-170,170),dy=clamp(e.clientY-drag.y,-140,140),dist=Math.hypot(dx,dy);
+  const angle=Math.atan2(dy,dx)*180/Math.PI,stretch=clamp(1+dist/185,1,1.9),squash=clamp(1-dist/780,.78,1);
+  logo.style.setProperty('--logo-dx',(dx*.46).toFixed(1)+'px');logo.style.setProperty('--logo-dy',(dy*.46).toFixed(1)+'px');
+  logo.style.setProperty('--logo-stretch',stretch.toFixed(3));logo.style.setProperty('--logo-squash',squash.toFixed(3));
+  logo.style.setProperty('--logo-angle',angle.toFixed(2)+'deg');logo.style.setProperty('--logo-tilt',clamp(dx/90,-2.4,2.4).toFixed(2)+'deg');
  });
  logo.addEventListener('pointerup',release);logo.addEventListener('pointercancel',release);logo.addEventListener('lostpointercapture',release);
 }
