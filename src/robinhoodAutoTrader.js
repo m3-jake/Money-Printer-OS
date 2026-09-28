@@ -534,7 +534,7 @@ export function setRobinhoodPaperAutopilot(patch={}){
 }
 export function resetRobinhoodPaper({amountUsd=1000}={}){
  if(paperBusy)fail('busy','A paper operation is in progress');const amount=Number(amountUsd);
- if(!Number.isFinite(amount)||amount<50||amount>100000)fail('validation','Paper bank must be between 50 and 100000 USD');
+ if(!Number.isFinite(amount)||amount<1||amount>100000)fail('validation','Paper bank must be between 1 and 100000 USD');
  const old=paper();if(old.recoveryRequired&&fs.existsSync(J.PAPER_FILE))fs.copyFileSync(J.PAPER_FILE,J.PAPER_FILE+'.corrupt-'+Date.now()+'.bak');
  const p={...J.defaultPaper(),cashUsd:amount,startUsd:amount,params:clone(old.params),paramsHash:old.paramsHash,tape:clone(old.tape),tapeAt:old.tapeAt,autopilot:{...clone(old.autopilot),enabled:false}};
  commitPaper(p);

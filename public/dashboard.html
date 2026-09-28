@@ -187,7 +187,7 @@ function rhPracticeSection(pr){
  <label>Daily loss cap <input id="rhPrLossCap" type="number" min="0" value="${polyEscape(rhVal('rhPrLossCap',s.dailyLossCapUsd))}" style="width:70px"></label>
  <div><button id="rhPrSave" ${dis}>Save practice settings</button><button id="rhPrAuto" ${dis}>${s.autopilot?'Stop practice autopilot':'Start practice autopilot'}</button><button id="rhPrRun" ${dis}>Run one cycle</button></div>
  <div><label>Pair <input id="rhPrSymbol" value="${polyEscape(rhVal('rhPrSymbol',(s.symbols||['BTC-USD'])[0]))}" maxlength="14" size="10"></label><button id="rhPrBuy" ${dis}>Practice buy ${rhMoney(s.orderUsd)}</button></div>
- <div><label>Reset budget USD <input id="rhPrBudget" type="number" min="50" value="${polyEscape(rhVal('rhPrBudget',pr.budgetUsd||500))}" style="width:80px"></label><button id="rhPrReset" ${dis}>Reset practice…</button></div>
+ <div><label>Reset budget USD <input id="rhPrBudget" type="number" min="1" step="0.01" value="${polyEscape(rhVal('rhPrBudget',pr.budgetUsd||500))}" style="width:80px"></label><button id="rhPrReset" ${dis}>Reset practice…</button></div>
  <small>Public quotes only, no signed Robinhood calls. Fills use the observed ask/bid plus modeled slippage and fee. This sandbox exists to exercise the controls; it is not evidence and cannot promote anything.</small>
  </div></div></fieldset>`;
 }
@@ -421,7 +421,7 @@ function renderRobinhood(force=false){
  ${ap.disabledReason?`<div class="mpo-error">Autopilot disabled: ${polyEscape(ap.disabledReason)}</div>`:''}
  <small>Future live controls are retained for testing but are unreachable while the paper-only build lock is active. The active Robinhood strategy is the simulated paper engine above.</small></div>
  </fieldset></details></div>
-<div data-rh-part="reset"><details class="rh-more"><summary>Reset simulated book</summary> <fieldset class="mpo-fieldset"><legend>Reset simulated book</legend><label>Starting USD <input id="rhBank" type="number" min="50" max="100000" value="${polyEscape(rhVal('rhBank',p.startUsd||1000))}"></label><label>Type RESET PAPER <input id="rhResetConfirm" value="${polyEscape(rhVal('rhResetConfirm',''))}" autocomplete="off"></label><button id="rhReset" ${disabled}>Reset paper only</button><p>Clears simulated positions, history and qualification; stops paper autopilot. Real balances and the real journal are untouched.</p></fieldset></details></div>
+<div data-rh-part="reset"><details class="rh-more"><summary>Reset simulated book</summary> <fieldset class="mpo-fieldset"><legend>Reset simulated book</legend><label>Starting USD <input id="rhBank" type="number" min="1" max="100000" step="0.01" value="${polyEscape(rhVal('rhBank',p.startUsd||1000))}"></label><label>Type RESET PAPER <input id="rhResetConfirm" value="${polyEscape(rhVal('rhResetConfirm',''))}" autocomplete="off"></label><button id="rhReset" ${disabled}>Reset paper only</button><p>Clears simulated positions, history and qualification; stops paper autopilot. Real balances and the real journal are untouched.</p></fieldset></details></div>
  </div>`);
  const keep=RH_VIEWS[rhView]||RH_VIEWS.paper;root.querySelectorAll('[data-rh-part]').forEach(n=>{if(!keep.includes(n.dataset.rhPart))n.remove()});
  root.querySelectorAll('[data-rh-view]').forEach(b=>b.onclick=()=>{rhView=b.dataset.rhView;rhSave('mpo-rh-view',rhView);renderRobinhood(true);if(rhView==='charts')rhLoadChart(true);if(rhView==='stocks')rhLoadEquities(true)});
@@ -591,7 +591,34 @@ function iconHtml(id,glyph,cls=''){const png=ICON_PNG[id];return png?`<span clas
 const taskIcon=id=>ICON_PNG[id]?`<img class="tico" src="/assets/icons/${ICON_PNG[id]}" alt="">`:`<b>${appMeta(id)?.[2]||''}</b>`;
 function buildIcons(){
  $('#icons').innerHTML=DESKTOP_ICONS.map(id=>{const a=appMeta(id);return a?`<div class="icon" data-app="${id}" role="button" tabindex="0" aria-label="Open ${a[1]}" title="${a[1]}">${iconHtml(id,a[2],id==='money'?'money':'dark')}<div>${a[1]}</div></div>`:''}).join('');
- $$('.icon').forEach(el=>{el.onclick=()=>{ $$('.icon').forEach(x=>x.classList.remove('sel'));el.classList.add('sel');selectedIcon=el.dataset.app};el.ondblclick=()=>openApp(el.dataset.app);el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openApp(el.dataset.app)}}});
+ const pulse=el=>{if(!el)return;$$('.icon').forEach(x=>x.classList.remove('sel','press'));selectedIcon=el.dataset.app;el.classList.add('press');setTimeout(()=>el.classList.remove('press'),180)};
+ $$('.icon').forEach(el=>{el.onclick=()=>pulse(el);el.ondblclick=()=>{pulse(el);openApp(el.dataset.app)};el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();pulse(el);openApp(el.dataset.app)}}});
+}
+function initLogoStretch(){
+ const logo=$('.mpo-logo'),img=logo?.querySelector('.brand-logo');if(!logo||!img)return;
+ let drag=null,anim=null;
+ const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
+ const neutral=()=>{for(const [k,v] of [['--logo-dx','0px'],['--logo-dy','0px'],['--logo-sx','1'],['--logo-sy','1'],['--logo-rot','0deg'],['--logo-ox','50%'],['--logo-oy','50%']])logo.style.setProperty(k,v)};
+ const release=()=>{
+  if(!drag)return;drag=null;logo.classList.remove('is-stretching');
+  const from=getComputedStyle(img).transform;neutral();
+  if(motionReduced()||typeof img.animate!=='function')return;
+  anim?.cancel();anim=img.animate([{transform:from},{transform:'translate(0,0) scale(.94,1.06) rotate(-1.8deg)'},{transform:'translate(0,0) scale(1.045,.965) rotate(1deg)'},{transform:'translate(0,0) scale(.985,1.015) rotate(-.35deg)'},{transform:'none'}],{duration:640,easing:'cubic-bezier(.18,.82,.18,1)'});
+ };
+ logo.addEventListener('pointerdown',e=>{
+  if(motionReduced()||e.button!==0)return;e.preventDefault();anim?.cancel();
+  const r=img.getBoundingClientRect();drag={id:e.pointerId,x:e.clientX,y:e.clientY};
+  logo.classList.add('is-stretching');logo.setPointerCapture?.(e.pointerId);
+  logo.style.setProperty('--logo-ox',clamp((e.clientX-r.left)/Math.max(1,r.width)*100,0,100)+'%');
+  logo.style.setProperty('--logo-oy',clamp((e.clientY-r.top)/Math.max(1,r.height)*100,0,100)+'%');
+ });
+ logo.addEventListener('pointermove',e=>{
+  if(!drag||e.pointerId!==drag.id)return;const dx=clamp(e.clientX-drag.x,-150,150),dy=clamp(e.clientY-drag.y,-110,110);
+  const sx=clamp(1+Math.abs(dx)/230-Math.abs(dy)/900,.84,1.58),sy=clamp(1+Math.abs(dy)/185-Math.abs(dx)/950,.84,1.52);
+  logo.style.setProperty('--logo-dx',(dx*.22).toFixed(1)+'px');logo.style.setProperty('--logo-dy',(dy*.22).toFixed(1)+'px');
+  logo.style.setProperty('--logo-sx',sx.toFixed(3));logo.style.setProperty('--logo-sy',sy.toFixed(3));logo.style.setProperty('--logo-rot',clamp(dx/65,-3,3).toFixed(2)+'deg');
+ });
+ logo.addEventListener('pointerup',release);logo.addEventListener('pointercancel',release);logo.addEventListener('lostpointercapture',release);
 }
 function appShell(id,title){
  const L=saved[id]||heroLayout(id);
@@ -1012,8 +1039,9 @@ function renderControl(){
  ${[['tp1','Take profit 1 %'],['tp2','Take profit 2 %'],['stop','Stop loss %'],['trail','Trailing stop %'],['maxHold','Max hold (min)']].map(([k,l])=>`<div class="formrow"><label>${l}:</label><input class="field ctlExit" data-k="${k}" type="number" min="${eb[k]?.[0]??1}" max="${eb[k]?.[1]??500}" step="${k==='maxHold'?1:.5}" value="${ex[k]??''}"></div>`).join('')}
  ${ec.labChampionExit?`<p class="muted" style="font-size:10px">A Lab paper champion is active and overrides these exits: take ${fmt(ec.labChampionExit.takePct,1)}% · stop ${fmt(ec.labChampionExit.stopPct,1)}% · hold ${ec.labChampionExit.maxHoldMin} min.</p>`:''}</fieldset>
  <p class="muted" style="font-size:10px">Live-mode hard limits (from .env, not editable here): max open ${cfg.maxOpenPositions??3} · exposure ${cfg.maxTotalExposureSol??.45} SOL · daily loss ${cfg.dailyLossLimitSol??'-'} SOL.</p>
- </div><div><div class="mpo-module"><header><span>Testing controls</span></header><div class="mpo-module-body"><div class="toolbar"><button class="btn test-reset" data-sol="1">Reset 1 SOL</button><button class="btn test-reset" data-sol="5">5 SOL</button><button class="btn test-reset" data-sol="10">10 SOL</button><button class="btn test-reset" data-sol="50">50 SOL</button></div><div class="toolbar" style="margin-top:6px"><button class="btn" id="testPause">${s.system?.paused?'Resume trading':'Pause trading'}</button>${s.system?.killSwitch?' <b class="mpo-badge mpo-badge--down">KILL SWITCH ON</b>':s.system?.paused?' <b class="mpo-badge mpo-badge--degraded">PAUSED</b>':''}<fieldset class="mpo-danger-fieldset" style="display:inline-block;margin:0;padding:2px 6px 3px;vertical-align:middle"><button class="btn" id="testKill">Kill Switch</button></fieldset></div></div></div><div class="mpo-module"><header><span>Safety boundary</span></header><div class="mpo-module-body"><b>${polyEscape(mode)}</b><p>Evolution may promote Research → Paper → Shadow only. Real-wallet activation remains explicit. Research runs in the separate Evolution Lab app; this machine only applies published champions.</p></div></div><button class="btn" id="applyCtl">Apply Runtime</button></div></div></div>`);
- $$('.test-reset').forEach(b=>b.onclick=async()=>{await post('/api/reset',{amountSol:Number(b.dataset.sol)});showDialog('Money Printer OS','Paper wallet reset',`Testing bankroll queued at ${b.dataset.sol} SOL.`)}); $('#testPause')?.addEventListener('click',()=>post('/api/pause',{})); $('#testKill')?.addEventListener('click',()=>post('/api/kill',{})); $$('.ctlExit').forEach(i=>i.addEventListener('input',()=>{const p=$('#ctlPreset');if(p)p.value='custom'}));
+ </div><div><div class="mpo-module"><header><span>Testing controls</span></header><div class="mpo-module-body"><div class="toolbar" style="flex-wrap:wrap"><label>Starting SOL <input class="field" id="testResetSol" type="number" min="0.001" max="1000000" step="0.001" value="${Number(s.paperStartSol??1)}" style="width:82px"></label><button class="btn" id="testResetCustom">Reset custom</button><button class="btn test-reset" data-sol="0.15">0.15 SOL</button><button class="btn test-reset" data-sol="0.25">0.25 SOL</button><button class="btn test-reset" data-sol="1">1 SOL</button><button class="btn test-reset" data-sol="5">5 SOL</button></div><div class="muted" style="font-size:10px;margin:2px 0 6px">Paper only. Use tiny bankrolls to measure whether sizing, fees and exits can grow realistic starting capital instead of depending on a large default wallet.</div><div class="toolbar" style="margin-top:6px"><button class="btn" id="testPause">${s.system?.paused?'Resume trading':'Pause trading'}</button>${s.system?.killSwitch?' <b class="mpo-badge mpo-badge--down">KILL SWITCH ON</b>':s.system?.paused?' <b class="mpo-badge mpo-badge--degraded">PAUSED</b>':''}<fieldset class="mpo-danger-fieldset" style="display:inline-block;margin:0;padding:2px 6px 3px;vertical-align:middle"><button class="btn" id="testKill">Kill Switch</button></fieldset></div></div></div><div class="mpo-module"><header><span>Safety boundary</span></header><div class="mpo-module-body"><b>${polyEscape(mode)}</b><p>Evolution may promote Research → Paper → Shadow only. Real-wallet activation remains explicit. Research runs in the separate Evolution Lab app; this machine only applies published champions.</p></div></div><button class="btn" id="applyCtl">Apply Runtime</button></div></div></div>`);
+ const resetPaperWallet=async amount=>{const n=Number(amount);if(!Number.isFinite(n)||n<=0||n>1000000)return showDialog('Money Printer OS','Invalid paper bankroll','Enter a positive SOL amount up to 1,000,000.');const r=await post('/api/reset',{amountSol:n});if(r?.ok===false)return showDialog('Money Printer OS','Paper wallet not reset',r.error||'The reset was rejected.');showDialog('Money Printer OS','Paper wallet reset',`Testing bankroll queued at ${n} SOL.`)};
+ $$('.test-reset').forEach(b=>b.onclick=()=>resetPaperWallet(b.dataset.sol));$('#testResetCustom')?.addEventListener('click',()=>resetPaperWallet($('#testResetSol')?.value)); $('#testPause')?.addEventListener('click',()=>post('/api/pause',{})); $('#testKill')?.addEventListener('click',()=>post('/api/kill',{})); $$('.ctlExit').forEach(i=>i.addEventListener('input',()=>{const p=$('#ctlPreset');if(p)p.value='custom'}));
  $('#applyCtl')?.addEventListener('click',async()=>{
   const profileChanged=$('#profile').value!==String(r.profile);
   const common={maxCandidates:Number($('#ctlCand').value),maxOpenPositions:$('#ctlMaxOpen').value===''?null:Number($('#ctlMaxOpen').value)};
@@ -1647,7 +1675,7 @@ function usPaperHtml(p,chosen,bOk){
  <div class="muted" style="font-size:10px">Paper epoch ${polyEscape(p.epochId||'—')} · ${Number((p.priorEpochs||[]).length)} archived epoch(s) · ${polyEscape(p.strategyVersion||'—')} · Auto scans every 30 s. Last: ${lastTxt}</div>
  ${policyLine}
  <div data-scroll="paper-evaluations" style="overflow:auto;max-height:170px;margin:5px 0"><table class="table terminal"><thead><tr><th>Evaluated game</th><th>Ask</th><th>Decision</th><th>Exact reason</th></tr></thead><tbody>${evalRows}</tbody></table></div>
- <div class="grid2" style="margin-top:6px"><fieldset><legend>Open paper · ${(p.open||[]).length}</legend><div data-scroll="paper-open" style="overflow:auto;max-height:150px"><table class="table terminal"><thead><tr><th>Legs</th><th>Price × Qty</th><th>PAPER Cost</th><th>Status</th><th>PAPER P/L</th></tr></thead><tbody>${openRows}</tbody></table></div><div class="toolbar" style="margin-top:4px"><button class="btn" id="usPaperSettle">Check settlement</button><button class="btn" id="usPaperReset">Reset book…</button></div></fieldset><fieldset><legend>Settled paper</legend><div data-scroll="paper-hist" style="overflow:auto;max-height:150px"><table class="table terminal"><thead><tr><th>Legs</th><th>Price × Qty</th><th>PAPER Cost</th><th>Status</th><th>PAPER P/L</th></tr></thead><tbody>${histRows}</tbody></table></div></fieldset></div>
+ <div class="grid2" style="margin-top:6px"><fieldset><legend>Open paper · ${(p.open||[]).length}</legend><div data-scroll="paper-open" style="overflow:auto;max-height:150px"><table class="table terminal"><thead><tr><th>Legs</th><th>Price × Qty</th><th>PAPER Cost</th><th>Status</th><th>PAPER P/L</th></tr></thead><tbody>${openRows}</tbody></table></div><div class="toolbar" style="margin-top:4px;flex-wrap:wrap"><button class="btn" id="usPaperSettle">Check settlement</button><label>Reset bank $ <input class="field" id="usPaperResetBank" type="number" min="${b.startUsd?.min??1}" max="${b.startUsd?.max??1000000}" step="0.01" value="${polyEscape(String(p.startUsd??100))}" style="width:82px"></label><button class="btn" id="usPaperReset">Reset book…</button></div></fieldset><fieldset><legend>Settled paper</legend><div data-scroll="paper-hist" style="overflow:auto;max-height:150px"><table class="table terminal"><thead><tr><th>Legs</th><th>Price × Qty</th><th>PAPER Cost</th><th>Status</th><th>PAPER P/L</th></tr></thead><tbody>${histRows}</tbody></table></div></fieldset></div>
  </fieldset>`;
 }
 function bindUSPaper(p,chosen){
@@ -1663,9 +1691,11 @@ function bindUSPaper(p,chosen){
  $('#usPaperSettle')?.addEventListener('click',()=>paperPost('/api/polymarket-us/combos/paper/settle',{},'Paper settlement failed'));
  $('#usPaperRollbackLab')?.addEventListener('click',()=>paperPost('/api/polymarket-us/combos/paper/rollback-lab',{},'Paper policy rollback failed'));
  $('#usPaperReset')?.addEventListener('click',async()=>{
-  const typed=await polyConfirm({title:'Polymarket US paper',head:'Reset the paper book',phrase:'RESET PAPER',confirmLabel:'Reset',html:'<p>Archives the current paper epoch, including open and settled combos, then starts a new $100 virtual bankroll. Real combos are not touched.</p>'});
+  const resetStart=Number($('#usPaperResetBank')?.value),lo=Number((p.bounds||{}).startUsd?.min??1),hi=Number((p.bounds||{}).startUsd?.max??1000000);
+  if(!Number.isFinite(resetStart)||resetStart<lo||resetStart>hi)return showDialog('Polymarket US paper','Invalid paper bankroll',`Enter a starting bankroll between $${lo} and $${hi}.`);
+  const typed=await polyConfirm({title:'Polymarket US paper',head:'Reset the paper book',phrase:'RESET PAPER',confirmLabel:'Reset',html:`<p>Archives the current paper epoch, including open and settled combos, then starts a new <b>$${resetStart.toFixed(2)}</b> virtual bankroll. Real combos are not touched.</p>`});
   if(typed==null)return;
-  await paperPost('/api/polymarket-us/combos/paper/reset',{confirmation:typed},'Paper book not reset');
+  await paperPost('/api/polymarket-us/combos/paper/reset',{confirmation:typed,startUsd:resetStart},'Paper book not reset');
  });
 }
 function usAutoHtml(ap){
@@ -1786,7 +1816,7 @@ function singleFlightRefresh(fn){let pending=null;return(...args)=>pending||(pen
 refreshState=singleFlightRefresh(refreshState);refreshNetwork=singleFlightRefresh(refreshNetwork);
 refreshJournal=singleFlightRefresh(refreshJournal);refreshProjectJournal=singleFlightRefresh(refreshProjectJournal);
 refreshUpdater=singleFlightRefresh(refreshUpdater);refreshProductEconomics=singleFlightRefresh(refreshProductEconomics);refreshResearchMonitor=singleFlightRefresh(refreshResearchMonitor);
-buildIcons();buildWindows();buildStart();boot();refreshRobinhood();refreshJournal();refreshProjectJournal();refreshNetwork();refreshUSComboSnapshot();refreshUpdater();refreshResearchMonitor();refreshState();
+buildIcons();initLogoStretch();buildWindows();buildStart();boot();refreshRobinhood();refreshJournal();refreshProjectJournal();refreshNetwork();refreshUSComboSnapshot();refreshUpdater();refreshResearchMonitor();refreshState();
 window.MPOSPlatform?.install({open(id){openApp(id);setDetail(hostOf(id),true);if(id==='predictionmarkets')setTab('sportsbook',id);}});
 refreshProductEconomics();
 setInterval(()=>{if(!document.hidden)refreshState()},1500);

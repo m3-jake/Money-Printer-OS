@@ -16,7 +16,7 @@ const DATA_DIR=path.resolve(process.env.MONEY_PRINTER_DATA_DIR||path.join(ROOT,'
 export const PAPER_FILE=path.join(DATA_DIR,'polymarket-us-paper.json');
 export const PAPER_SCHEMA='mpo.polymarket-us-paper.v1';
 export const PAPER_START_USD=100;
-export const PAPER_BOUNDS={stakeUsd:{min:1,max:50},maxOpen:{min:1,max:10},maxLegs:{min:2,max:4}};
+export const PAPER_BOUNDS={startUsd:{min:1,max:1000000},stakeUsd:{min:1,max:50},maxOpen:{min:1,max:10},maxLegs:{min:2,max:4}};
 export const PAPER_AUTO_MS=30_000,PAPER_SETTLE_MS=60_000,PAPER_COOLDOWN_MS=180_000;
 export const PAPER_STRATEGY_VERSION='polymarket-us-paper-combo.v2';
 const AUTOSTART=()=>String(process.env.POLYMARKET_AUTOSTART??'true').toLowerCase()!=='false';
@@ -235,7 +235,7 @@ export function resetPaperBook({startUsd=PAPER_START_USD}={}){
  const priorBytes=fs.existsSync(PAPER_FILE)?fs.readFileSync(PAPER_FILE):Buffer.from(JSON.stringify(prev,null,2));
  fs.writeFileSync(archive,priorBytes,{flag:'wx'});
  const archived={epochId:prev.epochId,at:Date.now(),file:path.basename(archive),sha256:createHash('sha256').update(priorBytes).digest('hex'),open:(prev.open||[]).length,settled:(prev.history||[]).length};
- const b={...defaultPaperBook(),startUsd:Math.max(10,Math.min(10000,num(startUsd)||PAPER_START_USD)),autopilot:prev.autopilot,resets:num(prev.resets)+1};
+ const b={...defaultPaperBook(),startUsd:clampN(startUsd,PAPER_BOUNDS.startUsd),autopilot:prev.autopilot,resets:num(prev.resets)+1};
  b.priorEpochs=[archived,...(prev.priorEpochs||[])].slice(0,1000);
  b.cashUsd=b.startUsd;
  return savePaperBook(b);

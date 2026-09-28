@@ -131,7 +131,7 @@ function rhPracticeSection(pr){
  <label>Daily loss cap <input id="rhPrLossCap" type="number" min="0" value="${polyEscape(rhVal('rhPrLossCap',s.dailyLossCapUsd))}" style="width:70px"></label>
  <div><button id="rhPrSave" ${dis}>Save practice settings</button><button id="rhPrAuto" ${dis}>${s.autopilot?'Stop practice autopilot':'Start practice autopilot'}</button><button id="rhPrRun" ${dis}>Run one cycle</button></div>
  <div><label>Pair <input id="rhPrSymbol" value="${polyEscape(rhVal('rhPrSymbol',(s.symbols||['BTC-USD'])[0]))}" maxlength="14" size="10"></label><button id="rhPrBuy" ${dis}>Practice buy ${rhMoney(s.orderUsd)}</button></div>
- <div><label>Reset budget USD <input id="rhPrBudget" type="number" min="50" value="${polyEscape(rhVal('rhPrBudget',pr.budgetUsd||500))}" style="width:80px"></label><button id="rhPrReset" ${dis}>Reset practice…</button></div>
+ <div><label>Reset budget USD <input id="rhPrBudget" type="number" min="1" step="0.01" value="${polyEscape(rhVal('rhPrBudget',pr.budgetUsd||500))}" style="width:80px"></label><button id="rhPrReset" ${dis}>Reset practice…</button></div>
  <small>Public quotes only, no signed Robinhood calls. Fills use the observed ask/bid plus modeled slippage and fee. This sandbox exists to exercise the controls; it is not evidence and cannot promote anything.</small>
  </div></div></fieldset>`;
 }
@@ -365,7 +365,7 @@ function renderRobinhood(force=false){
  ${ap.disabledReason?`<div class="mpo-error">Autopilot disabled: ${polyEscape(ap.disabledReason)}</div>`:''}
  <small>Future live controls are retained for testing but are unreachable while the paper-only build lock is active. The active Robinhood strategy is the simulated paper engine above.</small></div>
  </fieldset></details></div>
-<div data-rh-part="reset"><details class="rh-more"><summary>Reset simulated book</summary> <fieldset class="mpo-fieldset"><legend>Reset simulated book</legend><label>Starting USD <input id="rhBank" type="number" min="50" max="100000" value="${polyEscape(rhVal('rhBank',p.startUsd||1000))}"></label><label>Type RESET PAPER <input id="rhResetConfirm" value="${polyEscape(rhVal('rhResetConfirm',''))}" autocomplete="off"></label><button id="rhReset" ${disabled}>Reset paper only</button><p>Clears simulated positions, history and qualification; stops paper autopilot. Real balances and the real journal are untouched.</p></fieldset></details></div>
+<div data-rh-part="reset"><details class="rh-more"><summary>Reset simulated book</summary> <fieldset class="mpo-fieldset"><legend>Reset simulated book</legend><label>Starting USD <input id="rhBank" type="number" min="1" max="100000" step="0.01" value="${polyEscape(rhVal('rhBank',p.startUsd||1000))}"></label><label>Type RESET PAPER <input id="rhResetConfirm" value="${polyEscape(rhVal('rhResetConfirm',''))}" autocomplete="off"></label><button id="rhReset" ${disabled}>Reset paper only</button><p>Clears simulated positions, history and qualification; stops paper autopilot. Real balances and the real journal are untouched.</p></fieldset></details></div>
  </div>`);
  const keep=RH_VIEWS[rhView]||RH_VIEWS.paper;root.querySelectorAll('[data-rh-part]').forEach(n=>{if(!keep.includes(n.dataset.rhPart))n.remove()});
  root.querySelectorAll('[data-rh-view]').forEach(b=>b.onclick=()=>{rhView=b.dataset.rhView;rhSave('mpo-rh-view',rhView);renderRobinhood(true);if(rhView==='charts')rhLoadChart(true);if(rhView==='stocks')rhLoadEquities(true)});

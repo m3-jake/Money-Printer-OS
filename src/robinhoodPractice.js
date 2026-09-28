@@ -51,7 +51,7 @@ export function normalizePracticeSettings(patch = {}, base = PRACTICE_DEFAULTS) 
     const n = Number(src[key] ?? out[key]);
     out[key] = Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : PRACTICE_DEFAULTS[key];
   };
-  positive('budgetUsd', 50, 1_000_000);
+  positive('budgetUsd', 1, 1_000_000);
   positive('orderUsd', 1, 100_000);
   positive('maxOpenPositions', 1, 100); out.maxOpenPositions = Math.round(out.maxOpenPositions);
   positive('dailyLossCapUsd', 0, 1_000_000);

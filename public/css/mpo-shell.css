@@ -255,9 +255,11 @@ img.sky-cloud,
 .brand-mark { filter: drop-shadow(1px 2px 2px #0004); }
 /* Persistent corner product mark: the spiked-cash render sits beside the text
    logo at all times (same asset as the boot mark, Money and Updater panels). */
-.mpo-logo{position:relative;animation:mpoFloat 6s ease-in-out infinite}
-.brand-logo{display:block;width:240px;height:auto;animation:mpoBreathe 4.5s ease-in-out infinite}
-.shine{position:absolute;inset:0;overflow:hidden;mask:url('/assets/mpo-logo-3d.webp') center/100% 100% no-repeat;-webkit-mask:url('/assets/mpo-logo-3d.webp') center/100% 100% no-repeat}
+.mpo-logo{--logo-dx:0px;--logo-dy:0px;--logo-sx:1;--logo-sy:1;--logo-rot:0deg;--logo-ox:50%;--logo-oy:50%;position:relative;animation:mpoFloat 6s ease-in-out infinite;pointer-events:auto;cursor:grab;touch-action:none;filter:drop-shadow(0 5px 5px #0005)}
+.mpo-logo.is-stretching{animation-play-state:paused;cursor:grabbing;filter:drop-shadow(0 9px 8px #0007)}
+.brand-logo{display:block;width:240px;height:auto;animation:mpoBreathe 4.5s ease-in-out infinite;transform:translate(var(--logo-dx),var(--logo-dy)) scale(var(--logo-sx),var(--logo-sy)) rotate(var(--logo-rot));transform-origin:var(--logo-ox) var(--logo-oy);transition:transform 120ms cubic-bezier(.2,.8,.2,1),filter 120ms;will-change:transform}
+.mpo-logo.is-stretching .brand-logo{transition:none}
+.shine{position:absolute;inset:0;overflow:hidden;pointer-events:none;mask:url('/assets/mpo-logo-3d.webp') center/100% 100% no-repeat;-webkit-mask:url('/assets/mpo-logo-3d.webp') center/100% 100% no-repeat}
 .shine::before{content:'';position:absolute;inset:0 auto 0 0;width:28%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.55),transparent);mix-blend-mode:screen;animation:mpoShine 9s linear infinite}
 @keyframes mpoFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
 @keyframes mpoBreathe{0%,100%{opacity:1}50%{opacity:.93}}
@@ -318,8 +320,12 @@ img.sky-cloud,
   font-size: 13px;
   line-height: 16px;
 }
-.icon:hover { background: #00008044; }
-.icon.sel { background: #00008088; outline: 1px dotted #fff; }
+.icon:hover { background: #00008022; }
+.icon:hover .ico { transform: translateY(-2px); filter: drop-shadow(0 4px 3px #0006); }
+.icon.sel { background: transparent; outline: none; }
+.icon.press .ico { transform: translateY(1px) scale(.96); filter: drop-shadow(0 1px 1px #0007); }
+.icon.press > div:last-child { text-shadow: 1px 1px #000,0 0 5px #fff,0 0 2px #000; }
+.ico { transition: transform 90ms ease-out, filter 90ms ease-out; }
 .ico {
   width: 38px;
   height: 38px;
@@ -364,7 +370,7 @@ img.sky-cloud,
   background: var(--mpo-chrome);
   border: 2px solid;
   border-color: #fff #404040 #404040 #fff;
-  box-shadow: 1px 1px 0 #000;
+  box-shadow: 2px 3px 0 #0008, 0 8px 20px #0013;
   min-width: var(--mpo-win-min-w);
   min-height: var(--mpo-win-min-h);
   z-index: 10;

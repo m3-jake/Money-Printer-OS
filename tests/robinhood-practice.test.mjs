@@ -18,7 +18,7 @@ function feed(prices) {
 
 test('settings are clamped and the snapshot never claims authority', () => {
   const s = RP.normalizePracticeSettings({ budgetUsd: 1, feeBps: 99999, symbols: 'junk,,eth-usd', stopPct: 5, autopilot: 'yes' });
-  assert.equal(s.budgetUsd, 50); assert.equal(s.feeBps, 2500); assert.deepEqual(s.symbols, ['ETH-USD']); assert.equal(s.stopPct, 0.95); assert.equal(s.autopilot, false);
+  assert.equal(s.budgetUsd, 1); assert.equal(s.feeBps, 2500); assert.deepEqual(s.symbols, ['ETH-USD']); assert.equal(s.stopPct, 0.95); assert.equal(s.autopilot, false);
   const dir = tmp();
   try {
     const snap = RP.practiceSnapshot({ dataDir: dir });
