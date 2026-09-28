@@ -66,7 +66,11 @@ test('the same mid path tagged coinbase-candles is never assigned a cheaper spre
 
 test('wiring: the evolve run re-costs its tape and /api/robinhood serves evolve.volGate', () => {
   const src = fs.readFileSync(new URL('../src/robinhoodAutoTrader.js', import.meta.url), 'utf8');
-  assert.match(src, /realisticSpreads\(T\.loadTape\(s,since\)/);
-  assert.equal((src.match(/volGate:robinhoodVolGate\(p\)/g) || []).length, 2, 'both the Lab-sourced and local evolve views');
-  assert.match(src, /tapeDays,synthetic,/);
+  const lab = fs.readFileSync(new URL('../src/robinhoodLab.js', import.meta.url), 'utf8');
+  // P2.3: the §22 evolution policy moved to src/robinhoodLab.js (the loop only wraps it and injects live loop state),
+  // so the wiring is asserted there and the seam itself is asserted in the loop.
+  assert.match(lab, /realisticSpreads\(T\.loadTape\(s,since\)/);
+  assert.equal((lab.match(/volGate:robinhoodVolGate\(p,d\)/g) || []).length, 2, 'both the Lab-sourced and local evolve views, each fed the deps the loop injects');
+  assert.match(lab, /tapeDays,synthetic,/);
+  assert.match(src, /export const robinhoodVolGate=\(p=paper\(\),options\)=>labVolGate\(p,labDeps\(\),options\)/, 'the loop still serves the gate (and its ?force option) for /api/robinhood');
 });

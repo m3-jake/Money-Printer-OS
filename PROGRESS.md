@@ -252,7 +252,7 @@ Regression sweep after P1.5 (`npm run test:all`, exit 0, this machine — every 
 **30 targets, 947 tests, 0 failures.** Before P1.4 the same command died at `test:robinhood` and the
 five targets after it never ran.
 
-## P2 status: 2 of 4 done (P2.1, P2.2)
+## P2 status: 3 of 4 done (P2.1, P2.2, P2.3)
 
 P2.1 — done — — research-state.json backup/validate parity, with the one asymmetry documented
       Measured first, on a temp data dir: `state.json` listing `research.externalized`, the sections in
@@ -313,7 +313,47 @@ P2.2 — done — — journal appends measured (2 per cycle, ~1 ms) — the asyn
       tests).
       Regression sweep after P2.2: `npm run test:all` exit 0 — 30 targets, 961 pass, 0 fail, nothing skipped
       (per-target identical to the P2.1 baseline's 955 apart from `test:recovery`).
-P2.3 — pending — — split robinhoodAutoTrader.js by seam (behavior-preserving)
+P2.3 — done — — split robinhoodAutoTrader.js by seam: 922 lines → 709 + 243 + 35, export surface byte-identical
+      The split is the deliverable here (nothing to measure first), and what was extraction-safe was decided by
+      *state*, not by topic: a module may move only if it owns no live loop state and no real order path. Two new
+      modules resulted, both paper-only and both pure over the paper journal, the tape and the Lab/evolve files.
+      `src/robinhoodPolicy.js` (35 lines) — the state-free primitives the loop and the Lab both need: the tick clock
+      (`TICK_MS`, the injectable `now()` / `setRobinhoodClock`), the symbol grammar and universe, the §21 primary
+      symbol weight/multiplier/order-cap policy, `robinhoodLimits`, `paper()`, `fresh()`, `safeMessage()`, the
+      data-dir constants (`DATA_DIR` / `USER_ROOT` / `ENV_FILE`). Its only module state is the injected clock, which
+      the loop still publishes unchanged as `__testing.setClock`.
+      `src/robinhoodLab.js` (243 lines) — the §22 evolution policy and the §23a Lab paper trials: the proposal/pass/
+      apply path, the trial ledger, the evolve view, `robinhoodFitnessParts`, the cached 7-day vol gate and the
+      7-day quote-source cost evidence, the Lab status/champion link.
+      `src/robinhoodAutoTrader.js` (709 lines, was 922 — 22 insertions / 235 deletions) — everything that owns live
+      loop state or a real order path: the quote feed, the snapshot, qualification, the paper/real autopilot, the
+      HTTP surface, the timers, the daily book.
+      The seam is an injected-deps object, never an import back: the Lab cores take
+      `d = { quotes, fee, note, applyPaperParams, realAutopilot }` *after* their own parameters and *before* any
+      optional flag (`robinhoodVolGate(p,d,{force})`), and the loop's exported wrappers (`robinhoodVolGate`,
+      `robinhoodFitnessParts`, `robinhoodEvolveView`, `runRobinhoodEvolveOnce`, `applyRobinhoodEvolution`,
+      `labProposalPass`) keep their old signatures by closing over `labDeps()`. So the venue stays acyclic (the Lab
+      never imports the loop), the policies stay testable without it, and callers see no change: the 10 names the loop
+      re-exports (4 policy, 6 Lab) keep the same require surface.
+      Verification, on the committed tree plus these edits: importing the previous revision and the new one side by
+      side lists the **same 49 exported names, none added and none lost** (A/B probe, exit 0, empty diff both ways);
+      `node scripts/sync-robinhood-panel.mjs --check` is clean and all three files are pure CRLF like the rest of
+      `src/`. `tests/robinhood-evidence.test.mjs` is the one test that had to become seam-aware — it asserts wiring by
+      reading source text, so the three moved substrings (`realisticSpreads(T.loadTape(s,since)`,
+      `volGate:robinhoodVolGate(p,d)` ×2, now each fed the deps the loop injects, and `tapeDays,synthetic,`) are
+      asserted against `src/robinhoodLab.js`, and the seam itself is asserted against the loop: the exported wrapper
+      is still `(p=paper(),options)=>labVolGate(p,labDeps(),options)`, so `/api/robinhood` keeps serving the gate and
+      its `?force` option. `tests/visual-contract.test.mjs` (and the panel gate) target loop-resident text and needed
+      no change; the Lab-trial suite (`tests/robinhood-lab-trial.test.mjs`, 22 pass in `test:fitness`) drives the new
+      module through the loop's wrappers and needed no change either.
+      One defect introduced by the first cut of the split, caught by the suite before it could ship: the moved gate had
+      taken the deps in the optional-flag slot, so the loop's `?force` refresh handed `{force:true}` where the Lab core
+      expected deps and the gate failed at call time. Deps moved after the core's own parameters
+      (`robinhoodVolGate(p=paper(),d,{force=false}={})`) and the wrapper is back to `labVolGate(p,labDeps(),options)`.
+      Regression sweep after P2.3: `npm run test:all` exit 0 — 30 targets, 961 pass, 0 fail, every target ran
+      (963 tests, of which the only two not passing are the standing `# SKIP` integration placeholders — the Jupiter
+      sibling-freeze pair in `test:robinhood-equities` and the trader→Lab Kalshi handoff in `test:upgrade` — both
+      untouched by this change; counts otherwise identical to the P2.2 baseline).
 P2.4 — pending — — split core/platform.js by seam if clean, else skip + note
 P3.1 — pending — — recompress public logo PNG → webp if no code path needs PNG
 P3.2 — pending — — stateVersion field + migration stub
