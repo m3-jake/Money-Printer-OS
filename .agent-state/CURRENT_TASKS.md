@@ -40,9 +40,11 @@ authentic executable-price/tape evidence rather than weakening qualification gat
 paper-bankroll resets and the requested desktop/logo polish are part of this release, not follow-up
 tasks.
 
-## Profit Lab queue — refreshed 2026-09-28
+## Profit Lab queue — refreshed 2026-09-29
 
-Highest-leverage unfinished profitability task: Research Pro monetization v1. Revenue/funnel instrumentation already exists; do not duplicate it. Fresh GitHub verification: `main` = `eba1bc5bd905688c6ca36fe8b2858250ce983922` / `0.5.0-alpha.75`; monetization is still absent, and the Profit Lab monetization branch is 0 ahead / 23 behind. Refresh the isolated branch to that verified main before applying the alpha.75 package staged at `W:\money-printer-audit-artifacts\profit-lab\research-pro-v1-alpha75`. Keep monetization disabled by default and gate read-only research detail only, never trading/risk/execution. Acceptance requires `git diff --check`, the focused monetization suite, and the full `npm run test:all` before merge.
+Highest-leverage unfinished profitability task remains Research Pro monetization v1. Revenue/funnel instrumentation is already present; do not duplicate it. Fresh GitHub verification: `main` = `a2f7a249400fdda0a372c544fafa44ebde948cde` / `0.5.0-alpha.78`. The old monetization branch had diverged, so use the clean alpha.78 branch `profit-lab/monetization-pro-alpha78-20260929`. The exact implementation contract is `docs/PROFIT-LAB-RESEARCH-PRO-ALPHA78.md`.
+
+Implement the checkout → signed entitlement → paid-attribution loop only. Keep enforcement fail-open until price, checkout URL, Ed25519 public key, and the explicit enforcement flag are all valid. Gate only the read-only Research Control Plane and Project Journal; do not touch trading, execution, paper/live mode, risk, arming, settlement, or loss limits. Acceptance requires `git diff --check`, `npm run test:monetization`, `npm run test:product-economics`, and the full `npm run test:all` before merge. After merge, the next monetization task is connecting the real checkout/signing backend and proving one visit → activation → checkout → signed entitlement → paid-attribution transaction.
 
 Implementation and verification of the September 26 upgrade remain recorded in
 `reports/UPGRADE-IMPLEMENTATION-2026-09-26.md`; current operator documentation is
