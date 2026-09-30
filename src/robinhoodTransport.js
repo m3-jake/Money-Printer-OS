@@ -4,6 +4,8 @@
 // `date` header feeds rhClock(); a first 401 with >=5 s skew is retried exactly once with the
 // identical body bytes; any error raised after dispatch carries `sent:true` (timeouts -> 'uncertain').
 import crypto from 'node:crypto';
+import { isRobinhoodReadOnlyRequest } from './robinhoodReadOnly.js';
+import { appendTransportAudit, transportRouteClass, TRANSPORT_LOG_CAPACITY } from './transportAudit.js';
 import { assertLiveDispatchAllowed } from './core/executionBoundary.js';
 import { RobinhoodError, RH_CODES, fail } from './robinhoodErrors.js';
 import { RH_BASE_URL, loadRobinhoodPrivateKey, signRequest, buildPath } from './robinhoodSigner.js';
@@ -31,7 +33,7 @@ const requestLog=[];
 // ever allowed to the order endpoints; the paper books must never produce one.
 let callStats={get:0,post:0,postRefused:0,other:0,lastPostAt:0,lastPostPath:null};
 export const RH_POST_ALLOWED=/^\/api\/v[12]\/crypto\/trading\/orders\/(?:[A-Za-z0-9%_-]+\/cancel\/)?(?:\?.*)?$/;
-export function rhCallStats(){return {...callStats}}
+export function rhCallStats(){return {...callStats,diagnostics:{retained:requestLog.length,capacity:TRANSPORT_LOG_CAPACITY}}}
 
 export function creds(){return {apiKey:String(process.env.ROBINHOOD_API_KEY||'').trim(),privateKeyBase64:String(process.env.ROBINHOOD_PRIVATE_KEY||'').trim()}}
 export function liveCreds(){return {apiKey:String(process.env.ROBINHOOD_LIVE_API_KEY||'').trim(),privateKeyBase64:String(process.env.ROBINHOOD_LIVE_PRIVATE_KEY||'').trim()}}
@@ -97,15 +99,15 @@ function takeToken(){
  rate.tokens-=1;
 }
 export async function rhRequest({method,path,json,timeoutMs=15000,retryOn401=true}){
- const verb=String(method||'GET').toUpperCase(),mutation=verb==='POST';
- if(mutation&&!isTestDestination()){
-  if(!ROBINHOOD_LIVE_TRADING_ENABLED)throw Object.assign(new Error('Robinhood PAPER-ONLY build: outbound order mutations are disabled in code'),{code:'ROBINHOOD_PAPER_ONLY_BUILD'});
+ const verb=String(method||'GET').toUpperCase(),mutation=!isRobinhoodReadOnlyRequest({method:verb,path,json});
+ if(mutation){
+  if(!ROBINHOOD_LIVE_TRADING_ENABLED){callStats.mutationRefused=(callStats.mutationRefused||0)+1;throw Object.assign(new Error('Robinhood PAPER-ONLY build: only allowlisted read-only requests are permitted; all other methods and action routes are disabled in code'),{code:'ROBINHOOD_PAPER_ONLY_BUILD'});}
   assertLiveDispatchAllowed();
  }
  if(verb==='POST'&&!RH_POST_ALLOWED.test(String(path||''))){callStats.postRefused++;fail('validation','Robinhood POST refused: only the order endpoints may be posted to')}
- if(verb==='GET')callStats.get++;else if(verb==='POST'){callStats.post++;callStats.lastPostAt=now();callStats.lastPostPath=String(path).split('?')[0]}else callStats.other++;
+ if(verb==='GET')callStats.get++;else if(verb==='POST'){callStats.post++;callStats.lastPostAt=now();callStats.lastPostPath=transportRouteClass(path)}else callStats.other++;
  const m=String(method||'GET').toUpperCase();
- const requestCreds=mutation&&!isTestDestination()?liveCreds():creds();
+ const requestCreds=mutation?liveCreds():creds();
  const {apiKey,privateKeyBase64}=requestCreds;
  if(!apiKey||!privateKeyBase64){const msg=mutation?'Separate Robinhood LIVE credentials are not configured':'Robinhood API credentials are not configured';noteRobinhoodAuth({code:'noCredentials',message:msg});fail('noCredentials',msg)}
  const privateKey=keyFor(requestCreds);
@@ -118,9 +120,9 @@ export async function rhRequest({method,path,json,timeoutMs=15000,retryOn401=tru
  for(;;){
   const ts=rhClock().timestamp();
   const headers={'content-type':'application/json','accept':'application/json','user-agent':UA(),...signRequest({apiKey,privateKey,method:m,path:p,body,timestamp:ts})};
-  const init={method:m,headers,signal:AbortSignal.timeout(timeoutMs)};
+  const init={method:m,headers,signal:AbortSignal.timeout(timeoutMs),redirect:'manual'};
   if(body)init.body=body;
-  requestLog.push({method:m,url,headers,body});
+  appendTransportAudit(requestLog,{method:m,path:p,at:now()});
   let res;
   try{res=await globalThis.fetch(url,init)}
   catch(e){
@@ -132,6 +134,7 @@ export async function rhRequest({method,path,json,timeoutMs=15000,retryOn401=tru
    err.sent=true;throw err;
   }
   const status=Number(res?.status||0);
+  if(res?.redirected || (status>=300 && status<400)) { const err=new RobinhoodError('http','Robinhood transport refuses redirects; no credentials are forwarded to another destination',status);err.code='RH_REDIRECT_REFUSED';err.sent=true;throw err; }
   const serverSec=dateHeaderSec(res);
   const localSec=Math.floor(now()/1000);
   if(serverSec!==null){clock.lastDateHeaderSec=serverSec;clock.syncedAt=now()}

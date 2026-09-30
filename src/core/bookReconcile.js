@@ -20,11 +20,11 @@
 //   fees            book fees over the same scope vs the ledger's fee total
 // The last four are derived from what legacyImport.js plans to post (see the fields added to
 // legacyBooks.js), so a disagreement here is a real one, not a rounding or scope artifact.
-export const STATES = Object.freeze({ RECONCILED: 'RECONCILED', DIFFERENCE: 'DIFFERENCE', FAILED: 'FAILED', UNAVAILABLE: 'UNAVAILABLE', NOT_MIRRORED: 'NOT_MIRRORED' });
+export const STATES = Object.freeze({ RECONCILED: 'RECONCILED', DIFFERENCE: 'DIFFERENCE', FAILED: 'FAILED', PARTIAL: 'PARTIAL', RECOVERY_REQUIRED: 'RECOVERY_REQUIRED', UNAVAILABLE: 'UNAVAILABLE', NOT_MIRRORED: 'NOT_MIRRORED' });
 // States that make "reconciled" false. NOT_MIRRORED is deliberately absent: a book with no mirror
 // account (US combos have no readable venue balance) has no reconciliation to fail, and the claim
 // says so by name.
-export const UNRECONCILED_STATES = Object.freeze([STATES.DIFFERENCE, STATES.FAILED]);
+export const UNRECONCILED_STATES = Object.freeze([STATES.DIFFERENCE, STATES.FAILED, STATES.RECOVERY_REQUIRED]);
 export const CLAIM = Object.freeze({ ok: 'MIRRORED_AND_RECONCILED_WHERE_POSSIBLE', refused: 'MIRRORED_WITH_UNRECONCILED_DIFFERENCE' });
 // source -> the venue the mirror books under, so the platform and the tests join on one table.
 export const MIRROR_VENUES = Object.freeze({ solana: 'solana-paper', 'robinhood-practice': 'robinhood-practice' });
@@ -47,9 +47,10 @@ const field = (name, bookValue, ledgerValue, tolerance, reason = null) => {
 // ledger.portfolio() (or null). Returns the verdict for that one book.
 export function reconcileBook({ book = null, venue = null, mirrorRow = null, account = null, tolerance = 1e-6 } = {}) {
   const source = book?.source || mirrorRow?.source || null;
-  const base = { source, venue, currency: book?.currency ?? null, account: account ? account.account || null : null, epoch: mirrorRow?.epoch ?? null, fields: [], differences: [] };
-  const done = (state, reason, extra = {}) => ({ ...base, ...extra, state, reason, promotionRefused: UNRECONCILED_STATES.includes(state) });
+  const base = { source, venue, mode: book?.mode ?? null, currency: book?.currency ?? null, account: account ? account.account || null : null, epoch: mirrorRow?.epoch ?? null, fields: [], differences: [] };
+  const done = (state, reason, extra = {}) => ({ ...base, ...extra, state, reason, promotionRefused: state !== STATES.RECONCILED });
   if (!book) return done(STATES.UNAVAILABLE, 'No legacy book loaded for this source');
+  if (book.recoveryRequired || book.status === 'RECOVERY_REQUIRED') return done(STATES.RECOVERY_REQUIRED, 'Book requires recovery; no complete coverage can be asserted');
   if (book.status === 'UNAVAILABLE') return done(STATES.UNAVAILABLE, `Book not readable: ${book.reason || 'unknown reason'}`);
   const row = mirrorRow || null;
   if (row?.status === 'FAILED') return done(STATES.FAILED, `Mirroring stopped on a refused entry: ${row.detail?.failed || 'see the mirror detail'}`);
@@ -64,10 +65,13 @@ export function reconcileBook({ book = null, venue = null, mirrorRow = null, acc
   if (book.currency && account.currency && account.currency !== book.currency) return done(STATES.DIFFERENCE, `Refusing to compare across books: this is a ${book.currency} book and the account is in ${account.currency}`, { differences: [{ field: 'account', state: 'DIFFERENCE', book: book.currency, ledger: account.currency, reason: `A ${book.currency} book cannot be reconciled against a ${account.currency} account` }] });
   if (venue && account.venue && account.venue !== venue) return done(STATES.DIFFERENCE, `Refusing to compare across books: this book mirrors into ${venue} and the account belongs to ${account.venue}`, { differences: [{ field: 'account', state: 'DIFFERENCE', book: venue, ledger: account.venue, reason: `Wrong mirror venue for ${source}` }] });
 
-  const positions = Array.isArray(account.positions) ? account.positions : [];
+  if (account.account !== mirrorAccount(row.epoch)) return done(STATES.DIFFERENCE, 'Wrong mirror account/epoch; refusing to cross books');
+  if (!['RECONCILED', 'DIFFERENCE'].includes(row.status)) return done(STATES.UNAVAILABLE, 'Unrecognized mirror verdict; coverage is not verified');
+  const positionsKnown = Array.isArray(account.positions);
+  const positions = positionsKnown ? account.positions : [];
   const rows = (num(book.openPositions) || 0) + positions.length;
   const tol = toleranceFor(rows, tolerance);
-  const ledgerOpen = positions.reduce((s, p) => s + (num(p.costBasis) || 0), 0);
+  const ledgerOpen = !positionsKnown || positions.some(p => num(p.costBasis) === null) ? null : positions.reduce((s, p) => s + num(p.costBasis), 0);
   const syncDiff = num(row.detail?.diff);
   const bookCash = num(book.cash), ledgerCash = num(account.cash);
   // Cash carries the mirror's verdict: a difference it already reported stays a difference here even
@@ -75,11 +79,12 @@ export function reconcileBook({ book = null, venue = null, mirrorRow = null, acc
   const cash = bookCash === null || ledgerCash === null
     ? { field: 'cash', state: 'UNKNOWN', book: bookCash, ledger: ledgerCash, diff: syncDiff, reason: 'One side of the cash comparison is unknown' }
     : { field: 'cash', state: row.status === 'DIFFERENCE' ? 'DIFFERENCE' : 'MATCH', book: bookCash, ledger: ledgerCash, diff: syncDiff === null ? r6(ledgerCash - bookCash) : syncDiff, judgedBy: 'mirror-verdict' };
+  if (cash.state === 'MATCH' && (num(row.detail?.bookCash) !== bookCash || num(row.detail?.ledgerCash) !== ledgerCash)) { cash.state = 'UNKNOWN'; cash.reason = 'Cash verdict belongs to another snapshot; reconcile current evidence before claiming a match'; }
   const count = num(book.openPositions);
-  const openPositions = count === null
+  const openPositions = count === null || !Number.isSafeInteger(count) || count < 0 || !positionsKnown
     ? { field: 'openPositions', state: 'UNKNOWN', book: null, ledger: positions.length, reason: 'The book does not report an open position count' }
     : { field: 'openPositions', state: count === positions.length ? 'MATCH' : 'DIFFERENCE', book: count, ledger: positions.length, diff: positions.length - count };
-  const openCost = field('openCost', num(book.openCost), positions.length ? ledgerOpen : num(book.openCost) === null ? null : 0, tol);
+  const openCost = field('openCost', num(book.openCost), ledgerOpen, tol);
   const openRealized = num(book.openRealized);
   const realized = field('realized', num(book.realized) === null || openRealized === null ? null : num(book.realized) + openRealized, num(account.realized), tol,
     openRealized === null ? 'The book does not report realized on its open positions, so the mirrored realized cannot be predicted' : null);
@@ -87,10 +92,11 @@ export function reconcileBook({ book = null, venue = null, mirrorRow = null, acc
   const fees = field('fees', num(book.fees), num(account.fees), tol, 'The book does not report a fee total over the mirrored scope');
   const fields = [cash, openPositions, openCost, realized, fees];
   const differences = fields.filter(f => f.state === 'DIFFERENCE');
-  const state = differences.length ? STATES.DIFFERENCE : STATES.RECONCILED;
+  const unknown = fields.filter(f => f.state === 'UNKNOWN').map(f => f.field);
+  const state = differences.length ? STATES.DIFFERENCE : unknown.length ? STATES.PARTIAL : STATES.RECONCILED;
   return done(state, differences.length
     ? `Ledger and book disagree on ${differences.map(d => d.field).join(', ')}. Nothing was booked to hide it.`
-    : 'Ledger and book agree on cash, open cost, open positions, realized and fees.', { fields, differences, tolerance: r6(tol), compared: fields.filter(f => f.state !== 'UNKNOWN').length, unknown: fields.filter(f => f.state === 'UNKNOWN').map(f => f.field) });
+    : unknown.length ? `Comparison incomplete: ${unknown.join(', ')} remain unknown.` : 'Ledger and book agree on cash, open cost, open positions, realized and fees.', { fields, differences, tolerance: r6(tol), compared: fields.filter(f => f.state !== 'UNKNOWN').length, unknown: fields.filter(f => f.state === 'UNKNOWN').map(f => f.field) });
 }
 
 // coverage: a legacyCoverage() result. mirrors: legacy_sync rows (epoch + status + detail).
@@ -111,8 +117,18 @@ export function reconcileLegacyBooks({ coverage = null, mirrors = [], accounts =
 // The claim the platform publishes. It is a refusal, not a repair: the wording only says reconciled
 // when every book that has a mirror actually reconciles, and every proven disagreement is named.
 export function coverageClaim(books = []) {
-  const refused = (books || []).filter(b => UNRECONCILED_STATES.includes(b.state)).map(b => ({ source: b.source, state: b.state, reason: b.reason, fields: (b.differences || []).map(d => d.field) }));
-  const unverified = (books || []).filter(b => [STATES.UNAVAILABLE, STATES.NOT_MIRRORED].includes(b.state)).map(b => ({ source: b.source, state: b.state, reason: b.reason }));
-  return { legacyBooks: refused.length ? CLAIM.refused : CLAIM.ok, promotionAllowed: refused.length === 0, refused, unverified, checked: (books || []).filter(b => b.state === STATES.RECONCILED).length };
+  const rows = Array.isArray(books) ? books : [];
+  const verified = b => b.state === STATES.RECONCILED && b.mode === 'PAPER' && b.source && b.account && b.currency && Number.isSafeInteger(b.epoch) && b.compared === 5 &&
+    b.fields?.length === 5 && b.fields.every(f => f.state === 'MATCH') && !b.unknown?.length;
+  const refused = rows.filter(b => UNRECONCILED_STATES.includes(b.state)).map(b => ({ source: b.source, state: b.state, reason: b.reason, fields: (b.differences || []).map(d => d.field) }));
+  const unverified = rows.filter(b => !verified(b) && !UNRECONCILED_STATES.includes(b.state)).map(b => ({ source: b.source, state: b.state, reason: b.reason, unknown: b.unknown || [] }));
+  const checked = rows.filter(verified).length;
+  const scope = rows.map(b => ({ source: b.source, account: b.account ?? null, epoch: b.epoch ?? null, currency: b.currency ?? null, mode: b.mode ?? null }));
+  const unique = new Set(scope.map(b => JSON.stringify([b.source, b.account, b.epoch, b.currency]))).size === rows.length;
+  const state = refused.length || !unique ? 'UNRECONCILED' : checked === 0 ? (rows.some(b => b.compared > 0) ? 'PARTIAL' : 'UNAVAILABLE') : unverified.length ? 'PARTIAL' : 'COMPLETE';
+  return { state, scope, required: rows.length, checked, refused, unverified,
+    legacyBooks: state === 'COMPLETE' ? CLAIM.ok : state === 'UNRECONCILED' ? CLAIM.refused : state === 'PARTIAL' ? 'PARTIAL_UNVERIFIED_COVERAGE' : 'COVERAGE_UNAVAILABLE',
+    promotionAllowed: state === 'COMPLETE' && checked > 0,
+    reason: !unique ? 'Duplicate book scope; coverage cannot be counted twice' : state === 'COMPLETE' ? 'Every declared book passed all five comparisons' : 'Missing, unknown or disagreeing book evidence prevents a complete coverage claim' };
 }
 
