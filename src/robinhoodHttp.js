@@ -48,9 +48,9 @@ export async function handleRobinhoodRequest(req,res,u,{json,body}){
   'paper-autopilot':()=>RH.setRobinhoodPaperAutopilot({enabled:b.enabled,orderUsd:b.orderUsd,maxOpen:b.maxOpen,symbols:b.symbols,params:b.params}),
   'paper-autopilot/run':()=>RH.runRobinhoodPaperOnce(),
   'practice/config':()=>RP.configurePractice({dataDir:path.dirname(RH.__testing.journalFile),patch:b,now:Date.now()}),
-  'practice/run':()=>RP.runPracticeCycle({dataDir:path.dirname(RH.__testing.journalFile),now:Date.now()}),
-  'practice/order':()=>RP.placePracticeOrder({dataDir:path.dirname(RH.__testing.journalFile),symbol:b.symbol,now:Date.now()}),
-  'practice/close':()=>RP.closePracticeOrder({dataDir:path.dirname(RH.__testing.journalFile),id:String(b.id||''),now:Date.now()}),
+  'practice/run':()=>RP.runPracticeCycle({dataDir:path.dirname(RH.__testing.journalFile)}),
+  'practice/order':()=>RP.placePracticeOrder({dataDir:path.dirname(RH.__testing.journalFile),symbol:b.symbol}),
+  'practice/close':()=>RP.closePracticeOrder({dataDir:path.dirname(RH.__testing.journalFile),id:String(b.id||'')}),
   'practice/reset':()=>RP.resetPractice({dataDir:path.dirname(RH.__testing.journalFile),budgetUsd:b.budgetUsd,now:Date.now()}),
   // Daily-bar paper book: run one pass now (still one decision per closed UTC bar) or reset after review. Paper only.
   'daily/run':()=>RD.runDailyTick({dataDir:path.dirname(RH.__testing.journalFile),quoteFn:RH.robinhoodDailyQuote,feeFn:RH.robinhoodFeeRatio}),

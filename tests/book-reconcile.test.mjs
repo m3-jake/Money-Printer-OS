@@ -57,9 +57,9 @@ test('the tolerance is one rounding step per compared row, so length alone is ne
   assert.equal(scaled.tolerance,1502e-6);
 });
 
-test('unknowns stay unknown, and a book that cannot be compared is never called reconciled or refused',()=>{
+test('unknown and missing evidence cannot certify coverage',()=>{
   const unknown=verdict({book:bookOf({realized:null,fees:null,openRealized:null})});
-  assert.equal(unknown.state,STATES.RECONCILED);assert.deepEqual(unknown.unknown,['realized','fees']);
+  assert.equal(unknown.state,STATES.PARTIAL);assert.deepEqual(unknown.unknown,['realized','fees']);
   assert.equal(unknown.fields.find(f=>f.field==='realized').state,'UNKNOWN');
   assert.match(unknown.fields.find(f=>f.field==='fees').reason,/does not report a fee total/);
   // Books with no mirror at all: combos have no readable venue balance, and a book nobody has
@@ -68,11 +68,11 @@ test('unknowns stay unknown, and a book that cannot be compared is never called 
   assert.equal(combos.books[0].state,STATES.NOT_MIRRORED);assert.match(combos.books[0].reason,/no mirror account/);
   const notYet=reconcileLegacyBooks({coverage:{books:[bookOf()]}});
   assert.equal(notYet.books[0].state,STATES.NOT_MIRRORED);assert.match(notYet.books[0].reason,/No mirror has run/);
-  assert.equal(notYet.claim.promotionAllowed,true);assert.equal(notYet.claim.legacyBooks,CLAIM.ok);
+  assert.equal(notYet.claim.promotionAllowed,false);assert.equal(notYet.claim.legacyBooks,'COVERAGE_UNAVAILABLE');
   assert.deepEqual(notYet.claim.unverified.map(u=>u.source),['solana']);assert.equal(notYet.claim.checked,0);
   // An unreadable book is "where possible" too, but a book whose mirror refused an entry is not.
   const unreadable=reconcileLegacyBooks({coverage:{books:[bookOf({status:'UNAVAILABLE',reason:'Engine state not loaded'})]}});
-  assert.equal(unreadable.books[0].state,STATES.UNAVAILABLE);assert.equal(unreadable.claim.promotionAllowed,true);
+  assert.equal(unreadable.books[0].state,STATES.UNAVAILABLE);assert.equal(unreadable.claim.promotionAllowed,false);
   const failed=reconcileLegacyBooks({coverage:{books:[bookOf()]},mirrors:[rowOf({status:'FAILED',detail:{failed:'legacy:solana:1:sell:o1: Ledger would overdraw cash'}})]});
   assert.equal(failed.books[0].state,STATES.FAILED);assert.equal(failed.claim.promotionAllowed,false);
   assert.match(failed.books[0].reason,/overdraw/);assert.deepEqual(failed.claim.refused[0].fields,[]);
@@ -109,10 +109,10 @@ test('the platform derives coverage.legacyBooks and refuses it when a mirrored b
   p.syncLegacyLedger();
   // Before any sync: nothing to reconcile against, and the claim still says "where possible".
   const fresh=new MarketPlatform({providers:new ProviderRegistry()});
-  assert.equal(fresh.snapshot().coverage.legacyBooks,CLAIM.ok);assert.equal(fresh.snapshot().coverage.legacyReconcile.checked,0);fresh.close();
+  assert.equal(fresh.snapshot().coverage.legacyBooks,'COVERAGE_UNAVAILABLE');assert.equal(fresh.snapshot().coverage.legacyReconcile.checked,0);fresh.close();
   const ok=p.snapshot();
-  assert.equal(ok.coverage.legacyBooks,CLAIM.ok);assert.deepEqual(ok.coverage.legacyReconcile.refused,[]);
-  assert.equal(ok.coverage.legacyReconcile.promotionAllowed,true);assert.equal(ok.coverage.legacyReconcile.checked,1);
+  assert.equal(ok.coverage.legacyBooks,'PARTIAL_UNVERIFIED_COVERAGE');assert.deepEqual(ok.coverage.legacyReconcile.refused,[]);
+  assert.equal(ok.coverage.legacyReconcile.promotionAllowed,false);assert.equal(ok.coverage.legacyReconcile.checked,1);
   assert.equal(ok.legacy.reconciliation.books.find(b=>b.source==='solana').state,STATES.RECONCILED);
   assert.equal(ok.legacy.reconciliation.states.RECONCILED,1);
   assert.equal(ok.legacy.reconciliation.at>0,true);
