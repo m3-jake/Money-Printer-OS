@@ -22,7 +22,33 @@ window.MPOSPlatform = (() => {
   function platformGlance(id){
     const s=scoreboard?.summary||{},bad=diag?.sources?.filter(x=>!['CONNECTED','IDLE','DISABLED'].includes(x.status)).length||0;
     if(id==='command')return `<div class="core-app">${window.mpoPumpProfitHTML?.(window.__MPO_PROFIT_CAPTURE)||''}${window.mpoWalletCrowdHTML?.(window.__MPO_WALLET_CROWD)||''}<div class="core-heading"><h2>COMMAND CENTER</h2><span class="mpo-badge">PAPER / RESEARCH</span></div><div class="core-lcd"><span>${scoreboard?.paperSummary?.beating||0} paper books beating baseline</span><span>${scoreboard?.paperSummary?.notBeating||0} paper books not beating</span><span>${scoreboard?.paperSummary?.notEnoughData||0} paper books awaiting evidence</span><span>${bad} data sources need attention</span></div><p class="core-muted">Open Advanced for market desks, diagnostics, Events, risk controls and research detail.</p></div>`;
+    if(id==='kalshi'&&typeof glance==='function')return kalshiGlance();
     return `<div class="core-app"><div class="core-heading"><h2>${escape(id==='kalshi'?'KALSHI':'POLYMARKET')}</h2><span class="mpo-badge">PAPER</span></div><p class="core-muted">Open Advanced for books, orders, depth and execution detail.</p></div>`;
+  }
+  // Kalshi Simple view: the weather desk at a glance. Each city's next undecided daily-high market as a
+  // bucket distribution (Kalshi mids) with the NWS forecast bucket outlined, plus the forecast − market gap.
+  // Data is GET /api/platform/weather (server-cached); fetched at most every 10 minutes while this glance shows.
+  let kalshiWx=null,kalshiWxAt=0,kalshiWxBusy=false,kalshiWxError='';
+  function loadKalshiWx(){
+    if(kalshiWxBusy||Date.now()-kalshiWxAt<(kalshiWx?600000:60000))return;kalshiWxBusy=true;kalshiWxAt=Date.now();
+    request('/weather').then(v=>{kalshiWx=v;kalshiWxError='';}).catch(e=>{kalshiWxError=e.message;}).finally(()=>{kalshiWxBusy=false;draw('kalshi');});
+  }
+  function kalshiGlance(){
+    loadKalshiWx();
+    const deg=v=>v==null?'—':Math.round(Number(v)*10)/10+'°';
+    const rows=(kalshiWx?.cities||[]).map(c=>{const m=(c.markets||[]).find(m=>m.closeAt>Date.now()&&Math.max(...m.buckets.map(b=>b.p))<0.9);return m?{c,m}:null;}).filter(Boolean);
+    const gaps=rows.filter(r=>Number.isFinite(r.m.gap)).sort((a,b)=>Math.abs(b.m.gap)-Math.abs(a.m.gap)),top=gaps[0];
+    const inBucket=(b,v)=>v!=null&&(b.lo==null||v>=b.lo)&&(b.hi==null||v<=b.hi);
+    const dateLabel=d=>{const t=new Date(d+'T12:00:00');return Number.isFinite(t.getTime())?t.toLocaleDateString([],{month:'short',day:'numeric'}):d||'';};
+    const list=rows.length?`<div class="g-wx">${rows.map(({c,m})=>{const hi=Math.max(...m.buckets.map(b=>b.p),0.01);
+      return `<div class="g-wx-row"><span class="g-wx-city">${escape(c.label)}<small>${escape(dateLabel(m.date))}</small></span><span class="g-wx-dist" title="Kalshi bucket prices; outlined bucket holds the NWS forecast">${m.buckets.map(b=>`<i class="${inBucket(b,m.nwsHigh)?'nws':''}" style="--p:${Math.max(4,Math.round(b.p/hi*100))}%" title="${escape(b.lo==null?'≤'+b.hi:b.hi==null?b.lo+'+':b.lo+'–'+b.hi)}°F · ${Math.round(b.p*100)}¢"></i>`).join('')}</span><span class="g-wx-fig">NWS ${deg(m.nwsHigh)} · mkt ${deg(m.expectedHigh)}${Number.isFinite(m.gap)?` <b class="${Math.abs(m.gap)>=2?(m.gap>0?'g-pos':'g-neg'):''}">${m.gap>0?'+':m.gap<0?'−':''}${Math.abs(m.gap).toFixed(1)}°</b>`:''}</span></div>`;}).join('')}</div>`
+      :`<div class="g-empty">${kalshiWxError?escape('Weather desk unavailable: '+kalshiWxError):'Loading NWS forecasts and Kalshi weather markets (first load can take a minute)…'}</div>`;
+    const next=rows.map(r=>r.m.closeAt).sort((a,b)=>a-b)[0];
+    return glance({title:'Kalshi · weather desk',pill:{label:'Paper · no Kalshi bot yet',tone:'warn'},
+      hero:top?`${top.m.gap>0?'+':top.m.gap<0?'−':''}${Math.abs(top.m.gap).toFixed(1)}`:'—',heroUnit:'°F',
+      heroSub:top?escape(`Biggest forecast − market gap: ${top.c.label} ${dateLabel(top.m.date)} · NWS ${deg(top.m.nwsHigh)} vs market ${deg(top.m.expectedHigh)}`):'Biggest NWS forecast − Kalshi market gap',
+      stats:[{label:'Cities',value:String(kalshiWx?.cities?.length??'—')},{label:'Gaps ≥ 2°F',value:kalshiWx?String(gaps.filter(r=>Math.abs(r.m.gap)>=2).length):'—'},{label:'Next close',value:next?new Date(next).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}):'—'}],
+      visual:list,foot:gFoot(['bars = Kalshi prices per °F bucket','outlined = NWS forecast','a gap is a question, not a signal'])});
   }
   const button=(action,label,extra='')=>`<button class="btn" data-core-action="${action}" ${extra} ${busy&&action!=='halt'?'disabled':''}>${label}</button>`;
   async function request(route,data){

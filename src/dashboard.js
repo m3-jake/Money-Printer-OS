@@ -350,6 +350,10 @@ function compactSeries(xs,max=1600,recent=600){
   const sampled=[];if(slots>1&&head.length){const step=(head.length-1)/(slots-1);for(let i=0;i<slots;i++)sampled.push(head[Math.round(i*step)])}
   return [...sampled,...tail];
 }
+// 2026-10-02 HUD lag: the series was ~60% of a ~500 KB /api/state polled every 1.5 s, mostly 17-digit floats.
+// The HTTP view keeps every field but rounds SOL marks to 1e-6 (the on-disk state is untouched).
+const roundSol=v=>typeof v==='number'&&Number.isFinite(v)?Math.round(v*1e6)/1e6:v;
+function roundSeriesPoint(p){if(!p||typeof p!=='object')return p;const o={...p};for(const k of ['equitySol','cashSol','realizedSol','unrealizedSol'])if(k in o)o[k]=roundSol(o[k]);return o}
 // alpha.53: what the trader knows about the (external) Evolution Lab. Always present, so the
 // HUD can say 'not connected' instead of showing a stale in-process loop as if it were alive.
 function labLinkView(s={}){
@@ -409,7 +413,7 @@ function snapshot() {
     pumpProfitCapture: pumpProfitView(s),
     walletCrowd: crowdRuntimeView(DATA_DIR),
     portfolio: s.portfolio || null,
-    portfolioSeries: compactSeries(s.portfolioSeries,1600,600),
+    portfolioSeries: compactSeries(s.portfolioSeries,1000,600).map(roundSeriesPoint),
     dailyPnlSol: s.dailyPnlSol || 0,
     hourlyPnlSol: s.hourlyPnlSol || 0,
     consecutiveLosses: s.consecutiveLosses || 0,

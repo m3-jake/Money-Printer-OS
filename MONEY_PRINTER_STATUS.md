@@ -43,6 +43,40 @@ Last updated: 2026-09-28, remediation pass P0–P5 on the `v0.5.0-alpha.71` tree
 Evolution Lab alpha.11 paired Windows release described above is unchanged, and no release pair was
 built, signed or installed in this pass. Version `0.5.0-alpha.71`.
 
+## Batch PF-1 (2026-10-02, Claude): paper focus — Robinhood paper-only HUD, Kalshi glance, rolling numbers, lag
+
+Branch `claude/paper-focus-20261002` (worktree `W:\mpo-paper-focus`) from cc3ef07. Not built or installed. bing asked for an
+audit, Robinhood with all live stuff removed (paper only until paper is good), a real Simple view for Kalshi, less lag from the
+animated graphs, and a rolling cash-register / slot-machine effect when major numbers change.
+
+- **Robinhood HUD is paper-only.** Removed from `public/assets/robinhood-panel.js` (synced into dashboard.html): LIVE buying power,
+  LIVE open/realized/cap readouts, arm, preview, place, sell, cancel, cancel-all, forget, reconcile, the real autopilot form and
+  every real confirmation phrase. The "real" part became "Robinhood API keys (market data only)". Header metrics are paper equity,
+  paper P/L, open/closed paper trades, hit rate and modeled fee. The glance title is "Robinhood · paper only", its pill "Paper
+  trading" (the old "live quotes" wording read as live money), and the hero says it is simulated, not the Robinhood account.
+  **Backend untouched:** `robinhoodAutoTrader.js` keeps PAPER_ONLY_BUILD and the transport still refuses real mutations;
+  `/api/robinhood` still returns the read-only account block, the HUD just never shows it. robinhood-hud, robinhood-http and
+  visual-contract now assert the live controls and phrases are ABSENT.
+- **Kalshi Simple view** (`mpo-platform.js` `kalshiGlance`): the weather desk. Per city, the next undecided daily-high market as
+  Kalshi bucket bars with the NWS forecast bucket outlined, NWS vs market expected high and the gap; hero = biggest gap. The pill
+  says plainly "Paper · no Kalshi bot yet". Reads the existing server-cached `GET /api/platform/weather` at most every 10 minutes.
+- **Rolling numbers** (`public/js/mpo-roll.js`, styles in `mpo-glance.css`): every glance hero, stat, LCD tile and row figure rolls
+  its changed digits like number wheels (760 ms, slight overshoot, staggered by place), then restores plain text. Reduce animation
+  turns it off.
+- **Lag:** (1) `/api/state` `portfolioSeries` is capped at 1000 points with SOL marks rounded to 1e-6, in the HTTP view only. Live
+  payload went from 498 KB to 344 KB per 1.5 s poll (−31%). (2) `mpo-viz.js`: a motion frame no longer clears and redraws every
+  visible chart. Static charts redraw for 1.5 s after a data change (so eased gauges settle smoothly), on a new canvas, or on resize.
+- **Tests:** a full per-file run gave 1161 tests, 1138 pass, 23 fail. The same 23 fail on cc3ef07: 22 Robinhood engine tests, plus
+  the doc-drift suite count, which is fixed here. test:visual 73/73, test:wiring 10/10, robinhood-hud 10/10, robinhood-http 9/9.
+
+### Next recommended (from the 2026-10-02 audit)
+1. Decide on the Research Pro paywall WIP (uncommitted on `profit-lab/monetization-pro-v1-20260925`; bing did not ask for it) and
+   the Product Economics window. Recommendation: delete both.
+2. Kalshi paper weather bot (NWS forecast vs bucket price, fee-aware, its own paper book and scoreboard row), then BTC range markets.
+3. Robinhood: show one paper book in Simple and fold or retire Exploration/Practice; fix or delete the 22 dead live-engine tests.
+4. Copy trading: Polymarket public wallets work. Kalshi publishes no per-user trades, so there is nothing to copy there.
+5. Simple views for the Command Center tabs; pause the desktop sky/grass animations while a window is maximized.
+
 ## Architecture (inventoried once)
 
 - **Desktop shell:** `desktop/main.cjs` (Electron). It supervises child processes (engine `src/index.js`, `src/networkMesh.js`, and optionally `src/researchCollector.js`) and restarts them with backoff. Research services policy: `desktop/research-supervision.cjs` (`MPO_RESEARCH_COLLECTOR`, default on).
@@ -52,7 +86,7 @@ built, signed or installed in this pass. Version `0.5.0-alpha.71`.
 - **Robinhood (this branch):** `src/robinhood*.js`, paper only. Real execution isn't installed. See `docs/ROBINHOOD-AUTO-TRADER.md` and `docs/ROBINHOOD-RECOVERY-2026-09-25.md`.
 - **Research/evidence:** `src/researchCollector.js` writes the tape to `<data>/research-evidence/raw/*.ndjson`. Around it sit `researchEvidenceGate/Store`, `researchControlPlane` and `polymarketResearchEval`. The gate is intentionally not wired into the live app.
 - **Evolution Lab** lives in a separate repo, `money-printer-evolution-lab`, and is the shared research brain for every module: Solana (labLoop/BEAST), plus parallel `module-robinhood` and `module-polymarket` workers (`src/moduleResearch.js`). Valid module ids come from its `src/researchModules.js`. It writes `<trader data>/lab-link/modules/<id>.json` and paper-only `<id>-champion.json`. It is NOT the dropped "agent lab" harness.
-- **Tests:** 136 suites in `tests/` across 33 targets, run by `npm run test:all` (green end to end since P1.4; `test:wiring` fails first if a suite becomes unreachable). Everything is mocked and uses temp dirs.
+- **Tests:** 140 suites in `tests/` across 34 targets, run by `npm run test:all` (`test:wiring` fails first if a suite becomes unreachable). **Not green as of 2026-10-02:** 22 Robinhood real-money engine tests fail (robinhood-signer 11, robinhood-auto-trader 6, robinhood-safety 3, robinhood-auto 1, live-gate 1) because the paper-only transport lock refuses the live paths they exercise; they fail identically on cc3ef07. Everything is mocked and uses temp dirs.
 
 ## Confirmed working (2026-09-25)
 

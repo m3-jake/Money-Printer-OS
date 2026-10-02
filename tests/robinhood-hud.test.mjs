@@ -14,7 +14,10 @@ const read=p=>fs.readFileSync(path.join(root,p),'utf8');
 const lf=s=>s.replace(/\r\n/g,'\n');
 const html=lf(read('public/dashboard.html')),panel=lf(read('public/assets/robinhood-panel.js'));
 const rx=s=>new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'));
+// 2026-10-02 (bing): the Robinhood HUD is paper-only; every live/real-money control was removed. The backend lock
+// (tests/robinhood-http.test.mjs, tests/live-gate.test.mjs) still refuses real mutations on its own.
 const PHRASES=['PLACE REAL CRYPTO ORDER','CANCEL REAL CRYPTO ORDER','CANCEL REAL CRYPTO ORDERS','ENABLE REAL CRYPTO AUTOPILOT'];
+const LIVE_IDS=['rhArm','rhRealSymbol','rhRealUsd','rhRealType','rhPreviewBtn','rhPreviewOut','rhConfirm','rhPlace','rhCancelAll','rhReconcile','rhApOrderUsd','rhApMaxOpen','rhApLossCap','rhApSymbols','rhApType','rhAutoConfirm','rhApEnable','rhApDisable','rhApRun'];
 
 test('the synced panel source is embedded byte-for-byte and parses',()=>{
  const embedded=html.split('// BEGIN ROBINHOOD PAPER PANEL\n')[1].split('// END ROBINHOOD PAPER PANEL')[0];
@@ -22,22 +25,23 @@ test('the synced panel source is embedded byte-for-byte and parses',()=>{
  assert.doesNotThrow(()=>new vm.Script(panel,{filename:'robinhood-panel.js'}));
  const code=html.slice(html.indexOf('<script>')+8,html.lastIndexOf('</script>'));assert.doesNotThrow(()=>new vm.Script(code,{filename:'dashboard-inline.js'}));
 });
-test('confirmation phrases appear verbatim, are typed by the operator and never pre-filled',()=>{
- for(const p of PHRASES){assert.match(panel,rx(p));assert.match(html,rx(p));assert.doesNotMatch(panel,new RegExp('value="'+p+'"'))}
- assert.match(panel,/RH_PHRASES=\{place:'PLACE REAL CRYPTO ORDER',cancel:'CANCEL REAL CRYPTO ORDER',cancelAll:'CANCEL REAL CRYPTO ORDERS',autopilot:'ENABLE REAL CRYPTO AUTOPILOT',forget:'FORGET'\}/);
- assert.match(panel,/placeholder="Type PLACE REAL CRYPTO ORDER"/);assert.match(panel,/placeholder="Type ENABLE REAL CRYPTO AUTOPILOT"/);
- assert.match(panel,/confirmation==='RESET PAPER'/);assert.match(panel,/does NOT cancel anything on Robinhood; the coin stays in your account/);
- assert.match(panel,/confirm\.value===RH_PHRASES\.place/,'the Place button gates on the exact phrase client-side too');
+test('the panel has no live or real-money controls, phrases or numbers',()=>{
+ for(const p of PHRASES){assert.doesNotMatch(panel,rx(p));assert.doesNotMatch(html,rx(p))}
+ for(const id of LIVE_IDS)assert.doesNotMatch(panel,new RegExp('id="'+id+'"'),id);
+ for(const attr of ['data-rh-sell','data-rh-cancel','data-rh-forget'])assert.doesNotMatch(panel,rx(attr),attr);
+ for(const a of ['arm','preview','order','cancel','cancel-all','forget','reconcile','autopilot','autopilot/run'])assert.ok(!panel.includes("rhAction('"+a+"'"),a);
+ assert.doesNotMatch(panel,/buyingPowerUsd|LIVE\/read-only|LIVE open|LIVE realized|REAL AUTOPILOT|LIVE LOCKED|rhState\.journal/);
+ assert.match(panel,/confirmation==='RESET PAPER'/);
  assert.doesNotMatch(panel,/sessionStorage/);assert.deepEqual([...panel.matchAll(/rhSave\('([^']+)'/g)].map(m=>m[1]).sort(),['mpo-rh-chart','mpo-rh-view']);assert.equal((panel.match(/localStorage\.setItem/g)||[]).length,1);assert.match(panel,/rhSave\('mpo-rh-chart',\{range:rhChart.range,symbol:rhChart.symbol\}\)/);assert.match(panel,/rhSave\('mpo-rh-view',rhView\)/);
 });
 test('required controls, fieldsets and routes are present',()=>{
- for(const id of ['rhApiKey','rhSecret','rhConfigure','rhArm','rhRealSymbol','rhRealUsd','rhRealType','rhPreviewBtn','rhPreviewOut','rhConfirm','rhPlace','rhCancelAll','rhReconcile','rhApOrderUsd','rhApMaxOpen','rhApLossCap','rhApSymbols','rhAutoConfirm','rhApEnable','rhApDisable','rhApRun','rhSymbol','rhUsd','rhBuy','rhSymbols','rhOrderUsd','rhMaxOpen','rhSave','rhToggle','rhTick','rhParams','rhBank','rhResetConfirm','rhReset','rhEvolveRun','rhEvolveApply','rhReadiness','rhStocks','rhEqStatus','rhEqNeedKey','rhEqReplay','rhEqWeights','rhEqPositions','rhEqDecision','rhPractice','rhPrDecision','rhPrPositions','rhPrMode','rhPrStrategy','rhPrSymbols','rhPrOrderUsd','rhPrMaxOpen','rhPrLossCap','rhPrSave','rhPrAuto','rhPrRun','rhPrSymbol','rhPrBuy','rhPrBudget','rhPrReset'])assert.match(panel,new RegExp('id="'+id+'"'),id);
+ for(const id of ['rhApiKey','rhSecret','rhConfigure','rhSymbol','rhUsd','rhBuy','rhSymbols','rhOrderUsd','rhMaxOpen','rhSave','rhToggle','rhTick','rhParams','rhBank','rhResetConfirm','rhReset','rhEvolveRun','rhEvolveApply','rhReadiness','rhStocks','rhEqStatus','rhEqNeedKey','rhEqReplay','rhEqWeights','rhEqPositions','rhEqDecision','rhPractice','rhPrDecision','rhPrPositions','rhPrMode','rhPrStrategy','rhPrSymbols','rhPrOrderUsd','rhPrMaxOpen','rhPrLossCap','rhPrSave','rhPrAuto','rhPrRun','rhPrSymbol','rhPrBuy','rhPrBudget','rhPrReset'])assert.match(panel,new RegExp('id="'+id+'"'),id);
  assert.match(panel,/cid=o\.id\|\|'rhEqCurve'/,'the stocks curve keeps id rhEqCurve (the daily book reuses the helper with rhDailyCurve)');for(const id of ['rhDaily','rhDailyLabel','rhDailyVerdict','rhDailyPositions','rhDailyDecision','rhDailyQual','rhDailyTrades','rhDailyRun','rhDailyReset'])assert.match(panel,new RegExp('id="'+id+'"'),id);
- for(const attr of ['data-rh-close','data-rh-sell','data-rh-cancel','data-rh-forget','data-rh-pr-close'])assert.match(panel,rx(attr));
- for(const a of ['config','arm','preview','order','cancel','cancel-all','forget','reconcile','autopilot','autopilot/run','paper-order','paper-close','paper-reset','paper-autopilot','paper-autopilot/run','evolve/run','evolve/apply','practice/config','practice/run','practice/order','practice/close','practice/reset'])assert.ok(panel.includes("rhAction('"+a+"'"),a);
+ for(const attr of ['data-rh-close','data-rh-pr-close'])assert.match(panel,rx(attr));
+ for(const a of ['config','paper-order','paper-close','paper-reset','paper-autopilot','paper-autopilot/run','evolve/run','evolve/apply','practice/config','practice/run','practice/order','practice/close','practice/reset'])assert.ok(panel.includes("rhAction('"+a+"'"),a);
  assert.match(panel,/fetch\('\/api\/robinhood'\)/);
- assert.match(panel,/<legend>ROBINHOOD CONNECTION · PAPER-ONLY LOCK<\/legend>/);assert.match(panel,/PAPER-ONLY BUILD/);assert.match(panel,/mpo-danger-fieldset/);assert.match(panel,/Evolution Lab · Robinhood research lane/);assert.match(panel,/Apply Lab candidate to paper/);assert.match(panel,/Lab runs automatically/);
- assert.match(panel,/Agentic Trading MCP/);assert.match(panel,/PRIMARY x/);
+ assert.match(panel,/<legend>Robinhood API keys · market data only<\/legend>/);assert.match(panel,/This build cannot place, cancel or reconcile real orders/);assert.doesNotMatch(panel,/mpo-danger-fieldset/);assert.match(panel,/Evolution Lab · Robinhood research lane/);assert.match(panel,/Apply Lab candidate to paper/);assert.match(panel,/Lab runs automatically/);
+ assert.doesNotMatch(panel,/Agentic Trading MCP/);assert.match(panel,/PRIMARY x/);
  assert.match(panel,/rhAction\('evolve\/apply',\{paramsHash:ev\.proposed\.paramsHash\}/,'apply posts the proposed hash the server validates');
  assert.match(panel,/!ev\.proposed\|\|!evReady/,'Lab proposals stay unapplicable until paper-review gates pass');
  assert.match(panel,/Live Robinhood execution stays locked/);
@@ -50,8 +54,8 @@ test('desktop shell registers the window, keeps the layout version and leaves Po
  assert.equal((html.match(/mpo-brand-title/g)||[]).length,2,'brand title count unchanged');
 });
 test('automatic refresh never replaces a focused input or a typed secret',()=>{
- for(const active of ['rhUsd','rhConfirm','rhSecret']){let renders=0;const context=vm.createContext({document:{getElementById:()=>({}),activeElement:{id:active}},setBody:()=>renders++});vm.runInContext(panel,context);vm.runInContext('renderRobinhood()',context);assert.equal(renders,0,active)}
- let renders=0;const context=vm.createContext({document:{getElementById:id=>id==='rhConfirm'?{value:'PLACE'}:{},activeElement:{id:'other'}},setBody:()=>renders++});vm.runInContext(panel,context);vm.runInContext('renderRobinhood()',context);assert.equal(renders,0,'a half-typed phrase blocks the refresh');
+ for(const active of ['rhUsd','rhSecret']){let renders=0;const context=vm.createContext({document:{getElementById:()=>({}),activeElement:{id:active}},setBody:()=>renders++});vm.runInContext(panel,context);vm.runInContext('renderRobinhood()',context);assert.equal(renders,0,active)}
+ let renders=0;const context=vm.createContext({document:{getElementById:id=>id==='rhSecret'?{value:'abc'}:{},activeElement:{id:'other'}},setBody:()=>renders++});vm.runInContext(panel,context);vm.runInContext('renderRobinhood()',context);assert.equal(renders,0,'a half-typed secret blocks the refresh');
 });
 test('gauge and exploration sections render both books, label EXPLORATION (NOT A STRATEGY) and never offer promotion',()=>{
  assert.match(panel,/\$\{rhGaugeSection\(rhState\)\}/);assert.match(panel,/\$\{rhExploreSection\(rhState\)\}/);
@@ -65,7 +69,7 @@ test('gauge and exploration sections render both books, label EXPLORATION (NOT A
  assert.doesNotMatch(ex,/rhAction\(|evolve\/apply|Apply to paper/,'no control on the exploration book can promote it');
 });
 test('multi-asset suite: crypto views keep their parts, stocks & ETFs and practice get their own tabs',()=>{
- assert.match(panel,/const RH_VIEWS=\{paper:\['head','cryptohead','live','order','autopilot','qual','positions','closes'\],why:\['head','cryptohead','live','signals','gauges'\],charts:\['head','cryptohead','charts'\],explore:\['head','cryptohead','explore'\],daily:\['head','cryptohead','daily'\],stocks:\['head','stocks'\],practice:\['head','practice'\],more:\['head','cryptohead','connection','evolution','real','reset'\]\}/);
+ assert.match(panel,/const RH_VIEWS=\{paper:\['head','cryptohead','live','order','autopilot','qual','positions','closes'\],why:\['head','cryptohead','live','signals','gauges'\],charts:\['head','cryptohead','charts'\],explore:\['head','cryptohead','explore'\],daily:\['head','cryptohead','daily'\],stocks:\['head','stocks'\],practice:\['head','practice'\],more:\['head','cryptohead','connection','keys','evolution','reset'\]\}/);
  assert.match(panel,/fetch\('\/api\/robinhood-equities'\)/,'stocks tab reads the read-only equities lane');
  assert.match(panel,/Date\.now\(\)-rhEqAt<60000/,'equities polled at most once a minute');
  assert.match(panel,/rhPrompt\('RESET PRACTICE'/,'practice reset needs a typed phrase');
@@ -79,7 +83,7 @@ test('readiness text is honest about fees, data and the unwired Agentic MCP',()=
  const ctx=suiteCtx();
  const t=vm.runInContext('rhReadinessText({})',ctx);
  assert.match(t,/fee 0\.95%\/side \(fallback until keys authenticate\)/);assert.match(t,/1\.9% round trip/);
- assert.match(t,/Alpaca public end-of-day bars, not Robinhood quotes/);assert.match(t,/official Agentic Trading MCP, which is NOT wired/);
+ assert.match(t,/Alpaca public end-of-day bars, not Robinhood quotes/);assert.match(t,/Nothing here places real orders/);assert.doesNotMatch(t,/Agentic Trading MCP/);
  assert.match(vm.runInContext('rhReadinessText({account:{feeRatio:0.006}})',ctx),/fee 0\.60%\/side, so about 1\.2% round trip/);
 });
 test('stocks & ETFs tab: status, target weights, positions, curve vs SPY and cash, last decision and next session',()=>{

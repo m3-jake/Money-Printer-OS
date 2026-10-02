@@ -282,6 +282,8 @@
   // Static charts draw only when data/layout changes. Motion charts run at <=15 fps and only while visible.
   const MOTION_TYPES = new Set(['pulse','ticker','edge','bubbles']);
   let last = performance.now(), lastDraw = 0, raf = 0, dirty = true;
+  const DRAWN = new WeakSet();
+  let settleUntil = 0; // eased static charts (gauge, funnel, hist, lanes) keep drawing briefly after a change
   function visible(c) { return c.isConnected && c.offsetParent !== null && c.clientWidth > 0; }
   function wake(){ if(!raf)raf=requestAnimationFrame(frame); }
   function frame(now) {
@@ -290,20 +292,27 @@
     const canvases=[...document.querySelectorAll('canvas[data-viz]')].filter(visible);
     if(!canvases.length){last=now;return}
     const moving=canvases.some(c=>MOTION_TYPES.has(REG.get(c.dataset.viz)?.type));
-    if(!dirty&&!moving)return;
+    if(dirty)settleUntil=now+1500;
+    const settling=now<settleUntil;
+    if(!dirty&&!moving&&!settling)return;
     const minGap=reduce()?500:66;
-    if(moving&&!dirty&&now-lastDraw<minGap){wake();return}
+    if((moving||settling)&&!dirty&&now-lastDraw<minGap){wake();return}
     const dt = Math.min(0.25, Math.max(0,(now - last) / 1000)); last = now; lastDraw = now;
     const t = now / 1000, drawStarted=performance.now();
     for (const c of canvases) {
       const key = c.dataset.viz, spec = REG.get(key); if (!spec || !T[spec.type]) continue;
       const dpr = Math.min(2, window.devicePixelRatio || 1), W = Math.round(c.clientWidth * dpr), H = Math.round(c.clientHeight * dpr);
+      // 2026-10-02 lag pass: a motion frame used to clear and redraw every visible chart. A static chart
+      // now redraws only for 1.5 s after data/layout changed (so eased values settle), when its canvas element
+      // is new (panel re-render) or when it resized.
+      if (!dirty && !settling && !MOTION_TYPES.has(spec.type) && DRAWN.has(c) && c.width === W && c.height === H) continue;
+      DRAWN.add(c);
       if (c.width !== W) c.width = W; if (c.height !== H) c.height = H;
       const x = c.getContext('2d'); x.clearRect(0, 0, W, H);
       try { T[spec.type](x, W, H, dpr, t, spec.data || {}, state(key), dt); } catch (e) { if (!spec.err) { spec.err = true; console.warn('viz', key, e); } }
     }
     dirty=false;window.MPOHud?.measure('charts',performance.now()-drawStarted);
-    if(moving)wake();
+    if(moving||settling)wake();
   }
   document.addEventListener('visibilitychange',()=>{if(!document.hidden){dirty=true;wake()}});
   window.addEventListener('resize',()=>{dirty=true;wake()});

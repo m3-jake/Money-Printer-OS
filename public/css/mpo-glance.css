@@ -241,6 +241,28 @@
 
 .g-rows.g-grow { flex: 1; }
 
+/* Rolling numbers (js/mpo-roll.js): each changed digit is a 0-9 wheel that rolls to its new value with a
+   small overshoot, like a cash-register / slot-machine number wheel. */
+/* Scoped under .glancepane so tile/row rules like `.g-tile span` can never restyle the wheel parts. */
+.glancepane span.roll, .glancepane span.roll > span { display: inline; margin: 0; padding: 0; font: inherit; color: inherit; }
+.glancepane span.roll-d { display: inline-block; height: 1.15em; line-height: 1.15em; overflow: hidden; vertical-align: bottom; margin: 0; font: inherit; color: inherit; }
+.glancepane span.roll-s { display: block; margin: 0; font: inherit; color: inherit; transition: transform 760ms cubic-bezier(.18, .9, .26, 1.18); will-change: transform; }
+.glancepane span.roll-s > span { display: block; height: 1.15em; line-height: 1.15em; margin: 0; font: inherit; color: inherit; text-align: center; }
+
+/* Kalshi weather desk: one row per city, Kalshi bucket prices as LCD bars, NWS forecast bucket outlined. */
+.g-wx { flex: 1; min-height: 0; overflow: auto; border: 2px solid; border-color: var(--g-sunken); background: var(--g-lcd); padding: 4px 8px; font-family: var(--g-lcd-font); }
+.g-wx-row { display: grid; grid-template-columns: minmax(96px, 1.1fr) minmax(90px, 1.4fr) minmax(150px, 1.3fr); gap: 10px; align-items: center; padding: 5px 0; border-bottom: 1px dotted rgba(120,170,135,.25); color: var(--g-lcd-ink); font-size: 12px; }
+.g-wx-row:last-child { border-bottom: 0; }
+.g-wx-city { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.g-wx-city small { margin-left: 6px; color: var(--g-lcd-dim); }
+.g-wx-dist { display: flex; align-items: flex-end; gap: 2px; height: 26px; }
+.g-wx-dist i { flex: 1; height: var(--p); background: #2f9e52; min-height: 2px; }
+.g-wx-dist i.nws { background: var(--g-pos); outline: 2px solid var(--g-warn); outline-offset: 1px; }
+.g-wx-fig { text-align: right; white-space: nowrap; color: var(--g-lcd-dim); }
+.g-wx-fig b { color: var(--g-lcd-ink); }
+.g-wx-fig b.g-pos { color: var(--g-pos); }
+.g-wx-fig b.g-neg { color: var(--g-neg); }
+
 /* Narrow windows: two readouts, a smaller hero, graph rows stack. */
 @container (max-width: 520px) {
   .g-row2, .g-row3 { grid-template-columns: minmax(0, 1fr); }

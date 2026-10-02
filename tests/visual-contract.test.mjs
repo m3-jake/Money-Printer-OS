@@ -47,12 +47,12 @@ test('confirmation phrases remain exact in UI and backends', () => {
   assert.match(combos, /confirmation!=='FORGET'/);
 });
 
-test('Robinhood confirmation phrases remain exact in UI, HTTP surface and backend', () => {
+test('Robinhood confirmation phrases stay exact in the backend; the paper-only HUD shows none of them (2026-10-02)', () => {
   const rh = read('src/robinhoodAutoTrader.js');
   const rhHttp = read('src/robinhoodHttp.js');
   const panel = read('public/assets/robinhood-panel.js');
   const phrases = ['PLACE REAL CRYPTO ORDER', 'CANCEL REAL CRYPTO ORDER', 'CANCEL REAL CRYPTO ORDERS', 'ENABLE REAL CRYPTO AUTOPILOT'];
-  for (const p of phrases) { assert.match(html, rx(p)); assert.match(panel, rx(p)); }
+  for (const p of phrases) { assert.doesNotMatch(html, rx(p)); assert.doesNotMatch(panel, rx(p)); }
   assert.match(rh, /CONFIRM_PLACE='PLACE REAL CRYPTO ORDER'/);
   assert.match(rh, /CONFIRM_CANCEL='CANCEL REAL CRYPTO ORDER'/);
   assert.match(rh, /CONFIRM_CANCEL_ALL='CANCEL REAL CRYPTO ORDERS'/);
@@ -70,7 +70,7 @@ test('Robinhood confirmation phrases remain exact in UI, HTTP surface and backen
   for (const a of ['practice/config', 'practice/run', 'practice/order', 'practice/close', 'practice/reset']) { assert.ok(rhHttp.includes(`'${a}':()=>RP.`), a); assert.ok(panel.includes(`rhAction('${a}'`), a); }
   assert.match(dashJs, /handleRobinhoodEquitiesRequest\(req,res,u,\{json\}\)/);
   assert.match(panel, /fetch\('\/api\/robinhood-equities'\)/);
-  assert.match(panel, /official Agentic Trading MCP, which is NOT wired in this app/);
+  assert.match(panel, /Nothing here places real orders/);
   assert.doesNotMatch(rh, /automaticLivePromotionAllowed\s*[:=]\s*true|liveActivationAllowed\s*[:=]\s*true/);
 });
 
@@ -399,8 +399,24 @@ test('glance design: every window opens as one calm card, full detail is an opti
   assert.match(html, /if\(!w\|\|w\.classList\.contains\('hidden'\)\|\|w\.classList\.contains\('glance'\)\)return false;/, 'detail renderers skip glance windows');
   for (const id of ['sportsbook', 'journal', 'robinhood']) assert.match(html, new RegExp(`windowShown\\('${id}'\\)\\)refresh`), `${id} data keeps flowing for its glance`);
   assert.match(html, /gRow\('Stocks & ETFs',[^\n]*gRow\('Practice',/, 'Robinhood glance carries the stocks & ETFs and practice lines');
-  assert.match(html, /setGlance\('robinhood',glance\(\{title:'Robinhood · paper suite'/);
+  assert.match(html, /setGlance\('robinhood',glance\(\{title:'Robinhood · paper only'/);
   assert.match(glanceCss, /\.window\.glance > \.body,\s*\.window\.glance > \.win-tabs \{ display: none; \}/);
   assert.match(glanceCss, /\.glancepane \{[^}]*container-type: inline-size/);
   assert.doesNotMatch(html.slice(html.indexOf('function glance('), html.indexOf('function renderGlances')), /mpo-brand-title/);
+});
+
+test('paper-focus batch (2026-10-02): rolling numbers, Kalshi weather glance and a lighter state payload', () => {
+  const roll = read('public/js/mpo-roll.js'), platform = read('public/js/mpo-platform.js'), glanceCss = read('public/css/mpo-glance.css');
+  assert.doesNotThrow(() => new vm.Script(roll, { filename: 'mpo-roll.js' }));
+  assert.match(html, /<script src="\/js\/mpo-roll\.js"><\/script>/);
+  assert.match(html, /buildWindows\(\);window\.MPORoll\?\.watch\(\);/, 'glance panes exist before the roll observer attaches');
+  assert.match(roll, /observer\.observe\(p, \{ childList: true \}\)/, 'childList only, so inserted wheels never re-trigger the observer');
+  assert.match(roll, /mpo-low-motion/, 'Reduce animation turns the roll off');
+  assert.match(glanceCss, /\.glancepane span\.roll-d \{/, 'wheel styles are scoped above tile/row span rules');
+  assert.match(platform, /if\(id==='kalshi'&&typeof glance==='function'\)return kalshiGlance\(\);/);
+  assert.match(platform, /request\('\/weather'\)/, 'the Kalshi glance reads the server-cached weather desk');
+  assert.match(platform, /Paper · no Kalshi bot yet/, 'the Kalshi glance says plainly that no bot trades it yet');
+  assert.match(dashJs, /portfolioSeries: compactSeries\(s\.portfolioSeries,1000,600\)\.map\(roundSeriesPoint\)/);
+  const ctx = vm.createContext({}); vm.runInContext(dashJs.slice(dashJs.indexOf('const roundSol='), dashJs.indexOf('// alpha.53:')), ctx);
+  assert.deepEqual(JSON.parse(vm.runInContext("JSON.stringify(roundSeriesPoint({ts:1,mode:'PAPER',equitySol:0.95982771586,cashSol:1,unrealizedSol:null}))", ctx)), { ts: 1, mode: 'PAPER', equitySol: 0.959828, cashSol: 1, unrealizedSol: null });
 });
