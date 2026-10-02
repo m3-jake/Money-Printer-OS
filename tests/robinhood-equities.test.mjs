@@ -163,7 +163,7 @@ test('HTTP: read-only GET route with the local guard',async()=>{
  const root=tmp();
  Object.assign(process.env,{MONEY_PRINTER_DATA_DIR:path.join(root,'data'),DASHBOARD_PORT:'0',DASHBOARD_HOST:'127.0.0.1',MODE:'paper',POLYMARKET_AUTOSTART:'false',POLYMARKET_AUTOPILOT:'false',ROBINHOOD_AUTOSTART:'false',ROBINHOOD_API_KEY:'',ROBINHOOD_PRIVATE_KEY:'',ROBINHOOD_REAL_ENABLED:'false',ALPACA_KEY_ID:'',ALPACA_SECRET_KEY:''});
  const {once}=await import('node:events');
- const {startDashboard}=await import('../src/dashboard.js');const {productEconomics}=await import('../src/productEconomics.js');
+ const {startDashboard}=await import('../src/dashboard.js');
  const server=startDashboard();if(!server.listening)await once(server,'listening');
  const base='http://127.0.0.1:'+server.address().port;
  try{
@@ -172,5 +172,5 @@ test('HTTP: read-only GET route with the local guard',async()=>{
   assert.equal((await fetch(base+'/api/robinhood-equities',{method:'POST',headers:{'content-type':'application/json'},body:'{}'})).status,405);
   assert.equal((await fetch(base+'/api/robinhood-equities',{headers:{origin:'http://evil.example'}})).status,403);
   assert.equal((await fetch(base+'/api/robinhood-equities/nope')).status,404);
- }finally{await new Promise(res=>server.close(res));productEconomics().close();globalThis.fetch=nativeFetch}
+ }finally{await new Promise(res=>server.close(res));globalThis.fetch=nativeFetch}
 });

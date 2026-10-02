@@ -440,7 +440,6 @@ function saveChartView(){try{localStorage.setItem('mpo-chart-view',JSON.stringif
 let chartView={range:'session',zoom:1,...(()=>{const v=readPrefEarly('mpo-chart-view');return v&&typeof v==='object'?{...(['m1','m5','m15','h1','session'].includes(v.range)?{range:v.range}:{}),...(Number.isFinite(v.zoom)?{zoom:Math.max(1,Math.min(32,v.zoom))}:{})}:{}})(),pan:0,dragging:false,lastX:0,hoverX:null};let fxSig='',fxBurstTimer=null,fxBurstUntil=0,fxLastRealizedSol=null,fxComboPrimed=false,fxRobinhoodPrimed=false,fxAheadAnnounced=false;const fxSeenComboSettlements=new Set(),fxSeenRobinhoodCloses=new Set(),moneyEvents=[];
 const renderSig=new Map();
 const perf={stateKB:0,renderMs:0,refreshMs:0,lastStateAt:0,lastTelemetryAt:0,telemetryError:null,stateCache:null};
-let productEconomicsState=null;
 // [id,name,glyph,style,host?] — a host entry means this app is a TAB inside host's window.
 const APPS=[
 ['money','Money Printer OS','$','about'],
@@ -470,7 +469,6 @@ const APPS=[
 ['researchmon','Lab Monitor','LAB','dark','trade'],
 ['journal','Journal','JRN','dark'],
 ['system','System','SYS','dark'],
-['economics','Product Economics','$','light','system'],
 ['network','Network','NET','light','system'],
 ['log','Live Log','TXT','dark','system'],
 ['updater','Updater','UP','light','system'],
@@ -1693,13 +1691,6 @@ const GLANCE={
  money:{render:glanceMoney,sig:()=>[state?.build?.version,state?.system?.health,state?.mode,state?.portfolio?.equitySol,state?.dailyPnlSol,state?.system?.paused,state?.system?.killSwitch,(state?.positions||[]).length,state?.evolutionLoop?.status,state?.evolutionLoop?.generation,polyUSComboState?.autopilot?.enabled,polyUSAccount?.balance,rhState?.loop?.running,rhState?.paper?.equityUsd]}
 };
 function renderGlances(){for(const h of HOSTS){const g=GLANCE[h];if(!g||!glanceVisible(h))continue;const key=JSON.stringify(g.sig());if(renderSig.get('g:'+h)===key)continue;renderSig.set('g:'+h,key);g.render()}}
-function renderProductEconomics(){
- const p=productEconomicsState,t=p?.totals;
- if(!t)return setBody('economics',`<div class="mpo-module-body">${polyEscape(p?.error||'Loading product economics…')}</div>`);
- const dollars=v=>v===null||v===undefined?'Unknown':money(v),pct=v=>v===null||v===undefined?'Collecting':fmt(v*100,1)+'%';
- const rows=(p.bySource||[]).map(r=>`<tr><td>${polyEscape(r.attribution.source)} / ${polyEscape(r.attribution.channel)}${r.attribution.campaign?' · '+polyEscape(r.attribution.campaign):''}</td><td>${r.visitors}</td><td>${r.activatedUsers}</td><td>${r.payingUsers}</td><td>${dollars(r.netRevenueUsd)}</td><td>${dollars(r.contributionUsd)}</td></tr>`).join('');
- setBody('economics',`<div class="mpo-module"><header><span>Product revenue and pilot progress</span></header><div class="mpo-module-body"><p>${t.visitors} visitors → ${t.activatedUsers} activated → ${t.payingUsers} paid · ${t.signups} verified signups</p><p>Activation: first successful manual paper order. Trading results do not count as product revenue.</p><p>Revenue ${dollars(t.netRevenueUsd)} · Recorded costs ${dollars(t.knownCostsUsd)} · Contribution ${dollars(t.contributionUsd)} · Margin ${pct(t.contributionMargin)}</p><p>${t.unpricedCosts} unpriced cost records · ${t.missingCostCategories.length} cost categories awaiting records. Known-cost contribution: ${dollars(t.knownCostContributionUsd)}; incomplete costs cannot establish profitability.</p><p>Signup: ${polyEscape(p.connections.signup)} · Payments: ${polyEscape(p.connections.payment)} · Serving costs: ${polyEscape(p.connections.servingCosts)}</p><p>Return retention D1 ${pct(p.retention.d1.rate)} · D7 ${pct(p.retention.d7.rate)} · D30 ${pct(p.retention.d30.rate)} · Support ${fmt(t.supportMinutes,1)} minutes</p></div></div><table class="table"><thead><tr><th>Source</th><th>Visits</th><th>Active</th><th>Paid</th><th>Net revenue</th><th>Contribution</th></tr></thead><tbody>${rows||'<tr><td colspan="6">No visits recorded yet.</td></tr>'}</tbody></table><div class="mpo-module-body"><p>Each browser is an anonymous visitor until a verified account links it. These local records are not a completed customer pilot.</p></div>`);
-}
 function renderAll(force=false){
  const t0=performance.now();
  window.MPOSPlatform?.render();
@@ -1721,7 +1712,6 @@ function renderAll(force=false){
  renderChanged('journal',[projectJournal,journal,journalFilter,journalQuery],renderJournal);
  renderChanged('evolution',e,renderEvolution);
  renderChanged('system',[m,e.status,e.workerCount,e.datasetSamples,s.system?.lastCycle,perf.stateKB,Math.round(perf.refreshMs)],renderSystem);
- renderChanged('economics',productEconomicsState,renderProductEconomics);
  renderChanged('log',journal.slice(-180),renderLog);
  renderChanged('wallet',[s.walletIntel?.wallets,s.walletIntel?.holderRpc?.status,s.walletIntel?.holderRpc?.calls,s.walletIntel?.holderRpc?.dedicated,s.walletIntel?.scorecard?.indexer?.status,s.walletIntel?.scorecard?.indexer?.credits,s.walletIntel?.scorecard?.asOf],renderWallet);
  renderChanged('control',[s.mode,s.runtime,s.config,e.status,s.system?.paused,s.system?.killSwitch],renderControl);
@@ -1940,10 +1930,6 @@ async function refreshProjectJournal(){
 async function refreshUpdater(){
  try{const r=await fetch('/api/update',{cache:'no-store'});if(r.ok)updateState=await r.json()}catch{}renderSig.delete('updater');renderAll()
 }
-async function refreshProductEconomics(){
- try{const r=await fetch('/api/product-economics',{cache:'no-store',signal:AbortSignal.timeout(5000)});productEconomicsState=await r.json()}catch{productEconomicsState={error:'Product economics unavailable'}}
- renderSig.delete('economics');renderAll();
-}
 async function refreshResearchMonitor(){
  try{const r=await fetch('/api/research-monitor',{cache:'no-store',signal:AbortSignal.timeout(4000)});if(r.ok)researchMonitor=await r.json();else researchMonitor={...researchMonitor,status:'error',error:'monitor HTTP '+r.status}}catch(e){researchMonitor={...researchMonitor,status:'error',error:e.message||'research monitor unavailable'}}renderSig.delete('researchmon');renderAll()
 }
@@ -1956,15 +1942,13 @@ function boot(){
 function singleFlightRefresh(fn){let pending=null;return(...args)=>pending||(pending=Promise.resolve().then(()=>fn(...args)).finally(()=>{pending=null}))}
 refreshState=singleFlightRefresh(refreshState);refreshNetwork=singleFlightRefresh(refreshNetwork);
 refreshJournal=singleFlightRefresh(refreshJournal);refreshProjectJournal=singleFlightRefresh(refreshProjectJournal);
-refreshUpdater=singleFlightRefresh(refreshUpdater);refreshProductEconomics=singleFlightRefresh(refreshProductEconomics);refreshResearchMonitor=singleFlightRefresh(refreshResearchMonitor);
+refreshUpdater=singleFlightRefresh(refreshUpdater);refreshResearchMonitor=singleFlightRefresh(refreshResearchMonitor);
 buildIcons();initLogoStretch();buildWindows();window.MPORoll?.watch();buildStart();boot();refreshRobinhood();refreshJournal();refreshProjectJournal();refreshNetwork();refreshUSComboSnapshot();refreshUpdater();refreshResearchMonitor();refreshState();
 window.MPOSPlatform?.install({open(id){openApp(id);setDetail(hostOf(id),true);if(id==='predictionmarkets')setTab('sportsbook',id);}});
-refreshProductEconomics();
 setInterval(()=>{if(!document.hidden)refreshState()},1500);
 setInterval(()=>{if(!document.hidden)refreshNetwork()},5000);
 setInterval(()=>{if(!document.hidden&&windowShown('sportsbook'))refreshUSComboSnapshot()},5000);
 setInterval(()=>{if(!document.hidden)refreshUpdater()},15000);
-setInterval(()=>{if(!document.hidden&&windowVisible('economics'))refreshProductEconomics()},15000);
 setInterval(()=>{if(!document.hidden&&windowVisible('researchmon'))refreshResearchMonitor()},3000);
 setInterval(()=>{if(!document.hidden)refreshJournal()},15000);
 setInterval(()=>{if(!document.hidden&&windowShown('journal'))refreshProjectJournal()},15000);

@@ -18,9 +18,9 @@ test('legacy dashboard mutations refuse foreign origins, rebinding hosts and non
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'mpo-boundary-'));
  Object.assign(process.env,{MONEY_PRINTER_DATA_DIR:dir,MPO_COMPUTE_BUDGET_FILE:path.join(dir,'lease.json'),DASHBOARD_PORT:'0',DASHBOARD_HOST:'127.0.0.1',MODE:'paper',POLYMARKET_AUTOSTART:'false',ROBINHOOD_AUTOSTART:'false',ROBINHOOD_PRACTICE_AUTOSTART:'false',POLYMARKET_US_COMBO_BBO:'false'});
  const native=globalThis.fetch;let outbound=0;globalThis.fetch=(url,init)=>{if(new URL(url).hostname!=='127.0.0.1'){outbound++;throw Error('Unexpected external call')}return native(url,init)};
- const {startDashboard}=await import('../src/dashboard.js'),{productEconomics}=await import('../src/productEconomics.js');
+ const {startDashboard}=await import('../src/dashboard.js');
  const server=startDashboard();if(!server.listening)await once(server,'listening');const base='http://127.0.0.1:'+server.address().port;
- t.after(async()=>{await new Promise(r=>server.close(r));productEconomics().close();globalThis.fetch=native;fs.rmSync(dir,{recursive:true,force:true})});
+ t.after(async()=>{await new Promise(r=>server.close(r));globalThis.fetch=native;fs.rmSync(dir,{recursive:true,force:true})});
  for(const route of ['/api/pause','/api/kill','/api/reset','/api/runtime','/api/enter?mint=x','/api/exit?mint=x','/api/update/install','/api/polymarket-us/combos/place']){
   for(const patch of [{origin:'https://example.com'},{'content-type':'text/plain'},{host:'rebound.example'},{origin:base,'sec-fetch-site':'cross-site'}]){
    const status=await new Promise((resolve,reject)=>{const req=http.request(base+route,{method:'POST',headers:{'content-type':'application/json',...patch}},res=>{res.resume();res.on('end',()=>resolve(res.statusCode))});req.on('error',reject);req.end('{}')});

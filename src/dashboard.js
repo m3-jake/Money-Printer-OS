@@ -36,7 +36,6 @@ import { readApiUnitEconomics } from './apiUnitEconomics.js';
 import { recordUSSingleShadow } from './shadowCollector.js';
 import { readShadowRows, shadowDivergenceReport } from './shadowReport.js';
 import { pumpfunPaperLane } from './pumpfunPaper.js';
-import { productEconomics, productIngestionAuthorized, productReadAuthorized } from './productEconomics.js';
 import updateChannel from '../desktop/update-channel.cjs';
 import { handlePlatformRequest, localMutationAllowed } from './core/http.js';
 import { marketPlatform, closeMarketPlatform } from './core/platform.js';
@@ -101,8 +100,7 @@ function telemetryView() {
     note: 'Sampled live and never cached: merged by the HUD on top of /api/state. Keep it out of any ETag.' };
 }
 // Telemetry failure must never make a completed paper order look rejected.
-function productTelemetry(fn) { try { return fn(productEconomics()); } catch (error) { console.warn('Product telemetry unavailable:', error.message); } }
-function comboBuildResult(req, result) { productTelemetry(ledger => ledger.recordComboBuildActivation(req, result)); return result; }
+function comboBuildResult(req, result) { return result; }
 // The channel is whatever desktop/main.cjs resolves from the same env (docs/RELEASE-CHANNEL.md). The
 // supervisor records a `LAN <peer>` label when a cluster peer won the last check; anything else (or a
 // status file written by an older build) shows the configured channel, never a stale URL.
@@ -482,7 +480,6 @@ export function startDashboard() {
       if(u.pathname==='/api/robinhood'||u.pathname.startsWith('/api/robinhood/'))return await handleRobinhoodRequest(req,res,u,{json,body});
       if(u.pathname==='/api/robinhood-equities'||u.pathname.startsWith('/api/robinhood-equities/'))return await handleRobinhoodEquitiesRequest(req,res,u,{json});
       if (req.method === 'GET' && u.pathname === '/') {
-        productTelemetry(ledger => ledger.recordVisit(req, res, u));
         res.writeHead(200, {
           'content-type': 'text/html; charset=utf-8',
           'cache-control': 'no-store',
@@ -583,10 +580,6 @@ export function startDashboard() {
       if (req.method === 'GET' && u.pathname === '/api/data-coverage') return json(res, dataCoverage(DATA_DIR, { force: u.searchParams.get('force') === '1' }));
       if (req.method === 'GET' && u.pathname === '/api/desktop-prefs') return json(res, readDesktopPrefs());
       if (req.method === 'GET' && u.pathname === '/api/unit-economics') return json(res, readApiUnitEconomics());
-      if (req.method === 'GET' && u.pathname === '/api/product-economics') {
-        if (!productReadAuthorized(req)) return json(res, {ok:false,error:'Product reporting requires localhost or a server token'}, 403);
-        return json(res, productEconomics().summary());
-      }
       if (req.method === 'GET' && u.pathname === '/api/polymarket-us/readiness') return json(res, usReadiness());
       if (req.method === 'GET' && u.pathname === '/api/polymarket-us/evidence') { const ev=await import('./polymarketUSEvidence.js'); return json(res, {...ev.evidenceSummary(),lab:{proposal:ev.labComboProposal(),status:labModuleStatuses()['polymarket-combo']||null}}); }
       if (req.method === 'GET' && u.pathname === '/api/polymarket-us/account') return json(res, await polymarketUSAccount());
@@ -614,15 +607,6 @@ export function startDashboard() {
         return res.end('not found');
       }
 
-      if (u.pathname === '/api/product-economics/event') {
-        if (!productIngestionAuthorized(req)) return json(res, {ok:false,error:'Authenticated server ingestion is required'}, 401);
-        const event = await body(req);
-        if (event.__error) return json(res, {ok:false,error:event.__error}, 400);
-        try { return json(res, productEconomics().record(event)); }
-        catch (error) { return json(res, {ok:false,error:error.message}, 400); }
-      }
-
-      // Server-to-server revenue ingestion above retains its explicit bearer authentication.
       // Every desktop mutation below, including legacy queues and updater requests, is local JSON.
       if(!localMutationAllowed(req))return json(res,{ok:false,error:'Local same-origin JSON request required'},403);
       if (u.pathname === '/api/wallet-crowd/control'){const b=await body(req);if(b.__error)return json(res,{ok:false,error:b.__error},400);try{return json(res,{ok:true,control:setCrowdControl(b,{dir:DATA_DIR})});}catch(e){return json(res,{ok:false,error:e.message},400);}}

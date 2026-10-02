@@ -22,12 +22,11 @@ globalThis.fetch = (url, ...rest) => {
   assert.fail('External requests are disabled in this test: ' + u.hostname);
 };
 const { startDashboard } = await import('../src/dashboard.js');
-const { productEconomics } = await import('../src/productEconomics.js');
 const store = await import('../src/store.js');
 const server = startDashboard();
 if (!server.listening) await once(server, 'listening');
 const base = 'http://127.0.0.1:' + server.address().port;
-test.after(async () => { await new Promise(resolve => server.close(resolve)); productEconomics().close(); globalThis.fetch = nativeFetch; fs.rmSync(root, { recursive: true, force: true }); });
+test.after(async () => { await new Promise(resolve => server.close(resolve)); globalThis.fetch = nativeFetch; fs.rmSync(root, { recursive: true, force: true }); });
 
 test('the state endpoint carries persisted state only, with an exact ETag and no live samples', async () => {
   const r = await fetch(base + '/api/state');
