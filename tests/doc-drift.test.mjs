@@ -55,7 +55,7 @@ const reachable = walk('test:all');
 test('the engine line states the export surface and the guard src/index.js actually has', () => {
   const line = status.split('\n').find(l => l.includes('**Engine / HUD:**'));
   assert.ok(line, 'the architecture list lost its Engine / HUD line');
-  assert.deepEqual(exported, ['main', 'cycle', 'enter', 'updatePositions'],
+  assert.deepEqual(exported, ['main', 'cycle', 'enter', 'updatePositions', 'actions'],
     'the export surface moved — name the new set here and in the Engine / HUD line together');
   for (const name of exported) {
     assert.ok(line.includes('`' + name + '`'), `the Engine / HUD line does not name the export ${name}`);
@@ -153,4 +153,3 @@ test('the open list routes its install item to the release status record', () =>
   assert.ok(fs.existsSync(path.join(root, '.agent-state/RELEASE_STATUS.md')),
     'the record the open list points at is gone — the route leads nowhere');
 });
-
