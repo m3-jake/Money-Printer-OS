@@ -1,7 +1,7 @@
 // Money Printer OS — desktop supervisor.
 // Owns the Node children (trading engine, network mesh, evidence collector), keeps them alive,
 // adopts an engine that is already answering on the port, and never leaves orphans.
-const { app, BrowserWindow, Menu, shell, Tray, nativeImage, screen, session } = require('electron');
+const { app, BrowserWindow, Menu, shell, Tray, nativeImage, screen, session, Notification } = require('electron');
 const windowState = require('./window-state.cjs');
 const { navigationPolicy } = require('./navigation-policy.cjs');
 const { spawn } = require('node:child_process');
@@ -12,6 +12,7 @@ const { httpBuffer, fetchChannelManifest } = require('./update-fetch.cjs');
 const { updateSafety } = require('./release-gate.cjs');
 const { researchServicePolicy } = require('./research-supervision.cjs');
 const { localLabStartDecision } = require('./local-lab-supervision.cjs');
+const { createAlerter } = require('./alerts.cjs');
 const path = require('node:path');
 const fs = require('node:fs');
 const http = require('node:http');
@@ -54,7 +55,7 @@ const UPDATE_REQUEST = path.join(DATA, 'update-request.json');
 const DESKTOP_PREFS = path.join(DATA, 'desktop-prefs.json');
 const LAUNCHED_HIDDEN = process.argv.includes('--hidden');
 let tray = null, prefsSeen = null, trayHintShown = false;
-function readDesktopPrefs(){try{return {runInBackground:true,startWithWindows:true,autoStartLab:true,...JSON.parse(fs.readFileSync(DESKTOP_PREFS,'utf8'))}}catch{return {runInBackground:true,startWithWindows:true,autoStartLab:true}}}
+function readDesktopPrefs(){try{return {runInBackground:true,startWithWindows:true,autoStartLab:true,desktopAlerts:true,...JSON.parse(fs.readFileSync(DESKTOP_PREFS,'utf8'))}}catch{return {runInBackground:true,startWithWindows:true,autoStartLab:true,desktopAlerts:true}}}
 function showWindow(){ if (!win) createWindow(); else { if (win.isMinimized()) win.restore(); win.show(); win.focus(); } }
 function installTray(){
   if (tray) return;
@@ -170,6 +171,29 @@ function health(timeoutMs = 1500) {
     req.on('error', () => resolve(null));
     req.setTimeout(timeoutMs, () => { req.destroy(); resolve(null); });
   });
+}
+// ---------------------------------------------------------------- desktop alerts (run D3)
+// Windows toasts from what the trader and the Lab already serve; no external service. Settings toggle, on by default.
+function getJson(url, timeoutMs = 4000) {
+  return new Promise(resolve => {
+    const req = http.get(url, res => { let body = ''; res.on('data', c => body += c); res.on('end', () => { try { resolve(res.statusCode < 400 ? JSON.parse(body) : null); } catch { resolve(null); } }); });
+    req.on('error', () => resolve(null)); req.setTimeout(timeoutMs, () => { req.destroy(); resolve(null); });
+  });
+}
+const alerter = createAlerter(); let labMisses = 0, alertBusy = false;
+async function alertTick() {
+  if (alertBusy || readDesktopPrefs().desktopAlerts === false || !Notification?.isSupported?.()) return;
+  alertBusy = true;
+  try {
+    const [healthNow, scoreboard, bots, lab] = await Promise.all([getJson(`${BASE}/api/health`), getJson(`${BASE}/api/scoreboard`, 8000), getJson(`${BASE}/api/bots`, 8000), getJson(`http://127.0.0.1:${LAB_PORT}/api/health`)]);
+    if (!healthNow) return; // the trader itself is down: the supervisor's own recovery handles that
+    labMisses = lab?.ok ? 0 : labMisses + 1;
+    for (const a of alerter.observe({ health: healthNow, scoreboard, bots, labOnline: !!lab?.ok, labMisses })) {
+      const n = new Notification({ title: a.title, body: a.body, silent: false });
+      n.on('click', () => showWindow()); n.show(); log(`alert: ${a.key}`);
+    }
+  } catch (e) { log(`alert: ${e.message || e}`); }
+  finally { alertBusy = false; }
 }
 function portOccupied() {
   return new Promise(resolve => {
@@ -458,6 +482,7 @@ else {
     setInterval(() => checkForClusterUpdate(false), UPDATE_INTERVAL_MS);
     setInterval(consumeUpdateRequest, 1200);
     setInterval(applyDesktopPrefs, 1500);
+    setTimeout(alertTick, 90_000); setInterval(alertTick, 60_000);
   });
   // Terminal/dev use: Ctrl-C or kill on the supervisor becomes a graceful quit, not an orphan factory.
   for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => { log(`supervisor: ${sig} received, quitting`); app.quit(); });

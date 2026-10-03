@@ -62,6 +62,26 @@ Architecture, active work and release evidence live in `.agent-state/PROJECT_STA
 ledger remains `AUDIT.md` and `PROGRESS.md`. Later sections below are historical unless dated
 as the current release. Last updated: 2026-10-03.
 
+## Batch PF-19 (2026-10-03, Claude): local desktop alerts (run item D3)
+
+- **What:** Windows toasts from the desktop supervisor through Electron's `Notification`; no external service, no
+  account. `desktop/alerts.cjs` is pure; `desktop/main.cjs` polls once a minute (first poll 90 s after start) the
+  trader's `/api/health`, `/api/scoreboard` and `/api/bots`, and the Lab's `/api/health`. Clicking a toast
+  opens the window.
+- **Alerts on:** a paper book's verdict turning YES (beats its baseline); an Evolution Lab farm proposal starting
+  its forward test; the engine STALLED; a paper venue STALLED (PF-16); a Kalshi bot or farm variant going
+  observe-only; the Polymarket copy bot's drawdown pause; a book's data stale for more than 30 min; the Lab not
+  answering three checks in a row.
+- **Behaviour:** only on a change of state, never for what was already true at startup (no toast storm after a
+  restart); one alert per subject per 30 min; at most 6 an hour. Settings → Background & data has a "Desktop
+  alerts" checkbox, on by default (`desktopAlerts` in `desktop-prefs.json`).
+- **Not verified on screen yet:** the installed app has no Windows AppUserModelID or Start-menu shortcut id in
+  this repo, and Windows can drop toasts from an unregistered desktop app. Check a toast after the next release;
+  the supervisor logs every alert it raises (`alert: <key>` in `desktop.log`) either way.
+- **Phone channel:** none; needs bing (for example an ntfy topic). Listed under Needs bing.
+- **Verified:** `tests/desktop-alerts.test.cjs` (3) in `test:unattended`. Trader `npm run test:all`: 1,290 tests,
+  1,270 pass, 0 fail (20 skipped).
+
 ## Batch PF-18 (2026-10-03, Claude): src/ holds only runtime code (run item C4)
 
 - **Measured:** a walk of static imports, export-from, literal dynamic imports, `new URL(..., import.meta.url)` worker
@@ -566,7 +586,7 @@ animated graphs, and a rolling cash-register / slot-machine effect when major nu
 - **Evolution Lab** lives in a separate repo, `money-printer-evolution-lab`, and is the shared research brain for every module: Solana (labLoop/BEAST), plus parallel `module-robinhood` and `module-polymarket` workers (`src/moduleResearch.js`). Valid module ids come from its `src/researchModules.js`. It writes `<trader data>/lab-link/modules/<id>.json` and paper-only `<id>-champion.json`. It is NOT the dropped "agent lab" harness.
 - **Web demo (2026-10-02):** `web-demo/` + `scripts/web-demo/` build a static, browser-only copy of the HUD for a website. `demo-shim.js` answers `/api/*` from a recorded PAPER session (sandboxed engine, scrubbed env, no keys or user data), and refuses every write. Each page load is a new session: a 1 SOL book run by the Lab champion copied in from `lab-link/` at recording time, played for ~30 min from its opening frame. Published to Cloudflare Pages (`money-printer`, moneyprinter.bangbowbing.net). See `web-demo/README.md`; covered by `test:web-demo`.
 - **HUD boot and logo (2026-10-02):** the boot overlay is a Win98-style log-on over open sky. OK, Enter or 6 idle seconds pull the camera back to the hill and fire `mpo:logon`, which shows the welcome and the grabbable money shower (`welcomeShower()`). The corner logo (`initLogoStretch()`) stretches on drag, slingshots on release, glides to a stop and fades back home after 3.5 s idle; its shine lives in the same `.logo-skin`.
-- **Tests:** 149 suites in `tests/` across 35 targets, run by `npm run test:all` (`test:wiring` fails first if a suite becomes unreachable). Alpha.84 adds observed-chart history, motion, and data-boundary regressions. The 20 Robinhood real-money order-path tests remain explicitly skipped because this paper-only build refuses that dispatch; active safety tests still pin the live boundary and outbound audit. Full-suite results are recorded separately from suite reachability.
+- **Tests:** 150 suites in `tests/` across 35 targets, run by `npm run test:all` (`test:wiring` fails first if a suite becomes unreachable). Alpha.84 adds observed-chart history, motion, and data-boundary regressions. The 20 Robinhood real-money order-path tests remain explicitly skipped because this paper-only build refuses that dispatch; active safety tests still pin the live boundary and outbound audit. Full-suite results are recorded separately from suite reachability.
 
 ## Confirmed working (2026-09-25)
 

@@ -54,7 +54,7 @@
     "test:lane-contracts": "node --test tests/marketlab-loading.test.mjs tests/practice-risk-marks.test.mjs tests/recovery-final.test.mjs tests/legacy-mirror-recovery.test.mjs tests/research-zero-credit.test.mjs tests/intelligence.test.mjs tests/research-lane-registry.test.mjs tests/money-physics.test.mjs tests/market-core.test.mjs tests/book-reconcile.test.mjs tests/paper-trading-core.test.mjs tests/robinhood-practice.test.mjs tests/champion-state.test.mjs tests/data-coverage.test.mjs tests/runtime-controls.test.mjs tests/scoreboard.test.mjs",
     "test:paper-bots": "node --test tests/paper-bots.test.mjs tests/audit-root.test.mjs tests/audit-safety.test.mjs tests/pumpfun-copy-paper.test.mjs",
     "test:wiring": "node --test tests/test-wiring.test.mjs tests/doc-drift.test.mjs tests/src-reachability.test.mjs",
-    "test:unattended": "node --test tests/unattended-storage.test.mjs tests/self-report.test.mjs tests/lab-health.test.mjs tests/panic-runbook.test.mjs",
+    "test:unattended": "node --test tests/unattended-storage.test.mjs tests/desktop-alerts.test.cjs tests/self-report.test.mjs tests/lab-health.test.mjs tests/panic-runbook.test.mjs",
     "test:fitness": "node --test tests/fitness-ledger.test.mjs tests/jupiter-evidence.test.mjs tests/robinhood-lab-trial.test.mjs",
     "test:solana": "node --test tests/solana-fair.test.mjs tests/holder-rpc.test.mjs tests/wallet-scorecard.test.mjs tests/live-gate.test.mjs",
     "test:latency": "node --test tests/latency-diagnosis.test.mjs tests/latency-db.test.mjs",

@@ -1609,12 +1609,13 @@ function paintBackgroundSettings(){
  host.innerHTML=`<fieldset class="mpo-fieldset" style="margin-top:10px"><legend>Background &amp; data</legend>
  <label><input type="checkbox" id="setRunBg" ${p.runInBackground!==false?'checked':''}> Keep trading and collecting data when the window is closed (tray icon; right-click it to quit)</label><br>
  <label><input type="checkbox" id="setStartWin" ${p.startWithWindows?'checked':''}> Start with Windows (opens hidden in the tray)</label><br>
- <label><input type="checkbox" id="setAutoLab" ${p.autoStartLab!==false?'checked':''}> Keep the locally installed Evolution Lab running (Windows; up to three restart attempts per hour)</label>
+ <label><input type="checkbox" id="setAutoLab" ${p.autoStartLab!==false?'checked':''}> Keep the locally installed Evolution Lab running (Windows; up to three restart attempts per hour)</label><br>
+ <label><input type="checkbox" id="setAlerts" ${p.desktopAlerts!==false?'checked':''}> Desktop alerts: a verdict passing, a Lab proposal, a stall, a bot standing down or pausing, stale data, the Lab offline (rate-limited, no external service)</label>
  <p class="muted" style="font-size:10px">Every Lab result is only as good as the tape under it. Gaps below are hours the Lab has nothing to learn from.</p>
  <table class="table mpo-table"><thead><tr><th>Source</th><th>Status</th><th>Last row</th><th>Rows (7d)</th><th>Per day</th><th>Largest gap</th></tr></thead><tbody>${rows||'<tr><td colspan="6">Scanning…</td></tr>'}</tbody></table>
  <button class="btn" id="setCovRefresh">Rescan</button></fieldset>`;
- const save=async()=>{bgPrefs=(await post('/api/desktop-prefs',{runInBackground:$('#setRunBg').checked,startWithWindows:$('#setStartWin').checked,autoStartLab:$('#setAutoLab').checked}))?.prefs||bgPrefs};
- $('#setRunBg').onchange=save;$('#setStartWin').onchange=save;$('#setAutoLab').onchange=save;$('#setCovRefresh').onclick=()=>loadBackgroundSettings(true);
+ const save=async()=>{bgPrefs=(await post('/api/desktop-prefs',{runInBackground:$('#setRunBg').checked,startWithWindows:$('#setStartWin').checked,autoStartLab:$('#setAutoLab').checked,desktopAlerts:$('#setAlerts').checked}))?.prefs||bgPrefs};
+ $('#setRunBg').onchange=save;$('#setStartWin').onchange=save;$('#setAutoLab').onchange=save;$('#setAlerts').onchange=save;$('#setCovRefresh').onclick=()=>loadBackgroundSettings(true);
 }
 function renderBackgroundSettings(){
  const body=$('#body-settings');if(!body)return;
