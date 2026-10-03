@@ -15,6 +15,7 @@ import { copyAttribution } from './copyAttribution.js';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { writeFileAtomicSync } from './atomicRename.js';
+import { assertPaperPrimaryAvailable, markPaperInitialized } from './paperBookStore.js';
 import { takerFee } from './core/fees.js';
 import { sameName } from './core/contractTerms.js';
 import { walkAsks, paced } from './kalshiBots.js';
@@ -115,18 +116,18 @@ export class KalshiMirrorPaper {
   }
   fresh(start = MIRROR_DEFAULTS.startUsd, settings = MIRROR_DEFAULTS, epoch = 1) { return { schema: SCHEMA, epoch, startUsd: start, cashUsd: start, settings: { ...settings, startUsd: start }, queue: [], open: [], history: [], decisions: [], seen: [], lastRunAt: null, lastError: null, lastNote: null }; }
   load() {
-    try { if (fs.statSync(this.file).size > 64 * 1024 * 1024) throw new Error('mirror book exceeds read budget'); const s = JSON.parse(fs.readFileSync(this.file, 'utf8')); return validateState(s); }
-    catch (e) { if (e.code === 'ENOENT') return this.fresh(); this.recoveryError = `Kalshi mirror book unreadable (${e.message}); the file was kept. Reset to start a new book.`; return this.fresh(); }
+    try { if (!assertPaperPrimaryAvailable(this.file)) return this.fresh(); if (fs.statSync(this.file).size > 64 * 1024 * 1024) throw new Error('mirror book exceeds read budget'); const s = validateState(JSON.parse(fs.readFileSync(this.file, 'utf8'))); markPaperInitialized(this.file); return s; }
+    catch (e) { this.recoveryError = `Kalshi mirror book unreadable (${e.message}); the file was kept. Reset to start a new book.`; return this.fresh(); }
   }
-  save() { if (this.recoveryError) throw new Error(this.recoveryError); try { validateState(this.state); writeFileAtomicSync(this.file, JSON.stringify(this.state)); } catch (e) { this.recoveryError = `Kalshi mirror persistence failed (${e.message}); recovery is required.`; throw new Error(this.recoveryError); } }
+  save() { if (this.recoveryError) throw new Error(this.recoveryError); try { assertPaperPrimaryAvailable(this.file); validateState(this.state); writeFileAtomicSync(this.file, JSON.stringify(this.state)); markPaperInitialized(this.file); } catch (e) { this.recoveryError = `Kalshi mirror persistence failed (${e.message}); recovery is required.`; throw new Error(this.recoveryError); } }
   decide(row) { this.state.decisions.unshift({ at: this.now(), ...row }); this.state.decisions.length = Math.min(this.state.decisions.length, 60); }
   reset({ confirmation, startUsd } = {}) {
     if (confirmation !== 'RESET BOT') throw new Error('Type RESET BOT to confirm');
-    if (this.busy) throw new Error('Kalshi mirror is running; wait before resetting');
+    if (this.busy || this.settlementBusy) throw new Error('Kalshi mirror is running; wait before resetting');
     const start = startUsd == null ? this.state.settings.startUsd : Number(startUsd); if (!(start >= 1 && start <= 100000)) throw new Error('startUsd must be between 1 and 100000');
     const next = this.fresh(start, this.state.settings, (this.state.epoch || 1) + 1);
     try { fs.copyFileSync(this.file, `${this.file}.pre-reset-${this.now()}-${randomUUID()}`, fs.constants.COPYFILE_EXCL); } catch (e) { if (e.code !== 'ENOENT') throw e; }
-    writeFileAtomicSync(this.file, JSON.stringify(next)); this.recoveryError = null; this.state = next; return this.snapshot();
+    writeFileAtomicSync(this.file, JSON.stringify(next)); markPaperInitialized(this.file); this.recoveryError = null; this.state = next; return this.snapshot();
   }
   // Called by the Polymarket copy bot for every new leader BUY made after it started following that leader.
   enqueue(leader, t) {

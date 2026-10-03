@@ -12,6 +12,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { writeFileAtomicSync } from './atomicRename.js';
+import { assertPaperPrimaryAvailable, markPaperInitialized } from './paperBookStore.js';
 import { takerFee, polymarketFeeModel } from './core/fees.js';
 import { copyAttribution, copyRisk, COPY_EVICT_MIN_CLOSES } from './copyAttribution.js';
 import { copyEvent, tradeKey, validCopyTrade, fetchLeaderTrades, classifyCopyMarket, CopyMetadataCache, boundedCopyMap, copyLatencySummary, oppositeCopyOutcome, COPY_POLICY_SUPPORT } from './copyEvent.js';
@@ -65,10 +66,10 @@ export class PolymarketCopyPaper {
   }
   fresh(start = COPY_DEFAULTS.startUsd, settings = COPY_DEFAULTS, epoch = 1) { return { schema: SCHEMA, epoch, startUsd: start, cashUsd: start, settings: { ...settings, startUsd: start }, follows: [], open: [], history: [], decisions: [], seen: [], lastRunAt: null, lastError: null, lastNote: null }; }
   load() {
-    try { if (!fs.existsSync(this.file)) return this.fresh(); const s = JSON.parse(fs.readFileSync(this.file, 'utf8')); if (s.schema !== SCHEMA) throw new Error('unknown schema'); if (!Number.isFinite(s.cashUsd) || s.cashUsd < 0 || !(s.startUsd > 0) || !['open', 'history', 'follows', 'seen', 'decisions'].every(k => Array.isArray(s[k])) || s.open.some(p => !(p.qty > 0) || !Number.isFinite(p.costUsd) || !Number.isFinite(p.feeUsd))) throw new Error('invalid copy balance or positions'); s.settings = { ...COPY_DEFAULTS, ...s.settings }; return s; }
+    try { if (!assertPaperPrimaryAvailable(this.file)) return this.fresh(); const s = JSON.parse(fs.readFileSync(this.file, 'utf8')); if (s.schema !== SCHEMA) throw new Error('unknown schema'); if (!Number.isFinite(s.cashUsd) || s.cashUsd < 0 || !(s.startUsd > 0) || !['open', 'history', 'follows', 'seen', 'decisions'].every(k => Array.isArray(s[k])) || s.open.some(p => !(p.qty > 0) || !Number.isFinite(p.costUsd) || !Number.isFinite(p.feeUsd))) throw new Error('invalid copy balance or positions'); s.settings = { ...COPY_DEFAULTS, ...s.settings }; markPaperInitialized(this.file); return s; }
     catch (e) { this.recoveryError = `Copy book unreadable (${e.message}); the file was kept. Reset to start a new book.`; return this.fresh(); }
   }
-  save() { if (this.recoveryError) return; fs.mkdirSync(path.dirname(this.file), { recursive: true }); writeFileAtomicSync(this.file, JSON.stringify(this.state)); }
+  save() { if (this.recoveryError) throw new Error(this.recoveryError); try { assertPaperPrimaryAvailable(this.file); fs.mkdirSync(path.dirname(this.file), { recursive: true }); writeFileAtomicSync(this.file, JSON.stringify(this.state)); markPaperInitialized(this.file); } catch (e) { this.recoveryError = `Copy persistence failed (${e.message}); recovery is required.`; throw new Error(this.recoveryError); } }
   async get(url) { const loader = async () => { const r = await this.fetch(url, { headers: { accept: 'application/json', 'user-agent': 'MoneyPrinterOS/0.5' }, signal: AbortSignal.timeout?.(15000) }); if (!r.ok) { const e = new Error(`HTTP ${r.status} from ${new URL(url).host}`); e.status = r.status; throw e; } return r.json(); }; return this.readCache ? this.readCache.get(url, loader) : loader(); }
   decide(row) { this.state.decisions.unshift({ at: this.now(), ...row }); this.state.decisions.length = Math.min(this.state.decisions.length, 60); }
   configure(patch = {}) {
@@ -79,10 +80,11 @@ export class PolymarketCopyPaper {
   }
   reset({ startUsd, confirmation } = {}) {
     if (confirmation !== 'RESET BOT') throw new Error('Type RESET BOT to confirm');
-    if (this.busy) throw new Error('Copy bot is running; wait before resetting');
+    if (this.busy || this.settlementBusy) throw new Error('Copy bot is running; wait before resetting');
     const start = startUsd == null ? this.state.settings.startUsd : Number(startUsd); if (!(start >= 10 && start <= 100000)) throw new Error('startUsd must be between 10 and 100000');
     if (fs.existsSync(this.file)) fs.copyFileSync(this.file, `${this.file}.pre-reset-${this.now()}`, fs.constants.COPYFILE_EXCL);
-    this.recoveryError = null; this.state = { ...this.fresh(start, this.state.settings, (this.state.epoch || 1) + 1), intents: {}, cursors: {}, exitLeaders: [], sourceHoldings: {}, receipts: [] }; this.save(); return this.snapshot();
+    const next = { ...this.fresh(start, this.state.settings, (this.state.epoch || 1) + 1), intents: {}, cursors: {}, exitLeaders: [], sourceHoldings: {}, receipts: [] };
+    fs.mkdirSync(path.dirname(this.file), { recursive: true }); writeFileAtomicSync(this.file, JSON.stringify(next)); markPaperInitialized(this.file); this.recoveryError = null; this.state = next; return this.snapshot();
   }
   unfollow(wallet) { const w = String(wallet).toLowerCase(), f = this.state.follows.find(f => f.wallet === w); if (f && this.state.open.some(p => p.leader === w)) this.state.exitLeaders.push(f); this.state.follows = this.state.follows.filter(f => f.wallet !== w); this.save(); return this.snapshot(); }
   async market(asset, force = false) {

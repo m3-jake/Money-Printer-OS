@@ -46,6 +46,34 @@ test('unreadable copy book exposes unknown cash and never overwrites evidence', 
   const dir = fixture(t); fs.writeFileSync(path.join(dir, 'polymarket-copy-paper.json'), '{broken'); const { bot } = setup(dir);
   assert.equal(bot.snapshot().cashUsd, null); await assert.rejects(bot.run(), /unreadable/); assert.equal(fs.readFileSync(bot.file, 'utf8'), '{broken');
 });
+
+test('initialized copy and mirror books fail closed when the primary disappears, including during a live session', async t => {
+  for (const Bot of [PolymarketCopyPaper, KalshiMirrorPaper]) {
+    const dataDir = fixture(t), opts = { dataDir, now: () => NOW };
+    const original = new Bot(opts); original.state.cashUsd -= 1; original.save();
+    const marker = original.file + '.initialized.json', evidence = fs.readFileSync(marker, 'utf8');
+    fs.unlinkSync(original.file);
+    assert.throws(() => original.save(), /primary is missing/);
+    const restarted = new Bot(opts);
+    assert.equal(restarted.snapshot().cashUsd, null); assert.equal(restarted.snapshot().recoveryRequired, true);
+    await assert.rejects(restarted.run(), /primary is missing/);
+    assert.equal(fs.existsSync(original.file), false); assert.equal(fs.readFileSync(marker, 'utf8'), evidence);
+    assert.throws(() => restarted.reset({ confirmation: 'no' }), /RESET BOT/);
+    restarted.reset({ confirmation: 'RESET BOT' });
+    assert.equal(restarted.snapshot().recoveryRequired, undefined); assert.equal(fs.readFileSync(marker, 'utf8'), evidence);
+    assert.ok(fs.existsSync(original.file));
+  }
+});
+
+test('valid legacy copy and mirror books acquire a marker without changing their cash or preserved bytes', t => {
+  for (const Bot of [PolymarketCopyPaper, KalshiMirrorPaper]) {
+    const dataDir = fixture(t), original = new Bot({ dataDir }); original.state.cashUsd -= 2;
+    fs.writeFileSync(original.file, JSON.stringify(original.state)); const bytes = fs.readFileSync(original.file, 'utf8');
+    const loaded = new Bot({ dataDir }); assert.equal(loaded.state.cashUsd, original.state.cashUsd);
+    assert.equal(fs.readFileSync(original.file, 'utf8'), bytes); assert.ok(fs.existsSync(original.file + '.initialized.json'));
+    fs.unlinkSync(original.file); assert.equal(new Bot({ dataDir }).snapshot().cashUsd, null);
+  }
+});
 test('separate funded exploratory policy preserves incumbent and immutable identity', t => {
   const dir = fixture(t), opts = { dataDir: dir, now: () => NOW, experiment: { id: 'cohort-a', policy: 'direct', exploratory: true, startUsd: 25, settings: { stakeUsd: 1 } } };
   const bot = new PolymarketCopyPaper(opts); assert.equal(bot.state.cashUsd, 25); assert.equal(bot.state.experiment.qualification, 'UNQUALIFIED_EXPLORATORY');
