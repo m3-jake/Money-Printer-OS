@@ -1,8 +1,11 @@
 # Money Printer OS: status ledger
 
-## Current entry point — 2026-10-03 alpha.84 / Lab alpha.21
+## Current entry point — 2026-10-03 alpha.86 / Lab alpha.22 (installed); improvement run in progress
 
-The current source pair is Money Printer OS `0.5.0-alpha.84` and Evolution Lab `0.1.0-alpha.21`.
+The installed pair is Money Printer OS `0.5.0-alpha.86` @ `33326e9` and Evolution Lab `0.1.0-alpha.22` @ `0903233`.
+The improvement run briefed in `docs/prompts/NEXT-RUN-2026-10-03.md` is under way; its batches are PF-9 onward
+below, newest first. Source past the installed commit is not installed until the next paired release.
+The paragraphs below describe the alpha.84 audit pair and stay true unless a later batch says otherwise.
 This completes the interrupted Claude audit implementation in `W:/mpo-accounts-views` and
 `W:/lab-workbench`. Installation is established by matching `PAIRED-RELEASE.json` receipts,
 fresh archive hashes and the running apps' exact build commits. A package version alone is not
@@ -58,6 +61,31 @@ Architecture, active work and release evidence live in `.agent-state/PROJECT_STA
 `.agent-state/CURRENT_TASKS.md` and `.agent-state/RELEASE_STATUS.md`. The earlier remediation
 ledger remains `AUDIT.md` and `PROGRESS.md`. Later sections below are historical unless dated
 as the current release. Last updated: 2026-10-03.
+
+## Batch PF-9 (2026-10-03, Claude): the scoreboard shows every paper book (run item A1)
+
+**Why.** `/api/scoreboard` had no rows for the books bing watches most (Kalshi weather, NWS-control and BTC bots, the
+11 farm variants, the Kalshi mirror, the Polymarket copy bot, the Robinhood daily-bar book). It still showed the
+retired furnace's Pump.fun champion as beating its baseline, counted the Robinhood practice book twice (once from
+the core-ledger mirror), and showed an empty "Kalshi core ledger" placeholder.
+
+- **New rows** (`src/scoreboard.js`, `paperBotRows`, `robinhoodDailyRow`):
+  - Kalshi bots (3), each with model vs market Brier; every farm variant (`Kalshi farm`, using the farm's own
+    settled minimum), Lab proposals and withdrawn proposals labelled; the mirror (with its queue); the Polymarket
+    copy bot (with its follow count); the Robinhood daily-bar book, counted per marked day against holding the same
+    coins.
+  - Same honesty rules as the other rows: cash (do nothing) baseline, minimum closes, the without-best-trade outlier
+    check, freshness from each bot's last run. A book that needs recovery shows **unknown**, never $0.
+  - The bots register themselves with the scoreboard from `src/dashboard.js` (`registerPaperBots`), and the
+    scoreboard reads each book's full settled history, not the 50-row snapshot slice.
+- **Removed:** the furnace champion row (`lab-solana`), the legacy-mirror venues (`robinhood-practice`,
+  `solana-paper`) from the core-ledger rows, and the empty-ledger placeholder row.
+- **HUD:** Command Center Simple gains an "Every paper book" panel (net after fees, closes against the bar, verdict,
+  observe-only or recovery flags). The Advanced scoreboard table shows the Kalshi Brier pair under the book name.
+- **Numbers:** live scoreboard before: 15 rows, 12 paper books, 1 "beating" (the retired furnace row). After
+  (source, not yet installed): 27 paper rows plus 2 research rows; nothing beats its baseline.
+- **Verified:** `tests/scoreboard.test.mjs` 13/13 (3 new), `tests/live-overviews.test.mjs` (1 new),
+  `tests/home-overview.test.mjs`. Trader `npm run test:all`: 1,261 tests, 1,241 pass, 0 fail (20 skipped).
 
 ## Batch PF-8 (2026-10-03, Claude): one shared strategy core, Lab flow graph (alpha.86 / Lab alpha.22)
 

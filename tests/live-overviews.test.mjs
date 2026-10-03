@@ -132,6 +132,22 @@ test('Command graphs keep paper USD and SOL apart and never include live or rese
   assert.equal(usd.series[0].label,'Dollar book');assert.equal(sol.series[0].label,'SOL book');
 });
 
+test('Command Simple view lists every paper book once, with unknown kept unknown', () => {
+  const at=Date.now(),p=platformHarness({snapshot:{at},scoreboard:{at,paperSummary:{books:3},rows:[
+    {id:'kalshi-bot-btc',module:'Kalshi bots',book:'BTC range bot',unit:'USD',mode:'PAPER',netPnl:-11.43,closes:13,minCloses:20,beatsBaseline:'NOT ENOUGH DATA',standDown:{active:true,reason:'model Brier worse than the market'}},
+    {id:'kalshi-farm-btc-v100',module:'Kalshi farm',book:'BTC · vol × 1.0',unit:'USD',mode:'PAPER',netPnl:1.4,closes:10,minCloses:20,beatsBaseline:'NOT ENOUGH DATA'},
+    {id:'kalshi-bot-weather-nws',module:'Kalshi bots',book:'Weather bot (NWS-only control)',unit:'USD',mode:'PAPER',netPnl:null,closes:0,minCloses:20,beatsBaseline:'NOT ENOUGH DATA',recoveryRequired:true},
+    {id:'lab-robinhood',module:'Evolution Lab',book:'Robinhood crypto champion',unit:'USD',kind:'lab',netPnl:5,closes:0,minCloses:20,beatsBaseline:'NOT ENOUGH DATA'},
+  ]}});
+  const html=p.platform.commandOverview();
+  assert.match(html,/Every paper book/);
+  assert.equal((html.match(/Kalshi bots · BTC range bot/g)||[]).length,1);
+  assert.match(html,/Kalshi farm · BTC · vol × 1\.0/);
+  assert.match(html,/13\/20 closes · NOT ENOUGH DATA · observe-only: model Brier worse than the market/);
+  assert.match(html,/needs recovery<\/small><\/div><span>Unknown<\/span>/,'recovery is unknown, never $0');
+  assert.doesNotMatch(html.split('<h3>Every paper book</h3>')[1].split('</section>')[0],/Robinhood crypto champion/,'research rows are not paper books');
+});
+
 test('Kalshi graphs use actual settled timestamps, preserve recovery unknowns and price distributions', () => {
   const now=Date.now(),p=platformHarness({snapshot:{at:now},kalshiWx:{cities:[{id:'chi',label:'Chicago',markets:[{date:'2026-10-03',closeAt:now+3600000,nwsHigh:70,buckets:[{lo:69,hi:70,p:.4},{lo:71,hi:72,p:.6}]}]}]}},{at:now,kalshi:{weather:{equityUsd:12.25,curve:[{at:null,equityUsd:12.5},{at:now-60000,equityUsd:12.25}],stats:{settled:1},settings:{}},btc:{equityUsd:null,curve:[],recoveryRequired:true,stats:{},settings:{}}}});
   const html=p.platform.kalshiOverview();

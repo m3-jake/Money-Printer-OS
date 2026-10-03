@@ -445,7 +445,7 @@ test('Money alone keeps platform and scoreboard snapshots flowing without a deta
 test('Command Center reads paper book counts from the real scoreboard contract and excludes research lanes', () => {
   const board = buildScoreboard({ pumpfunCopy: { history: [], status: 'WAITING_FOR_WALLET_EVIDENCE', lastRunAt: Date.now() }, lab: {} });
   assert.equal(board.paperSummary.books, 1);
-  assert.equal(board.rows.length, 4, 'one paper source and three Lab research rows');
+  assert.equal(board.rows.length, 3, 'one paper source and two Lab research rows (the furnace champion is retired)');
   const card = platformHarness({ scoreboard: board }).commandGlance(0);
   assert.match(card.visual, /Paper books<\/label><b>1<\/b>/);
   assert.match(card.visual, /Awaiting evidence<\/label><b>1<\/b>/);

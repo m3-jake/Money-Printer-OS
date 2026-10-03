@@ -12,7 +12,7 @@ process.env.ROBINHOOD_PRACTICE_AUTOSTART = 'false';
 process.env.ROBINHOOD_EQUITIES_AUTOSTART = 'false';
 
 const SB = await import('../src/scoreboard.js');
-const { closeStats, verdict, VERDICT, MIN_CLOSES, pumpfunRows, robinhoodCryptoRows, cryptoHoldBaseline, equitiesRow, polymarketRows, platformRows, labRows, buildScoreboard, freshness } = SB;
+const { closeStats, verdict, VERDICT, MIN_CLOSES, pumpfunRows, robinhoodCryptoRows, cryptoHoldBaseline, equitiesRow, polymarketRows, platformRows, labRows, paperBotRows, paperBotInputs, buildScoreboard, freshness } = SB;
 
 const NOW = Date.parse('2026-09-26T18:00:00Z');
 const MIN = 60_000;
@@ -162,25 +162,88 @@ test('Core ledger: per-close stats come from the ledger itself, one row per venu
   assert.equal(row.beatsBaseline, VERDICT.NOT_ENOUGH);
   assert.equal(row.freshness.status, 'FRESH');
   store.close();
-  const [empty] = platformRows({ accounts: [] }, { now: NOW });
-  assert.equal(empty.closes, 0);
-  assert.equal(empty.freshness.status, 'IDLE');
+  assert.deepEqual(platformRows({ accounts: [] }, { now: NOW }), [], 'no placeholder row: an empty core ledger is not a book');
+  const mirrored = platformRows({ accounts: [{ venue: 'robinhood-practice', currency: 'USD', realized: '-3', closeStats: { closes: 4 } }, { venue: 'solana-paper', currency: 'USD', realized: '1' }] }, { now: NOW });
+  assert.deepEqual(mirrored, [], 'legacy mirror venues already have their own book rows');
+});
+
+test('Paper bots: Kalshi bots, every farm variant, the mirror and the Polymarket copy bot each get one row', () => {
+  const bets = (pnls, t0 = NOW - 20 * 3600e3) => pnls.map((pnlUsd, i) => ({ pnlUsd, settledAt: t0 + i * MIN }));
+  const losing = bets([...Array(22)].map((_, i) => i === 3 ? 0.9 : -0.3));
+  const inputs = {
+    kalshi: {
+      btc: { snapshot: { startUsd: 12.5, equityUsd: 1.07, open: [{}, {}], lastRunAt: NOW - 2 * MIN, settings: { enabled: true }, stats: { brierModel: 0.122, brierMarket: 0.08 } }, history: losing },
+      weather: { snapshot: { startUsd: 12.5, equityUsd: 12.2, open: [], lastRunAt: NOW - 5 * MIN, settings: { enabled: true }, stats: {} }, history: [] },
+      'weather-nws': { snapshot: { recoveryRequired: true, lastRunAt: NOW - 5 * MIN, settings: { enabled: true } }, history: [] },
+    },
+    farm: { minSettled: 20, startUsd: 12.5, lastRun: { weather: { at: NOW - 3 * MIN }, btc: { at: NOW - 40 * MIN } }, variants: [
+      { id: 'wx-a', kind: 'weather', label: 'Weather A', equityUsd: 12, open: 3, history: [], settledByDay: {} },
+      { id: 'btc-b', kind: 'btc', label: 'BTC B', equityUsd: 14, open: 1, history: bets([...Array(21)].map(() => 0.1)), settledByDay: { [new Date(NOW).toLocaleDateString('en-CA')]: 4 } },
+      { id: 'lab-x1', kind: 'btc', label: 'Lab X', lab: true, withdrawn: true, history: [] },
+    ] },
+    mirror: { snapshot: { startUsd: 12.5, equityUsd: 12.5, open: [], queued: 2, lastRunAt: NOW - MIN, settings: { enabled: true } }, history: [] },
+    copy: { snapshot: { startUsd: 500, equityUsd: 399, open: [], follows: [{}, {}], lastRunAt: NOW - MIN, settings: { enabled: true } }, history: bets([...Array(25)].map((_, i) => i % 2 ? 2 : -5)).map(({ settledAt, ...x }) => ({ ...x, closedAt: settledAt })) },
+  };
+  const rows = paperBotRows(inputs, { now: NOW }), byId = Object.fromEntries(rows.map(r => [r.id, r]));
+  assert.deepEqual(rows.map(r => r.id).sort(), ['kalshi-bot-btc', 'kalshi-bot-weather', 'kalshi-bot-weather-nws', 'kalshi-farm-btc-b', 'kalshi-farm-lab-x1', 'kalshi-farm-wx-a', 'kalshi-mirror', 'polymarket-copy']);
+  assert.equal(new Set(rows.map(r => r.id)).size, rows.length, 'each book exactly once');
+  const btc = byId['kalshi-bot-btc'];
+  assert.equal(btc.closes, 22); assert.equal(btc.beatsBaseline, VERDICT.NO); assert.equal(btc.baseline.netPnl, 0);
+  assert.equal(btc.brierModel, 0.122); assert.equal(btc.brierMarket, 0.08); assert.equal(btc.open, 2); assert.equal(btc.freshness.status, 'FRESH');
+  const nws = byId['kalshi-bot-weather-nws'];
+  assert.equal(nws.netPnl, null, 'a book that needs recovery is unknown, never zero');
+  assert.equal(nws.recoveryRequired, true); assert.equal(nws.beatsBaseline, VERDICT.NOT_ENOUGH);
+  assert.equal(byId['kalshi-bot-weather'].beatsBaseline, VERDICT.NOT_ENOUGH);
+  const fb = byId['kalshi-farm-btc-b'];
+  assert.equal(fb.module, 'Kalshi farm'); assert.equal(fb.minCloses, 20); assert.equal(fb.beatsBaseline, VERDICT.YES); assert.equal(fb.settledToday, 4);
+  assert.equal(fb.freshness.status, 'STALE', 'the BTC farm last ran 40 minutes ago');
+  assert.equal(byId['kalshi-farm-lab-x1'].freshness.status, 'IDLE'); assert.match(byId['kalshi-farm-lab-x1'].book, /withdrawn/);
+  assert.equal(byId['kalshi-mirror'].queued, 2);
+  const pc = byId['polymarket-copy'];
+  assert.equal(pc.closes, 25); assert.equal(pc.beatsBaseline, VERDICT.NO); assert.equal(pc.follows, 2); assert.equal(pc.unit, 'USD');
+});
+
+test('Robinhood daily book: per marked day against holding the same coins; recovery is unknown', () => {
+  const snap = { source: { kind: 'lab-default' }, loop: { running: true, lastRunAt: NOW - 3600e3 }, book: { startUsd: 25, equityUsd: 25.6, buyHoldUsd: 24.75, positions: [{ long: true }, { long: false }],
+    equityDaily: [{ d: '2026-09-24', equityUsd: 25.1 }, { d: '2026-09-25', equityUsd: 24.9 }, { d: '2026-09-26', equityUsd: 25.6 }] } };
+  const row = SB.robinhoodDailyRow(snap, { now: NOW });
+  assert.equal(row.id, 'robinhood-daily'); assert.equal(row.closes, 3); assert.equal(row.per, 'day');
+  assert.equal(row.netPnl, 0.6); assert.equal(row.baseline.netPnl, -0.25); assert.equal(row.open, 1);
+  assert.equal(row.beatsBaseline, VERDICT.NOT_ENOUGH); assert.match(row.book, /not qualified/);
+  const bad = SB.robinhoodDailyRow({ book: { recoveryRequired: true, startUsd: 25, equityDaily: [] } }, { now: NOW });
+  assert.equal(bad.netPnl, null); assert.equal(bad.recoveryRequired, true);
+});
+
+test('paperBotInputs reads the full settled history, not the 50-row snapshot slice', () => {
+  const history = [...Array(80)].map((_, i) => ({ pnlUsd: 0.1, settledAt: NOW - i * MIN }));
+  const kalshi = { recoveryError: null, state: { bots: { btc: { history } } }, snapshot: id => ({ id, history: history.slice(0, 50), settings: { enabled: true }, stats: {} }) };
+  const farm = { last: { btc: { at: NOW } }, state: { books: { v1: { startUsd: 12.5, history: history.slice(0, 30) } } }, snapshot: () => ({ minSettled: 20, startUsd: 12.5, variants: [{ id: 'v1', kind: 'btc', label: 'V1' }] }) };
+  const copy = { recoveryError: 'unreadable', state: { history }, snapshot: () => ({ settings: {} }) };
+  const inp = paperBotInputs({ kalshi, farm, copy });
+  assert.equal(inp.kalshi.btc.history.length, 80);
+  assert.equal(inp.farm.variants[0].history.length, 30);
+  assert.equal(inp.copy.snapshot.recoveryRequired, true); assert.deepEqual(inp.copy.history, []);
+  assert.equal(inp.mirror, null);
+  assert.equal(paperBotRows(inp, { now: NOW }).find(r => r.id === 'kalshi-bot-btc').closes, 80);
 });
 
 test('Evolution Lab rows: lifecycle state plus held-out result, verdict only with enough held-out trades', () => {
   const rows = labRows({
     solana: { state: 'PAPER', declared: 'PAPER', updatedAt: NOW - MIN, n: 40, perTrade: 0.8, unit: '%', metric: 'held-out avg' },
     robinhood: { state: 'SHADOW', updatedAt: NOW - 3600e3, n: 5, value: 12, unit: 'USD' },
+    'polymarket-combo': { state: 'PAPER', declared: 'PAPER', updatedAt: NOW - MIN, n: 40, perTrade: 0.8, unit: '%', metric: 'holdout ROI' },
   }, { now: NOW });
-  const sol = rows.find(r => r.id === 'lab-solana'), rh = rows.find(r => r.id === 'lab-robinhood'), pm = rows.find(r => r.id === 'lab-polymarket-combo');
-  assert.equal(sol.state, 'PAPER');
-  assert.equal(sol.beatsBaseline, VERDICT.YES);
-  assert.equal(sol.freshness.status, 'FRESH');
+  assert.equal(rows.find(r => r.id === 'lab-solana'), undefined, 'the retired furnace champion has no row');
+  const rh = rows.find(r => r.id === 'lab-robinhood'), pm = rows.find(r => r.id === 'lab-polymarket-combo');
+  assert.equal(pm.state, 'PAPER');
+  assert.equal(pm.beatsBaseline, VERDICT.YES);
+  assert.equal(pm.freshness.status, 'FRESH');
   assert.equal(rh.beatsBaseline, VERDICT.NOT_ENOUGH);
   assert.equal(rh.freshness.status, 'STALE');
-  assert.equal(pm.state, 'NONE');
-  assert.equal(pm.freshness.status, 'IDLE');
-  const neg = labRows({ solana: { state: 'SHADOW', n: 30, perTrade: -0.2, updatedAt: NOW } }, { now: NOW }).find(r => r.id === 'lab-solana');
+  const none = labRows({}, { now: NOW }).find(r => r.id === 'lab-polymarket-combo');
+  assert.equal(none.state, 'NONE');
+  assert.equal(none.freshness.status, 'IDLE');
+  const neg = labRows({ robinhood: { state: 'SHADOW', n: 30, value: -0.2, updatedAt: NOW } }, { now: NOW }).find(r => r.id === 'lab-robinhood');
   assert.equal(neg.beatsBaseline, VERDICT.NO);
 });
 
@@ -205,13 +268,21 @@ test('readScoreboard reads the real modules from a data dir without writing to i
   fs.writeFileSync(path.join(TMP, 'robinhood-paper.json'), JSON.stringify({ version: 1, cashUsd: 1000, startUsd: 1000, positions: [], history: [...Array(6)].map((_, i) => trade(i)), autopilot: { enabled: true } }));
   fs.mkdirSync(path.join(TMP, 'lab-link'), { recursive: true });
   fs.writeFileSync(path.join(TMP, 'lab-link', 'polymarket-combo-champion.json'), JSON.stringify({ schema: 'mpo.lab-module-champion.v1', module: 'polymarket-combo', liveActivationAllowed: false, state: 'SHADOW', stateSchema: 'mpo.champion-state.v1', publishedAt: NOW - MIN, candidate: { holdout: { combos: 8, roi: 0.02 } } }));
+  const { KalshiPaperBots } = await import('../src/kalshiBots.js'), { BotFarm } = await import('../src/botFarm.js');
+  const { KalshiMirrorPaper } = await import('../src/kalshiMirror.js'), { PolymarketCopyPaper } = await import('../src/polymarketCopy.js');
   const before = fs.readdirSync(TMP).sort();
+  const kalshi = new KalshiPaperBots({ dataDir: TMP });
+  const bots = { kalshi, farm: new BotFarm({ dataDir: TMP, bots: kalshi }), mirror: new KalshiMirrorPaper({ dataDir: TMP }), copy: new PolymarketCopyPaper({ dataDir: TMP }) };
+  SB.registerPaperBots(() => bots);
   const board = await SB.readScoreboard({ now: NOW });
   const { closeMarketPlatform } = await import('../src/core/platform.js');
   closeMarketPlatform();
   assert.deepEqual(board.errors, []);
   const ids = board.rows.map(r => r.id);
-  for (const id of ['pumpfun-fair', 'pumpfun-sprint', 'robinhood-strategy', 'robinhood-exploration', 'robinhood-practice', 'robinhood-equities', 'platform-kalshi', 'lab-solana', 'lab-robinhood', 'lab-polymarket-combo']) assert.ok(ids.includes(id), id);
+  for (const id of ['pumpfun-fair', 'pumpfun-sprint', 'pumpfun-copy', 'robinhood-strategy', 'robinhood-exploration', 'robinhood-practice', 'robinhood-daily', 'robinhood-equities', 'kalshi-bot-weather', 'kalshi-bot-weather-nws', 'kalshi-bot-btc', 'kalshi-farm-wx-cal-e07', 'kalshi-farm-btc-v100', 'kalshi-mirror', 'polymarket-copy', 'lab-robinhood', 'lab-polymarket-combo']) assert.ok(ids.includes(id), id);
+  assert.equal(new Set(ids).size, ids.length, 'every book appears exactly once');
+  assert.ok(!ids.includes('lab-solana') && !ids.includes('platform-kalshi'), 'no retired furnace row and no empty core-ledger placeholder');
+  SB.registerPaperBots(null);
   const rh = board.rows.find(r => r.id === 'robinhood-strategy');
   assert.equal(rh.closes, 6);
   assert.equal(rh.netPnl, 3);

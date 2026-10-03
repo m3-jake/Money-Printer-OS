@@ -44,6 +44,7 @@ import { BotTape } from './botTape.js';
 import { BotFarm } from './botFarm.js';
 import { KalshiMirrorPaper } from './kalshiMirror.js';
 import { PolymarketCopyPaper } from './polymarketCopy.js';
+import { registerPaperBots } from './scoreboard.js';
 import { WeatherCalibrator } from './weatherCalibration.js';
 import { marketPlatform, closeMarketPlatform } from './core/platform.js';
 import { practiceSnapshot,loadPracticeBook } from './robinhoodPractice.js';
@@ -491,6 +492,7 @@ export function startDashboard() {
   // The Kalshi mirror copies the Polymarket leaders' game-winner buys onto Kalshi (src/kalshiMirror.js).
   const mirror=new KalshiMirrorPaper({dataDir:DATA_DIR,kalshi:()=>marketPlatform().providers.providers.get('kalshi')||null,sports:()=>marketPlatform().sportsSnapshot()});
   paperBots={calibration,tape,kalshi:kalshiBots,farm:new BotFarm({dataDir:DATA_DIR,bots:kalshiBots}),mirror,copy:new PolymarketCopyPaper({dataDir:DATA_DIR,tape,onLeaderBuy:(f,t)=>mirror.enqueue(f,t)})};
+  registerPaperBots(()=>paperBots);
   const botTimers=[];
   if(process.env.MPO_PAPER_BOTS!=='false'&&!process.env.NODE_TEST_CONTEXT){const every=(ms,first,fn)=>{const t=setTimeout(()=>{fn().catch(()=>{});const i=setInterval(()=>fn().catch(()=>{}),ms);i.unref();botTimers.push(i)},first);t.unref();botTimers.push(t)};
     every(600_000,20_000,()=>paperBots.kalshi.run('weather'));every(600_000,90_000,()=>paperBots.kalshi.run('weather-nws'));every(180_000,150_000,()=>paperBots.kalshi.run('btc'));every(600_000,150_000,()=>paperBots.farm.run('weather'));every(180_000,170_000,()=>paperBots.farm.run('btc'));every(60_000,50_000,()=>paperBots.copy.run());every(60_000,80_000,()=>paperBots.mirror.run());

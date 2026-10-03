@@ -228,6 +228,26 @@ export function equitiesRow(snap = null, { now = Date.now() } = {}) {
     minCloses: EQUITY_MIN_SESSIONS, note: 'Counted per marked session (a rebalancing book has no per-trade closes).', extra: { per: 'session', recoveryRequired: !!b.recoveryRequired } });
 }
 
+// ---------------------------------------------------------------- Robinhood crypto daily-bar book
+// One decision per closed UTC day (src/robinhoodDailyBook.js), so like equities its unit of evidence is the
+// marked day. Baseline: the same $ held equally in the book's coins (benchUsd, marked with the book).
+export function robinhoodDailyRow(snap = null, { now = Date.now() } = {}) {
+  const b = snap?.book || {}, start = finite(b.startUsd), recovery = !!b.recoveryRequired;
+  const marks = Array.isArray(b.equityDaily) ? b.equityDaily : [];
+  const closes = []; let prev = start;
+  for (const m of marks) { const e = finite(m?.equityUsd); if (e !== null && prev !== null) closes.push({ pnl: e - prev, at: Date.parse(m.d + 'T00:00:00Z') + 86_400_000 }); prev = e; }
+  const stats = recovery ? { ...fromAggregate({}), netPnl: null, netPerTrade: null } : closeStats(closes);
+  if (!recovery && start !== null && finite(b.equityUsd) !== null) stats.netPnl = round(Number(b.equityUsd) - start);
+  const bench = finite(b.buyHoldUsd);
+  const row = scoreRow({ id: 'robinhood-daily', module: 'Robinhood crypto', book: 'Daily-bar paper · ' + (snap?.source?.kind === 'lab-proposal' ? 'Lab proposal' : 'Lab default family (not qualified)'), unit: 'USD', stats,
+    baseline: { kind: 'buy-and-hold', label: 'Buy and hold the same coins', netPnl: bench !== null && start !== null ? bench - start : null, note: 'Same starting bank split equally across the coins of the book, marked each day.' },
+    fresh: freshness(snap?.loop?.lastRunAt ?? snap?.data?.fetchedAt, { now, maxAgeMs: 36 * HOUR, active: !!snap?.loop?.running, source: 'daily-bar loop' }),
+    minCloses: EQUITY_MIN_SESSIONS, note: 'Counted per marked day; qualification (180 paper days, observed quotes) is separate and unchanged.',
+    extra: { per: 'day', recoveryRequired: recovery, open: (b.positions || []).filter(p => p.long).length, lastDecidedDay: b.lastDecidedDay || null } });
+  if (recovery) Object.assign(row, { beatsBaseline: VERDICT.NOT_ENOUGH, reason: 'book needs recovery; its file was kept' });
+  return row;
+}
+
 // ---------------------------------------------------------------- Polymarket US shadow
 // Settled shadow combos per strategy window; pnlUsd is priced at askProduct + measured markup, VOIDs are not closes.
 export function polymarketRows(evidence = null, { now = Date.now() } = {}) {
@@ -243,12 +263,90 @@ export function polymarketRows(evidence = null, { now = Date.now() } = {}) {
   });
 }
 
+// ---------------------------------------------------------------- Kalshi bots, farm, mirror; Polymarket copy
+// Each is its own paper book with its own bank. A settled or closed bet's pnlUsd already carries the taker
+// fee (and, for the farm, its modeled slippage), so these rows only sum what the bots recorded.
+// Baseline: not betting keeps the bank (cash, 0). A book that needs recovery shows unknown, never 0.
+const BOT_CASH = Object.freeze({ kind: 'cash', label: 'Cash (0)', netPnl: 0, note: 'Not betting keeps the paper bank.' });
+export const KALSHI_BOT_BOOKS = Object.freeze({ weather: 'Weather bot (calibrated)', 'weather-nws': 'Weather bot (NWS-only control)', btc: 'BTC range bot' });
+function botRow({ id, module, book, closes, snap, maxAgeMs, active, minCloses = MIN_CLOSES, note = null, extra = {}, now }) {
+  const recoveryRequired = !!snap?.recoveryRequired;
+  const stats = recoveryRequired ? { ...fromAggregate({}), netPnl: null, netPerTrade: null } : closeStats(closes);
+  const row = scoreRow({ id, module, book, unit: 'USD', stats, baseline: BOT_CASH, minCloses,
+    fresh: freshness(snap?.lastRunAt, { now, maxAgeMs, active: active && !recoveryRequired, source: 'bot run' }), note,
+    extra: { group: module, active, recoveryRequired, startUsd: finite(snap?.startUsd), equityUsd: recoveryRequired ? null : finite(snap?.equityUsd),
+      open: Array.isArray(snap?.open) ? snap.open.length : finite(snap?.open), lastError: snap?.lastError ? String(snap.lastError).slice(0, 200) : null, ...extra } });
+  if (recoveryRequired) Object.assign(row, { beatsBaseline: VERDICT.NOT_ENOUGH, reason: 'book needs recovery; its file was kept' });
+  return row;
+}
+const settledCloses = h => (Array.isArray(h) ? h : []).map(x => ({ pnl: x?.pnlUsd, at: x?.settledAt ?? x?.closedAt }));
+// kalshi: { [botId]: { snapshot, history } }; farm: { minSettled, startUsd, lastRun: { weather, btc }, error, variants: [{ ...variant
+// snapshot, history, settledByDay }] }; mirror / copy: { snapshot, history }. history is each book's full settled list (the
+// snapshots only carry the latest 50).
+export function paperBotRows({ kalshi = null, farm = null, mirror = null, copy = null } = {}, { now = Date.now() } = {}) {
+  const rows = [];
+  for (const [id, book] of Object.entries(KALSHI_BOT_BOOKS)) {
+    const x = kalshi?.[id]; if (!x) continue;
+    const s = x.snapshot || {}, st = s.stats || {};
+    rows.push(botRow({ id: `kalshi-bot-${id}`, module: 'Kalshi bots', book, closes: settledCloses(x.history), snap: s, now,
+      maxAgeMs: (id === 'btc' ? 10 : 30) * MIN, active: s.settings?.enabled !== false,
+      note: "Settles on Kalshi's own result; entries walked the real order book.",
+      extra: { brierModel: finite(st.brierModel), brierMarket: finite(st.brierMarket), standDown: s.standDown || null } }));
+  }
+  if (farm) {
+    const today = new Date(now).toLocaleDateString('en-CA');
+    for (const v of Array.isArray(farm.variants) ? farm.variants : []) {
+      const label = `${v.label || v.id}${v.lab ? ' · Lab proposal' : ''}${v.withdrawn ? ' · withdrawn' : ''}`;
+      const run = farm.lastRun?.[v.kind] || null;
+      rows.push(botRow({ id: `kalshi-farm-${v.id}`, module: 'Kalshi farm', book: label, closes: settledCloses(v.history), now,
+        snap: { lastRunAt: run?.at ?? null, startUsd: v.startUsd ?? farm.startUsd, equityUsd: v.equityUsd, open: v.open, recoveryRequired: !!farm.error, lastError: run?.error || farm.error || null },
+        maxAgeMs: (v.kind === 'btc' ? 10 : 30) * MIN, active: !v.withdrawn, minCloses: finite(farm.minSettled) ?? MIN_CLOSES,
+        note: "Forward variant: fills at the quoted ask plus modeled slippage, settles on Kalshi's own result.",
+        extra: { variant: v.id, kind: v.kind, lab: !!v.lab, withdrawn: !!v.withdrawn, settledToday: finite(v.settledByDay?.[today]) ?? 0, standDown: v.standDown || null } }));
+    }
+  }
+  if (mirror) rows.push(botRow({ id: 'kalshi-mirror', module: 'Kalshi mirror', book: 'Copy of Polymarket leaders (game winners)', closes: settledCloses(mirror.history), snap: mirror.snapshot || {}, now,
+    maxAgeMs: 10 * MIN, active: mirror.snapshot?.settings?.enabled !== false, note: 'Mirrors identified Polymarket leader buys onto the matching Kalshi market.',
+    extra: { queued: finite(mirror.snapshot?.queued) } }));
+  if (copy) rows.push(botRow({ id: 'polymarket-copy', module: 'Polymarket copy', book: 'Copy bot (polymarket.com leaders)', closes: settledCloses(copy.history), snap: copy.snapshot || {}, now,
+    maxAgeMs: 10 * MIN, active: copy.snapshot?.settings?.enabled !== false, note: 'Global polymarket.com, not Polymarket US. Exits walk the real bid book.',
+    extra: { follows: Array.isArray(copy.snapshot?.follows) ? copy.snapshot.follows.length : null } }));
+  return rows;
+}
+// The live bot objects (src/dashboard.js) -> paperBotRows input. Reads memory only: no network, no writes.
+export function paperBotInputs(pb) {
+  if (!pb) return null;
+  const kalshi = {};
+  for (const id of Object.keys(KALSHI_BOT_BOOKS)) {
+    const snapshot = pb.kalshi?.snapshot?.(id); if (!snapshot) continue;
+    kalshi[id] = { snapshot: { ...snapshot, recoveryRequired: !!pb.kalshi.recoveryError }, history: pb.kalshi.recoveryError ? [] : pb.kalshi.state?.bots?.[id]?.history || [] };
+  }
+  let farm = null;
+  if (pb.farm) {
+    const snap = pb.farm.snapshot(), books = pb.farm.state?.books || {};
+    farm = { minSettled: snap.minSettled, startUsd: snap.startUsd, error: snap.error || null, lastRun: pb.farm.last || {},
+      variants: snap.variants.map(v => {
+        const h = books[v.id]?.history || [], settledByDay = {};
+        for (const x of h) { const d = new Date(x.settledAt).toLocaleDateString('en-CA'); settledByDay[d] = (settledByDay[d] || 0) + 1; }
+        return { ...v, startUsd: books[v.id]?.startUsd, history: h, settledByDay };
+      }) };
+  }
+  const book = o => o ? { snapshot: { ...o.snapshot(), recoveryRequired: !!o.recoveryError }, history: o.recoveryError ? [] : o.state?.history || [] } : null;
+  return { kalshi, farm, mirror: book(pb.mirror), copy: book(pb.copy) };
+}
+let paperBotsSource = null;
+// src/dashboard.js registers its live bots here once they exist.
+export function registerPaperBots(get) { paperBotsSource = typeof get === 'function' ? get : null; }
+
 // ---------------------------------------------------------------- core platform ledger (Kalshi, global Polymarket)
 // portfolio: UnifiedLedger.portfolio('PAPER'); lastEntryAt: the newest ledger row time. Per venue, USD accounts only.
+// Venues the legacy-ledger mirror fills from a book that already has its own row (Robinhood practice,
+// Pump.fun paper): showing them again would count one book twice.
+export const MIRRORED_VENUES = Object.freeze(['robinhood-practice', 'solana-paper']);
 export function platformRows(portfolio = null, { lastEntryAt = null, now = Date.now() } = {}) {
   const byVenue = new Map();
   for (const a of portfolio?.accounts || []) {
-    if (a.currency !== 'USD') continue;
+    if (a.currency !== 'USD' || MIRRORED_VENUES.includes(a.venue)) continue;
     const v = byVenue.get(a.venue) || { realized: 0, closes: 0, wins: 0, grossWin: 0, grossLoss: 0, best: null, bestAt: null, lastCloseAt: null, daily: {} };
     const cs = a.closeStats || {};
     v.realized += finite(a.realized) ?? 0; v.closes += finite(cs.closes) ?? 0; v.wins += finite(cs.wins) ?? 0;
@@ -258,11 +356,10 @@ export function platformRows(portfolio = null, { lastEntryAt = null, now = Date.
     for (const [d, x] of Object.entries(a.daily || {})) v.daily[d] = (v.daily[d] || 0) + (finite(x) ?? 0);
     byVenue.set(a.venue, v);
   }
-  if (!byVenue.size) byVenue.set('kalshi', null);
   return [...byVenue].map(([venue, v]) => {
     let cum = 0; const curve = Object.keys(v?.daily || {}).sort().map(d => (cum += v.daily[d]));
     const stats = fromAggregate(v ? { closes: v.closes, wins: v.wins, grossWin: v.grossWin, grossLoss: v.grossLoss, net: v.realized, best: v.best, bestAt: v.bestAt, lastCloseAt: v.lastCloseAt, curve } : {});
-    return scoreRow({ id: `platform-${venue}`, module: venue === 'kalshi' ? 'Kalshi' : venue === 'polymarket' ? 'Polymarket (global)' : venue, book: 'Core ledger paper fills', unit: 'USD', stats,
+    return scoreRow({ id: `platform-${venue}`, module: venue === 'kalshi' ? 'Kalshi (core ledger)' : venue === 'polymarket' ? 'Polymarket (global)' : venue === 'stocks-paper' ? 'Stocks (core ledger)' : venue, book: 'Core ledger paper fills', unit: 'USD', stats,
       baseline: { kind: 'cash', label: 'Cash (0)', netPnl: 0, note: 'Unspent simulated funding stays as cash.' },
       fresh: freshness(lastEntryAt, { now, maxAgeMs: 7 * 24 * HOUR, active: !!v, source: 'last ledger entry' }),
       note: v ? 'Realized P/L from the core ledger; open contracts are at cost until they are sold or settle.' : 'No simulated funding recorded yet.' });
@@ -271,9 +368,11 @@ export function platformRows(portfolio = null, { lastEntryAt = null, now = Date.
 
 // ---------------------------------------------------------------- Evolution Lab champions
 // Not paper books: each row shows the champion's lifecycle state and its held-out research result.
+// The Pump.fun (Solana) champion came from the retired furnace (2026-10-02), so it has no row any more:
+// a frozen furnace result must not read as a winning book.
 // input per module: { state, declared, stage, updatedAt, n, value, unit, metric }
 export function labRows(lab = {}, { now = Date.now() } = {}) {
-  const names = { solana: 'Pump.fun (Solana)', robinhood: 'Robinhood crypto', 'polymarket-combo': 'Polymarket combos' };
+  const names = { robinhood: 'Robinhood crypto', 'polymarket-combo': 'Polymarket combos' };
   return Object.entries(names).map(([id, name]) => {
     const x = lab?.[id] || null, n = Math.max(0, Math.trunc(finite(x?.n) ?? 0)), value = finite(x?.value), per = finite(x?.perTrade);
     const stats = { ...fromAggregate({}), closes: n, netPnl: value, netPerTrade: per, hitRate: finite(x?.hitRate), profitFactor: x?.profitFactor ?? null };
@@ -298,8 +397,10 @@ export function buildScoreboard(inputs = {}, { now = Date.now() } = {}) {
   if (inputs.pumpfun !== undefined) add('pumpfun', () => pumpfunRows(inputs.pumpfun, { now }));
   if (inputs.pumpfunCopy !== undefined) add('pumpfun-copy', () => [pumpfunCopyRow(inputs.pumpfunCopy, { now })]);
   if (inputs.robinhood !== undefined) add('robinhood', () => robinhoodCryptoRows(inputs.robinhood || {}, { now }));
+  if (inputs.robinhoodDaily !== undefined) add('robinhood-daily', () => [robinhoodDailyRow(inputs.robinhoodDaily, { now })]);
   if (inputs.equities !== undefined) add('equities', () => [equitiesRow(inputs.equities, { now })]);
   if (inputs.polymarket !== undefined) add('polymarket', () => polymarketRows(inputs.polymarket, { now }));
+  if (inputs.paperBots !== undefined && inputs.paperBots !== null) add('paper-bots', () => paperBotRows(inputs.paperBots, { now }));
   if (inputs.platform !== undefined) add('platform', () => platformRows(inputs.platform?.portfolio, { lastEntryAt: inputs.platform?.lastEntryAt, now }));
   if (inputs.lab !== undefined) add('lab', () => labRows(inputs.lab, { now }));
   for (const e of inputs.errors || []) errors.push(e);
@@ -361,21 +462,23 @@ export async function readScoreboard({ now = Date.now(), maxAgeMs = 5000 } = {})
     }
     return { strict, explore, practice, tapeAt, holdPrices };
   });
+  inputs.robinhoodDaily = await attempt('robinhood-daily', async () => {
+    const J = await import('./robinhoodJournal.js'), RD = await import('./robinhoodDailyBook.js');
+    return RD.dailySnapshot({ dataDir: path.dirname(J.PAPER_FILE), now });
+  });
   inputs.equities = await attempt('equities', async () => (await import('./robinhoodEquities.js')).robinhoodEquitiesSnapshot({ now }));
   inputs.polymarket = await attempt('polymarket', async () => (await import('./polymarketUSEvidence.js')).loadEvidenceState());
+  inputs.paperBots = await attempt('paper-bots', async () => {
+    const pb = paperBotsSource?.(); if (!pb) throw new Error('Paper bots not started');
+    return paperBotInputs(pb);
+  });
   inputs.platform = await attempt('platform', async () => {
     const { marketPlatform } = await import('./core/platform.js'), p = marketPlatform();
     return { portfolio: p.ledger.portfolio('PAPER'), lastEntryAt: p.ledger.entries({ mode: 'PAPER', limit: 1 })[0]?.at ?? null };
   });
   inputs.lab = await attempt('lab', async () => {
-    const { readLabLink } = await import('./labLink.js'), { championState } = await import('./championState.js');
+    const { championState } = await import('./championState.js');
     const out = {};
-    const link = readLabLink({ now });
-    if (link.champion || link.status) {
-      const m = link.champion?.champion?.metrics || {};
-      out.solana = { ...championState(link.champion), stage: link.champion?.qualificationStage || null, updatedAt: link.status?.updatedAt ?? null,
-        n: m.heldOutN, perTrade: m.heldOutAvgPct, unit: '%', metric: 'held-out average return per trade (%)' };
-    }
     const mod = id => readJson(path.join(dataDir, 'lab-link', 'modules', `${id}.json`));
     const rh = readJson(path.join(dataDir, 'lab-link', 'robinhood-champion.json'));
     if (rh?.schema === 'mpo.lab-module-champion.v1' && rh.module === 'robinhood') {
