@@ -151,7 +151,7 @@ export class KalshiMirrorPaper {
 
   async get(url) { const loader = async signal => { const r = await this.fetch(url, { headers: { accept: 'application/json', 'user-agent': 'MoneyPrinterOS/0.5' }, signal }); if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }; return this.workBudget.call(url, signal => this.readCache ? this.readCache.get(url, () => loader(signal)) : loader(signal)); }
   sportsBoard() { return this.workBudget.call('sports-board', () => this.sports()); }
-  providerRead(k, method, ticker) { return this.workBudget.call(`kalshi:${method}:${ticker}`, () => paced(() => { this.workBudget.assert(); return k[method](ticker); })); }
+  providerRead(k, method, ticker) { return this.workBudget.call(`kalshi:${method}:${ticker}`, signal => paced(() => { if (signal.aborted) throw new Error('expired mirror provider retry cancelled'); this.workBudget.assert(); return k[method](ticker); })); }
   // Watch the week's top sports-leaderboard wallets and queue their new BUYs (see MIRROR_SOURCE).
   async pollSportsLeaders() {
     const s = this.state; if (!this.fetch || !s.settings.enabled && !s.open.length) return 0;
