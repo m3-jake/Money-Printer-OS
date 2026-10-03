@@ -23,6 +23,9 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const OUT = path.join(ROOT, 'web-demo', 'fixtures.json');
+// Every endpoint any recording has seen (browsed or fetched); it only grows, so a run with no browser still
+// fetches every panel's data instead of only what the previous fixtures happened to hold.
+const CATALOG = path.join(ROOT, 'web-demo', 'catalog.json');
 // WEB_DEMO_ENGINE_PORT / WEB_DEMO_PROXY_PORT let a second recording run beside another one.
 const ENGINE_PORT = Number(process.env.WEB_DEMO_ENGINE_PORT) || 18792, PROXY_PORT = Number(process.env.WEB_DEMO_PROXY_PORT) || 18793;
 const arg = name => process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : null;
@@ -61,7 +64,8 @@ Object.assign(env, {
 
 const previous = fs.existsSync(OUT) ? JSON.parse(fs.readFileSync(OUT, 'utf8')) : { responses: {} };
 // Endpoints newer than the previous recording (alpha.79: Kalshi weather glance) are always fetched once.
-const catalog = [...new Set([...Object.keys(previous.responses), '/api/platform/weather'])].filter(k => !FRAMED.has(k));
+const known = fs.existsSync(CATALOG) ? JSON.parse(fs.readFileSync(CATALOG, 'utf8')) : [];
+const catalog = [...new Set([...known, ...Object.keys(previous.responses), '/api/platform/weather'])].filter(k => !FRAMED.has(k));
 const fixtures = resume && fs.existsSync(OUT) ? JSON.parse(fs.readFileSync(OUT, 'utf8')) : { recordedAt: null, responses: {}, frames: {} };
 fixtures.frames ||= {};
 fixtures.champion = champion ? { id: champion.champion?.id, generation: champion.generation, stage: champion.champion?.stage } : null;
@@ -109,6 +113,7 @@ const proxy = http.createServer((req, res) => {
 });
 proxy.listen(PROXY_PORT, '127.0.0.1', () => console.log(`Recording proxy: http://127.0.0.1:${PROXY_PORT}/  (sandbox ${sandbox}, stops in ${minutes} min)`));
 
-const stop = () => { save(); proxy.close(); engine.kill(); console.log(`Saved ${Object.keys(fixtures.responses).length} responses to ${path.relative(ROOT, OUT)}`); setTimeout(() => process.exit(0), 500); };
+const saveCatalog = () => fs.writeFileSync(CATALOG, JSON.stringify([...new Set([...catalog, ...Object.keys(fixtures.responses)])].filter(k => !FRAMED.has(k) && !k.startsWith('/api/project-journal')).sort(), null, 1) + '\n');
+const stop = () => { save(); saveCatalog(); proxy.close(); engine.kill(); console.log(`Saved ${Object.keys(fixtures.responses).length} responses to ${path.relative(ROOT, OUT)} (catalog ${catalog.length} before this run)`); setTimeout(() => process.exit(0), 500); };
 process.on('SIGINT', stop);
 setTimeout(stop, minutes * 60_000);
