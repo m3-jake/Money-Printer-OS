@@ -1051,3 +1051,9 @@ img.bill.phys.grabbing { cursor: grabbing; z-index: 5; }
 @keyframes mpoWelcome { 0% { opacity: 0; transform: translate(-50%,-38%) scale(.85); } 14%, 78% { opacity: 1; transform: translate(-50%,-50%) scale(1); } 100% { opacity: 0; transform: translate(-50%,-58%) scale(1.02); } }
 @media (prefers-reduced-motion: reduce) { .mpo-welcome { animation: none; transform: translate(-50%,-50%); } }
 .mpo-low-motion .mpo-welcome { animation: none; transform: translate(-50%,-50%); }
+
+/* Lag pass (2026-10-02): nothing behind a maximized window animates (see watchDeskCovered in dashboard.html). */
+body.desk-covered .sky-cloud,
+body.desk-covered .grass-layer::before,
+body.desk-covered .grass-layer::after,
+body.desk-covered .cloud-shadows i { animation-play-state: paused !important; }

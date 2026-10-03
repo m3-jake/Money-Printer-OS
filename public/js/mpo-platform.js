@@ -21,9 +21,23 @@ window.MPOSPlatform = (() => {
   }
   function platformGlance(id){
     const s=scoreboard?.summary||{},bad=diag?.sources?.filter(x=>!['CONNECTED','IDLE','DISABLED'].includes(x.status)).length||0;
+    if(id==='command'&&typeof glance==='function')return commandGlance(bad);
     if(id==='command')return `<div class="core-app">${window.mpoPumpProfitHTML?.(window.__MPO_PROFIT_CAPTURE)||''}${window.mpoWalletCrowdHTML?.(window.__MPO_WALLET_CROWD)||''}<div class="core-heading"><h2>COMMAND CENTER</h2><span class="mpo-badge">PAPER / RESEARCH</span></div><div class="core-lcd"><span>${scoreboard?.paperSummary?.beating||0} paper books beating baseline</span><span>${scoreboard?.paperSummary?.notBeating||0} paper books not beating</span><span>${scoreboard?.paperSummary?.notEnoughData||0} paper books awaiting evidence</span><span>${bad} data sources need attention</span></div><p class="core-muted">Open Advanced for market desks, diagnostics, Events, risk controls and research detail.</p></div>`;
     if(id==='kalshi'&&typeof glance==='function')return kalshiGlance();
     return `<div class="core-app"><div class="core-heading"><h2>${escape(id==='kalshi'?'KALSHI':'POLYMARKET')}</h2><span class="mpo-badge">PAPER</span></div><p class="core-muted">Open Advanced for books, orders, depth and execution detail.</p></div>`;
+  }
+  // Command Center Simple view (2026-10-02): is each paper book beating its own baseline? Hero = books beating /
+  // books with enough data; one row per scoreboard book plus the paper bots; the existing Pump profit and wallet
+  // crowd cards stay underneath.
+  function commandGlance(bad){
+    const ps=scoreboard?.paperSummary||{},beat=ps.beating||0,judged=beat+(ps.notBeating||0),rows=(scoreboard?.rows||[]).filter(r=>r.kind!=='lab').slice(0,8);
+    const amt=(v,u)=>v==null?'—':u==='SOL'?`${v>0?'+':v<0?'−':''}${Math.abs(v).toFixed(4)} SOL`:`${v>0?'+':v<0?'−':''}$${Math.abs(v).toFixed(2)}`;
+    const bots=window.MPOBots?.data,botRows=bots?[['Kalshi weather bot',bots.kalshi.weather],['Kalshi BTC bot',bots.kalshi.btc],['Polymarket copy bot',bots.polycopy]].map(([n,b])=>gRow(n,`paper · ${b.open.length} open · ${(b.stats.settled??b.stats.closed)||0} settled`,`$${b.equityUsd.toFixed(2)}`,b.lastError?'bad':b.settings.enabled?'ok':'warn')).join(''):'';
+    const list=`<div class="g-rows g-grow">${rows.map(r=>gRow(`${r.module} · ${r.book}`,`${r.closes} closes · beats baseline: ${String(r.beatsBaseline).toLowerCase()}`,amt(r.netPnl,r.unit),r.beatsBaseline==='YES'?'ok':r.beatsBaseline==='NO'?'bad':'warn')).join('')}${botRows}</div>`;
+    return glance({title:'Command Center',pill:bad?{label:`${bad} data source${bad===1?'':'s'} need attention`,tone:'warn'}:{label:'All data sources ok',tone:'ok'},
+      hero:scoreboard?`${beat} / ${judged}`:'—',heroSub:'paper books beating their own baseline (after fees)',heroText:false,
+      stats:[{label:'Beating',value:String(beat),tone:beat?'g-pos':''},{label:'Not beating',value:String(ps.notBeating||0),tone:ps.notBeating?'g-neg':''},{label:'Need more data',value:String(ps.notEnoughData||0)}],
+      visual:list+(window.mpoPumpProfitHTML?.(window.__MPO_PROFIT_CAPTURE)||'')+(window.mpoWalletCrowdHTML?.(window.__MPO_WALLET_CROWD)||''),foot:gFoot(['Advanced: market desks, diagnostics, events, risk controls'])});
   }
   // Kalshi Simple view: the weather desk at a glance. Each city's next undecided daily-high market as a
   // bucket distribution (Kalshi mids) with the NWS forecast bucket outlined, plus the forecast − market gap.

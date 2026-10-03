@@ -535,7 +535,7 @@ function paintEnvironmentWind(now=performance.now()){
 }
 function applyMotion(){document.documentElement.classList.toggle('mpo-low-motion',motionReduced());paintEnvironmentWind()}
 applyMotion();matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change',()=>{applyMotion();updateDesktopEffects()});
-setInterval(()=>{if(!document.hidden&&!motionReduced())paintEnvironmentWind()},1800);
+setInterval(()=>{if(!document.hidden&&!motionReduced()&&!document.body.classList.contains('desk-covered'))paintEnvironmentWind()},1800);
 const bootFocus=(()=>{const f=readPref('mpo-last-focus','trade');const id=openSet.has(f)?f:[...openSet][0]||'trade';openSet.add(id);return id})();
 // A window without a saved spot opens centred and large: one clear thing on the desktop.
 const HERO_MAX_H={money:500,journal:600};
@@ -2002,11 +2002,14 @@ function welcomeShower(){
 addEventListener('mpo:logon',()=>setTimeout(welcomeShower,motionReduced()?0:LOGON_CAMERA_MS));
 // One refresh includes fetching, parsing and applying the result. A slow request cannot queue
 // multiple renders of the same payload behind the transport's single in-flight read.
+// Lag pass (2026-10-02): while a maximized window covers the desktop, the sky, cloud-shadow and grass
+// animations pause (body.desk-covered); nobody can see them and they keep the compositor busy.
+function watchDeskCovered(){const host=document.getElementById('windows');if(!host)return;const update=()=>document.body.classList.toggle('desk-covered',!!host.querySelector('.window.max:not(.hidden)'));new MutationObserver(update).observe(host,{subtree:true,attributes:true,attributeFilter:['class'],childList:true});update()}
 function singleFlightRefresh(fn){let pending=null;return(...args)=>pending||(pending=Promise.resolve().then(()=>fn(...args)).finally(()=>{pending=null}))}
 refreshState=singleFlightRefresh(refreshState);refreshNetwork=singleFlightRefresh(refreshNetwork);
 refreshJournal=singleFlightRefresh(refreshJournal);refreshProjectJournal=singleFlightRefresh(refreshProjectJournal);
 refreshUpdater=singleFlightRefresh(refreshUpdater);refreshResearchMonitor=singleFlightRefresh(refreshResearchMonitor);
-buildIcons();initLogoStretch();buildWindows();window.MPORoll?.watch();buildStart();boot();refreshRobinhood();refreshJournal();refreshProjectJournal();refreshNetwork();refreshUSComboSnapshot();refreshUpdater();refreshResearchMonitor();refreshState();
+buildIcons();initLogoStretch();buildWindows();window.MPORoll?.watch();watchDeskCovered();buildStart();boot();refreshRobinhood();refreshJournal();refreshProjectJournal();refreshNetwork();refreshUSComboSnapshot();refreshUpdater();refreshResearchMonitor();refreshState();
 window.MPOSPlatform?.install({open(id){openApp(id);setDetail(hostOf(id),true);if(id==='predictionmarkets')setTab('sportsbook',id);}});
 setInterval(()=>{if(!document.hidden)refreshState()},1500);
 setInterval(()=>{if(!document.hidden)refreshNetwork()},5000);

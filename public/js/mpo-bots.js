@@ -9,6 +9,7 @@
   const when = t => t ? new Date(t).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
   let data = null, error = '', busy = false, lastFetch = 0, msg = '';
   const SETTINGS = {
+    'weather-nws': [['stakeUsd', 'USD per bet'], ['maxOpen', 'Max open'], ['minEdge', 'Min edge'], ['maxDisagreement', 'Max model–market gap'], ['sigmaBaseF', 'Sigma °F'], ['sigmaPerDayF', 'Sigma per day °F']],
     weather: [['stakeUsd', 'USD per bet'], ['maxOpen', 'Max open'], ['minEdge', 'Min edge'], ['maxDisagreement', 'Max model–market gap'], ['biasF', 'Forecast bias °F'], ['sigmaBaseF', 'Sigma °F'], ['sigmaPerDayF', 'Sigma per day °F']],
     btc: [['stakeUsd', 'USD per bet'], ['maxOpen', 'Max open'], ['minEdge', 'Min edge'], ['maxDisagreement', 'Max model–market gap'], ['volMultiple', 'Vol multiple'], ['maxHoursToClose', 'Max hours to close']],
     polycopy: [['stakeUsd', 'USD per copy'], ['maxOpen', 'Max open'], ['follows', 'Leaders followed'], ['minLeaderTradeUsd', 'Min leader trade $'], ['maxChase', 'Max chase'], ['refollowDays', 'Refollow after days']],
@@ -50,10 +51,15 @@
     const cell = L => !L ? '—' : `${L.use ? '<b>calibrated</b>' : 'default'} · bias ${L.params.bias > 0 ? '+' : ''}${L.params.bias}°F · σ ${L.params.sd}°F${L.heldOut ? ` · held-out log score ${L.heldOut.calibrated} vs ${L.heldOut.default}` : ''}`;
     return `<details><summary>Forecast calibration (${Object.values(c.cities).filter(x => x.leads?.[0]?.use || x.leads?.[1]?.use).length} of ${Object.keys(c.cities).length} cities calibrated · refit ${ago(c.at)})</summary><p class="core-muted">${escape(c.source)}. A city/lead uses its fitted bias and σ only if that beat the default on the last 30 held-out days; otherwise the bot uses the NWS forecast with default settings.</p>${table(['City', 'Days', 'Same-day forecast', 'Day-before forecast'], Object.values(c.cities).map(x => `<tr><td>${escape(x.label)}</td><td>${x.error ? escape(x.error) : x.days}</td><td>${cell(x.leads?.[0])}</td><td>${cell(x.leads?.[1])}</td></tr>`).join(''), 'No calibration yet.')}</details>`;
   }
+  // Forward A/B: calibrated weather bot vs the NWS-only control on the same markets and rules.
+  function abView(a, b) {
+    const row = (name, x) => `<tr><td>${name}</td><td>${usd(x.equityUsd)} (${pct(x.returnPct)})</td><td>${x.stats.settled}</td><td>${x.stats.hitRate == null ? '—' : Math.round(x.stats.hitRate * 100) + '%'}</td><td>${x.stats.brierModel ?? '—'}</td></tr>`;
+    return `<h3>A/B: calibrated vs NWS-only control</h3>${table(['Bot', 'Paper equity', 'Settled', 'Hit rate', 'Brier (lower = better)'], row('Calibrated', a) + row('Control', b), '')}<p class="core-muted">Same markets, stake and edge rules; only the forecast model differs. A real difference needs dozens of settled bets.</p>`;
+  }
   function kalshiView() {
     if (!data) return `<p>${escape(error || 'Loading paper bots…')}</p>`;
     const k = data.kalshi;
-    return `<p class="core-notice">Paper only. The weather bot turns the National Weather Service forecast into odds for each temperature bucket; the BTC bot prices Kalshi's Bitcoin range and above/below markets from Coinbase spot and recent volatility. Both buy only when their odds beat the ask after Kalshi's fee, fill against the live order book, and settle on Kalshi's own result. The Brier scores say whether the model is actually better than the market (lower is better).</p>${msg ? `<p role="status">${escape(msg)}</p>` : ''}${kalshiBot('weather', k.weather)}${calibrationView(data.calibration)}${kalshiBot('btc', k.btc)}`;
+    return `<p class="core-notice">Paper only. The weather bot turns the National Weather Service forecast into odds for each temperature bucket; the BTC bot prices Kalshi's Bitcoin range and above/below markets from Coinbase spot and recent volatility. Both buy only when their odds beat the ask after Kalshi's fee, fill against the live order book, and settle on Kalshi's own result. The Brier scores say whether the model is actually better than the market (lower is better).</p>${msg ? `<p role="status">${escape(msg)}</p>` : ''}${kalshiBot('weather', k.weather)}${calibrationView(data.calibration)}${k['weather-nws'] ? abView(k.weather, k['weather-nws']) + kalshiBot('weather-nws', k['weather-nws']) : ''}${kalshiBot('btc', k.btc)}`;
   }
   function copyView() {
     if (!data) return `<p>${escape(error || 'Loading copy bot…')}</p>`;
@@ -67,7 +73,7 @@
       <details><summary>Recent decisions</summary>${table(['When', 'Leader', 'Market', 'Action', 'Why'], b.decisions.map(d => `<tr><td>${when(d.at)}</td><td>${escape(d.leader || '')}</td><td>${escape(d.title || '')}</td><td>${escape(d.action)}${d.price ? ' @ ' + d.price : ''}${d.lagSec ? ' · ' + d.lagSec + 's late' : ''}</td><td>${escape(d.reason || '')}</td></tr>`).join(''), 'No decisions yet.')}</details>
       ${controls('polycopy', b)}</section>`;
   }
-  const PANES = { kalshibots: { host: 'kalshi', view: kalshiView, charts: () => data && ['weather', 'btc'].map(id => ['bot-' + id, data.kalshi[id]]) }, pmcopy: { host: 'sportsbook', view: copyView, charts: () => data && [['bot-polycopy', data.polycopy]] } };
+  const PANES = { kalshibots: { host: 'kalshi', view: kalshiView, charts: () => data && ['weather', 'weather-nws', 'btc'].filter(id => data.kalshi[id]).map(id => ['bot-' + id, data.kalshi[id]]) }, pmcopy: { host: 'sportsbook', view: copyView, charts: () => data && [['bot-polycopy', data.polycopy]] } };
   const visible = id => { const w = document.querySelector(`.window[data-app="${PANES[id].host}"]`), r = document.getElementById('body-' + id); return !!(w && r && r.classList.contains('on') && !w.classList.contains('hidden') && !w.classList.contains('glance')); };
   const drawn = {};
   function draw(force = false) {

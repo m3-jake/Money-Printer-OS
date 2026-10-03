@@ -478,7 +478,7 @@ export function startDashboard() {
   paperBots={calibration,kalshi:new KalshiPaperBots({dataDir:DATA_DIR,calibration,kalshi:()=>marketPlatform().providers.providers.get('kalshi')||null,weather:()=>marketPlatform().weatherSnapshot()}),copy:new PolymarketCopyPaper({dataDir:DATA_DIR})};
   const botTimers=[];
   if(process.env.MPO_PAPER_BOTS!=='false'&&!process.env.NODE_TEST_CONTEXT){const every=(ms,first,fn)=>{const t=setTimeout(()=>{fn().catch(()=>{});const i=setInterval(()=>fn().catch(()=>{}),ms);i.unref();botTimers.push(i)},first);t.unref();botTimers.push(t)};
-    every(600_000,20_000,()=>paperBots.kalshi.run('weather'));every(180_000,150_000,()=>paperBots.kalshi.run('btc'));every(60_000,50_000,()=>paperBots.copy.run());
+    every(600_000,20_000,()=>paperBots.kalshi.run('weather'));every(600_000,90_000,()=>paperBots.kalshi.run('weather-nws'));every(180_000,150_000,()=>paperBots.kalshi.run('btc'));every(60_000,50_000,()=>paperBots.copy.run());
     // Weather calibration refits once a day (and at start when missing or older than 20 h).
     every(86_400_000,(calibration.state&&Date.now()-calibration.state.at<20*3600e3)?86_400_000:10_000,()=>calibration.run());}
   let intelligenceBusy=false,intelligenceClosed=false;

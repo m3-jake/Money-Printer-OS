@@ -18,10 +18,12 @@ import path from 'node:path';
 import { writeFileAtomicSync } from './atomicRename.js';
 import { takerFee } from './core/fees.js';
 
-export const KALSHI_BOT_IDS = Object.freeze(['weather', 'btc']);
+// weather-nws is the control arm of a forward A/B test: same rules as weather, but never uses the calibration.
+export const KALSHI_BOT_IDS = Object.freeze(['weather', 'weather-nws', 'btc']);
 const SCHEMA = 'mpo.kalshi-paper-bots.v1';
 const DEFAULTS = Object.freeze({
   weather: { enabled: true, useCalibration: true, calibrationSafety: 1.1, startUsd: 500, stakeUsd: 10, maxOpen: 10, minEdge: 0.07, maxDisagreement: 0.2, minPrice: 0.05, maxPrice: 0.92, biasF: 0, sigmaBaseF: 1.6, sigmaPerDayF: 1.0, minHoursToClose: 1 },
+  'weather-nws': { enabled: true, useCalibration: false, calibrationSafety: 1.1, startUsd: 500, stakeUsd: 10, maxOpen: 10, minEdge: 0.07, maxDisagreement: 0.2, minPrice: 0.05, maxPrice: 0.92, biasF: 0, sigmaBaseF: 1.6, sigmaPerDayF: 1.0, minHoursToClose: 1 },
   btc: { enabled: true, startUsd: 500, stakeUsd: 10, maxOpen: 4, minEdge: 0.06, maxDisagreement: 0.2, minPrice: 0.05, maxPrice: 0.92, volMultiple: 1.25, minHoursToClose: 0.5, maxHoursToClose: 30 },
 });
 const LIMITS = { calibrationSafety: [1, 3], maxDisagreement: [0.02, 1], stakeUsd: [1, 250], maxOpen: [1, 50], minEdge: [0.01, 0.5], minPrice: [0.01, 0.5], maxPrice: [0.5, 0.99], biasF: [-10, 10], sigmaBaseF: [0.5, 8], sigmaPerDayF: [0, 5], volMultiple: [0.5, 4], startUsd: [10, 100000], minHoursToClose: [0, 48], maxHoursToClose: [1, 240] };
@@ -137,7 +139,7 @@ export class KalshiPaperBots {
     try {
       if (!k) throw new Error('Kalshi provider unavailable');
       await this.settle(b, k);
-      if (b.settings.enabled) { if (id === 'weather') await this.runWeather(b, k); else await this.runBtc(b, k); }
+      if (b.settings.enabled) { if (id.startsWith('weather')) await this.runWeather(b, k); else await this.runBtc(b, k); }
       b.lastError = null;
     } catch (e) { b.lastError = String(e.message || e).slice(0, 300); }
     finally { b.lastRunAt = this.now(); this.busy.delete(id); this.save(); }
@@ -253,7 +255,7 @@ export class KalshiPaperBots {
     const brier = k => n ? round(h.reduce((s, x) => s + x[k], 0) / n, 4) : null;
     let peak = b.startUsd, dd = 0, run = b.startUsd; const curve = [{ at: null, equityUsd: b.startUsd }];
     for (const x of h.slice().reverse()) { run += x.pnlUsd; peak = Math.max(peak, run); dd = Math.max(dd, peak - run); curve.push({ at: x.settledAt, equityUsd: round(run, 2) }); }
-    return { id, label: id === 'weather' ? 'Kalshi weather bot' : 'Kalshi BTC range bot', mode: 'PAPER', epoch: b.epoch, settings: b.settings, startUsd: b.startUsd, cashUsd: round(b.cashUsd, 2), equityUsd: round(equity, 2), returnPct: round((equity - b.startUsd) / b.startUsd * 100, 2),
+    return { id, label: id === 'weather' ? 'Kalshi weather bot' : id === 'weather-nws' ? 'Kalshi weather bot · control (NWS only, no calibration)' : 'Kalshi BTC range bot', mode: 'PAPER', epoch: b.epoch, settings: b.settings, startUsd: b.startUsd, cashUsd: round(b.cashUsd, 2), equityUsd: round(equity, 2), returnPct: round((equity - b.startUsd) / b.startUsd * 100, 2),
       open: b.open, history: h.slice(0, 50), decisions: b.decisions.slice(0, 30), curve: curve.slice(-200),
       stats: { settled: n, wins, hitRate: n ? round(wins / n, 3) : null, pnlUsd: round(pnl, 2), feesUsd: round(h.reduce((s, x) => s + x.feeUsd, 0), 2), brierModel: brier('brierModel'), brierMarket: brier('brierMarket'), maxDrawdownUsd: round(dd, 2) },
       lastRunAt: b.lastRunAt, lastError: this.recoveryError || b.lastError, lastNote: b.lastNote, running: this.busy.has(id) };

@@ -111,3 +111,13 @@ test('the weather bot prices with the calibrated model when one is available', a
   assert.equal(s.open.length, 1); assert.equal(s.open[0].context.model, 'open-meteo + calibration'); assert.equal(s.open[0].context.sigma, 1.32, 'sigma × calibrationSafety 1.1');
   assert.match(s.lastNote, /1 on the calibrated model/);
 });
+
+test('the weather-nws control arm never uses the calibration, so the A/B compares only the forecast model', async () => {
+  const dir = tmp(), now = Date.UTC(2026, 9, 3, 12), desk = weatherDesk(now + 10 * 3600e3); desk.cities[0].id = 'NYC';
+  let asked = 0; const calibration = { model: async () => { asked++; return { mu: 75, sigma: 1, forecast: 75, lead: 1, source: 'open-meteo + calibration' }; } };
+  const bots = new KalshiPaperBots({ dataDir: dir, calibration, kalshi: () => fakeKalshi({ value: null }), weather: async () => desk, now: () => now });
+  bots.configure('weather-nws', { maxDisagreement: 0.6, minEdge: 0.03 });
+  const s = await bots.run('weather-nws');
+  assert.equal(asked, 0); assert.equal(s.label.includes('control'), true);
+  for (const p of s.open) assert.equal(p.context.model, 'nws + default');
+});
