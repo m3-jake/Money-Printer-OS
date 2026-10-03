@@ -93,7 +93,18 @@
       <h3>Open copies</h3>${table(['Market', 'Outcome', 'Leader', 'Leader price', 'Our price', 'Cost', 'Mark'], b.open.map(p => `<tr><td>${escape(p.title)}</td><td>${escape(p.outcome)}</td><td>${escape(p.leaderName)}</td><td>${p.leaderPrice}</td><td>${p.avgPrice}</td><td>${usd(p.costUsd + p.feeUsd)}</td><td>${usd(p.markUsd)}</td></tr>`).join(''), 'No open copies.')}
       <h3>Closed</h3>${table(['Market', 'Outcome', 'How', 'P/L'], b.history.slice(0, 15).map(p => `<tr><td>${escape(p.title)}</td><td>${escape(p.outcome)}</td><td>${escape(p.status === 'RESOLVED' ? (p.won ? 'resolved WON' : 'resolved LOST') : 'sold: ' + (p.reason || ''))}</td><td class="${p.pnlUsd >= 0 ? 'pm-up' : 'pm-down'}">${usd(p.pnlUsd)}</td></tr>`).join(''), 'Nothing closed yet.')}
       <details><summary>Recent decisions</summary>${table(['When', 'Leader', 'Market', 'Action', 'Why'], b.decisions.map(d => `<tr><td>${when(d.at)}</td><td>${escape(d.leader || '')}</td><td>${escape(d.title || '')}</td><td>${escape(d.action)}${d.price ? ' @ ' + d.price : ''}${d.lagSec ? ' · ' + d.lagSec + 's late' : ''}</td><td>${escape(d.reason || '')}</td></tr>`).join(''), 'No decisions yet.')}</details>
-      ${controls('polycopy', b)}</section>`;
+      ${controls('polycopy', b)}</section>${mirrorView(data.mirror)}`;
+  }
+  // Kalshi mirror (src/kalshiMirror.js): the leaders' game-winner buys copied onto Kalshi.
+  function mirrorView(m) {
+    if (!m) return '';
+    return `<section class="bot-card"><div class="core-heading"><h2>KALSHI MIRROR</h2><span class="mpo-badge">PAPER ONLY</span></div>
+      <p class="core-muted">Kalshi trades are anonymous, so this copies the leaders above onto Kalshi: when one buys a team to win a game that Kalshi also lists, the same team is bought on Kalshi at Kalshi's ask and fee ($${m.settings.stakeUsd} each). Only game winners: spreads and totals have different terms.</p>
+      <div class="core-lcd"><span>Paper equity ${usd(m.equityUsd)} (${pct(m.returnPct)})</span><span>Cash ${usd(m.cashUsd)}</span><span>Open ${m.open.length}</span><span>Settled ${m.stats.settled} · wins ${m.stats.wins}</span><span>P/L ${usd(m.stats.pnlUsd)}</span></div>
+      <p class="core-muted">Last run ${ago(m.lastRunAt)}${m.lastNote ? ' · ' + escape(m.lastNote) : ''}</p>${m.lastError ? `<p class="core-error">${escape(m.lastError)}</p>` : ''}
+      <h3>Open mirrors</h3>${table(['Game', 'Team', 'Leader', 'Leader price', 'Kalshi price', 'Paid', 'Mark'], m.open.map(p => `<tr><td>${escape(p.game)}</td><td>${escape(p.team)}</td><td>${escape(p.leader)}</td><td>${p.leaderPrice}</td><td>${p.avgPrice}</td><td>${usd(p.costUsd + p.feeUsd)}</td><td>${usd(p.markUsd)}</td></tr>`).join(''), 'No open mirrors.')}
+      <h3>Settled</h3>${table(['Game', 'Team', 'Result', 'P/L'], m.history.slice(0, 15).map(p => `<tr><td>${escape(p.game)}</td><td>${escape(p.team)}</td><td>${p.won ? 'WON' : 'LOST'}</td><td class="${p.pnlUsd >= 0 ? 'pm-up' : 'pm-down'}">${usd(p.pnlUsd)}</td></tr>`).join(''), 'Nothing settled yet.')}
+      <details><summary>Recent decisions</summary>${table(['When', 'Leader', 'Market', 'Action', 'Why'], m.decisions.map(d => `<tr><td>${when(d.at)}</td><td>${escape(d.leader || '')}</td><td>${escape(d.title || '')}</td><td>${escape(d.action)}${d.price ? ' @ ' + d.price : ''}</td><td>${escape(d.reason || '')}</td></tr>`).join(''), 'No leader buys seen yet.')}</details></section>`;
   }
   const PANES = { kalshibots: { host: 'kalshi', view: kalshiView, charts: () => data && ['weather', 'weather-nws', 'btc'].filter(id => data.kalshi[id]).map(id => ['bot-' + id, data.kalshi[id]]) }, pmcopy: { host: 'sportsbook', view: copyView, charts: () => data && [['bot-polycopy', data.polycopy]] } };
   const visible = id => { const w = document.querySelector(`.window[data-app="${PANES[id].host}"]`), r = document.getElementById('body-' + id); return !!(w && r && r.classList.contains('on') && !w.classList.contains('hidden') && !w.classList.contains('glance')); };
@@ -141,7 +152,7 @@
       hero: usd(b.equityUsd), heroSub: `<span class="${b.returnPct >= 0 ? 'g-pos' : 'g-neg'}">${pct(b.returnPct)}</span> · copies leaders' new trades at the live book (global Polymarket)`,
       stats: [{ label: 'Leaders', value: String(b.follows.length) }, { label: 'Open copies', value: String(b.open.length) }, { label: 'Closed P/L', value: usd(b.stats.pnlUsd), tone: b.stats.pnlUsd > 0 ? 'g-pos' : b.stats.pnlUsd < 0 ? 'g-neg' : '' }],
       visual: `${window.MPOViz ? `<div class="g-fill">${MPOViz.canvas('copy-g', 90, 'paper equity after each closed copy')}</div>` : ''}<div class="g-rows g-scroll">${(b.byLeader.length ? b.byLeader.map(r => gRow(r.leader, `${r.copies} copies · ${r.settled} closed`, `<span class="${r.pnlUsd >= 0 ? 'g-pos' : 'g-neg'}">${usd(r.pnlUsd)}</span>`, r.pnlUsd >= 0 ? 'ok' : 'bad')) : b.follows.map(f => gRow(f.name, `followed ${when(f.followedAt)} · rank #${f.rank}`, '', 'ok'))).join('') || '<div class="g-empty">No leaders followed yet.</div>'}</div>`,
-      foot: gFoot(['only trades made after following', 'Advanced: copies, decisions, settings']) });
+      foot: gFoot([data.mirror ? `Kalshi mirror ${usd(data.mirror.equityUsd)} · ${data.mirror.open.length} open` : null, 'only trades made after following', 'Advanced: copies, mirror, settings']) });
   }
   globalThis.addEventListener?.('DOMContentLoaded', () => { window.MPOProgramGlance?.register('kalshibots', { render: botsCard, sig: () => [data?.at, error] }); window.MPOProgramGlance?.register('pmcopy', { render: copyCard, sig: () => [data?.at, error] }); });
   window.MPOBots = { render() { draw(); load(); }, get data() { return data; }, load };

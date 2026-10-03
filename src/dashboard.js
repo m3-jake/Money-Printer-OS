@@ -41,6 +41,7 @@ import { handlePlatformRequest, localMutationAllowed } from './core/http.js';
 import { KalshiPaperBots, KALSHI_BOT_IDS } from './kalshiBots.js';
 import { BotTape } from './botTape.js';
 import { BotFarm } from './botFarm.js';
+import { KalshiMirrorPaper } from './kalshiMirror.js';
 import { PolymarketCopyPaper } from './polymarketCopy.js';
 import { WeatherCalibrator } from './weatherCalibration.js';
 import { marketPlatform, closeMarketPlatform } from './core/platform.js';
@@ -59,7 +60,7 @@ const DATA_DIR = path.resolve(process.env.MONEY_PRINTER_DATA_DIR || path.join(RO
 let paperBots = null;
 // The Evolution Lab's Research Workbench summary (lab-link/workbench.json), if the Lab on this machine has published one.
 function readLabWorkbench(){try{const w=JSON.parse(fs.readFileSync(path.join(DATA_DIR,'lab-link','workbench.json'),'utf8'));return w&&w.schema==='mpo.lab-workbench.v1'?w:null;}catch{return null;}}
-function paperBotsView(){ if(!paperBots) return {ok:false,error:'Paper bots not started'}; return {ok:true,at:Date.now(),mode:'PAPER',kalshi:paperBots.kalshi.snapshots(),polycopy:paperBots.copy.snapshot(),calibration:paperBots.calibration.snapshot(),farm:paperBots.farm.snapshot(),tape:paperBots.tape.stats(),lab:readLabWorkbench()}; }
+function paperBotsView(){ if(!paperBots) return {ok:false,error:'Paper bots not started'}; return {ok:true,at:Date.now(),mode:'PAPER',kalshi:paperBots.kalshi.snapshots(),polycopy:paperBots.copy.snapshot(),calibration:paperBots.calibration.snapshot(),farm:paperBots.farm.snapshot(),tape:paperBots.tape.stats(),mirror:paperBots.mirror.snapshot(),lab:readLabWorkbench()}; }
 const UPDATE_STATUS_FILE = path.join(DATA_DIR,'update-status.json');
 const UPDATE_REQUEST_FILE = path.join(DATA_DIR,'update-request.json');
 // Desktop-shell preferences (read by desktop/main.cjs every ~1 s): background operation,
@@ -481,10 +482,12 @@ export function startDashboard() {
   const calibration=new WeatherCalibrator({dataDir:DATA_DIR});
   // The tape records what the bots saw; the farm prices its variants on the same frames as the live bots.
   const tape=new BotTape({dataDir:DATA_DIR}),kalshiBots=new KalshiPaperBots({dataDir:DATA_DIR,calibration,tape,kalshi:()=>marketPlatform().providers.providers.get('kalshi')||null,weather:()=>marketPlatform().weatherSnapshot()});
-  paperBots={calibration,tape,kalshi:kalshiBots,farm:new BotFarm({dataDir:DATA_DIR,bots:kalshiBots}),copy:new PolymarketCopyPaper({dataDir:DATA_DIR,tape})};
+  // The Kalshi mirror copies the Polymarket leaders' game-winner buys onto Kalshi (src/kalshiMirror.js).
+  const mirror=new KalshiMirrorPaper({dataDir:DATA_DIR,kalshi:()=>marketPlatform().providers.providers.get('kalshi')||null,sports:()=>marketPlatform().sportsSnapshot()});
+  paperBots={calibration,tape,kalshi:kalshiBots,farm:new BotFarm({dataDir:DATA_DIR,bots:kalshiBots}),mirror,copy:new PolymarketCopyPaper({dataDir:DATA_DIR,tape,onLeaderBuy:(f,t)=>mirror.enqueue(f,t)})};
   const botTimers=[];
   if(process.env.MPO_PAPER_BOTS!=='false'&&!process.env.NODE_TEST_CONTEXT){const every=(ms,first,fn)=>{const t=setTimeout(()=>{fn().catch(()=>{});const i=setInterval(()=>fn().catch(()=>{}),ms);i.unref();botTimers.push(i)},first);t.unref();botTimers.push(t)};
-    every(600_000,20_000,()=>paperBots.kalshi.run('weather'));every(600_000,90_000,()=>paperBots.kalshi.run('weather-nws'));every(180_000,150_000,()=>paperBots.kalshi.run('btc'));every(600_000,150_000,()=>paperBots.farm.run('weather'));every(180_000,170_000,()=>paperBots.farm.run('btc'));every(60_000,50_000,()=>paperBots.copy.run());
+    every(600_000,20_000,()=>paperBots.kalshi.run('weather'));every(600_000,90_000,()=>paperBots.kalshi.run('weather-nws'));every(180_000,150_000,()=>paperBots.kalshi.run('btc'));every(600_000,150_000,()=>paperBots.farm.run('weather'));every(180_000,170_000,()=>paperBots.farm.run('btc'));every(60_000,50_000,()=>paperBots.copy.run());every(60_000,80_000,()=>paperBots.mirror.run());
     // Weather calibration refits once a day (and at start when missing or older than 20 h).
     every(86_400_000,(calibration.state&&Date.now()-calibration.state.at<20*3600e3)?86_400_000:10_000,()=>calibration.run());}
   let intelligenceBusy=false,intelligenceClosed=false;
@@ -636,6 +639,7 @@ export function startDashboard() {
         try {
           if (!paperBots) throw new Error('Paper bots not started');
           if (bot==='farm') { if (action!=='reset') throw new Error('The farm only supports reset'); return json(res,{ok:true,result:paperBots.farm.reset(b)}); }
+          if (bot==='kalshimirror') { if (action==='reset') return json(res,{ok:true,result:paperBots.mirror.reset(b)}); if (action==='run') return json(res,{ok:true,result:await paperBots.mirror.run()}); throw new Error('The mirror supports run and reset'); }
           const target = bot==='polycopy' ? null : KALSHI_BOT_IDS.includes(bot) ? bot : (()=>{throw new Error('Unknown bot '+bot)})();
           let out;
           if (action==='config') out = target ? paperBots.kalshi.configure(target,b.settings||{}) : paperBots.copy.configure(b.settings||{});

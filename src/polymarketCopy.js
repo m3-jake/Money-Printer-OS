@@ -40,8 +40,8 @@ export function walkSell(bids, qty) {
 const sortBook = b => ({ asks: (b?.asks || []).slice().sort((x, y) => x.price - y.price), bids: (b?.bids || []).slice().sort((x, y) => y.price - x.price) });
 
 export class PolymarketCopyPaper {
-  constructor({ dataDir, tape = null, fetchImpl = globalThis.fetch, now = () => Date.now() } = {}) {
-    this.file = path.join(dataDir, 'polymarket-copy-paper.json'); this.tape = tape; this.fetch = fetchImpl; this.now = now; this.busy = false; this.recoveryError = null; this.state = this.load();
+  constructor({ dataDir, tape = null, onLeaderBuy = null, fetchImpl = globalThis.fetch, now = () => Date.now() } = {}) {
+    this.file = path.join(dataDir, 'polymarket-copy-paper.json'); this.tape = tape; this.onLeaderBuy = onLeaderBuy; this.fetch = fetchImpl; this.now = now; this.busy = false; this.recoveryError = null; this.state = this.load();
   }
   fresh(start = COPY_DEFAULTS.startUsd, settings = COPY_DEFAULTS, epoch = 1) { return { schema: SCHEMA, epoch, startUsd: start, cashUsd: start, settings: { ...settings, startUsd: start }, follows: [], open: [], history: [], decisions: [], seen: [], lastRunAt: null, lastError: null, lastNote: null }; }
   load() {
@@ -91,6 +91,7 @@ export class PolymarketCopyPaper {
             s.seen.push(key); if (s.seen.length > 3000) s.seen.splice(0, s.seen.length - 3000);
             taped.push([f.wallet, Number(t.timestamp) * 1000, t.asset, t.side, Number(t.price), Number(t.size), t.outcome ?? null, String(t.title || t.slug || '').slice(0, 80)]);
             if (Number(t.timestamp) * 1000 <= f.followedAt) continue; // only trades made after we started following
+            if (t.side === 'BUY') { try { this.onLeaderBuy?.(f, t); } catch {} } // the Kalshi mirror (src/kalshiMirror.js) sees every new buy
             if (await this.copy(f, t)) copied++;
           }
         }

@@ -213,3 +213,26 @@ test('the weather calibrator uses the Evolution Lab\'s best model when it beats 
   assert.match(asked, /models=gfs_seamless,ecmwf_ifs025/);
   assert.equal(await cal.model('NYC', tomorrow), null, 'lead 1: the Lab model does not beat the default and this calibration has none');
 });
+
+test('the Kalshi mirror copies a leader\'s game-winner buy onto Kalshi at Kalshi\'s price, and refuses anything else', async () => {
+  const { KalshiMirrorPaper, mirrorTarget } = await import('../src/kalshiMirror.js');
+  const events = [{ sport: 'MLB', participants: ['San Diego Padres', 'Milwaukee Brewers'], contracts: [
+    { venue: 'kalshi', type: 'GAME_WINNER', side: 'San Diego', sourceId: 'KXMLBGAME-X-SD', closeAt: 2e12 },
+    { venue: 'kalshi', type: 'GAME_WINNER', side: 'Milwaukee', sourceId: 'KXMLBGAME-X-MIL', closeAt: 2e12 },
+    { venue: 'polymarket', type: 'GAME_WINNER', title: 'San Diego Padres vs. Milwaukee Brewers', side: 'San Diego Padres' },
+    { venue: 'polymarket', type: 'SPREAD', title: 'Spread: Milwaukee Brewers (-1.5)', side: 'Milwaukee Brewers' }] }];
+  assert.equal(mirrorTarget({ title: 'San Diego Padres vs. Milwaukee Brewers', outcome: 'Milwaukee Brewers' }, events).contract.sourceId, 'KXMLBGAME-X-MIL');
+  assert.match(mirrorTarget({ title: 'Spread: Milwaukee Brewers (-1.5)', outcome: 'Milwaukee Brewers' }, events).reason, /not a game-winner/);
+  assert.match(mirrorTarget({ title: 'Will it rain in Paris?', outcome: 'Yes' }, events).reason, /not a game-winner/);
+  const dir = tmp(); let now = 1_800_000_000_000, result = null;
+  const k = { market: async () => ({ data: { status: 'ACTIVE', yesAsk: 0.62, yesBid: 0.6, feeModel: fee, settlementOutcome: result } }), book: async () => ({ yes: { asks: [{ price: 0.62, quantity: 100 }] }, no: { asks: [] } }) };
+  const m = new KalshiMirrorPaper({ dataDir: dir, kalshi: () => k, sports: async () => ({ events }), now: () => now });
+  m.enqueue({ name: 'lead' }, { transactionHash: 'h1', asset: 'a', title: 'San Diego Padres vs. Milwaukee Brewers', outcome: 'Milwaukee Brewers', price: 0.6, timestamp: Math.floor(now / 1000) });
+  m.enqueue({ name: 'lead' }, { transactionHash: 'h1', asset: 'a', title: 'dupe', outcome: 'x', price: 0.6, timestamp: Math.floor(now / 1000) });
+  let s = await m.run();
+  assert.equal(s.lastError, null); assert.equal(s.open.length, 1); assert.equal(s.open[0].ticker, 'KXMLBGAME-X-MIL'); assert.equal(s.open[0].avgPrice, 0.62, 'Kalshi ask, not the leader\'s 0.60'); assert.equal(s.queued, 0);
+  m.enqueue({ name: 'lead' }, { transactionHash: 'h2', asset: 'b', title: 'Spread: Milwaukee Brewers (-1.5)', outcome: 'Milwaukee Brewers', price: 0.5, timestamp: Math.floor(now / 1000) });
+  s = await m.run(); assert.equal(s.open.length, 1); assert.match(s.decisions[0].reason, /not a game-winner/);
+  result = 'YES'; now += 3600e3; s = await m.run();
+  assert.equal(s.open.length, 0); assert.equal(s.stats.settled, 1); assert.ok(s.stats.pnlUsd > 0);
+});

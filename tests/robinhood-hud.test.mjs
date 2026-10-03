@@ -74,7 +74,7 @@ test('multi-asset suite: crypto views keep their parts, stocks & ETFs and practi
  assert.match(panel,/Date\.now\(\)-rhEqAt<60000/,'equities polled at most once a minute');
  assert.match(panel,/rhPrompt\('RESET PRACTICE'/,'practice reset needs a typed phrase');
  assert.doesNotMatch(panel,/\/api\/robinhood-equities'[^)]*method/,'the stocks lane is never POSTed');
- assert.match(html,/const suite=`<div class="g-rows">\$\{gRow\('Stocks & ETFs'/,'glance shows the stocks line');assert.match(html,/gRow\('Practice',/,'glance shows the practice line');
+ assert.match(html,/const suite=`<div class="g-rows">\$\{rhWhyRows\(r\)\}\$\{gRow\('Stocks & ETFs'/,'glance explains why each book trades or waits, then the stocks line');assert.match(html,/gRow\('Practice',/,'glance shows the practice line');
  assert.match(html,/rhEq\?\.data\?\.status,rhEq\?\.book\?\.equityUsd,r\.practice\?\.equityUsd/,'glance re-renders when the suite changes');
  assert.match(html,/MPOViz\.canvas\('rh-edge',90,'edge meter · expected move vs required'\)/,'the glance keeps its graphs');
 });
