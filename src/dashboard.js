@@ -492,7 +492,7 @@ export function startDashboard() {
   // The tape records what the bots saw; the farm prices its variants on the same frames as the live bots.
   const tape=new BotTape({dataDir:DATA_DIR}),kalshiBots=new KalshiPaperBots({dataDir:DATA_DIR,calibration,tape,kalshi:()=>marketPlatform().providers.providers.get('kalshi')||null,weather:()=>marketPlatform().weatherSnapshot()});
   // The Kalshi mirror copies the Polymarket leaders' game-winner buys onto Kalshi (src/kalshiMirror.js).
-  const mirror=new KalshiMirrorPaper({dataDir:DATA_DIR,kalshi:()=>marketPlatform().providers.providers.get('kalshi')||null,sports:()=>marketPlatform().sportsSnapshot()});
+  const mirror=new KalshiMirrorPaper({dataDir:DATA_DIR,fetchImpl:globalThis.fetch,kalshi:()=>marketPlatform().providers.providers.get('kalshi')||null,sports:()=>marketPlatform().sportsSnapshot()});
   paperBots={calibration,tape,kalshi:kalshiBots,farm:new BotFarm({dataDir:DATA_DIR,bots:kalshiBots}),mirror,copy:new PolymarketCopyPaper({dataDir:DATA_DIR,tape,onLeaderBuy:(f,t)=>mirror.enqueue(f,t)})};
   registerPaperBots(()=>paperBots);
   // Each paper venue has its own timer, run budget and stall watchdog (src/venueLoop.js, run C2): a venue whose run

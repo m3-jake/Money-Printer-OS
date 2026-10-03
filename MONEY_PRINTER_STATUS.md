@@ -64,6 +64,27 @@ Architecture, active work and release evidence live in `.agent-state/PROJECT_STA
 ledger remains `AUDIT.md` and `PROGRESS.md`. Later sections below are historical unless dated
 as the current release. Last updated: 2026-10-03.
 
+## Batch PF-20 (2026-10-03, Claude): unstick the books that were not moving
+
+bing: "all but Pump.fun are seemingly dead in the water". Survey at 11:20 of every paper book (scoreboard closes,
+open, last close):
+
+| Book | Why it looked dead | Change |
+| --- | --- | --- |
+| Kalshi weather, NWS control, 7 weather farm variants | 10–17 open bets each on today's markets; they settle on tomorrow's NWS report | none (working) |
+| Kalshi BTC bot | observe-only since R-87: the guard judged the new revision-2 model on the 13 revision-1 bets that caused the change, so it could only come back after 20 newer observed bets | the guard counts only bets placed under the current model revision; every bet now records `modelRev` (`src/kalshiBots.js`) |
+| Kalshi mirror | 0 mirrors ever. The six copy-bot leaders' buys were spreads, totals and props (28 of the last 30). And the matcher required the Polymarket contract on the sports board, which carries 71 Polymarket game-winner contracts (mostly tennis) against 622 Kalshi ones, so NFL and soccer never matched; board names like "DEN Broncos" also never equalled Kalshi's side "Denver" | the mirror also watches the week's top 8 SPORTS-leaderboard wallets (public GETs, every 5 min, only buys made after it started watching); a Kalshi-only match by date + both teams ("A vs. B" with the bought team, or "Will X win on DATE?" bought YES); Kalshi sides also match by ticker team code (`-DEN`). Dry run on 395 real leader buys: draws, spreads, totals and props still refused; Broncos vs. 49ers (Sunday) now maps to `KXNFLGAME-26OCT04DENSF-DEN` |
+| Robinhood practice | entry needed a 24 h move of 2 × the 2.06% round trip (≈4%) on BTC/ETH only; BTC moved ≈0.4% today | practice settings (data, through its own config API): all 8 taped coins, entry cost multiple 0.5 (≈1% move). Practice never counts toward qualification or Lab promotion |
+| Robinhood exploration | was refused by the vol gate | none: A3 probes opened SOL, XRP and BTC at 11:14; they close within 4 h |
+| Robinhood strategy | `lowVol`: expected move 0.21% vs 0.40% required | none: that is the qualification gate, unchanged by rule |
+| Robinhood daily + walk-forward shadow | one decision per closed UTC day; the shadow started 10:49 | none: first shadow decision after 00:00 UTC |
+| Pump.fun copy | WAITING_FOR_WALLET_EVIDENCE: of 9,607 indexed wallets only 2 have the 10 graded round trips and none is profitable without its best trip | none (Pump.fun is parked; the gate stays) |
+| BTC farm r2 variant | no edge has cleared its stricter rule yet (1 slippage skip); vol × 1.0 variant trades | none |
+
+- **Verified:** `tests/paper-bots.test.mjs` 26/26 (3 new: revision-scoped guard; Kalshi-only match + team codes;
+  sports-leader polling with the watch-start rule and pacing). Trader `npm run test:all`: 1,293 tests, 1,273 pass,
+  0 fail (20 skipped).
+
 ## Release R-87 (2026-10-03, Claude): alpha.87 / Lab alpha.23 installed
 
 - **Pair:** MPOS `0.5.0-alpha.87` @ `1524483` + Lab `0.1.0-alpha.23` @ `b81b655`, installed 11:08 with

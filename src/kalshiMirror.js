@@ -20,6 +20,16 @@ import { sameName } from './core/contractTerms.js';
 import { walkAsks, paced } from './kalshiBots.js';
 
 const SCHEMA = 'mpo.kalshi-mirror-paper.v1';
+// Its own leaders (2026-10-03, run follow-up): the copy bot's six followed leaders mostly bet spreads, totals and
+// props, so the mirror found nothing to copy (0 of 30 leader buys were Kalshi-listed game winners). It also watches
+// the top Polymarket SPORTS-leaderboard wallets of the week, whose buys are largely game winners. Public GETs only,
+// about 1.6 a minute; only buys made after the mirror started watching a wallet are copied.
+const DATA = 'https://data-api.polymarket.com';
+export const MIRROR_SOURCE = Object.freeze({ leaders: 8, everyMs: 5 * 60e3, minVolUsd: 100_000, repickMs: 7 * 86400e3 });
+export function pickSportsLeaders(rows, now, { leaders = MIRROR_SOURCE.leaders, minVolUsd = MIRROR_SOURCE.minVolUsd } = {}) {
+  return (Array.isArray(rows) ? rows : []).filter(r => /^0x[0-9a-fA-F]{40}$/.test(String(r?.proxyWallet)) && Number(r.pnl) > 0 && Number(r.vol) >= minVolUsd)
+    .slice(0, leaders).map(r => ({ wallet: String(r.proxyWallet).toLowerCase(), name: String(r.userName || String(r.proxyWallet).slice(0, 8)).slice(0, 40), since: now, source: 'sports-leaderboard' }));
+}
 export const MIRROR_DEFAULTS = Object.freeze({ enabled: true, startUsd: 12.5, stakeUsd: 1, maxOpen: 10, maxChase: 0.05, minPrice: 0.05, maxPrice: 0.95 });
 const round = (v, d = 4) => Math.round(v * 10 ** d) / 10 ** d;
 const norm = s => String(s || '').toLowerCase().replace(/^(will |who will win:? )/, '').replace(/[^a-z0-9]+/g, ' ').trim();
@@ -43,6 +53,12 @@ function validateState(s) {
   return s;
 }
 
+// A board participant like "DEN Broncos" is Kalshi's side "Denver": the names differ, the ticker suffix (-DEN) does not.
+export function sideMatches(participant, c) {
+  if (sameName(participant, c.side)) return true;
+  const code = String(participant || '').trim().split(/\s+/)[0];
+  return /^[A-Z]{2,4}$/.test(code) && String(c.sourceId || '').split('-').pop() === code;
+}
 // The Kalshi GAME_WINNER contract for the team a Polymarket leader bought, or null with the reason.
 export function mirrorTarget(trade, events = []) {
   const title = norm(trade.title), outcome = norm(trade.outcome);
@@ -55,21 +71,44 @@ export function mirrorTarget(trade, events = []) {
   ].filter(v => v !== null);
   const hasIdentity = listed.some(({ pm }) => checks(pm).length);
   const matched = listed.filter(({ e, pm }) => (!day || e.day === day) && (hasIdentity ? checks(pm).length && checks(pm).every(Boolean) : title && norm(pm.title) === title));
-  if (!matched.length) return { reason: 'not a game-winner market Kalshi also lists' };
+  if (!matched.length) return kalshiOnlyTarget(trade, events, day);
   if (matched.length !== 1) return { reason: 'ambiguous game: market identity or game date is required' };
   const { e, pm } = matched[0];
   if (!Array.isArray(e.participants) || e.participants.length !== 2) return { reason: 'game participants are not established' };
   const teams = e.participants.filter(p => outcome && sameName(p, outcome));
   if (teams.length !== 1) return { reason: 'outcome is not exactly one of the two teams' };
   const team = teams[0];
-  const candidates = (e.contracts || []).filter(c => c.venue === 'kalshi' && c.type === 'GAME_WINNER' && c.sourceId && c.side && sameName(team, c.side));
-  if (candidates.length !== 1 || e.participants.filter(p => sameName(p, candidates[0]?.side)).length !== 1) return { reason: 'no unambiguous Kalshi game-winner contract for this game' };
+  const candidates = (e.contracts || []).filter(c => c.venue === 'kalshi' && c.type === 'GAME_WINNER' && c.sourceId && c.side && sideMatches(team, c));
+  if (candidates.length !== 1 || e.participants.filter(p => sideMatches(p, candidates[0])).length !== 1) return { reason: 'no unambiguous Kalshi game-winner contract for this game' };
   return { event: e, team, contract: candidates[0], polymarket: pm };
 }
 
+// When the sports board has no Polymarket contract for the game (it carries few; mostly tennis), match the Kalshi game
+// directly: a dated game (from the trade's event slug) whose two participants are exactly the two teams in a
+// "Team A vs. Team B" title, with the bought outcome one of them; or "Will Team win on YYYY-MM-DD?" bought YES.
+// Spreads, totals, props and draws never match ("vs." titles with a colon or "draw" are refused).
+export function kalshiOnlyTarget(trade, events = [], day = null) {
+  const raw = String(trade.title || '').trim(), out = String(trade.outcome || '').trim();
+  let teams = null, team = null;
+  const vs = raw.match(/^(.+?)\s+vs\.?\s+(.+?)$/i), win = raw.match(/^will (.+?) win on (20\d{2}-\d{2}-\d{2})\??$/i);
+  if (vs && !/[:?]/.test(raw) && !/draw/i.test(raw)) { teams = [vs[1], vs[2]]; team = teams.find(t => sameName(t, out)) || null; }
+  else if (win && /^yes$/i.test(out)) { team = win[1]; day ||= win[2]; }
+  if (!team || !day) return { reason: 'not a game-winner market Kalshi also lists' };
+  const games = events.filter(e => e.day === day && Array.isArray(e.participants) && e.participants.length === 2
+    && e.participants.some(p => sameName(p, team)) && (!teams || teams.every(t => e.participants.some(p => sameName(p, t))))
+    && (e.contracts || []).some(c => c.venue === 'kalshi' && c.type === 'GAME_WINNER'));
+  if (!games.length) return { reason: 'not a game-winner market Kalshi also lists' };
+  if (games.length !== 1) return { reason: 'ambiguous game: market identity or game date is required' };
+  const e = games[0], side = e.participants.filter(p => sameName(p, team));
+  if (side.length !== 1) return { reason: 'outcome is not exactly one of the two teams' };
+  const candidates = (e.contracts || []).filter(c => c.venue === 'kalshi' && c.type === 'GAME_WINNER' && c.sourceId && c.side && sideMatches(side[0], c));
+  if (candidates.length !== 1) return { reason: 'no unambiguous Kalshi game-winner contract for this game' };
+  return { event: e, team: side[0], contract: candidates[0], polymarket: null, matchedBy: 'kalshi-only (date + both teams)' };
+}
+
 export class KalshiMirrorPaper {
-  constructor({ dataDir, kalshi = () => null, sports = async () => null, now = () => Date.now() } = {}) {
-    this.file = path.join(dataDir, 'kalshi-mirror-paper.json'); this.kalshi = kalshi; this.sports = sports; this.now = now; this.busy = false; this.recoveryError = null; this.state = this.load();
+  constructor({ dataDir, kalshi = () => null, sports = async () => null, fetchImpl = null, now = () => Date.now() } = {}) {
+    this.file = path.join(dataDir, 'kalshi-mirror-paper.json'); this.kalshi = kalshi; this.sports = sports; this.fetch = fetchImpl; this.now = now; this.busy = false; this.recoveryError = null; this.state = this.load();
   }
   fresh(start = MIRROR_DEFAULTS.startUsd, settings = MIRROR_DEFAULTS, epoch = 1) { return { schema: SCHEMA, epoch, startUsd: start, cashUsd: start, settings: { ...settings, startUsd: start }, queue: [], open: [], history: [], decisions: [], seen: [], lastRunAt: null, lastError: null, lastNote: null }; }
   load() {
@@ -98,6 +137,29 @@ export class KalshiMirrorPaper {
     if (this.state.queue.length > 50) { const dropped = this.state.queue.shift(); this.decide({ leader: dropped.leader, title: dropped.title, action: 'SKIP', reason: 'bounded mirror queue full' }); } this.save();
   }
 
+  async get(url) { const r = await this.fetch(url, { headers: { accept: 'application/json', 'user-agent': 'MoneyPrinterOS/0.5' }, signal: AbortSignal.timeout?.(15000) }); if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }
+  // Watch the week's top sports-leaderboard wallets and queue their new BUYs (see MIRROR_SOURCE).
+  async pollSportsLeaders() {
+    const s = this.state; if (!this.fetch || !s.settings.enabled) return 0;
+    s.sports ||= { leaders: [], pickedAt: 0, lastAt: 0, queued: 0 };
+    if (this.now() - s.sports.lastAt < MIRROR_SOURCE.everyMs) return 0;
+    s.sports.lastAt = this.now();
+    if (!s.sports.leaders.length || this.now() - s.sports.pickedAt > MIRROR_SOURCE.repickMs) {
+      const picked = pickSportsLeaders(await this.get(`${DATA}/v1/leaderboard?category=SPORTS&timePeriod=WEEK&orderBy=PNL&limit=50`), this.now());
+      const kept = new Map(s.sports.leaders.map(l => [l.wallet, l]));
+      s.sports.leaders = picked.map(l => kept.get(l.wallet) || l); s.sports.pickedAt = this.now();
+    }
+    let queued = 0;
+    for (const L of s.sports.leaders) {
+      let trades = []; try { trades = await this.get(`${DATA}/trades?user=${L.wallet}&limit=25`); } catch { continue; }
+      for (const t of (Array.isArray(trades) ? trades : []).slice().reverse()) {
+        if (t?.side !== 'BUY' || !(Number(t.timestamp) * 1000 > L.since)) continue;
+        const before = s.queue.length; this.enqueue(L, t); if (s.queue.length > before) queued++;
+      }
+    }
+    s.sports.queued += queued; return queued;
+  }
+
   async run() {
     if (this.recoveryError) throw new Error(this.recoveryError);
     if (this.busy) return this.snapshot(); this.busy = true;
@@ -105,6 +167,7 @@ export class KalshiMirrorPaper {
     try {
       const k = this.kalshi(); if (!k) throw new Error('Kalshi provider unavailable');
       await this.settle(k);
+      try { await this.pollSportsLeaders(); } catch (e) { this.decide({ action: 'SKIP', reason: 'sports leaderboard unavailable: ' + String(e.message || e).slice(0, 120) }); }
       const queue = s.queue.slice(); let entered = 0;
       if (st.enabled && queue.length) {
         const board = await this.sports();
@@ -170,7 +233,7 @@ export class KalshiMirrorPaper {
     if (this.recoveryError) return { id: 'kalshimirror', label: 'Kalshi mirror of Polymarket leaders', mode: 'PAPER', recoveryRequired: true, startUsd: null, cashUsd: null, equityUsd: null, returnPct: null, settings: this.state.settings, queued: 0, open: [], history: [], decisions: [], stats: { settled: null, wins: null, pnlUsd: null, feesUsd: null }, lastRunAt: null, lastError: this.recoveryError, lastNote: 'Existing book preserved; recovery required', running: this.busy };
     const s = this.state, h = s.history, n = h.length, open = s.open.reduce((a, p) => a + (p.markUsd ?? p.costUsd), 0), equity = s.cashUsd + open;
     return { id: 'kalshimirror', label: 'Kalshi mirror of Polymarket leaders', mode: 'PAPER', epoch: s.epoch, settings: s.settings, startUsd: s.startUsd, cashUsd: round(s.cashUsd, 2), equityUsd: round(equity, 2), returnPct: round((equity - s.startUsd) / s.startUsd * 100, 2),
-      queued: s.queue.length, open: s.open, history: h.slice(0, 50), decisions: s.decisions.slice(0, 30), matcher:s.matcher||null,attribution:copyAttribution(h),
+      queued: s.queue.length, open: s.open, history: h.slice(0, 50), decisions: s.decisions.slice(0, 30), matcher:s.matcher||null,sportsLeaders:s.sports?{watching:s.sports.leaders.length,pickedAt:s.sports.pickedAt,lastAt:s.sports.lastAt,queued:s.sports.queued,names:s.sports.leaders.map(l=>l.name)}:null,attribution:copyAttribution(h),
       stats: { settled: n, wins: h.filter(x => x.won).length, pnlUsd: round(h.reduce((a, x) => a + x.pnlUsd, 0), 2), feesUsd: round(h.reduce((a, x) => a + x.feeUsd, 0), 2) },
       lastRunAt: s.lastRunAt, lastError: this.recoveryError || s.lastError, lastNote: s.lastNote, running: this.busy };
   }

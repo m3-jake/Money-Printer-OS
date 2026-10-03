@@ -248,7 +248,9 @@ export class KalshiPaperBots {
 
   // The model-vs-market guard over real and observed settled bets; a change of state goes to the decision log.
   guard(b) {
-    const was = b.standDown?.active === true, g = modelGuard([...b.history, ...(b.observedHistory || [])]);
+    // Only bets placed under the current model revision count: a new model is not judged on the old one's bets.
+    const rev = b.modelRev ?? 1, current = x => (x.modelRev ?? 1) === rev;
+    const was = b.standDown?.active === true, g = modelGuard([...b.history, ...(b.observedHistory || [])].filter(current));
     b.standDown = { ...g, since: g.active ? (was ? b.standDown.since : this.now()) : null };
     if (g.active !== was) this.decide(b, { action: g.active ? 'STAND DOWN' : 'RESUME', reason: g.reason });
     return b.standDown;
@@ -264,7 +266,7 @@ export class KalshiPaperBots {
       if (observing) {
         if (held.has(x.eventTicker)) continue;
         if (b.observedOpen.length >= s.maxOpen) { this.decide(b, { event: x.eventTicker, label: x.label, action: 'SKIP', reason: 'max observed bets' }); break; }
-        b.observedOpen.push(observedBet(x, this.now())); held.add(x.eventTicker); observed++;
+        b.observedOpen.push(observedBet(x, this.now(), { modelRev: b.modelRev ?? 1 })); held.add(x.eventTicker); observed++;
         this.decide(b, { event: x.eventTicker, ticker: x.ticker, label: x.label, side: x.side, action: 'OBSERVE', pModel: round(x.pModel, 3), price: x.ask, edge: round(x.edge, 3), reason: 'observe-only: recorded, no paper cash used' });
         continue;
       }
@@ -286,7 +288,7 @@ export class KalshiPaperBots {
     if (edge < requiredEdge) { this.decide(b, { event: eventTicker, ticker, side, action: 'SKIP', reason: `edge ${round(edge, 3)} after walking the book < ${requiredEdge}` }); return false; }
     if (cost + fee > b.cashUsd) { this.decide(b, { event: eventTicker, ticker, side, action: 'SKIP', reason: 'not enough paper cash' }); return false; }
     b.cashUsd = round(b.cashUsd - cost - fee, 6);
-    b.open.push({ id: `${b.id}-${this.now()}-${ticker}`, ticker, eventTicker, title, label, side, qty: filled, avgPrice: round(avg, 4), costUsd: round(cost, 4), feeUsd: round(fee, 4), pModel: round(pModel, 4), marketPrice: round(avg, 4), openedAt: this.now(), closeAt, markUsd: round(cost, 4), context });
+    b.open.push({ id: `${b.id}-${this.now()}-${ticker}`, modelRev: b.modelRev ?? 1, ticker, eventTicker, title, label, side, qty: filled, avgPrice: round(avg, 4), costUsd: round(cost, 4), feeUsd: round(fee, 4), pModel: round(pModel, 4), marketPrice: round(avg, 4), openedAt: this.now(), closeAt, markUsd: round(cost, 4), context });
     this.decide(b, { event: eventTicker, ticker, label, side, action: 'ENTER', pModel: round(pModel, 3), price: round(avg, 3), fee: round(fee, 2), edge: round(edge, 3), qty: filled });
     return true;
   }
@@ -385,7 +387,7 @@ export class KalshiPaperBots {
     return { id, label: id === 'weather' ? 'Kalshi weather bot' : id === 'weather-nws' ? 'Kalshi weather bot · control (NWS only, no calibration)' : 'Kalshi BTC range bot', mode: 'PAPER', epoch: b.epoch, settings: b.settings, startUsd: b.startUsd, cashUsd: round(b.cashUsd, 2), equityUsd: round(equity, 2), returnPct: round((equity - b.startUsd) / b.startUsd * 100, 2),
       open: b.open, history: h.slice(0, 50), decisions: b.decisions.slice(0, 30), curve: curve.slice(-200),
       stats: { settled: n, wins, hitRate: n ? round(wins / n, 3) : null, pnlUsd: round(pnl, 2), feesUsd: round(h.reduce((s, x) => s + x.feeUsd, 0), 2), brierModel: brier('brierModel'), brierMarket: brier('brierMarket'), maxDrawdownUsd: round(dd, 2) },
-      standDown: b.standDown || modelGuard([...h, ...(b.observedHistory || [])]),
+      standDown: b.standDown || modelGuard([...h, ...(b.observedHistory || [])].filter(x => (x.modelRev ?? 1) === (b.modelRev ?? 1))), modelRev: b.modelRev ?? 1,
       observed: { open: (b.observedOpen || []).length, settled: (b.observedHistory || []).length, wins: (b.observedHistory || []).filter(x => x.won).length, pnlUsd: round((b.observedHistory || []).reduce((s, x) => s + x.pnlUsd, 0), 2), recent: (b.observedHistory || []).slice(0, 20), openBets: b.observedOpen || [] },
       lastRunAt: b.lastRunAt, lastError: this.recoveryError || b.lastError, lastNote: b.lastNote, running: this.busy.has(id) };
   }

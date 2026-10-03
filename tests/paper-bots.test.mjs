@@ -365,3 +365,44 @@ test('a farm variant whose model is worse than the market records observe-only b
   result.value = 'YES'; now += 11 * 3600e3; f = await farm.run('weather');
   assert.equal(v('wx-cal-e04').observed.settled, 1); assert.equal(v('wx-cal-e04').settled, 12, 'observed bets never enter the real book');
 });
+
+test('a new BTC model revision is judged only on its own bets, not the previous model\'s', async () => {
+  const dir = tmp(); const now = Date.UTC(2026, 9, 3, 12);
+  const bots = new KalshiPaperBots({ dataDir: dir, kalshi: () => null, weather: async () => null, now: () => now });
+  const b = bots.state.bots.btc; assert.equal(b.modelRev, BTC_MODEL_REV);
+  b.history = [...Array(13)].map((_, i) => settledBet(i, { model: 0.33, market: 0.22, t0: now - 86400e3 }));      // revision 1, worse than the market
+  assert.equal(bots.guard(b).active, false, 'revision-2 has no settled bets of its own yet, so it trades');
+  b.history.unshift(...[...Array(12)].map((_, i) => ({ ...settledBet(50 + i, { model: 0.3, market: 0.1, t0: now }), modelRev: BTC_MODEL_REV })));
+  assert.equal(bots.guard(b).active, true, 'and stands down if its own bets are worse than the market');
+});
+
+test('the mirror matches a Kalshi game by date and both teams when the board has no Polymarket contract; team codes match Kalshi sides', async () => {
+  const { mirrorTarget, sideMatches, pickSportsLeaders } = await import('../src/kalshiMirror.js');
+  const events = [{ day: '2026-10-04', participants: ['DEN Broncos', 'SF 49ers'], contracts: [
+    { venue: 'kalshi', type: 'GAME_WINNER', side: 'San Francisco', sourceId: 'KXNFLGAME-26OCT04DENSF-SF' },
+    { venue: 'kalshi', type: 'GAME_WINNER', side: 'Denver', sourceId: 'KXNFLGAME-26OCT04DENSF-DEN' }] },
+  { day: '2026-10-04', participants: ['Spain', 'Italy'], contracts: [{ venue: 'kalshi', type: 'GAME_WINNER', side: 'Spain', sourceId: 'KXSOC-X-ESP' }, { venue: 'kalshi', type: 'GAME_WINNER', side: 'Italy', sourceId: 'KXSOC-X-ITA' }] }];
+  assert.equal(sideMatches('DEN Broncos', events[0].contracts[1]), true); assert.equal(sideMatches('DEN Broncos', events[0].contracts[0]), false);
+  assert.equal(mirrorTarget({ title: 'Broncos vs. 49ers', outcome: 'Broncos', eventSlug: 'nfl-den-sf-2026-10-04' }, events).contract.sourceId, 'KXNFLGAME-26OCT04DENSF-DEN');
+  assert.equal(mirrorTarget({ title: 'Will Spain win on 2026-10-04?', outcome: 'Yes' }, events).contract.sourceId, 'KXSOC-X-ESP');
+  for (const t of [{ title: 'Will Spain win on 2026-10-04?', outcome: 'No' }, { title: 'Broncos vs. 49ers: O/U 43.5', outcome: 'Over', eventSlug: 'nfl-den-sf-2026-10-04' },
+    { title: 'Will Spain vs. Italy end in a draw?', outcome: 'Yes', eventSlug: 'x-2026-10-04' }, { title: 'Broncos vs. 49ers', outcome: 'Broncos', eventSlug: 'nfl-den-sf-2026-10-05' }])
+    assert.equal(mirrorTarget(t, events).contract, undefined, JSON.stringify(t));
+  const leaders = pickSportsLeaders([{ proxyWallet: '0x' + 'a'.repeat(40), userName: 'A', pnl: 5, vol: 200000 }, { proxyWallet: '0x' + 'b'.repeat(40), pnl: -1, vol: 9e6 }, { proxyWallet: 'bad', pnl: 9, vol: 9e9 }], 123);
+  assert.deepEqual(leaders.map(l => [l.wallet, l.since]), [['0x' + 'a'.repeat(40), 123]]);
+});
+
+test('the mirror watches sports-leaderboard wallets and queues only their buys made after it started watching', async () => {
+  const { KalshiMirrorPaper } = await import('../src/kalshiMirror.js');
+  const dir = tmp(); let now = Date.UTC(2026, 9, 4, 15); const w = '0x' + 'c'.repeat(40); let calls = 0;
+  const trades = [{ side: 'BUY', timestamp: (now - 3600e3) / 1000, transactionHash: 'old', asset: 'a1', title: 'Broncos vs. 49ers', outcome: 'Broncos', price: 0.5 }];
+  const fetchImpl = async url => { calls++; return { ok: true, json: async () => String(url).includes('leaderboard') ? [{ proxyWallet: w, userName: 'Sharp', pnl: 10, vol: 5e5 }] : trades }; };
+  const m = new KalshiMirrorPaper({ dataDir: dir, fetchImpl, kalshi: () => null, now: () => now });
+  assert.equal(await m.pollSportsLeaders(), 0, 'a buy from before we watched is never copied');
+  trades.push({ side: 'BUY', timestamp: (now + 60e3) / 1000, transactionHash: 'new', asset: 'a2', title: 'Broncos vs. 49ers', outcome: 'Broncos', price: 0.52 }, { side: 'SELL', timestamp: (now + 61e3) / 1000, transactionHash: 's', asset: 'a2', title: 'x', outcome: 'y', price: 0.6 });
+  now += 2 * 60e3; assert.equal(await m.pollSportsLeaders(), 0, 'paced: at most every 5 minutes');
+  now += 5 * 60e3; assert.equal(await m.pollSportsLeaders(), 1);
+  assert.equal(m.state.queue[0].leader, 'Sharp'); assert.equal(m.snapshot().sportsLeaders.watching, 1);
+  assert.ok(calls <= 5);
+  assert.equal(await new KalshiMirrorPaper({ dataDir: tmp(), kalshi: () => null }).pollSportsLeaders(), 0, 'no fetch, no polling (offline tests)');
+});
