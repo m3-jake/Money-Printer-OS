@@ -13,6 +13,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { writeFileAtomicSync } from './atomicRename.js';
 import { assertPaperPrimaryAvailable, markPaperInitialized } from './paperBookStore.js';
+import { CopyWorkBudget } from './copyWorkBudget.js';
 import { takerFee, polymarketFeeModel } from './core/fees.js';
 import { copyAttribution, copyRisk, COPY_EVICT_MIN_CLOSES } from './copyAttribution.js';
 import { copyEvent, tradeKey, validCopyTrade, fetchLeaderTrades, classifyCopyMarket, CopyMetadataCache, boundedCopyMap, copyLatencySummary, oppositeCopyOutcome, COPY_POLICY_SUPPORT } from './copyEvent.js';
@@ -44,9 +45,9 @@ export function walkSell(bids, qty) {
 const sortBook = b => ({ asks: (b?.asks || []).slice().sort((x, y) => x.price - y.price), bids: (b?.bids || []).slice().sort((x, y) => y.price - x.price) });
 
 export class PolymarketCopyPaper {
-  constructor({ dataDir, tape = null, onLeaderBuy = null, onLeaderEvent = null, metadataCache = null, readCache = null, experiment = null, fetchImpl = globalThis.fetch, now = () => Date.now() } = {}) {
+  constructor({ dataDir, tape = null, onLeaderBuy = null, onLeaderEvent = null, metadataCache = null, readCache = null, experiment = null, fetchImpl = globalThis.fetch, now = () => Date.now(), workBudget = {} } = {}) {
     this.file = path.join(dataDir, 'polymarket-copy-paper.json'); this.tape = tape; this.onLeaderBuy = onLeaderBuy; this.fetch = fetchImpl; this.now = now; this.busy = false; this.recoveryError = null; this.state = this.load();
-    this.onLeaderEvent = onLeaderEvent; this.metadataCache = metadataCache || new CopyMetadataCache({ now }); this.readCache = readCache;
+    this.workBudget = new CopyWorkBudget(workBudget); this.onLeaderEvent = onLeaderEvent; this.metadataCache = metadataCache || new CopyMetadataCache({ now }); this.readCache = readCache;
     this.state.intents ||= {}; this.state.cursors ||= {}; this.state.exitLeaders ||= []; this.state.sourceHoldings ||= {}; this.state.receipts ||= [];
     if (experiment && !this.recoveryError) {
       if (!experiment.id || !['direct', 'liquidity-scaled', 'no-trade', 'random-eligible', 'category-specialist', 'momentum-confirmed', 'fade'].includes(experiment.policy)) throw new Error('copy experiment requires id and executable policy');
@@ -70,7 +71,7 @@ export class PolymarketCopyPaper {
     catch (e) { this.recoveryError = `Copy book unreadable (${e.message}); the file was kept. Reset to start a new book.`; return this.fresh(); }
   }
   save() { if (this.recoveryError) throw new Error(this.recoveryError); try { assertPaperPrimaryAvailable(this.file); fs.mkdirSync(path.dirname(this.file), { recursive: true }); writeFileAtomicSync(this.file, JSON.stringify(this.state)); markPaperInitialized(this.file); } catch (e) { this.recoveryError = `Copy persistence failed (${e.message}); recovery is required.`; throw new Error(this.recoveryError); } }
-  async get(url) { const loader = async () => { const r = await this.fetch(url, { headers: { accept: 'application/json', 'user-agent': 'MoneyPrinterOS/0.5' }, signal: AbortSignal.timeout?.(15000) }); if (!r.ok) { const e = new Error(`HTTP ${r.status} from ${new URL(url).host}`); e.status = r.status; throw e; } return r.json(); }; return this.readCache ? this.readCache.get(url, loader) : loader(); }
+  async get(url) { const loader = signal => this.fetch(url, { headers: { accept: 'application/json', 'user-agent': 'MoneyPrinterOS/0.5' }, signal }).then(async r => { if (!r.ok) { const e = new Error(`HTTP ${r.status} from ${new URL(url).host}`); e.status = r.status; throw e; } return r.json(); }); return this.workBudget.call(url, signal => this.readCache ? this.readCache.get(url, () => loader(signal)) : loader(signal)); }
   decide(row) { this.state.decisions.unshift({ at: this.now(), ...row }); this.state.decisions.length = Math.min(this.state.decisions.length, 60); }
   configure(patch = {}) {
     if (this.state.experiment && Object.entries(patch).some(([k, v]) => k !== 'enabled' && k in COPY_DEFAULTS && v !== this.state.settings[k])) throw new Error('Experiment parameters are immutable; create a separately funded cohort');
@@ -94,7 +95,8 @@ export class PolymarketCopyPaper {
     }, force);
   }
 
-  async run({ settlement = true } = {}) {
+  run(options = {}) { return this.workBudget.run(() => this.runBounded(options)); }
+  async runBounded({ settlement = true } = {}) {
     if (this.recoveryError) throw new Error(this.recoveryError);
     if (this.busy) return this.snapshot(); this.busy = true;
     const s = this.state, st = s.settings;
@@ -155,6 +157,7 @@ export class PolymarketCopyPaper {
         }
         let decisionsSinceYield = 0;
         for (const intent of Object.values(s.intents).filter(i => i.status === 'PENDING').sort((a, b) => a.receipt.eventAt - b.receipt.eventAt)) {
+          if (this.workBudget.remaining() <= 0) break;
           const r = intent.receipt, t = intent.trade, f = intent.leader;
           let executionAttempted = false;
           if (r.eventAt <= f.followedAt || t.side === 'BUY' && this.now() - r.eventAt > st.maxTradeAgeMs) { intent.status = 'SKIPPED'; r.reason = r.eventAt <= f.followedAt ? 'before leader selection' : 'stale leader trade'; }
@@ -317,7 +320,8 @@ export class PolymarketCopyPaper {
     }
   }
 
-  async runSettlement() { if (this.recoveryError) throw new Error(this.recoveryError); if (this.settlementBusy) return this.snapshot(); this.settlementBusy = true; try { await this.settle(); } finally { this.settlementBusy = false; this.save(); } return this.snapshot(); }
+  runSettlement() { return this.workBudget.run(() => this.settlementBounded()); }
+  async settlementBounded() { if (this.recoveryError) throw new Error(this.recoveryError); if (this.settlementBusy) return this.snapshot(); this.settlementBusy = true; try { await this.settle(); } finally { this.settlementBusy = false; this.save(); } return this.snapshot(); }
 
   operatingState() {
     const s = this.state, st = s.settings;
@@ -332,7 +336,7 @@ export class PolymarketCopyPaper {
     let run = s.startUsd; const curve = [{ at: null, equityUsd: s.startUsd }]; for (const x of h.slice().reverse()) { run += x.pnlUsd; curve.push({ at: x.closedAt, equityUsd: round(run, 2) }); }
     return { id: 'polycopy', label: 'Polymarket copy bot', mode: 'PAPER', ...this.operatingState(), venue: 'polymarket.com (global), not Polymarket US', epoch: s.epoch, settings: s.settings, startUsd: s.startUsd, cashUsd: round(s.cashUsd, 2), equityUsd: round(equity, 2), returnPct: round((equity - s.startUsd) / s.startUsd * 100, 2),
       follows: s.follows, open: s.open.map(({ feeModel, ...p }) => p), history: h.slice(0, 50).map(({ feeModel, ...p }) => p), decisions: s.decisions.slice(0, 30), curve: curve.slice(-200), byLeader: Object.values(byLeader).sort((a, b) => b.pnlUsd - a.pnlUsd),
-      attribution:copyAttribution(h),latency:copyLatencySummary(s.receipts || []),discoveryCache:this.readCache?.stats || null,policySupport:COPY_POLICY_SUPPORT, drawdownPause:s.drawdownPause||copyRisk(s),evicted:s.evicted||{}, exitLeaders: s.exitLeaders, cursors: s.cursors, pendingIntents: Object.values(s.intents || {}).filter(i => i.status === 'PENDING').length,pendingHandoffs:Object.values(s.intents || {}).filter(i => i.handoffPending).length, receipts: (s.receipts || []).slice(-30), experiment: s.experiment || null,
+      attribution:copyAttribution(h),latency:copyLatencySummary(s.receipts || []),discoveryCache:this.readCache?.stats || null,workBudget:{runMs:this.workBudget.runMs,requestMs:this.workBudget.requestMs,drainingReads:[...this.workBudget.flights.values()].filter(f=>f.expired).length},policySupport:COPY_POLICY_SUPPORT, drawdownPause:s.drawdownPause||copyRisk(s),evicted:s.evicted||{}, exitLeaders: s.exitLeaders, cursors: s.cursors, pendingIntents: Object.values(s.intents || {}).filter(i => i.status === 'PENDING').length,pendingHandoffs:Object.values(s.intents || {}).filter(i => i.handoffPending).length, receipts: (s.receipts || []).slice(-30), experiment: s.experiment || null,
       stats: { closed: n, wins, hitRate: n ? round(wins / n, 3) : null, pnlUsd: round(h.reduce((a, x) => a + x.pnlUsd, 0), 2), feesUsd: round(h.reduce((a, x) => a + x.feeUsd + (x.exitFeeUsd || 0), 0), 2) },
       lastRunAt: s.lastRunAt, lastError: this.recoveryError || s.lastError, lastNote: s.lastNote, running: this.busy };
   }

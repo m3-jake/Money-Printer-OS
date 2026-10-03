@@ -16,6 +16,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { writeFileAtomicSync } from './atomicRename.js';
 import { assertPaperPrimaryAvailable, markPaperInitialized } from './paperBookStore.js';
+import { CopyWorkBudget } from './copyWorkBudget.js';
 import { takerFee } from './core/fees.js';
 import { sameName } from './core/contractTerms.js';
 import { walkAsks, paced } from './kalshiBots.js';
@@ -110,9 +111,9 @@ export function kalshiOnlyTarget(trade, events = [], day = null) {
 }
 
 export class KalshiMirrorPaper {
-  constructor({ dataDir, kalshi = () => null, sports = async () => null, fetchImpl = null, readCache = null, now = () => Date.now() } = {}) {
+  constructor({ dataDir, kalshi = () => null, sports = async () => null, fetchImpl = null, readCache = null, now = () => Date.now(), workBudget = {} } = {}) {
     this.file = path.join(dataDir, 'kalshi-mirror-paper.json'); this.kalshi = kalshi; this.sports = sports; this.fetch = fetchImpl; this.now = now; this.busy = false; this.recoveryError = null; this.state = this.load();
-    this.readCache = readCache;
+    this.workBudget = new CopyWorkBudget(workBudget); this.readCache = readCache;
   }
   fresh(start = MIRROR_DEFAULTS.startUsd, settings = MIRROR_DEFAULTS, epoch = 1) { return { schema: SCHEMA, epoch, startUsd: start, cashUsd: start, settings: { ...settings, startUsd: start }, queue: [], open: [], history: [], decisions: [], seen: [], lastRunAt: null, lastError: null, lastNote: null }; }
   load() {
@@ -148,7 +149,9 @@ export class KalshiMirrorPaper {
     } this.save(); if (queueError) throw new Error(queueError);
   }
 
-  async get(url) { const loader = async () => { const r = await this.fetch(url, { headers: { accept: 'application/json', 'user-agent': 'MoneyPrinterOS/0.5' }, signal: AbortSignal.timeout?.(15000) }); if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }; return this.readCache ? this.readCache.get(url, loader) : loader(); }
+  async get(url) { const loader = async signal => { const r = await this.fetch(url, { headers: { accept: 'application/json', 'user-agent': 'MoneyPrinterOS/0.5' }, signal }); if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }; return this.workBudget.call(url, signal => this.readCache ? this.readCache.get(url, () => loader(signal)) : loader(signal)); }
+  sportsBoard() { return this.workBudget.call('sports-board', () => this.sports()); }
+  providerRead(k, method, ticker) { return this.workBudget.call(`kalshi:${method}:${ticker}`, () => paced(() => { this.workBudget.assert(); return k[method](ticker); })); }
   // Watch the week's top sports-leaderboard wallets and queue their new BUYs (see MIRROR_SOURCE).
   async pollSportsLeaders() {
     const s = this.state; if (!this.fetch || !s.settings.enabled && !s.open.length) return 0;
@@ -157,7 +160,7 @@ export class KalshiMirrorPaper {
     s.sports.lastAt = this.now();
     if (s.sports.leaders.length < MIRROR_SOURCE.leaders || this.now() - s.sports.pickedAt > MIRROR_SOURCE.repickMs) { // kept leaders keep their watch-start
       const rows = await this.get(`${DATA}/v1/leaderboard?category=SPORTS&timePeriod=WEEK&orderBy=PNL&limit=50`);
-      let board = null; try { board = await this.sports(); } catch {}
+      let board = null; try { board = await this.sportsBoard(); } catch {}
       const overlap = { ...(s.leaderOverlap || {}) };
       if (Array.isArray(board?.events) && board.events.length) {
         // Historical previews only rank capability overlap. They never enter the forward book.
@@ -176,6 +179,7 @@ export class KalshiMirrorPaper {
     let queued = 0;
     const watched = [...new Map([...s.sports.leaders, ...(s.sports.exitLeaders || [])].filter(l => s.settings.enabled && s.sports.leaders.includes(l) || s.open.some(p => p.leaderWallet === l.wallet)).map(l => [l.wallet, l])).values()];
     for (const L of watched) {
+      if (this.workBudget.remaining() <= 0) break;
       let trades = []; try { const page = await fetchLeaderTrades(u => this.get(u), L.wallet, { boundaryAt: Math.max(L.since, this.now() - MAX_TRADE_AGE_MS) }); trades = page.trades; L.catchup = { at: this.now(), pages: page.pages, complete: page.complete }; } catch { continue; }
       for (const t of (Array.isArray(trades) ? trades : []).slice().reverse()) {
         if (!['BUY', 'SELL'].includes(t?.side) || !(Number(t.timestamp) * 1000 > L.since)) continue;
@@ -185,24 +189,32 @@ export class KalshiMirrorPaper {
     s.sports.queued += queued; return queued;
   }
 
-  async run({ settlement = true } = {}) {
+  run(options = {}) { return this.workBudget.run(() => this.runBounded(options)); }
+  async runBounded({ settlement = true } = {}) {
     if (this.recoveryError) throw new Error(this.recoveryError);
     if (this.busy) return this.snapshot(); this.busy = true;
     const s = this.state, st = s.settings;
     try {
       const k = this.kalshi(); if (!k) throw new Error('Kalshi provider unavailable');
-      try { await this.pollSportsLeaders(); } catch (e) { this.decide({ action: 'SKIP', reason: 'sports leaderboard unavailable: ' + String(e.message || e).slice(0, 120) }); }
+      // Retained source exits execute before any potentially slow sports discovery.
+      const retainedExits = s.queue.slice().filter(q => q.side === 'SELL'), supervisedExits = new Set(retainedExits.map(q => q.key));
+      for (const q of retainedExits) {
+        const p = s.open.find(p => p.sourceAsset === q.asset && (q.wallet ? p.leaderWallet === q.wallet : p.leader === q.leader));
+        if (!p || await this.exit(k, q, p)) { s.queue = s.queue.filter(x => x.key !== q.key); this.save(); }
+      }
+      try { await this.pollSportsLeaders(); } catch (e) { this.decide({ action: 'WAIT', reason: 'sports leaderboard unavailable: ' + String(e.message || e).slice(0, 120) }); }
       const queue = s.queue.slice(); let entered = 0;
       if (queue.length) {
         // Source exits need the target book, never a fresh sports discovery board.
-        for (const q of queue.filter(q => q.side === 'SELL')) {
+        for (const q of queue.filter(q => q.side === 'SELL' && !supervisedExits.has(q.key))) {
           const p = s.open.find(p => p.sourceAsset === q.asset && (q.wallet ? p.leaderWallet === q.wallet : p.leader === q.leader));
           if (!p || await this.exit(k, q, p)) { s.queue = s.queue.filter(x => x.key !== q.key); this.save(); }
         }
-        const board = st.enabled && queue.some(q => q.side !== 'SELL') ? await this.sports() : { events: [] };
+        const board = st.enabled && queue.some(q => q.side !== 'SELL') ? await this.sportsBoard() : { events: [] };
         if (!Array.isArray(board?.events)) throw new Error('Sports board unavailable; queued trades retained');
         s.capabilities = { at: this.now(), supportedTypes: ['GAME_WINNER'], listedGames: board.events.filter(e => e.contracts?.some(c => c.venue === 'kalshi' && c.type === 'GAME_WINNER')).length, listedContracts: board.events.flatMap(e => e.contracts || []).filter(c => c.venue === 'kalshi' && c.type === 'GAME_WINNER').length, unsupportedTypes: ['SPREAD', 'TOTAL', 'PROP', 'WEATHER', 'CRYPTO', 'MACRO'], note: 'Unsupported or nonidentical settlement rules supply research features only; never mirror fills' };
         for (const q of queue) {
+          if (this.workBudget.remaining() <= 0) break;
           const consume = () => { s.queue = s.queue.filter(x => x.key !== q.key); this.save(); };
           if (!validTrade(q, this.now())) { this.decide({ leader: q.leader, title: q.title, action: 'SKIP', reason: 'invalid, future or stale leader trade' }); consume(); continue; }
           q.attempts = (q.attempts || 0) + 1; q.decisionAt = this.now();
@@ -231,12 +243,12 @@ export class KalshiMirrorPaper {
   }
   async enter(k, q, m) {
     const s = this.state, st = s.settings, ticker = m.contract.sourceId;
-    const market = await paced(() => k.market(ticker)), d = market?.data || {};
+    const market = await this.providerRead(k, 'market', ticker), d = market?.data || {};
     if (!validTrade(q, this.now())) { this.decide({ leader: q.leader, title: q.title, action: 'SKIP', reason: 'leader trade expired during lookup' }); return false; }
     if (!['ACTIVE', 'OPEN'].includes(d.status) || d.closeAt != null && d.closeAt <= this.now()) { this.decide({ leader: q.leader, title: q.title, action: 'SKIP', reason: `Kalshi market ${String(d.status || 'unknown').toLowerCase()} or closed` }); return false; }
     const ask = d.yesAsk; if (!(ask >= st.minPrice && ask <= st.maxPrice)) { this.decide({ leader: q.leader, title: q.title, action: 'SKIP', reason: `Kalshi ask ${ask ?? '—'} outside ${st.minPrice}–${st.maxPrice}` }); return false; }
     if (ask > q.price + st.maxChase) { this.decide({ leader: q.leader, title: q.title, action: 'SKIP', reason: `Kalshi ask ${ask} is ${round(ask - q.price, 3)} above the leader's ${round(q.price, 3)}` }); return false; }
-    const book = await paced(() => k.book(ticker)), budget = Math.min(st.stakeUsd, s.cashUsd);
+    const book = await this.providerRead(k, 'book', ticker), budget = Math.min(st.stakeUsd, s.cashUsd);
     q.quoteAt = this.now();
     if (!validTrade(q, this.now())) { this.decide({ leader: q.leader, title: q.title, action: 'SKIP', reason: 'leader trade expired during lookup' }); return false; }
     let fills = walkAsks(book, 'YES', Math.floor(budget / ask), Math.min(st.maxPrice, q.price + st.maxChase));
@@ -260,7 +272,8 @@ export class KalshiMirrorPaper {
   async settle(k) {
     const s = this.state;
     for (const p of s.open.slice()) {
-      let m = null; try { m = await paced(() => k.market(p.ticker)); } catch { continue; }
+      if (this.workBudget.remaining() <= 0) break;
+      let m = null; try { m = await this.providerRead(k, 'market', p.ticker); } catch { continue; }
       if (!s.open.includes(p)) continue;
       const d = m?.data || {}, out = d.settlementOutcome;
       if (out === 'YES' || out === 'NO') {
@@ -277,7 +290,7 @@ export class KalshiMirrorPaper {
       const ratio = p.sourceEntryQty > 0 && q.sourceQuantity > 0 ? Math.min(1, q.sourceQuantity / p.sourceEntryQty) : 1;
       q.remainingExitQty = Math.min(p.qty, Math.max(1, Math.floor(p.qty * ratio))); this.save();
     }
-    const book = await paced(() => k.book(p.ticker)); if (!s.open.includes(p)) return true;
+    const book = await this.providerRead(k, 'book', p.ticker); if (!s.open.includes(p)) return true;
     let left = Math.min(p.qty, q.remainingExitQty); const fills = [];
     for (const level of (book?.yes?.bids || []).slice().sort((a, b) => b.price - a.price)) {
       const price = Number(level.price), quantity = Math.min(left, Math.floor(Number(level.quantity)));
@@ -295,13 +308,15 @@ export class KalshiMirrorPaper {
     if (!q.remainingExitQty || !s.open.includes(p)) s.queue = s.queue.filter(x => x.key !== q.key);
     this.save(); return !q.remainingExitQty || !s.open.includes(p);
   }
-  async runSettlement() { if (this.recoveryError) throw new Error(this.recoveryError); if (this.settlementBusy) return this.snapshot(); const k = this.kalshi(); if (!k) return this.snapshot(); this.settlementBusy = true; try { await this.settle(k); } finally { this.settlementBusy = false; this.save(); } return this.snapshot(); }
+  runSettlement() { return this.workBudget.run(() => this.settlementBounded()); }
+  async settlementBounded() { if (this.recoveryError) throw new Error(this.recoveryError); if (this.settlementBusy) return this.snapshot(); const k = this.kalshi(); if (!k) return this.snapshot(); this.settlementBusy = true; try { await this.settle(k); } finally { this.settlementBusy = false; this.save(); } return this.snapshot(); }
   snapshot() {
     if (this.recoveryError) return { id: 'kalshimirror', label: 'Kalshi mirror of Polymarket leaders', mode: 'PAPER', recoveryRequired: true, startUsd: null, cashUsd: null, equityUsd: null, returnPct: null, settings: this.state.settings, queued: 0, open: [], history: [], decisions: [], stats: { settled: null, wins: null, pnlUsd: null, feesUsd: null }, lastRunAt: null, lastError: this.recoveryError, lastNote: 'Existing book preserved; recovery required', running: this.busy };
     const s = this.state, h = s.history, n = h.length, open = s.open.reduce((a, p) => a + (p.markUsd ?? p.costUsd), 0), equity = s.cashUsd + open;
     return { id: 'kalshimirror', label: 'Kalshi mirror of Polymarket leaders', mode: 'PAPER', epoch: s.epoch, settings: s.settings, startUsd: s.startUsd, cashUsd: round(s.cashUsd, 2), equityUsd: round(equity, 2), returnPct: round((equity - s.startUsd) / s.startUsd * 100, 2),
       queued: s.queue.length, open: s.open, history: h.slice(0, 50), decisions: s.decisions.slice(0, 30), matcher:s.matcher||null, capabilities: s.capabilities || null, leaderOverlap: s.leaderOverlap || {}, exitPolicy: 'leader exit when attributable; legacy source-unknown positions hold to settlement', sportsLeaders:s.sports?{watching:s.sports.leaders.length,pickedAt:s.sports.pickedAt,lastAt:s.sports.lastAt,queued:s.sports.queued,names:s.sports.leaders.map(l=>l.name),selectionOverlap:s.sports.selectionOverlap||[]}:null,attribution:copyAttribution(h),
       stats: { settled: n, wins: h.filter(x => x.won).length, pnlUsd: round(h.reduce((a, x) => a + x.pnlUsd, 0), 2), feesUsd: round(h.reduce((a, x) => a + x.feeUsd + (x.exitFeeUsd || 0), 0), 2) },
+      workBudget:{runMs:this.workBudget.runMs,requestMs:this.workBudget.requestMs,drainingReads:[...this.workBudget.flights.values()].filter(f=>f.expired).length},
       lastRunAt: s.lastRunAt, lastError: this.recoveryError || s.lastError, lastNote: s.lastNote, running: this.busy };
   }
 }

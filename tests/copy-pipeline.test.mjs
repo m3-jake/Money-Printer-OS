@@ -6,6 +6,7 @@ import path from 'node:path';
 import { PolymarketCopyPaper } from '../src/polymarketCopy.js';
 import { KalshiMirrorPaper } from '../src/kalshiMirror.js';
 import { BotTape } from '../src/botTape.js';
+import { CopyWorkBudget } from '../src/copyWorkBudget.js';
 import { fetchLeaderTrades, classifyCopyMarket, CopyMetadataCache, CopyReadCache, copyLatencySummary, COPY_EXPERIMENT_COHORTS, oppositeCopyOutcome } from '../src/copyEvent.js';
 const NOW = 1800000000000, wallet = '0x' + 'a'.repeat(40);
 const fixture = t => { const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'copy-pipeline-')); t.after(() => fs.rmSync(dir, { recursive: true, force: true })); return dir; };
@@ -34,6 +35,32 @@ test('real tape supports copy selection and receipts while historical catch-up y
   assert.equal(serviced, true); assert.equal(bot.state.receipts.length, 100); assert.equal(bot.state.lastError, null);
   assert.equal(tape.stats().errors, 0);
   assert.ok(fs.existsSync(path.join(dir, 'bot-tape', 'polycopy-receipts', new Date(NOW + 1000).toISOString().slice(0, 10) + '.jsonl')));
+});
+
+test('copy hard deadlines reject signal-ignoring transport and bodies without overlap or late fills', async t => {
+  const dir = fixture(t); let release, requests = 0;
+  const ignored = new Promise(resolve => { release = resolve; });
+  const bot = new PolymarketCopyPaper({ dataDir: dir, workBudget: { runMs: 80, requestMs: 15 }, fetchImpl: async () => { requests++; return ignored; } });
+  bot.state.follows = [{ wallet, followedAt: NOW - 1000 }];
+  await bot.run({ settlement: false }); await bot.run({ settlement: false });
+  assert.equal(requests, 1); assert.equal(bot.busy, false); assert.equal(bot.state.open.length, 0);
+  release({ ok: true, json: async () => [trade()] }); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(bot.state.open.length, 0);
+  const budget = new CopyWorkBudget({ runMs: 50, requestMs: 10 });
+  await assert.rejects(budget.run(() => budget.call('body', async () => ({ json: () => new Promise(() => {}) })).then(r => budget.call('json', () => r.json()))), /deadline/);
+});
+
+test('mirror supervises retained exits before a signal-ignoring sports board and coalesces the stalled board', async t => {
+  const dir = fixture(t), feeModel = { venue: 'kalshi', rate: .07, rounding: 'CENT_PER_ORDER' };
+  let sportsCalls = 0;
+  const bot = new KalshiMirrorPaper({ dataDir: dir, now: () => NOW, workBudget: { runMs: 1500, requestMs: 500 }, kalshi: () => ({ book: async () => ({ yes: { bids: [{ price: .6, quantity: 100 }] } }) }), sports: async () => { sportsCalls++; return new Promise(() => {}); } });
+  bot.state.open = [{ ticker: 'GAME', qty: 2, costUsd: 1, feeUsd: .02, feeModel, sourceAsset: 'asset', sourceEntryQty: 100, leaderWallet: wallet, leader: 'leader', status: 'OPEN' }];
+  bot.enqueue({ wallet, name: 'leader' }, trade({ side: 'SELL', size: 100 }));
+  bot.enqueue({ wallet, name: 'leader' }, trade({ transactionHash: 'new-buy' }));
+  // Pacing may consume the first request allowance; repeat until the retained exit executes.
+  await bot.run({ settlement: false }); await bot.run({ settlement: false });
+  assert.equal(bot.state.open.length, 0); assert.equal(bot.state.history.length, 1); assert.equal(sportsCalls, 1);
+  assert.equal(bot.busy, false); assert.equal(bot.state.queue.filter(q => q.side === 'BUY').length, 1);
 });
 test('modeled processing latency defers quote capture; stale buys never spend', async t => {
   const { env, bot } = setup(fixture(t)); bot.state.settings.processingLatencyMs = 500;
