@@ -13,7 +13,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 
-export const TAPE_STREAMS = Object.freeze(['kalshi-weather', 'kalshi-btc', 'kalshi-settle', 'polycopy-trades']);
+export const TAPE_STREAMS = Object.freeze(['kalshi-weather', 'kalshi-btc', 'kalshi-settle', 'polycopy-trades', 'polycopy-leaders', 'polycopy-receipts']);
 const DAY = /^(\d{4}-\d{2}-\d{2})\.jsonl(\.gz)?$/;
 
 export class BotTape {

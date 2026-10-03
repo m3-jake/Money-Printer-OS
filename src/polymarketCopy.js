@@ -143,29 +143,36 @@ export class PolymarketCopyPaper {
             if (s.intents[key] || s.seen.includes(key) || s.seen.includes(legacyKey) || Number(t.timestamp) * 1000 <= (s.cursors[f.wallet].finalizedBeforeAt || 0) || !validCopyTrade(t, this.now())) continue;
             const receipt = copyEvent(f, t, this.now(), s.experiment?.id || `polycopy-incumbent-${s.epoch}`);
             s.intents[key] = { receipt, trade: t, leader: f, status: 'PENDING', attempts: 0, handoffPending: receipt.eventAt > f.followedAt && !!(this.onLeaderEvent || t.side === 'BUY' && this.onLeaderBuy) };
-            this.save(); // observation durable before source callback or any follower execution
             taped.push([f.wallet, Number(t.timestamp) * 1000, t.asset, t.side, Number(t.price), Number(t.size), t.outcome ?? null, String(t.title || t.slug || '').slice(0, 80)]);
-            if (receipt.eventAt > f.followedAt) {
-              try { this.onLeaderEvent?.(f, t, receipt); if (t.side === 'BUY') this.onLeaderBuy?.(f, t, receipt); s.intents[key].handoffPending = false; } catch (e) { this.decide({ action: 'WAIT', reason: 'mirror source handoff: ' + e.message }); }
-            }
           }
         }
+        // Commit the bounded discovery batch before any source handoff or follower execution.
+        // Per-event full-book fsync here starved the HTTP loop during initial historical catch-up.
+        if (taped.length) this.save();
         if (taped.length) this.tape?.append('polycopy-trades', { trades: taped });
         for (const intent of Object.values(s.intents).filter(i => i.handoffPending)) {
           try { this.onLeaderEvent?.(intent.leader, intent.trade, intent.receipt); if (intent.trade.side === 'BUY') this.onLeaderBuy?.(intent.leader, intent.trade, intent.receipt); intent.handoffPending = false; this.save(); } catch (e) { this.decide({ action: 'WAIT', reason: 'retryable mirror handoff: ' + e.message }); }
         }
+        let decisionsSinceYield = 0;
         for (const intent of Object.values(s.intents).filter(i => i.status === 'PENDING').sort((a, b) => a.receipt.eventAt - b.receipt.eventAt)) {
           const r = intent.receipt, t = intent.trade, f = intent.leader;
+          let executionAttempted = false;
           if (r.eventAt <= f.followedAt || t.side === 'BUY' && this.now() - r.eventAt > st.maxTradeAgeMs) { intent.status = 'SKIPPED'; r.reason = r.eventAt <= f.followedAt ? 'before leader selection' : 'stale leader trade'; }
           else if (this.now() >= r.firstObservedAt + st.processingLatencyMs) {
+            executionAttempted = true;
             r.decisionAt = this.now(); intent.attempts++; this.retryReason = null;
             try { const filled = await this.copy(f, t, r); if (filled) copied++; if (!this.retryReason) { intent.status = filled ? 'FILLED' : 'SKIPPED'; if (filled) r.reason = null; } else r.reason = this.retryReason; }
             catch (e) { r.reason = 'transient execution: ' + e.message; }
           }
           r.status = intent.status;
           if (intent.status !== 'PENDING') { s.receipts.push({ ...r }); intent.receiptLogged = true; this.tape?.append('polycopy-receipts', { receipts: [{ ...r }] }); }
-          this.save();
+          // Exposure changes still commit per attempt. Pure admission rejections batch safely,
+          // then yield so API health and the independent exit timers retain service time.
+          decisionsSinceYield++;
+          if (executionAttempted || decisionsSinceYield >= 25) this.save();
+          if (decisionsSinceYield >= 25) { decisionsSinceYield = 0; await new Promise(resolve => setImmediate(resolve)); }
         }
+        if (decisionsSinceYield) this.save();
         // Recover receipts committed with an exposure/exit immediately before a process crash.
         for (const intent of Object.values(s.intents).filter(i => i.status !== 'PENDING' && !i.receiptLogged)) {
           intent.receipt.status = intent.status; s.receipts.push({ ...intent.receipt }); intent.receiptLogged = true;

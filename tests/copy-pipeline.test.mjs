@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { PolymarketCopyPaper } from '../src/polymarketCopy.js';
 import { KalshiMirrorPaper } from '../src/kalshiMirror.js';
+import { BotTape } from '../src/botTape.js';
 import { fetchLeaderTrades, classifyCopyMarket, CopyMetadataCache, CopyReadCache, copyLatencySummary, COPY_EXPERIMENT_COHORTS, oppositeCopyOutcome } from '../src/copyEvent.js';
 const NOW = 1800000000000, wallet = '0x' + 'a'.repeat(40);
 const fixture = t => { const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'copy-pipeline-')); t.after(() => fs.rmSync(dir, { recursive: true, force: true })); return dir; };
@@ -21,6 +22,18 @@ test('transient entry intent survives restart and duplicate/out-of-order pages w
   assert.equal(restarted.state.open.length, 1); assert.equal(restarted.snapshot().pendingIntents, 0); assert.equal(restarted.state.open[0].marketType, 'Crypto');
   const cash = restarted.state.cashUsd; await restarted.run({ settlement: false }); assert.equal(restarted.state.cashUsd, cash);
   assert.equal(restarted.state.receipts.at(-1).status, 'FILLED'); assert.ok(restarted.state.receipts.at(-1).quoteAt >= restarted.state.receipts.at(-1).firstObservedAt);
+});
+
+test('real tape supports copy selection and receipts while historical catch-up yields to health timers', async t => {
+  const dir = fixture(t), tape = new BotTape({ dataDir: dir, now: () => NOW + 1000 });
+  tape.append('polycopy-leaders', { leaders: [{ wallet, followedAt: NOW + 1000 }] });
+  const rows = Array.from({ length: 100 }, (_, i) => trade({ transactionHash: 'past-' + i, timestamp: (NOW - i * 1000) / 1000 }));
+  const { bot } = setup(dir, { trades: rows }); bot.tape = tape; bot.state.follows[0].followedAt = NOW + 500;
+  let serviced = false; setImmediate(() => { serviced = true; });
+  await bot.run({ settlement: false });
+  assert.equal(serviced, true); assert.equal(bot.state.receipts.length, 100); assert.equal(bot.state.lastError, null);
+  assert.equal(tape.stats().errors, 0);
+  assert.ok(fs.existsSync(path.join(dir, 'bot-tape', 'polycopy-receipts', new Date(NOW + 1000).toISOString().slice(0, 10) + '.jsonl')));
 });
 test('modeled processing latency defers quote capture; stale buys never spend', async t => {
   const { env, bot } = setup(fixture(t)); bot.state.settings.processingLatencyMs = 500;
