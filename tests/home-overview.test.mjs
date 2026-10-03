@@ -277,7 +277,7 @@ test('Robinhood retains every independent book and keeps real account cash off t
 test('Kalshi opens a whole-suite overview with missing balances and coverage left unknown', () => {
   const p = platformHarness();
   const card = p.kalshiGlance(), html = card.visual;
-  assert.equal(card.hero, '—');
+  assert.equal(card.hero, null);
   assert.deepEqual(Array.from(card.stats, s => s.value), ['Unknown', 'Unknown', 'Unknown']);
   for (const label of ['Market universe', 'Separate paper books', 'Farm &amp; qualification', 'Upcoming markets &amp; activity', 'Data health', 'Weather preview']) assert.ok(html.includes(label), label);
   assert.match(html, /Coverage not reported/);
@@ -302,7 +302,8 @@ test('Kalshi renders supported farm evidence, partial venue coverage and indepen
   }, mirror: { equityUsd: null, open: [], stats: { settled: 0 }, settings: { enabled: false }, lastError: 'Recovery required' },
   farm: { minSettled: 30, variants: [{ settled: 40, pnlUsd: 5, verdict: { t: 2.5, text: 'making money (t 2.5)' } }] } });
   const card = p.kalshiGlance(), html = card.visual;
-  assert.equal(card.hero, '2');
+  assert.equal(card.hero, null);
+  assert.deepEqual(Array.from(card.stats, s => [s.label, s.value]), [['Loaded listings', '2'], ['Categories', '2'], ['Paper model books', '3']]);
   assert.equal(card.pill.label, 'STALE');
   for (const text of ['$12.25 modeled equity', '$25 modeled equity', '$11 modeled equity', 'Unknown modeled equity', 'Recovery required', 'Weather', 'Crypto', '1 independent PAPER variants', '30 settled bets required', 'NWS Unknown', 'Unknown gap']) assert.ok(html.includes(text), text);
   assert.match(html, /positive|making money|per-bet P\/L/i);
