@@ -23,9 +23,9 @@ const SCHEMA = 'mpo.kalshi-mirror-paper.v1';
 // Its own leaders (2026-10-03, run follow-up): the copy bot's six followed leaders mostly bet spreads, totals and
 // props, so the mirror found nothing to copy (0 of 30 leader buys were Kalshi-listed game winners). It also watches
 // the top Polymarket SPORTS-leaderboard wallets of the week, whose buys are largely game winners. Public GETs only,
-// about 1.6 a minute; only buys made after the mirror started watching a wallet are copied.
+// about 3 a minute; only buys made after the mirror started watching a wallet are copied.
 const DATA = 'https://data-api.polymarket.com';
-export const MIRROR_SOURCE = Object.freeze({ leaders: 8, everyMs: 5 * 60e3, minVolUsd: 100_000, repickMs: 7 * 86400e3 });
+export const MIRROR_SOURCE = Object.freeze({ leaders: 16, everyMs: 5 * 60e3, minVolUsd: 100_000, repickMs: 7 * 86400e3 });
 export function pickSportsLeaders(rows, now, { leaders = MIRROR_SOURCE.leaders, minVolUsd = MIRROR_SOURCE.minVolUsd } = {}) {
   return (Array.isArray(rows) ? rows : []).filter(r => /^0x[0-9a-fA-F]{40}$/.test(String(r?.proxyWallet)) && Number(r.pnl) > 0 && Number(r.vol) >= minVolUsd)
     .slice(0, leaders).map(r => ({ wallet: String(r.proxyWallet).toLowerCase(), name: String(r.userName || String(r.proxyWallet).slice(0, 8)).slice(0, 40), since: now, source: 'sports-leaderboard' }));
@@ -144,7 +144,7 @@ export class KalshiMirrorPaper {
     s.sports ||= { leaders: [], pickedAt: 0, lastAt: 0, queued: 0 };
     if (this.now() - s.sports.lastAt < MIRROR_SOURCE.everyMs) return 0;
     s.sports.lastAt = this.now();
-    if (!s.sports.leaders.length || this.now() - s.sports.pickedAt > MIRROR_SOURCE.repickMs) {
+    if (s.sports.leaders.length < MIRROR_SOURCE.leaders || this.now() - s.sports.pickedAt > MIRROR_SOURCE.repickMs) { // kept leaders keep their watch-start
       const picked = pickSportsLeaders(await this.get(`${DATA}/v1/leaderboard?category=SPORTS&timePeriod=WEEK&orderBy=PNL&limit=50`), this.now());
       const kept = new Map(s.sports.leaders.map(l => [l.wallet, l]));
       s.sports.leaders = picked.map(l => kept.get(l.wallet) || l); s.sports.pickedAt = this.now();
