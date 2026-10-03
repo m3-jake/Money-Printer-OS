@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { RESEARCH_LANES, getResearchLane, laneStatus, assertPaperOnlyLane } from '../src/researchLaneRegistry.js';
+import { RESEARCH_LANES, getResearchLane, laneStatus, assertPaperOnlyLane } from '../tools/researchLaneRegistry.js';
 
 test('registry contains independent Polymarket and Robinhood lanes', () => {
   assert.ok(RESEARCH_LANES.length >= 20);

@@ -6,7 +6,7 @@ import os from 'node:os';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { estimatePaperExecution, deterministicFillAllowed } from './executionSim.js';
+import { estimatePaperExecution, deterministicFillAllowed } from '../src/executionSim.js';
 import { createExperiment, addChallenger, recordResult, promotionDecision, assertNoLiveChallengers } from './experimentLane.js';
 
 export const PRESETS={

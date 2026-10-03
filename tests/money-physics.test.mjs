@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createPhysics, throwVelocity } from '../src/moneyPhysics.js';
+import { createPhysics, throwVelocity } from '../tools/moneyPhysics.js';
 
 test('physics is deterministic, bounded, and floor-safe', () => {
   const a = createPhysics(7, { maxBodies: 2 }); const b = createPhysics(7, { maxBodies: 2 });

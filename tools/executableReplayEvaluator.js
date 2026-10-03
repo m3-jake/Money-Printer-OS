@@ -26,7 +26,7 @@
  * No live execution, wallets, credentials, or network I/O.
  */
 import { ReplayClock } from './replayLab.js';
-import { estimatePaperExecution, deterministicFillAllowed } from './executionSim.js';
+import { estimatePaperExecution, deterministicFillAllowed } from '../src/executionSim.js';
 
 export const EXECUTABLE_REPLAY_VERSION = 1;
 export const FEATURES = ['edge','explosion','execution','momentum','liquidity','freshness','flow','volumeAccel','priceAccel'];

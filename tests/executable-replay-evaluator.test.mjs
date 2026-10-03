@@ -7,12 +7,12 @@ import {
   normalizeQuote, quotesFromReplayEvents, quotesFromTickHistory, quotesFromTokenObservations,
   classifyOpportunityCoverage, diagnoseCoverage, evaluateExecutableReplay, firstHitReason,
   sequentialCompoundMultiple, modelScore, FEATURES, EXECUTABLE_REPLAY_VERSION,
-} from '../src/executableReplayEvaluator.js';
+} from '../tools/executableReplayEvaluator.js';
 import {
   EVOLUTION_EVALUATOR_CONTRACT, buildExecutableDataset, loadCapturedQuoteDataset,
   scoreVariantExecutable, gateExecutablePromotion, endpointClampContrast,
-} from '../src/executableReplayAdapter.js';
-import { loadEvents, resolveReplayDataDir } from '../src/replayLab.js';
+} from '../tools/executableReplayAdapter.js';
+import { loadEvents, resolveReplayDataDir } from '../tools/replayLab.js';
 import { estimatePaperExecution, deterministicFillAllowed } from '../src/executionSim.js';
 
 const T0 = 1_700_000_000_000;
@@ -43,7 +43,7 @@ test('documented contract is frozen research-only and does not point at live', (
 
 test('import fence keeps executable replay off live/authenticated modules', () => {
   for (const file of ['executableReplayEvaluator.js', 'executableReplayAdapter.js']) {
-    const s = fs.readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8').toLowerCase();
+    const s = fs.readFileSync(new URL(`../tools/${file}`, import.meta.url), 'utf8').toLowerCase();
     for (const bad of ['polymarket', 'jupiter', '@solana', './rpc', "from 'ws'", "from './store", "from './index", 'fetch(']) {
       assert.equal(s.includes(bad), false, `${file} forbidden ${bad}`);
     }

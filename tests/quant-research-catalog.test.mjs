@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { queryQuantResearch, quantResearchSummary, QUANT_SHORTLIST } from '../src/quantResearchCatalog.js';
-import { getResearchLane } from '../src/researchLaneRegistry.js';
+import { getResearchLane } from '../tools/researchLaneRegistry.js';
 
 test('pinned inventory covers both entire source catalogs', () => {
   const s = quantResearchSummary();

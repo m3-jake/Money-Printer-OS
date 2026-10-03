@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { journalReport, maxDrawdown, rollingSharpe, renderJournalTable } from '../src/analytics/journalReport.js';
-import { attributePnl } from '../src/analytics/attribution.js';
-import { edgeBySignal } from '../src/analytics/edge.js';
-import { edgeDecay } from '../src/analytics/decay.js';
-import { priceDivergenceBps, validateCrossSourcePrices } from '../src/analytics/validation.js';
-import { parseWindow } from '../src/analytics/cli.js';
+import { attributePnl } from '../tools/analytics/attribution.js';
+import { edgeBySignal } from '../tools/analytics/edge.js';
+import { edgeDecay } from '../tools/analytics/decay.js';
+import { priceDivergenceBps, validateCrossSourcePrices } from '../tools/analytics/validation.js';
+import { parseWindow } from '../tools/analytics/cli.js';
 
 const fixture = [
   { type: 'trade-close', trade: { strategy: 'MOMO', dominantSignal: 'momentum', signalSource: 'scanner', pnlSol: 2, closedAt: 1000 } },

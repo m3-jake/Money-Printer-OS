@@ -106,7 +106,7 @@ test('F2 paperIdentity.ok asserts the exact identity, including open realized ca
   assert.equal(id.okExact, true);
   assert.ok(Math.abs(id.holeExact) < 1e-9);
   assert.ok(Math.abs(id.hole - 0.3) < 1e-9, 'the inexact hole is retained for compatibility');
-  // contract C1 — src/doctor.js (ship-fixes) consumes exactly these keys
+  // contract C1 — tools/doctor.js (ship-fixes) consumes exactly these keys
   for (const k of ['start', 'life', 'unreal', 'openRz', 'equity', 'hole', 'holeExact', 'ok', 'okExact']) {
     assert.ok(k in id, `paperIdentity must keep ${k}`);
   }

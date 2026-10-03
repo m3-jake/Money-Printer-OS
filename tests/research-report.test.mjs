@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {assembleMemeAlphaReport,markdownReport} from '../src/researchReport.js';
+import {assembleMemeAlphaReport,markdownReport} from '../tools/researchReport.js';
 
 test('integrity can pass while the COLD lead fails, and challengers cannot self-promote',()=>{
   const cold={
@@ -60,14 +60,14 @@ test('winning metrics cannot mark a challenger promotable in the assembled repor
 });
 
 test('CLI refuses app-data writes and import fence holds',()=>{
-  const src=fs.readFileSync(new URL('../src/researchReport.js',import.meta.url),'utf8').toLowerCase();
+  const src=fs.readFileSync(new URL('../tools/researchReport.js',import.meta.url),'utf8').toLowerCase();
   for(const bad of ['jupiter','./rpc','polymarket','from \'ws\'','from \'./store','from \'./index'])assert.equal(src.includes(bad),false,`forbidden ${bad}`);
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'mpo-report-'));
   try{
     const cold=path.join(dir,'cold.json');
     fs.writeFileSync(cold,JSON.stringify({chronological:{pass:false,fail:['no-positive-delta'],sentinelLiquidity:1,rawN:2,n:1,criteria:{sentinelLiquidityExcluded:true}},walkForward:{pass:false,fail:[]}}));
     const out=path.join(dir,'out.json');
-    const child=spawnSync(process.execPath,[fileURLToPath(new URL('../src/researchReport.js',import.meta.url)),'--cold',cold,'--out',out],{encoding:'utf8',timeout:10000});
+    const child=spawnSync(process.execPath,[fileURLToPath(new URL('../tools/researchReport.js',import.meta.url)),'--cold',cold,'--out',out],{encoding:'utf8',timeout:10000});
     assert.equal(child.status,0,child.stderr);
     assert.equal(JSON.parse(fs.readFileSync(out,'utf8')).version,1);
     assert.equal(fs.existsSync(out.replace(/\.json$/,'.md')),true);

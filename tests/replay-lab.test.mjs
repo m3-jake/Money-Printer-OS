@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {loadEvents,ReplayClock,makeConfigs,replay,metrics,isMainModule,resolveReplayDataDir,assignRegimes,CHALLENGER_PRESETS,gateReplayRow} from '../src/replayLab.js';
+import {loadEvents,ReplayClock,makeConfigs,replay,metrics,isMainModule,resolveReplayDataDir,assignRegimes,CHALLENGER_PRESETS,gateReplayRow} from '../tools/replayLab.js';
 import {deterministicFillAllowed,estimatePaperExecution} from '../src/executionSim.js';
 
 function row(ts,mint,price,extra={}){return {type:'scan-candidate',ts,a:{mint,symbol:mint,priceUsd:price,liq:50000,score:80,executionScore:80,eligible:true,...extra}}}
@@ -21,13 +21,13 @@ test('same event stream is deterministic',()=>{const ev=[];for(let i=0;i<20;i++)
 
 test('profitable synthetic trend produces finite metrics',()=>{const ev=[];for(let i=0;i<10;i++)ev.push({ts:1000+i*60000,mint:'A',symbol:'A',price:1+i*.02,liq:100000,score:95,executionScore:95,eligible:true,warnings:0,staleResume:false});const r=replay(ev,makeConfigs(['SPRINT']),{startSol:1})[0];for(const v of Object.values(r.metrics))if(typeof v==='number')assert.ok(Number.isFinite(v));assert.ok(r.metrics.n>=1)});
 
-test('static import fence keeps replay lab away from live/authenticated modules',()=>{const s=fs.readFileSync(new URL('../src/replayLab.js',import.meta.url),'utf8').toLowerCase();for(const bad of ['polymarket','jupiter','@solana','./rpc','from \'ws\'','fetch('])assert.equal(s.includes(bad),false,`forbidden ${bad}`)});
+test('static import fence keeps replay lab away from live/authenticated modules',()=>{const s=fs.readFileSync(new URL('../tools/replayLab.js',import.meta.url),'utf8').toLowerCase();for(const bad of ['polymarket','jupiter','@solana','./rpc','from \'ws\'','fetch('])assert.equal(s.includes(bad),false,`forbidden ${bad}`)});
 
 test('metric helper handles hand computed pnl',()=>{const m=metrics({trades:[{pnl:.1,returnPct:10},{pnl:-.05,returnPct:-5}],finalEquity:1.05,fees:.01,slippage:.02,turnover:2,censored:0,curve:[{ts:1,equity:1},{ts:2,equity:.95},{ts:3,equity:1.05}]},1);assert.equal(m.realizedPnl,.05);assert.equal(m.profitFactor,2);assert.equal(m.maxDrawdownPct,5)});
 
 // fileURLToPath, not .pathname: on Windows a file: URL's pathname is '/C:/...', which is not a
 // platform path, so isMainModule's path.resolve comparison never matched and this failed on Windows only.
-test('main-module detection accepts platform path of this module only',()=>{assert.equal(isMainModule(fileURLToPath(new URL('../src/replayLab.js',import.meta.url))),true);assert.equal(isMainModule('/definitely/not/replayLab.js'),false)});
+test('main-module detection accepts platform path of this module only',()=>{assert.equal(isMainModule(fileURLToPath(new URL('../tools/replayLab.js',import.meta.url))),true);assert.equal(isMainModule('/definitely/not/replayLab.js'),false)});
 
 
 test('out-of-order extra sources cannot use a future price as quarantine baseline',async()=>{
@@ -64,7 +64,7 @@ test('CLI reports are byte-identical for repeated runs with the same dataset and
    const outputs=[];
    for(const iteration of [1,2]){
     const out=path.join(d,`report-${workers}-${iteration}`);
-    const child=spawnSync(process.execPath,[fileURLToPath(new URL('../src/replayLab.js',import.meta.url)),'--data',d,'--configs','FAST,SPRINT','--max-workers',String(workers),'--out',out],{encoding:'utf8',timeout:10000});
+    const child=spawnSync(process.execPath,[fileURLToPath(new URL('../tools/replayLab.js',import.meta.url)),'--data',d,'--configs','FAST,SPRINT','--max-workers',String(workers),'--out',out],{encoding:'utf8',timeout:10000});
     assert.equal(child.status,0,child.stderr);
     outputs.push({json:fs.readFileSync(out+'.json','utf8'),md:fs.readFileSync(out+'.md','utf8')});
    }
@@ -224,7 +224,7 @@ test('static import fence keeps challenger presets off live modules',()=>{
 
 
 test('replay quartiles exclude sentinel and sub-economic liquidity',async()=>{
- const {trainCuts}=await import('../src/replayLab.js');
+ const {trainCuts}=await import('../tools/replayLab.js');
  const events=[1,1,1,20,900,8000,10000,20000,80000].map((liq,i)=>({ts:i+1,liq,regime:'COLD'}));
  const cuts=trainCuts(events,{trainStart:0,trainEnd:100});
  assert.equal(cuts.n,4);assert.equal(cuts.coldN,4);assert.equal(cuts.q75,20000);

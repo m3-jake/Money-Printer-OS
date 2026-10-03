@@ -1,5 +1,5 @@
-import { readJournal } from './store.js';
-import { estimateRoundTripFrictionPct } from './executionSim.js';
+import { readJournal } from '../src/store.js';
+import { estimateRoundTripFrictionPct } from '../src/executionSim.js';
 
 const rows=readJournal(250_000).filter(x=>['scan','scan-candidate'].includes(x.type)&&x.a?.priceUsd&&x.a?.mint),byMint=new Map();for(const row of rows){if(!byMint.has(row.a.mint))byMint.set(row.a.mint,[]);byMint.get(row.a.mint).push(row)}
 const horizons=[1,5,10,30,60],results=Object.fromEntries(horizons.map(h=>[h,[]])),cohorts={'EDGE 90+':[],'EDGE 80-89':[],'EDGE 70-79':[],'EDGE <70':[]};

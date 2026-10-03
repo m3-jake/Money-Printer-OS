@@ -190,17 +190,17 @@ test('the engine refuses an unexecutable live config at startup, before any prov
 });
 
 test('doctor exits non-zero on the refused verdict and zero on the shipped default', () => {
-  const liveNoSigner = run(['src/doctor.js', '--offline'], { MONEY_PRINTER_DATA_DIR: newDataDir(), MODE: 'live', BS58_PRIVATE_KEY: '', JUPITER_API_KEY: '', ENABLE_LIVE_TRADING: '' });
+  const liveNoSigner = run(['tools/doctor.js', '--offline'], { MONEY_PRINTER_DATA_DIR: newDataDir(), MODE: 'live', BS58_PRIVATE_KEY: '', JUPITER_API_KEY: '', ENABLE_LIVE_TRADING: '' });
   assert.equal(liveNoSigner.status, 1, `doctor must fail a live config that could never dispatch: ${String(liveNoSigner.stdout).slice(-300)}`);
   assert.match(String(liveNoSigner.stdout), /REFUSED: LIVE_WITHOUT_SIGNER/);
 
   // The finding's exact configuration: doctor now says the lane is armed *and* still locked, instead
   // of two WARN lines and exit 0.
-  const armed = run(['src/doctor.js', '--offline'], { MONEY_PRINTER_DATA_DIR: newDataDir(), MODE: 'live', ENABLE_LIVE_TRADING: 'true', JUPITER_API_KEY: 'probe-key', BS58_PRIVATE_KEY: 'probe-not-a-real-key' });
+  const armed = run(['tools/doctor.js', '--offline'], { MONEY_PRINTER_DATA_DIR: newDataDir(), MODE: 'live', ENABLE_LIVE_TRADING: 'true', JUPITER_API_KEY: 'probe-key', BS58_PRIVATE_KEY: 'probe-not-a-real-key' });
   assert.equal(armed.status, 0, `an armed live lane is coherent and must keep exiting 0: ${String(armed.stdout).slice(-300)}`);
   assert.match(String(armed.stdout), /WARN: LIVE_DISPATCH_STILL_LOCKED/);
 
-  const defaults = run(['src/doctor.js', '--offline'], { MONEY_PRINTER_DATA_DIR: newDataDir(), MODE: 'paper', ENABLE_LIVE_TRADING: '', BS58_PRIVATE_KEY: '', JUPITER_API_KEY: '' });
+  const defaults = run(['tools/doctor.js', '--offline'], { MONEY_PRINTER_DATA_DIR: newDataDir(), MODE: 'paper', ENABLE_LIVE_TRADING: '', BS58_PRIVATE_KEY: '', JUPITER_API_KEY: '' });
   assert.equal(defaults.status, 0, `the shipped default must stay exit 0: ${String(defaults.stdout).slice(-300)}`);
   assert.doesNotMatch(String(defaults.stdout), /REFUSED:|WARN: LIVE_/, 'the default config must stay silent: paper with the gate off');
   assert.match(String(defaults.stdout), /^mode paper /m, 'doctor still reports its mode line');
@@ -208,7 +208,7 @@ test('doctor exits non-zero on the refused verdict and zero on the shipped defau
   // A trap this verdict surfaces for the first time: `MODE=` (an empty env var, which config.js
   // turns into mode '' rather than into its default) used to run a loop that counted signals, entered
   // nothing and managed no held position, with nothing anywhere saying so. It is refused now.
-  const empty = run(['src/doctor.js', '--offline'], { MONEY_PRINTER_DATA_DIR: newDataDir(), MODE: '', ENABLE_LIVE_TRADING: '', BS58_PRIVATE_KEY: '', JUPITER_API_KEY: '' });
+  const empty = run(['tools/doctor.js', '--offline'], { MONEY_PRINTER_DATA_DIR: newDataDir(), MODE: '', ENABLE_LIVE_TRADING: '', BS58_PRIVATE_KEY: '', JUPITER_API_KEY: '' });
   assert.equal(empty.status, 1, 'an empty MODE must be refused, not silently run');
   assert.match(String(empty.stdout), /REFUSED: MODE_UNKNOWN/);
 });

@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {diagnoseCloses,diagnoseStalePurge,cohortStats,effectiveMaxHold} from '../src/tradeForensics.js';
+import {diagnoseCloses,diagnoseStalePurge,cohortStats,effectiveMaxHold} from '../tools/tradeForensics.js';
 
 function trade(i,{reason='stop-loss',ret=-8,pnl=-0.001,hold=2,liq=40000,mfe=0,mae=-6}={}){
   const opened=1_000_000+i*60_000;
@@ -53,14 +53,14 @@ test('stale-purge helper is deterministic',()=>{
 });
 
 test('CLI refuses to write into the app data directory and import fence holds',()=>{
-  const src=fs.readFileSync(new URL('../src/tradeForensics.js',import.meta.url),'utf8').toLowerCase();
+  const src=fs.readFileSync(new URL('../tools/tradeForensics.js',import.meta.url),'utf8').toLowerCase();
   for(const bad of ['jupiter','./rpc','polymarket','from \'ws\'','from \'./store','from \'./index'])assert.equal(src.includes(bad),false,`forbidden ${bad}`);
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'mpo-forensics-'));
   try{
     const state=path.join(dir,'state.json');
     fs.writeFileSync(state,JSON.stringify({runtime:{profile:'SPRINT'},history:[trade(0,{reason:'stale-purge',hold:25,ret:-2})]}));
     const out=path.join(dir,'out.json');
-    const child=spawnSync(process.execPath,[fileURLToPath(new URL('../src/tradeForensics.js',import.meta.url)),'--state',state,'--out',out],{encoding:'utf8',timeout:10000});
+    const child=spawnSync(process.execPath,[fileURLToPath(new URL('../tools/tradeForensics.js',import.meta.url)),'--state',state,'--out',out],{encoding:'utf8',timeout:10000});
     assert.equal(child.status,0,child.stderr);
     const report=JSON.parse(fs.readFileSync(out,'utf8'));
     assert.equal(report.stalePurge.n,1);

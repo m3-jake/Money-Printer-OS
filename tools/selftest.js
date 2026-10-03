@@ -1,7 +1,7 @@
-import { queueOutcomeSamples, settleOutcomeSamples, learnerSnapshot, fastEdgeScore, ensureLearner } from './learner.js';
-import { estimatePaperExecution, estimateRoundTripFrictionPct } from './executionSim.js';
-import { proveRows } from './edgeProof.js';
-import { updateExperiments, calibrate, recordUniverse, missedOpportunityScan } from './research.js';
+import { queueOutcomeSamples, settleOutcomeSamples, learnerSnapshot, fastEdgeScore, ensureLearner } from '../src/learner.js';
+import { estimatePaperExecution, estimateRoundTripFrictionPct } from '../src/executionSim.js';
+import { proveRows } from '../src/edgeProof.js';
+import { updateExperiments, calibrate, recordUniverse, missedOpportunityScan } from '../src/research.js';
 
 function assert(ok,msg){if(!ok)throw new Error(msg)}
 function candidate(mint='MINT', priceUsd=1){return {mint,symbol:'TEST',priceUsd,edgeScore:80,score:80,explosionScore:88,executionScore:72,momentumScore:78,liquidityScore:65,freshnessScore:90,flow5:2,volumeDelta:35,priceAccel:9,stage:'READY',entryThreshold:60}}

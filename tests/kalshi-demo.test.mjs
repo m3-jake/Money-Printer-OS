@@ -4,8 +4,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { generateKeyPairSync } from 'node:crypto';
-import { KalshiClient, KALSHI_DEMO_BASE, kalshiSeries, signKalshiRequest } from '../src/kalshi.js';
-import { KALSHI_PAPER_BOUNDS, placeKalshiPaperOrder } from '../src/kalshiPaper.js';
+import { KalshiClient, KALSHI_DEMO_BASE, kalshiSeries, signKalshiRequest } from '../tools/kalshi.js';
+import { KALSHI_PAPER_BOUNDS, placeKalshiPaperOrder } from '../tools/kalshiPaper.js';
 
 test('paper client refuses non-demo Kalshi hosts and defaults to official demo host', () => {
   assert.equal(new KalshiClient({ fetchImpl: async () => {} }).baseUrl, KALSHI_DEMO_BASE);

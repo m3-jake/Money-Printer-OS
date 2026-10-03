@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { recordEvidenceControlPlane } from "./researchControlPlane.js";
+import { recordEvidenceControlPlane } from "../src/researchControlPlane.js";
 
 const hash = value => crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex");
 

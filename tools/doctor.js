@@ -1,11 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { cfg } from './config.js';
-import { liveConfigVerdict } from './liveConfig.js';
-import { benchmarkRpcs } from './rpc.js';
-import { loadState } from './store.js';
-import { edgeProofSnapshot } from './edgeProof.js';
-import { paperIdentity } from './accounting.js';
+import { cfg } from '../src/config.js';
+import { liveConfigVerdict } from '../src/liveConfig.js';
+import { benchmarkRpcs } from '../src/rpc.js';
+import { loadState } from '../src/store.js';
+import { edgeProofSnapshot } from '../src/edgeProof.js';
+import { paperIdentity } from '../src/accounting.js';
 
 // Same data-dir resolution as src/store.js:9 (honours MONEY_PRINTER_DATA_DIR) instead of a
 // hardcoded relative 'data/', so the "state present/fresh" line is correct for the packaged app.

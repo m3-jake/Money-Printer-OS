@@ -11,7 +11,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { loopPersistenceCheck, collectorCaptureCheck, generationAdvanceCheck, diskFreeCheck, orderPostsCheck, switchesCheck, rawRetentionCheck } from '../src/labHealth.js';
+import { loopPersistenceCheck, collectorCaptureCheck, generationAdvanceCheck, diskFreeCheck, orderPostsCheck, switchesCheck, rawRetentionCheck } from '../tools/labHealth.js';
 
 const JSON_OUT = process.argv.includes('--json');
 const TRADER_URL = process.env.MPO_TRADER_URL || 'http://127.0.0.1:8792';

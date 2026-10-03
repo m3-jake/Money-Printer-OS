@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { cfg } from './config.js';
-import { routePaperProposal, bookRouteLogger } from './paperRouting.js';
+import { cfg } from '../src/config.js';
+import { routePaperProposal, bookRouteLogger } from '../src/paperRouting.js';
 
 export const KALSHI_PAPER_BOUNDS = Object.freeze({ stakeUsd: { min: 1, max: 500 }, maxOpen: { min: 1, max: 25 } });
 const dataDir = () => path.resolve(process.env.MONEY_PRINTER_DATA_DIR || 'data');

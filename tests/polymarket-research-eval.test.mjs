@@ -18,9 +18,9 @@ import {
   eventGroupedBootstrap,
   isMainModule,
   markdownReport,
-} from '../src/polymarketResearchEval.js';
+} from '../tools/polymarketResearchEval.js';
 
-const SRC = fs.readFileSync(new URL('../src/polymarketResearchEval.js', import.meta.url), 'utf8');
+const SRC = fs.readFileSync(new URL('../tools/polymarketResearchEval.js', import.meta.url), 'utf8');
 
 function tape(partial = {}) {
   return {
@@ -298,7 +298,7 @@ test('CLI reports are byte-identical for the same test-only tape', () => {
     for (const iteration of [1, 2]) {
       const out = path.join(dir, `report-${iteration}`);
       const child = spawnSync(process.execPath, [
-        fileURLToPath(new URL('../src/polymarketResearchEval.js', import.meta.url)),
+        fileURLToPath(new URL('../tools/polymarketResearchEval.js', import.meta.url)),
         '--tape', tapePath, '--out', out, '--min-events', '20',
       ], { encoding: 'utf8', timeout: 10000 });
       assert.equal(child.status, 0, child.stderr);
@@ -309,7 +309,7 @@ test('CLI reports are byte-identical for the same test-only tape', () => {
     assert.equal(report.live, false);
     assert.equal(report.researchOnly, true);
     assert.ok(markdownReport(report).includes('Win rate'));
-    assert.equal(isMainModule(fileURLToPath(new URL('../src/polymarketResearchEval.js', import.meta.url))), true);
+    assert.equal(isMainModule(fileURLToPath(new URL('../tools/polymarketResearchEval.js', import.meta.url))), true);
     assert.equal(isMainModule('/not/this/module.js'), false);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });

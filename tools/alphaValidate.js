@@ -4,8 +4,8 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
-import { compareClusterGroups, median } from './edgeProof.js';
-import { economicLiquidityOf, MIN_RESEARCH_LIQUIDITY_USD, OUTCOME_FEATURE_SQL, prepareOutcomeRows, SENTINEL_LIQUIDITY_USD } from './hypothesisMiner.js';
+import { compareClusterGroups, median } from '../src/edgeProof.js';
+import { economicLiquidityOf, MIN_RESEARCH_LIQUIDITY_USD, OUTCOME_FEATURE_SQL, prepareOutcomeRows, SENTINEL_LIQUIDITY_USD } from '../src/hypothesisMiner.js';
 
 const r4=x=>Math.round((Number(x)||0)*1e4)/1e4;
 function pctile(a,p){if(!a.length)return null;const x=[...a].sort((a,b)=>a-b);return x[Math.min(x.length-1,Math.floor((x.length-1)*p))]}

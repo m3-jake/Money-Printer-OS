@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { paperEquityOrder } from '../src/robinhoodEquitiesPaper.js';
+import { paperEquityOrder } from '../tools/robinhoodEquitiesPaper.js';
 
 test('Robinhood equities paper adapter refuses non-paper mode', () => {
   assert.throws(() => paperEquityOrder({ symbol: 'SPY', side: 'BUY', quantity: 1, price: 500, mode: 'live' }), /refuses non-paper/);

@@ -4,7 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
-import { summarizeLatencyRows } from './latencyStats.js';
+import { summarizeLatencyRows } from '../src/latencyStats.js';
 
 function r4(x){return Math.round((Number(x)||0)*1e4)/1e4}
 function readJson(file){return JSON.parse(fs.readFileSync(file,'utf8'))}

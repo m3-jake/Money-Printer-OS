@@ -1,4 +1,4 @@
-import { tradeRows, mean } from './shared.js';
+import { tradeRows, mean } from '../../src/analytics/shared.js';
 
 export function attributePnl(rows = []) {
   const groups = new Map();

@@ -1,4 +1,4 @@
-import { tradeRows, mean } from './shared.js';
+import { tradeRows, mean } from '../../src/analytics/shared.js';
 
 export function edgeDecay(rows = [], { window = 20, dropThreshold = 0.5 } = {}) {
   const groups = new Map();

@@ -866,7 +866,7 @@ function loadTape(file) {
 function main() {
   const a = parseArgs(process.argv.slice(2));
   if (!a.tape) {
-    console.error('Usage: node src/polymarketResearchEval.js --tape <file.json> [--out reports/poly-research] [--incumbent take-none] [--candidate take-all]');
+    console.error('Usage: node tools/polymarketResearchEval.js --tape <file.json> [--out reports/poly-research] [--incumbent take-none] [--candidate take-all]');
     process.exit(2);
   }
   const tape = loadTape(a.tape);

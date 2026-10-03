@@ -1,4 +1,4 @@
-import { tradeRows, confidenceInterval, mean } from './shared.js';
+import { tradeRows, confidenceInterval, mean } from '../../src/analytics/shared.js';
 
 export function edgeBySignal(rows = []) {
   const groups = new Map();

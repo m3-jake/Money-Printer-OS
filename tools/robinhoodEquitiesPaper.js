@@ -1,7 +1,7 @@
-import { isAggressivePaper } from './runtime.js';
-import { estimateAggressivePaperExecution } from './executionSimAggressive.js';
-import { loadBook, saveBook } from './robinhoodEquitiesBook.js';
-import { routePaperProposal, bookRouteLogger } from './paperRouting.js';
+import { isAggressivePaper } from '../src/runtime.js';
+import { estimateAggressivePaperExecution } from '../src/executionSimAggressive.js';
+import { loadBook, saveBook } from '../src/robinhoodEquitiesBook.js';
+import { routePaperProposal, bookRouteLogger } from '../src/paperRouting.js';
 
 const SYMBOL = /^[A-Z][A-Z0-9.-]{0,9}$/;
 export function paperEquityOrder({ symbol, side, quantity, price, mode = process.env.MODE || 'paper', runtime = {} } = {}) {

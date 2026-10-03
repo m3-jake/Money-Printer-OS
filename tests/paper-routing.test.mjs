@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { routePaperProposal } from '../src/paperRouting.js';
 import { regimesForTick } from '../src/regime.js';
-import { placeKalshiPaperOrder } from '../src/kalshiPaper.js';
+import { placeKalshiPaperOrder } from '../tools/kalshiPaper.js';
 import { resetPaperSingles, placePaperSingle } from '../src/polymarketUSSinglesPaper.js';
 
 test('all requested asset classes share proposals and decisions with actual IDs, without implicit FX', () => {

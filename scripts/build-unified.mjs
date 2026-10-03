@@ -4,7 +4,7 @@
 // Usage:  npm run release:unified -- [--skip-tests] [--skip-smoke] [--force] [--out-root DIR] [--cache DIR]
 //
 // From a clean `git archive` of HEAD it:
-//   1. runs `npm run test:all` + `node src/selftest.js` + the release-gate test in THIS source tree
+//   1. runs `npm run test:all` + `node tools/selftest.js` + the release-gate test in THIS source tree
 //      (tracked tree must be clean, so the results belong to HEAD) — skip with --skip-tests;
 //   2. stages the runtime allowlist, `npm ci --ignore-scripts --omit=dev --omit=optional`,
 //      writes BUILD.json/.build-commit/.build-version, packs app.asar with @electron/asar 4.3.0;
@@ -145,7 +145,7 @@ async function main() {
   const tests = { ran: false };
   if (!flag('--skip-tests')) {
     const all = shellTest('npm run test:all', 'npm', ['run', 'test:all'], path.join(LOGS, 'test-all.log'));
-    const self = shellTest('node src/selftest.js', 'node', ['src/selftest.js'], path.join(LOGS, 'selftest.log'));
+    const self = shellTest('node tools/selftest.js', 'node', ['tools/selftest.js'], path.join(LOGS, 'selftest.log'));
     const gate = shellTest('release-gate test', 'node', ['--test', 'tests/release-gate.test.cjs'], path.join(LOGS, 'release-gate.log'));
     const c = countTests(all.text); const g = countTests(gate.text);
     Object.assign(tests, {

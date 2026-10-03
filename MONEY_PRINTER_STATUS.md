@@ -62,6 +62,24 @@ Architecture, active work and release evidence live in `.agent-state/PROJECT_STA
 ledger remains `AUDIT.md` and `PROGRESS.md`. Later sections below are historical unless dated
 as the current release. Last updated: 2026-10-03.
 
+## Batch PF-18 (2026-10-03, Claude): src/ holds only runtime code (run item C4)
+
+- **Measured:** a walk of static imports, export-from, literal dynamic imports, `new URL(..., import.meta.url)` worker
+  paths and the scripts `desktop/main.cjs` spawns, from `src/index.js`, `src/researchCollector.js`,
+  `src/networkMesh.js` and `desktop/main.cjs`: 208 files in `src/`, 181 reachable, 27 not (the brief said 25).
+- **Deleted (referenced by nothing):** `src/optimizer.js`, `src/prove.js`, `src/report.js`, old CLIs with no
+  npm script, test or caller.
+- **Moved to `tools/` (23 files, used only by tests or npm scripts):** `alphaValidate`, `analytics/*` (5),
+  `backtest`, `doctor`, `executableReplayAdapter`, `executableReplayEvaluator`, `experimentLane`, `kalshi`,
+  `kalshiPaper`, `labHealth`, `moneyPhysics`, `polymarketExperimentBridge`, `polymarketResearchEval`,
+  `replayLab`, `researchLaneRegistry`, `researchReport`, `robinhoodEquitiesPaper`, `selftest`,
+  `tradeForensics`. Their imports, the tests that use them, `package.json` scripts and `scripts/build-unified.mjs`
+  (`node tools/selftest.js` in the release gate; SELFTEST PASS) were rewritten.
+- **Left alone:** the untracked `src/paperBookStore.js` (another agent's work in progress), allow-listed by name.
+- **Enforced:** `tests/src-reachability.test.mjs` in `test:wiring`: every `src/` file is reachable, the walk
+  sees every import form, and runtime code never imports from `tools/`.
+- **Verified:** trader `npm run test:all`: 1,287 tests, 1,267 pass, 0 fail (20 skipped).
+
 ## Batch PF-17 (2026-10-03, Claude): Pump.fun scaled to its PARK verdict (run item C3)
 
 - **Engine cadence** (`src/config.js`, `src/index.js`): `PUMPFUN_PARKED` (default on) makes the paper engine scan
@@ -548,7 +566,7 @@ animated graphs, and a rolling cash-register / slot-machine effect when major nu
 - **Evolution Lab** lives in a separate repo, `money-printer-evolution-lab`, and is the shared research brain for every module: Solana (labLoop/BEAST), plus parallel `module-robinhood` and `module-polymarket` workers (`src/moduleResearch.js`). Valid module ids come from its `src/researchModules.js`. It writes `<trader data>/lab-link/modules/<id>.json` and paper-only `<id>-champion.json`. It is NOT the dropped "agent lab" harness.
 - **Web demo (2026-10-02):** `web-demo/` + `scripts/web-demo/` build a static, browser-only copy of the HUD for a website. `demo-shim.js` answers `/api/*` from a recorded PAPER session (sandboxed engine, scrubbed env, no keys or user data), and refuses every write. Each page load is a new session: a 1 SOL book run by the Lab champion copied in from `lab-link/` at recording time, played for ~30 min from its opening frame. Published to Cloudflare Pages (`money-printer`, moneyprinter.bangbowbing.net). See `web-demo/README.md`; covered by `test:web-demo`.
 - **HUD boot and logo (2026-10-02):** the boot overlay is a Win98-style log-on over open sky. OK, Enter or 6 idle seconds pull the camera back to the hill and fire `mpo:logon`, which shows the welcome and the grabbable money shower (`welcomeShower()`). The corner logo (`initLogoStretch()`) stretches on drag, slingshots on release, glides to a stop and fades back home after 3.5 s idle; its shine lives in the same `.logo-skin`.
-- **Tests:** 148 suites in `tests/` across 35 targets, run by `npm run test:all` (`test:wiring` fails first if a suite becomes unreachable). Alpha.84 adds observed-chart history, motion, and data-boundary regressions. The 20 Robinhood real-money order-path tests remain explicitly skipped because this paper-only build refuses that dispatch; active safety tests still pin the live boundary and outbound audit. Full-suite results are recorded separately from suite reachability.
+- **Tests:** 149 suites in `tests/` across 35 targets, run by `npm run test:all` (`test:wiring` fails first if a suite becomes unreachable). Alpha.84 adds observed-chart history, motion, and data-boundary regressions. The 20 Robinhood real-money order-path tests remain explicitly skipped because this paper-only build refuses that dispatch; active safety tests still pin the live boundary and outbound audit. Full-suite results are recorded separately from suite reachability.
 
 ## Confirmed working (2026-09-25)
 

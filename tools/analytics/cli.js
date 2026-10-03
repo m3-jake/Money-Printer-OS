@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
 import { pathToFileURL, fileURLToPath } from 'node:url';
-import { journalReport, renderJournalTable } from './journalReport.js';
+import { journalReport, renderJournalTable } from '../../src/analytics/journalReport.js';
 import { attributePnl } from './attribution.js';
 import { edgeBySignal } from './edge.js';
 import { edgeDecay } from './decay.js';
@@ -40,7 +40,7 @@ async function main() {
   const report = await analyticsReport({ dataDir, window });
   if (command === 'report') { console.log(renderJournalTable(report)); console.log(JSON.stringify(report, null, 2)); }
   else if (command === 'replay') console.log(JSON.stringify({ mode: 'journal-replay-window', window, ...report }, null, 2));
-  else throw new Error('Usage: node src/analytics/cli.js <report|replay> [--window <start,end>] [--data <dir>]');
+  else throw new Error('Usage: node tools/analytics/cli.js <report|replay> [--window <start,end>] [--data <dir>]');
 }
 
 const entry = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));

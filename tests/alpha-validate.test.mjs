@@ -8,7 +8,7 @@ const root=fs.mkdtempSync(path.join(os.tmpdir(),'mpo-validate-'));
 test.after(()=>fs.rmSync(root,{recursive:true,force:true}));
 process.env.MONEY_PRINTER_DATA_DIR=root;
 
-const {validateColdLiquidity,trainLiquidityCut,scoreLiquiditySplit,splitRanges} = await import('../src/alphaValidate.js');
+const {validateColdLiquidity,trainLiquidityCut,scoreLiquiditySplit,splitRanges} = await import('../tools/alphaValidate.js');
 const {featureValueOf,economicLiquidityOf} = await import('../src/hypothesisMiner.js');
 
 function hash(s=''){let h=2166136261;for(const c of String(s)){h^=c.charCodeAt(0);h=Math.imul(h,16777619)}return h>>>0}
@@ -94,7 +94,7 @@ test('sentinel and sub-economic liquidity are excluded from the COLD universe',(
 });
 
 test('import fence keeps alphaValidate off live modules',()=>{
-  const s=fs.readFileSync(new URL('../src/alphaValidate.js',import.meta.url),'utf8').toLowerCase();
+  const s=fs.readFileSync(new URL('../tools/alphaValidate.js',import.meta.url),'utf8').toLowerCase();
   for(const bad of ['jupiter','./rpc','polymarket','from \'ws\'','from \'./store','from \'./index'])assert.equal(s.includes(bad),false,`forbidden ${bad}`);
 });
 
