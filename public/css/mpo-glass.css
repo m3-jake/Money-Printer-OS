@@ -1,0 +1,167 @@
+/* Glass (2026-10-03, bing: "Make the UI like iOS Glass. Transparent and glassy.")
+   Loaded last, over the Mac chrome (mpo-mac.css), so the desktop scenery shows through every surface.
+   - Top-level surfaces: windows, dock, menu bar, Start menu and dialogs are clear glass. Each one is a single
+     backdrop blur with a bright rim and a specular sheen.
+   - Inner panels (LCD readouts, lists, graphs, the Advanced app panels) are tinted glass. They have no blur of
+     their own: nested backdrop filters multiply GPU work, and the window's blur already sits behind them.
+   - Legibility: the blur also brightens and saturates what is behind, so dark text on light glass and light text on
+     dark glass both keep their contrast over sky or grass.
+   - Low motion, or a browser without backdrop-filter: the same shapes on more opaque glass. */
+:root {
+  --glass-fill-top: rgba(255, 255, 255, 0.34);
+  --glass-fill-bottom: rgba(255, 255, 255, 0.16);
+  --glass-rim: rgba(255, 255, 255, 0.62);
+  --glass-rim-soft: rgba(255, 255, 255, 0.22);
+  --glass-shadow: 0 22px 48px rgba(12, 32, 58, 0.26), 0 3px 10px rgba(12, 32, 58, 0.16);
+  --glass-filter: blur(28px) saturate(1.8) brightness(1.08);
+  --glass-ink: #121722;
+  --glass-ink-dim: #3b4456;
+  --glass-dark: rgba(6, 12, 22, 0.58);
+  --glass-dark-rim: rgba(255, 255, 255, 0.16);
+  --glass-light: rgba(255, 255, 255, 0.46);
+  --glass-radius: 20px;
+  --glass-radius-inner: 13px;
+}
+
+/* ---- Top-level glass surfaces ------------------------------------------------------------------ */
+.window, .dialog, .bootbox, .startmenu {
+  background: linear-gradient(160deg, var(--glass-fill-top), var(--glass-fill-bottom)) !important;
+  -webkit-backdrop-filter: var(--glass-filter);
+  backdrop-filter: var(--glass-filter);
+  border: 1px solid var(--glass-rim-soft) !important;
+  border-radius: var(--glass-radius) !important;
+  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 0 0 1px rgba(255, 255, 255, 0.10), var(--glass-shadow) !important;
+  color: var(--glass-ink);
+}
+.dialog, .bootbox, .startmenu { overflow: hidden; }
+/* The specular sheen: light caught along the top-left edge, like curved glass. */
+.window::before, .dialog::before, .bootbox::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 60% at 12% -8%, rgba(255, 255, 255, 0.55), transparent 55%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.10), transparent 30%);
+}
+.window > .titlebar, .window > .win-tabs, .window > .body, .window > .glancepane, .dialog > *, .bootbox > * { position: relative; z-index: 1; }
+.window:after { border-radius: inherit !important; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18) !important; }
+.window.max { border-radius: 14px !important; }
+.window.inactive { box-shadow: inset 0 1px 0 var(--glass-rim), 0 12px 30px rgba(12, 32, 58, 0.18) !important; }
+
+/* Title bar: part of the glass, not a strip on top of it. */
+.titlebar {
+  background: transparent !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.26) !important;
+  border-radius: 0 !important;
+  color: var(--glass-ink) !important;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+.window.inactive .titlebar { background: transparent !important; color: var(--glass-ink-dim) !important; }
+.win-buttons button.detail-btn, .win-buttons button.fit-btn {
+  border: 1px solid rgba(255, 255, 255, 0.55) !important;
+  border-radius: 999px !important;
+  background: rgba(255, 255, 255, 0.42) !important;
+  color: var(--glass-ink) !important;
+}
+.win-buttons button { box-shadow: inset 0 1px rgba(255, 255, 255, 0.7), 0 1px 2px rgba(0, 0, 0, 0.18) !important; }
+
+/* Tabs: a glass segmented control. */
+.win-tabs, .menu { background: rgba(255, 255, 255, 0.12) !important; border-bottom: 1px solid rgba(255, 255, 255, 0.24) !important; }
+.win-tabs .tab98, .mpo-tabs .mpo-tab {
+  border: 1px solid transparent !important;
+  border-radius: 999px !important;
+  background: transparent !important;
+  color: var(--glass-ink) !important;
+}
+.win-tabs .tab98.on, .mpo-tabs .mpo-tab.on, .mpo-tabs .mpo-tab[aria-selected="true"] {
+  border-color: rgba(255, 255, 255, 0.6) !important;
+  background: rgba(255, 255, 255, 0.5) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+/* Dock and menu bar. */
+.taskbar {
+  border: 1px solid var(--glass-rim-soft) !important;
+  border-radius: 24px !important;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.36), rgba(255, 255, 255, 0.14)) !important;
+  -webkit-backdrop-filter: var(--glass-filter) !important;
+  backdrop-filter: var(--glass-filter) !important;
+  box-shadow: inset 0 1px 0 var(--glass-rim), var(--glass-shadow) !important;
+}
+.taskbar .task:hover, .taskbar .task.on { border-color: rgba(255, 255, 255, 0.6) !important; background: rgba(255, 255, 255, 0.38) !important; border-radius: 14px !important; }
+.taskbar .task-tool { border: 1px solid rgba(255, 255, 255, 0.55) !important; border-radius: 999px !important; background: rgba(255, 255, 255, 0.34) !important; }
+.taskbar .mode-switch .task-tool.on { background: rgba(255, 255, 255, 0.78) !important; border-color: #fff !important; color: var(--glass-ink) !important; }
+.mac-menubar {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.20)) !important;
+  -webkit-backdrop-filter: var(--glass-filter);
+  backdrop-filter: var(--glass-filter);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.45) !important;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.25), 0 6px 18px rgba(12, 32, 58, 0.10) !important;
+}
+.startmenu .menuitem:hover, .startmenu .menuitem:focus-visible { background: rgba(255, 255, 255, 0.55) !important; color: var(--glass-ink) !important; border-radius: 10px !important; }
+
+/* Desktop icon labels float on the scenery. */
+.icon span, .icon .label { color: #fff; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55), 0 0 8px rgba(0, 0, 0, 0.25); }
+
+/* ---- Window contents: clear, so the glass reads through ----------------------------------------- */
+.glancepane, .glance, .body, .tabpane, .body.tabbed { background: transparent !important; }
+.glance { color: var(--glass-ink); }
+.g-title { color: var(--glass-ink); font-weight: 700; letter-spacing: 0.01em; }
+.g-pill { border: 1px solid rgba(255, 255, 255, 0.6) !important; border-radius: 999px !important; background: rgba(255, 255, 255, 0.45) !important; color: var(--glass-ink) !important; }
+
+/* Readouts: dark tinted glass keeps the green LCD numbers, now in rounded panes. */
+.g-hero, .g-stat b, .g-graph, .glance .mpo-viz, .g-wx {
+  border: 1px solid var(--glass-dark-rim) !important;
+  border-radius: var(--glass-radius-inner) !important;
+  background: var(--glass-dark) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10), 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+.g-stat b { border-radius: 11px !important; }
+.g-stat label { color: var(--glass-ink-dim); font-weight: 600; }
+.g-empty { border: 1px solid rgba(255, 255, 255, 0.55) !important; border-radius: var(--glass-radius-inner) !important; background: var(--glass-light) !important; color: var(--glass-ink-dim) !important; }
+/* Lists: light frosted glass with dark ink. */
+.g-rows {
+  border: 1px solid rgba(255, 255, 255, 0.55) !important;
+  border-radius: var(--glass-radius-inner) !important;
+  background: var(--glass-light) !important;
+}
+.g-row { border-bottom: 1px solid rgba(20, 30, 50, 0.08) !important; }
+.g-row .g-meta { color: var(--glass-ink-dim) !important; }
+.g-foot span { border: 1px solid rgba(255, 255, 255, 0.5) !important; border-radius: 999px !important; background: rgba(255, 255, 255, 0.32); color: var(--glass-ink); }
+.g-action { border: 1px solid rgba(255, 255, 255, 0.7) !important; border-radius: 999px !important; background: rgba(255, 255, 255, 0.6) !important; }
+
+/* Advanced views: the shared surfaces (mpo-shell.css .mpo-surface-*) and app panels (mpo-platform.css .core-app)
+   become see-through tinted glass. Their own backdrop blur is dropped: the window's blur is already behind them. */
+:root { --mpo-glass-dark: rgba(4, 10, 14, 0.58); --mpo-glass-light: rgba(255, 255, 255, 0.52); }
+.mpo-surface-dark, .mpo-surface-light { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+.core-app { background: linear-gradient(150deg, rgba(8, 29, 25, 0.60), rgba(7, 17, 22, 0.68)) !important; }
+.core-app .table { background: rgba(12, 32, 28, 0.42) !important; }
+.core-app .table th { background: rgba(41, 72, 60, 0.78) !important; }
+.core-app .table tr:nth-child(even) { background: rgba(21, 44, 38, 0.38) !important; }
+.core-app summary, .mission-desk { background: rgba(24, 48, 42, 0.5) !important; border-radius: 8px; }
+
+/* Log-on box fields as glass. */
+.logon-body { background: rgba(255, 255, 255, 0.22) !important; }
+.logon-banner { background: linear-gradient(125deg, rgba(255, 255, 255, 0.36), rgba(255, 255, 255, 0.12)) !important; border-bottom: 1px solid rgba(255, 255, 255, 0.35) !important; }
+.logon-field, .logon-input { border: 1px solid rgba(255, 255, 255, 0.7) !important; border-radius: 10px !important; background: rgba(255, 255, 255, 0.62) !important; box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.08) !important; }
+.logon-buttons .btn, .bootbox .btn, .dialog .btn { border: 1px solid rgba(255, 255, 255, 0.75) !important; border-radius: 999px !important; background: rgba(255, 255, 255, 0.55) !important; color: var(--glass-ink) !important; box-shadow: inset 0 1px 0 #fff, 0 1px 3px rgba(0, 0, 0, 0.12) !important; }
+.logon .bootprog { border-radius: 999px !important; border: 1px solid rgba(255, 255, 255, 0.6) !important; background: rgba(255, 255, 255, 0.35) !important; }
+.logon .bootprog i { border-radius: 999px; }
+.logon-tabs button { border-radius: 999px !important; border: 1px solid transparent !important; background: transparent !important; }
+.logon-tabs button.on { border-color: rgba(255, 255, 255, 0.7) !important; background: rgba(255, 255, 255, 0.6) !important; top: 0 !important; }
+.logon-tabs { border-bottom: 0 !important; gap: 4px; }
+.acct-chip button { border: 1px solid rgba(255, 255, 255, 0.6) !important; border-radius: 999px !important; background: rgba(255, 255, 255, 0.45) !important; }
+
+/* ---- Fallbacks ---------------------------------------------------------------------------------- */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .window, .dialog, .bootbox, .startmenu, .taskbar, .mac-menubar { background: rgba(240, 244, 248, 0.94) !important; }
+}
+/* Low motion also means low GPU: lighter blur and a more solid fill. */
+.mpo-low-motion .window, .mpo-low-motion .dialog, .mpo-low-motion .bootbox, .mpo-low-motion .startmenu, .mpo-low-motion .taskbar, .mpo-low-motion .mac-menubar {
+  -webkit-backdrop-filter: blur(10px) !important;
+  backdrop-filter: blur(10px) !important;
+  background: rgba(240, 244, 248, 0.82) !important;
+}
