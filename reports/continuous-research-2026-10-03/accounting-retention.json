@@ -1,0 +1,15 @@
+{
+  "file": "polymarket-copy-paper.json",
+  "oldCloses": 72,
+  "currentCloses": 72,
+  "allPriorClosedRecordsRetained": true,
+  "sameEpoch": true,
+  "sameStartingCapital": true,
+  "lossPauseRetained": true,
+  "backsUpsRelocated": [
+    "W:/money-printer-os/local-installer-backups/update-20261003-142927",
+    "W:/money-printer-os/local-installer-backups/update-20261003-145210",
+    "W:/money-printer-os/local-installer-backups/update-20261003-151009",
+    "W:/money-printer-os/local-installer-backups/update-20261003-151346"
+  ]
+}
