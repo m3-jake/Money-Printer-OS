@@ -43,6 +43,24 @@ Last updated: 2026-09-28, remediation pass P0–P5 on the `v0.5.0-alpha.71` tree
 Evolution Lab alpha.11 paired Windows release described above is unchanged, and no release pair was
 built, signed or installed in this pass. Version `0.5.0-alpha.71`.
 
+## Browser and desktop UI corrections (2026-10-03, Codex)
+
+- Cloudflare Pages now deploys the browser demo automatically after relevant pushes to `main`.
+  The build versions its CSS and JavaScript URLs so previously visited browsers receive new assets.
+- The glass Macintosh menu, dock, and window chrome preserve the original hill, clouds, grass,
+  shadows, slingshot logo, and money effects.
+- Every screen starts with no app windows, including existing preferences from older versions.
+  Settings can explicitly opt into restoring previous apps. Saved window positions are retained.
+- Money, shadows, and grass reach the actual screen bottom. Recent events sit 8px above it and use
+  11px text in a smaller panel. The concealed dock cannot scroll the desktop upward when focused.
+- Source fixes were published as `e1626c0`; Cloudflare deployment and full CI passed. Rendered checks
+  confirmed an empty laptop and phone launch, full-height money effects, and bottom-aligned events.
+  The same edits are applied to the local source checkout. No new desktop installer or signed
+  updater release was built in this pass.
+- Next priorities: rendered phone/laptop checks in publishing; a signed desktop release; extend
+  existing data collection and coverage for weather/BTC/copy bot inputs and settlements; then
+  compare a small set of paper strategies using forward results and a clear daily progress view.
+
 ## Batch PF-3 (2026-10-02, Claude): weather calibrator (Lab rebuild phase 1), web demo merged, alpha.80
 
 bing: "make all those changes, push them all to live, catch up the browser version ... fire on all cylinders".
