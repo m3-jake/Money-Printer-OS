@@ -3,6 +3,10 @@ import {cfg} from './config.js';
 export const strategyNames=['UNIFIED_EDGE'];
 export const operatingProfiles={CALM:{aggression:55,exitPreset:'custom',entryFrequency:'normal'},FAST:{aggression:72,exitPreset:'scalper',entryFrequency:'high'},DEGEN:{aggression:86,exitPreset:'runner',entryFrequency:'high'},MAX:{aggression:96,exitPreset:'yolo',entryFrequency:'max'},FAIR:{aggression:72,exitPreset:'fair',entryFrequency:'normal'},SPRINT:{aggression:100,exitPreset:'sprint',entryFrequency:'max'},RESEARCH:{aggression:100,exitPreset:'runner',entryFrequency:'max'},AGGRESSIVE_PAPER:{aggression:98,entryFrequency:'max',maxOpenPositions:25,paperOverrides:{tradeSizeSol:1.0,maxPositionSol:3.0,maxTotalExposureSol:10.0,dailyLossLimitSol:5.0}}};
 export const isAggressivePaper=(runtime,mode=cfg.mode)=>mode==='paper'&&String(runtime?.profile||'').toUpperCase()==='AGGRESSIVE_PAPER';
+// These profiles share the existing controls; exploratory books carry their own funded limits.
+operatingProfiles.FAST_PAPER_STEADY={aggression:72,exitPreset:'fair',entryFrequency:'high',researchMode:'FAST_PAPER_STEADY',paperLanes:{arbitrage:true,nativeSniper:false},paidModelCalls:0};
+operatingProfiles.BURST_RESEARCH={...operatingProfiles.FAST_PAPER_STEADY,researchMode:'BURST_RESEARCH'};
+export function paperLaneEnabled(runtime,lane,mode=cfg.mode){return mode==='paper'&&(runtime?.paperLanes?.[lane]===true||isAggressivePaper(runtime,mode));}
 export function defaults(){return{profile:'FAIR',aggression:72,maxCandidates:cfg.maxCandidates,entryFrequency:'normal',exitPreset:'fair',followLabBest:true,controlMode:'LAB_AUTO',strategies:{UNIFIED_EDGE:true},favorites:[],blacklist:[],pinned:[],visualIntensity:90,autonomyLevel:4,workspace:'TRADE'}}
 export function aggressionParams(v){v=Math.max(0,Math.min(100,Number(v)||0));return{minScore:Math.round(70-v*.38),minStrategyScore:Math.round(68-v*.36),maxOpenPositions:Math.max(1,Math.round(1+v/15)),sizeFactor:.25+v/95,allowWarnings:v>=20}}
 // User-editable exits for exitPreset 'custom' and a manual open-position cap. Bounds are hard; anything else is dropped.

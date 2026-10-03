@@ -8,7 +8,8 @@ import { evolutionChampionPolicy } from './learner.js';
 import { dataCoverage } from './dataCoverage.js';
 import { solanaBookView } from './solanaEconomics.js';
 import { traderSwitches } from './killSwitches.js';
-import { robinhoodReadiness } from './robinhoodAutoTrader.js';
+import { robinhoodReadiness,robinhoodExternalFlow,robinhoodExternalMomentum,robinhoodDailyQuote } from './robinhoodAutoTrader.js';
+import { tickRobinhoodExternalBooks,robinhoodExternalBookViews } from './robinhoodExternalFeatures.js';
 import { holderRpcHealth } from './rpc.js';
 import { walletScorecardView } from './walletScorecard.js';
 import http from 'node:http';
@@ -28,15 +29,19 @@ import { robinhoodFitnessParts } from './robinhoodAutoTrader.js';
 import { runSelfReport, latestSelfReport } from './selfReport.js';
 import { saveResourcePolicy, resourceSnapshot, systemTelemetry } from './resourcePolicy.js';
 // Real Polymarket US order routes stay parked; singles below use a separate virtual paper book.
-import { usReadiness, configurePolymarketUS, armPolymarketUS, polymarketUSAccount, polymarketUSSnapshot, filterUSMarketsByCategory } from './polymarketUS.js';
-import { paperSinglesBookView, placePaperSingle, markPaperSingles, resetPaperSingles } from './polymarketUSSinglesPaper.js';
+import { usReadiness, configurePolymarketUS, armPolymarketUS, polymarketUSAccount, polymarketUSSnapshot, filterUSMarketsByCategory,usSingleExecutableMarket } from './polymarketUS.js';
+import { paperSinglesBookView, placePaperSingle, markPaperSingles, resetPaperSingles,closePaperSingle,settlePaperSingles,SINGLE_PAPER_FILE } from './polymarketUSSinglesPaper.js';
+import { tickDisclosurePaper,disclosurePaperView } from './disclosurePaper.js';
+import { createDisclosureEquityQuoteAdapter } from './disclosureEquityQuotes.js';
+import { record13FResearch } from './edgarHoldingsResearch.js';
 import { placePaperCombo, settlePaperCombos, setPaperAutopilot, resetPaperBook, paperBookView, startPaperLoops, stopPaperLoops, setPaperLabPolicy, rollbackPaperLabPolicy } from './polymarketUSPaper.js';
 import { usComboJournalView, usComboSnapshot, buildUSCombo, quoteUSCombo, placeUSCombo, cancelUSRfq, setUSComboSettings, settleUSCombos, forgetUSCombo, startUSComboLoops, setUSComboAutopilot } from './polymarketUSCombos.js';
 import { readApiUnitEconomics } from './apiUnitEconomics.js';
 import { recordUSSingleShadow } from './shadowCollector.js';
 import { readShadowRows, shadowDivergenceReport } from './shadowReport.js';
 import { pumpfunPaperLane } from './pumpfunPaper.js';
-import { pumpfunCopyPaper } from './pumpfunCopyPaper.js';
+import { pumpfunCopyPaper, pumpfunCopyExperiments } from './pumpfunCopyPaper.js';
+import { runArbitragePaperTick } from './arbitragePoller.js';
 import updateChannel from '../desktop/update-channel.cjs';
 import { handlePlatformRequest, localMutationAllowed } from './core/http.js';
 import { KalshiPaperBots, KALSHI_BOT_IDS } from './kalshiBots.js';
@@ -44,6 +49,7 @@ import { BotTape } from './botTape.js';
 import { BotFarm } from './botFarm.js';
 import { KalshiMirrorPaper } from './kalshiMirror.js';
 import { PolymarketCopyPaper } from './polymarketCopy.js';
+import { CopyMetadataCache,CopyReadCache,COPY_EXPERIMENT_COHORTS,COPY_POLICY_SUPPORT } from './copyEvent.js';
 import { registerPaperBots } from './scoreboard.js';
 import { createVenueLoops } from './venueLoop.js';
 import { WeatherCalibrator } from './weatherCalibration.js';
@@ -64,7 +70,7 @@ let paperBots = null;
 const venueLoops = createVenueLoops();
 // The Evolution Lab's Research Workbench summary (lab-link/workbench.json), if the Lab on this machine has published one.
 function readLabWorkbench(){try{const w=JSON.parse(fs.readFileSync(path.join(DATA_DIR,'lab-link','workbench.json'),'utf8'));return w&&w.schema==='mpo.lab-workbench.v1'?w:null;}catch{return null;}}
-function paperBotsView(){ if(!paperBots) return {ok:false,error:'Paper bots not started'}; return {ok:true,at:Date.now(),mode:'PAPER',kalshi:paperBots.kalshi.snapshots(),polycopy:paperBots.copy.snapshot(),calibration:paperBots.calibration.snapshot(),farm:paperBots.farm.snapshot(),tape:paperBots.tape.stats(),mirror:paperBots.mirror.snapshot(),lab:readLabWorkbench()}; }
+function paperBotsView(){ if(!paperBots) return {ok:false,error:'Paper bots not started'}; return {ok:true,at:Date.now(),mode:'PAPER',kalshi:paperBots.kalshi.snapshots(),polycopy:paperBots.copy.snapshot(),copyExperiments:paperBots.copyExperiments.map(b=>b.snapshot()),calibration:paperBots.calibration.snapshot(),farm:paperBots.farm.snapshot(),tape:paperBots.tape.stats(),mirror:paperBots.mirror.snapshot(),lab:readLabWorkbench(),operatingProfile:loadStateCached().runtime?.profile,paidModelCalls:0}; }
 const UPDATE_STATUS_FILE = path.join(DATA_DIR,'update-status.json');
 const UPDATE_REQUEST_FILE = path.join(DATA_DIR,'update-request.json');
 // Desktop-shell preferences (read by desktop/main.cjs every ~1 s): background operation,
@@ -492,15 +498,49 @@ export function startDashboard() {
   // The tape records what the bots saw; the farm prices its variants on the same frames as the live bots.
   const tape=new BotTape({dataDir:DATA_DIR}),kalshiBots=new KalshiPaperBots({dataDir:DATA_DIR,calibration,tape,kalshi:()=>marketPlatform().providers.providers.get('kalshi')||null,weather:()=>marketPlatform().weatherSnapshot()});
   // The Kalshi mirror copies the Polymarket leaders' game-winner buys onto Kalshi (src/kalshiMirror.js).
-  const mirror=new KalshiMirrorPaper({dataDir:DATA_DIR,fetchImpl:globalThis.fetch,kalshi:()=>marketPlatform().providers.providers.get('kalshi')||null,sports:()=>marketPlatform().sportsSnapshot()});
-  paperBots={calibration,tape,kalshi:kalshiBots,farm:new BotFarm({dataDir:DATA_DIR,bots:kalshiBots}),mirror,copy:new PolymarketCopyPaper({dataDir:DATA_DIR,tape,onLeaderBuy:(f,t)=>mirror.enqueue(f,t)})};
+  const copyReads=new CopyReadCache();
+  const mirror=new KalshiMirrorPaper({dataDir:DATA_DIR,readCache:copyReads,fetchImpl:globalThis.fetch,kalshi:()=>marketPlatform().providers.providers.get('kalshi')||null,sports:()=>marketPlatform().sportsSnapshot()});
+  const copyMetadata=new CopyMetadataCache();
+  const copyExperiments=COPY_EXPERIMENT_COHORTS.map(({id,policy,category,startUsd})=>new PolymarketCopyPaper({dataDir:path.join(DATA_DIR,'experiments',id),tape,readCache:copyReads,metadataCache:copyMetadata,experiment:{id,policy,...(category?{category}:{}),exploratory:true,startUsd,settings:{stakeUsd:1,maxOpen:10,follows:3,minLeaderTradeUsd:10,minLeaderVolumeUsd:0,minLeaderMargin:0,processingLatencyMs:250,maxTradeAgeMs:120_000}}}));
+  paperBots={calibration,tape,kalshi:kalshiBots,farm:new BotFarm({dataDir:DATA_DIR,bots:kalshiBots}),mirror,copyExperiments,copy:new PolymarketCopyPaper({dataDir:DATA_DIR,tape,readCache:copyReads,metadataCache:copyMetadata,onLeaderEvent:(f,t)=>mirror.enqueue(f,t)})};
   registerPaperBots(()=>paperBots);
   // Each paper venue has its own timer, run budget and stall watchdog (src/venueLoop.js, run C2): a venue whose run
   // hangs is reported STALLED in /api/health and never holds up another venue or the HUD.
-  if(process.env.MPO_PAPER_BOTS!=='false'&&!process.env.NODE_TEST_CONTEXT){const v=venueLoops;
+  if(process.env.MPO_PAPER_BOTS!=='false'&&!process.env.NODE_TEST_CONTEXT){const v=venueLoops,disclosureQuoteAdapter=createDisclosureEquityQuoteAdapter();
+    v.add('kalshi-evidence',{everyMs:30_000,firstMs:35_000,run:()=>marketPlatform().capturePredictionEvidence()});
+    v.add('robinhood-external-paper',{everyMs:15_000,firstMs:50_000,run:()=>{const features=robinhoodExternalFlow();return tickRobinhoodExternalBooks({dataDir:DATA_DIR,features,momentum:robinhoodExternalMomentum(),supportedSymbols:features.supportedSymbols||[],quoteFn:robinhoodDailyQuote,enabled:cfg.mode==='paper'&&!loadStateCached().paused});}});
+    v.add('us-singles-settlement',{everyMs:60_000,firstMs:25_000,run:()=>fs.existsSync(SINGLE_PAPER_FILE)?settlePaperSingles({}):null});
+    v.add('disclosure-paper',{everyMs:300_000,firstMs:40_000,run:async()=>{
+      const platform=marketPlatform(),configured=platform.edgar.status().status!=='NOT CONFIGURED';
+      const filings=[];
+      if(configured){const result=await platform.edgarLatest('4');for(const f of (result.filings||[]).slice(0,4)){
+        if(!f.facts?.rawXmlUrl)continue;
+        try{const form4=await platform.edgar.form4(f.facts.rawXmlUrl);filings.push({...f,form4,firstObservedAt:platform.store.get(`filing:sec:${encodeURIComponent(f.facts.accession)}`)?.data?.firstObservedAt||Date.now()});}catch{}
+      }}
+      return tickDisclosurePaper({filings,secConfigured:configured,quote:disclosureQuoteAdapter.quote});
+    }});
+    v.add('edgar-13f-research',{everyMs:6*3600_000,firstMs:65_000,run:async()=>{
+      const platform=marketPlatform();if(platform.edgar.status().status==='NOT CONFIGURED')return {status:'SEC_USER_AGENT_REQUIRED'};
+      const {filings}=await platform.edgarLatest('13F-HR');
+      for(const f of (filings||[]).slice(0,2)){
+        const stored=platform.store.get(`filing:sec:${encodeURIComponent(f.facts.accession)}`);
+        const snapshot=await platform.edgar.form13F(f,{firstObservedAt:stored?.data?.firstObservedAt||Date.now()});
+        record13FResearch(snapshot,{dataDir:DATA_DIR});
+      }return {status:'RESEARCH_ONLY',executionEvidence:false};
+    }});
+    v.add('arbitrage-paper',{everyMs:60_000,firstMs:45_000,run:()=>{const s=loadStateCached();return runArbitragePaperTick(marketPlatform(),s,cfg.mode);}});
+    v.add('pumpfun-native-exits',{everyMs:10_000,firstMs:10_000,run:()=>{const s=loadStateCached();return pumpfunPaperLane().maintain({runtime:s.runtime,mode:cfg.mode,solUsd:s.market?.solUsd});}});
+    v.add('pumpfun-copy-exits',{everyMs:10_000,firstMs:12_000,run:()=>{const s=loadStateCached();return Promise.allSettled([pumpfunCopyPaper(),...pumpfunCopyExperiments()].map(b=>b.maintain({mode:cfg.mode,solUsd:s.market?.solUsd,solUsdAt:s.market?.solUsdObservedAt})));}});
     v.add('kalshi-weather',{everyMs:600_000,firstMs:20_000,run:()=>paperBots.kalshi.run('weather')});v.add('kalshi-weather-nws',{everyMs:600_000,firstMs:90_000,run:()=>paperBots.kalshi.run('weather-nws')});v.add('kalshi-btc',{everyMs:180_000,firstMs:150_000,run:()=>paperBots.kalshi.run('btc')});
     v.add('kalshi-farm-weather',{everyMs:600_000,firstMs:150_000,run:()=>paperBots.farm.run('weather')});v.add('kalshi-farm-btc',{everyMs:180_000,firstMs:170_000,run:()=>paperBots.farm.run('btc')});
-    v.add('polymarket-copy',{everyMs:60_000,firstMs:50_000,run:()=>paperBots.copy.run()});v.add('kalshi-mirror',{everyMs:60_000,firstMs:80_000,run:()=>paperBots.mirror.run()});
+    v.add('polymarket-copy',{everyMs:15_000,firstMs:5_000,run:()=>paperBots.copy.run({settlement:false})});
+    v.add('polymarket-copy-settlement',{everyMs:60_000,firstMs:20_000,run:()=>paperBots.copy.runSettlement()});
+    for(const [i,b] of copyExperiments.entries()){
+      v.add(`copy-explore-${b.state.experiment.policy}`,{everyMs:15_000,firstMs:8_000+i*1000,run:()=>b.run({settlement:false})});
+      v.add(`copy-settle-${b.state.experiment.policy}`,{everyMs:60_000,firstMs:30_000+i*1000,run:()=>b.runSettlement()});
+    }
+    v.add('kalshi-mirror',{everyMs:30_000,firstMs:15_000,run:()=>paperBots.mirror.run({settlement:false})});
+    v.add('kalshi-mirror-settlement',{everyMs:60_000,firstMs:35_000,run:()=>paperBots.mirror.runSettlement()});
     // Weather calibration refits once a day (and at start when missing or older than 20 h).
     v.add('weather-calibration',{everyMs:86_400_000,firstMs:(calibration.state&&Date.now()-calibration.state.at<20*3600e3)?86_400_000:10_000,stallMs:30*60_000,run:()=>calibration.run()});}
   let intelligenceBusy=false,intelligenceClosed=false;
@@ -634,6 +674,10 @@ export function startDashboard() {
       }
       if (req.method === 'GET' && u.pathname === '/api/shadow-report') { const rows=await readShadowRows(path.join(DATA_DIR,'shadow-live.ndjson'));return json(res,{...shadowDivergenceReport(rows,100),orderPlaced:false}); }
       if (req.method === 'GET' && u.pathname === '/api/pumpfun/paper') return json(res, { ...pumpfunPaperLane().view(), orderSubmitted: false });
+      if (req.method === 'GET' && u.pathname === '/api/pumpfun/copy/experiments') return json(res,{mode:'PAPER',experiments:pumpfunCopyExperiments().map(b=>b.view()),ordersSubmitted:0});
+      if (req.method === 'GET' && u.pathname === '/api/disclosure/paper') return json(res,disclosurePaperView());
+      if (req.method === 'GET' && u.pathname === '/api/operating-profiles') return json(res,{active:loadStateCached().runtime?.profile,profiles:['FAST_PAPER_STEADY','BURST_RESEARCH'],paidModelCalls:0,paperOnly:true,copyPolicySupport:COPY_POLICY_SUPPORT,predictionCapture:marketPlatform().predictionCapture||null});
+      if (req.method === 'GET' && u.pathname === '/api/robinhood-external-paper') return json(res,{paperOnly:true,features:robinhoodExternalFlow(),books:robinhoodExternalBookViews({dataDir:DATA_DIR})});
       if (req.method === 'GET' && u.pathname === '/api/pumpfun/copy-paper') return json(res, pumpfunCopyPaper().view());
       if (req.method === 'GET' && u.pathname === '/api/polymarket-us/combos/journal') { const j=usComboJournalView({historyLimit:500}); return json(res, {...j,performance:comboPerformance(j.history,j.open)}); }
       if (req.method === 'GET' && u.pathname === '/api/polymarket-us/combos') { const snap=await usComboSnapshot(); let paper=null; try{paper=paperBookView()}catch(e){paper={error:String(e.message||e)}} return json(res, {...snap,paper}); }
@@ -685,7 +729,8 @@ export function startDashboard() {
       if (u.pathname === '/api/resources') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); return json(res,{ok:true,policy:saveResourcePolicy({cpuPercent:b.cpuPercent,memoryGB:b.memoryGB,diskGB:b.diskGB},'manual')}); }
       if (u.pathname === '/api/resources/sync') return json(res,{ok:true,policy:saveResourcePolicy({},'hive')});
       if (u.pathname === '/api/polymarket-us/config') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); try{return json(res,{ok:true,readiness:configurePolymarketUS(b)})}catch(e){return json(res,{ok:false,error:String(e.message||e)},400)} }
-      if (u.pathname === '/api/polymarket-us/singles/paper/place') { const b=await body(req);if(b.__error)return json(res,{ok:false,error:b.__error},400);try{const snap=await polymarketUSSnapshot(),market=(snap.opportunities||[]).find(x=>String(x.slug||x.id)===String(b.marketSlug||''));if(!market)return json(res,{ok:false,error:'Market is not available in the current public snapshot'},404);const entry=placePaperSingle({market,stakeUsd:b.stakeUsd,outcome:b.outcome,mode:cfg.mode});return json(res,{ok:true,entry,paper:paperSinglesBookView()})}catch(e){return json(res,{ok:false,code:e.code||'paper-single-error',error:String(e.message||e)},400)} }
+      if (u.pathname === '/api/polymarket-us/singles/paper/place') { const b=await body(req);if(b.__error)return json(res,{ok:false,error:b.__error},400);try{const snap=await polymarketUSSnapshot(),market=(snap.opportunities||[]).find(x=>String(x.slug||x.id)===String(b.marketSlug||''));if(!market)return json(res,{ok:false,error:'Market is not available in the current public snapshot'},404);const executable=await usSingleExecutableMarket(market);const entry=placePaperSingle({market:executable,stakeUsd:b.stakeUsd,outcome:b.outcome,mode:cfg.mode});return json(res,{ok:true,entry,paper:paperSinglesBookView()})}catch(e){return json(res,{ok:false,code:e.code||'paper-single-error',error:String(e.message||e)},400)} }
+      if (u.pathname === '/api/polymarket-us/singles/paper/close') { const b=await body(req);if(b.__error)return json(res,{ok:false,error:b.__error},400);try{const p=paperSinglesBookView().open?.find(x=>x.id===b.id);if(!p)return json(res,{ok:false,error:'Open position not found'},404);const market=await usSingleExecutableMarket({slug:p.marketId});const exit=closePaperSingle({id:p.id,market,quantity:b.quantity,receiptId:b.receiptId});return json(res,{ok:true,exit,paper:paperSinglesBookView()});}catch(e){return json(res,{ok:false,code:e.code||'paper-exit-error',error:String(e.message)},400);} }
       if (u.pathname === '/api/polymarket-us/singles/paper/reset') { const b=await body(req);if(b.__error)return json(res,{ok:false,error:b.__error},400);if(b.confirmation!=='RESET PAPER SINGLES')return json(res,{ok:false,error:'Type RESET PAPER SINGLES to reset this paper book'},400);return json(res,{ok:true,paper:resetPaperSingles({startUsd:b.startUsd})}); }
       if (u.pathname === '/api/polymarket-us/arm') { const b=await body(req); if(b.__error)return json(res,{ok:false,error:b.__error},400); try{return json(res,{ok:true,readiness:armPolymarketUS(!!b.armed)})}catch(e){return json(res,{ok:false,error:String(e.message||e)},400)} }
       if (u.pathname.startsWith('/api/polymarket-us/combos/')) {

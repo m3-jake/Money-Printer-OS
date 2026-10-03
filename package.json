@@ -1,6 +1,6 @@
 {
   "name": "money-printer-os",
-  "version": "0.5.0-alpha.88",
+  "version": "0.5.0-alpha.89",
   "description": "Money Printer OS â€” native retro trading workstation with continuous research, monitoring, and desktop supervision.",
   "type": "module",
   "dependencies": {
@@ -50,7 +50,7 @@
     "test:evolution": "node --test tests/evolution-paper-policy.test.mjs tests/lab-link.test.mjs tests/shared-core-parity.test.mjs",
     "test:release-gate": "node --test tests/release-gate.test.cjs tests/paired-release.test.mjs",
     "test:visual": "node --test tests/renderer-alpha52.test.mjs tests/visual-assets.test.mjs tests/visual-contract.test.mjs tests/api-state-split.test.mjs tests/window-state.test.mjs tests/hud-resilience.test.mjs tests/logo-3d.test.mjs tests/home-overview.test.mjs tests/live-overviews.test.mjs",
-    "test:all": "npm run test:wiring && npm run test:paired-safety && npm run test:recovery && npm run test:discovery && npm run test:solana && npm run test:turnover && npm run test:updater && npm run test:execution && npm run test:unit-economics && npm run test:settlement && npm run test:polymarket-us && npm run test:combos && npm run test:edge-robustness && npm run test:accounting && npm run test:replay && npm run test:experiments && npm run test:research && npm run test:evidence && npm run test:poly-research-eval && npm run test:evolution && npm run test:lab-link && npm run test:visual && npm run test:release-gate && npm run test:latency && npm run test:robinhood && npm run test:robinhood-equities && npm run test:lane-contracts && npm run test:fitness && npm run test:unattended && npm run test:upgrade && npm run test:pump-profit && npm run test:paper-completion && npm run test:wallet-crowd && npm run test:paper-bots && npm run test:web-demo",
+    "test:all": "npm run test:wiring && npm run test:paired-safety && npm run test:recovery && npm run test:discovery && npm run test:solana && npm run test:turnover && npm run test:updater && npm run test:execution && npm run test:unit-economics && npm run test:settlement && npm run test:polymarket-us && npm run test:combos && npm run test:edge-robustness && npm run test:accounting && npm run test:replay && npm run test:experiments && npm run test:research && npm run test:evidence && npm run test:poly-research-eval && npm run test:evolution && npm run test:lab-link && npm run test:visual && npm run test:release-gate && npm run test:latency && npm run test:robinhood && npm run test:robinhood-equities && npm run test:lane-contracts && npm run test:fitness && npm run test:unattended && npm run test:upgrade && npm run test:pump-profit && npm run test:paper-completion && npm run test:wallet-crowd && npm run test:paper-bots && npm run test:web-demo && npm run test:paper-potential",
     "test:lane-contracts": "node --test tests/marketlab-loading.test.mjs tests/practice-risk-marks.test.mjs tests/recovery-final.test.mjs tests/legacy-mirror-recovery.test.mjs tests/research-zero-credit.test.mjs tests/intelligence.test.mjs tests/research-lane-registry.test.mjs tests/money-physics.test.mjs tests/market-core.test.mjs tests/book-reconcile.test.mjs tests/paper-trading-core.test.mjs tests/robinhood-practice.test.mjs tests/champion-state.test.mjs tests/data-coverage.test.mjs tests/runtime-controls.test.mjs tests/scoreboard.test.mjs",
     "test:paper-bots": "node --test tests/paper-bots.test.mjs tests/forward-scorecard.test.mjs tests/audit-root.test.mjs tests/audit-safety.test.mjs tests/pumpfun-copy-paper.test.mjs",
     "test:wiring": "node --test tests/test-wiring.test.mjs tests/doc-drift.test.mjs tests/src-reachability.test.mjs",
@@ -82,7 +82,8 @@
     "test:upgrade": "node --test tests/core-replay-correctness.test.mjs tests/lab-pool-lifecycle.test.mjs tests/marked-risk.test.mjs tests/prediction-experiment.test.mjs tests/upgrade-boundaries.test.mjs tests/upgrade-bridge.test.mjs",
     "test:pump-profit": "node --test tests/pump-profit-policy.test.mjs tests/pump-profit-runtime.test.mjs tests/pump-paper-shared.test.mjs",
     "test:paper-completion": "node --test tests/aggressive-paper-profile.test.mjs tests/aggressive-sizing.test.mjs tests/analytics.test.mjs tests/arbitrage-poller.test.mjs tests/arbitrage.test.mjs tests/kalshi-demo.test.mjs tests/onchain-flow.test.mjs tests/paper-qualification.test.mjs tests/paper-routing.test.mjs tests/polymarket-us-categories.test.mjs tests/polymarket-us-singles-paper.test.mjs tests/portfolio-risk.test.mjs tests/pumpfun-native-paper.test.mjs tests/pumpfun-sniper.test.mjs tests/regime-routing.test.mjs tests/robinhood-equities-paper-adapter.test.mjs tests/shadow-collector.test.mjs tests/shadow-live.test.mjs tests/wallet-tracker-copy.test.mjs tests/paper-completion-regression.test.mjs",
-    "test:wallet-crowd": "node --test tests/wallet-crowd.test.mjs tests/wallet-crowd-runtime.test.mjs"
+    "test:wallet-crowd": "node --test tests/wallet-crowd.test.mjs tests/wallet-crowd-runtime.test.mjs",
+    "test:paper-potential": "node --test tests/paper-potential-runtime.test.mjs tests/paper-potential-lifecycles.test.mjs tests/copy-pipeline.test.mjs tests/disclosure-equity-research.test.mjs tests/robinhood-external-features.test.mjs"
   },
   "optionalDependencies": {
     "utf-8-validate": "5.0.10"

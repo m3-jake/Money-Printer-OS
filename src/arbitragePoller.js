@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { isAggressivePaper } from './runtime.js';
+import { paperLaneEnabled } from './runtime.js';
 import { proposePairedArbitrage, settlePairedArbitrage, recordArbitrageOpportunity } from './arbitrage.js';
 
 function readBook(file) {
@@ -21,7 +21,7 @@ export function createArbitragePoller({ platform, dataDir = process.env.MONEY_PR
   const file = path.resolve(dataDir, 'arbitrage-paper.json'), journal = path.resolve(dataDir, 'arbitrage.ndjson');
   let lastAt = null, busy = false;
   async function tick({ state, mode = 'paper', runtime = state?.runtime } = {}) {
-    if (mode !== 'paper' || (!isAggressivePaper(runtime, mode) && !fs.existsSync(file))) return { enabled: false, reason: 'aggressive-paper-required', ordersSubmitted: 0 };
+    if (mode !== 'paper' || (!paperLaneEnabled(runtime, 'arbitrage', mode) && !fs.existsSync(file))) return { enabled: false, reason: 'aggressive-paper-required', ordersSubmitted: 0 };
     const at = now();
     if (busy || lastAt !== null && at - lastAt < intervalMs) return { enabled: true, cached: true, ordersSubmitted: 0 };
     busy = true; lastAt = at;
@@ -39,7 +39,7 @@ export function createArbitragePoller({ platform, dataDir = process.env.MONEY_PR
           saveBook(file, book); recordArbitrageOpportunity({ type: 'arbitrage-paper-settlement', ...closed }, journal); result.settled++;
         } catch (e) { result.errors.push(String(e.message)); }
       }
-      if (!isAggressivePaper(runtime, mode)) return { ...result, entryEnabled: false, reason: 'manage-existing-paper-only' };
+      if (!paperLaneEnabled(runtime, 'arbitrage', mode)||state?.system?.paused||state?.system?.killSwitch) return { ...result, entryEnabled: false, reason: 'manage-existing-paper-only' };
       const lists = await Promise.allSettled(['kalshi', 'polymarket'].map(venue => platform.markets(venue, { limit: 100 })));
       for (const x of lists) if (x.status === 'rejected') result.errors.push(String(x.reason?.message || x.reason));
       const pairs = platform.arbitrageCandidates({ limit: Math.min(10, Math.max(1, maxPairs)) }).pairs || [];

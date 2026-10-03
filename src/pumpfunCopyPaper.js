@@ -3,6 +3,7 @@
 // The adapter exposes reads/unsigned plans only. Nothing in this module can sign or submit.
 import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { PublicKey } from '@solana/web3.js';
 import { createNativePaperAdapter } from './pumpfunNativePaper.js';
 import { walletScorecardView, isWalletAddress, MIN_GRADED_ROUND_TRIPS } from './walletScorecard.js';
@@ -42,19 +43,29 @@ export function qualifiedPumpCopyWallets(card, { asOf = Date.now(), settings = P
 }
 
 export function createPumpfunCopyPaper({ dataDir = process.env.MONEY_PRINTER_DATA_DIR || 'data', adapter = null,
-  now = Date.now, scorecard = () => walletScorecardView({ dir: path.resolve(dataDir), now: now() }), logger = () => {}, settings: overrides = {} } = {}) {
+  now = Date.now, scorecard = () => walletScorecardView({ dir: path.resolve(dataDir), now: now() }), logger = () => {}, settings: overrides = {}, experiment = null } = {}) {
   const settings = { ...PUMP_COPY_DEFAULTS, ...overrides };
   if (!validSettings(settings)) throw new Error('Invalid Pump copy risk limits');
-  const file = path.resolve(dataDir, 'pumpfun-copy-paper.json'), activatedAt = now();
+  if(experiment&&!['emerging','consensus'].includes(experiment.policy))throw new Error('Unsupported Pump exploratory policy');
+  const file = path.resolve(dataDir, experiment ? `pumpfun-copy-${experiment.policy}-paper.json` : 'pumpfun-copy-paper.json'), activatedAt = now();
   let queue = Promise.resolve(), pending = 0, quoteWindowAt = 0, quotesThisMinute = 0;
   let maintenanceRunning = false, maintenanceResult = { closed: 0, ordersSubmitted: 0 };
   const freshBook = () => ({ schema: PUMP_COPY_SCHEMA, mode: 'PAPER', startedAt: activatedAt, startUsd: settings.startUsd,
     startSol: null, cashSol: null, fundedAt: null, fundingSolUsd: null, solUsd: null, fxAt: null,
-    realizedPnlSol: 0, settings, open: [], history: [], seen: [], decisions: [], lastRunAt: null, lastMarkAt: null, lastError: null, ordersSubmitted: 0 });
+    realizedPnlSol: 0, settings, experiment:experiment?{...experiment,strategyHash:createHash('sha256').update(JSON.stringify({experiment,settings,source:'observed-native-wallet-swap'})).digest('hex'),startedAt:activatedAt,qualificationStage:'EXPLORATORY',qualificationEffect:'NONE',capitalUsd:settings.startUsd}:null, open: [], history: [], seen: [], decisions: [], lastRunAt: null, lastMarkAt: null, lastError: null, ordersSubmitted: 0 });
+  function leaders(card,asOf,limits){
+    if(!experiment)return qualifiedPumpCopyWallets(card,{asOf,settings:limits});
+    const at=Number(card?.asOf);
+    if(!timestamp(at,asOf)||asOf-at>limits.maxScorecardAgeMs)return [];
+    return (card?.wallets||[]).filter(w=>isWalletAddress(w.wallet)&&Number(w.roundTrips)>=limits.minTrips&&Number(w.lastTs)<at&&Number(w.lastTs)>asOf-7*86400e3)
+      .sort((a,b)=>Number(b.shrunkReturnPct||0)-Number(a.shrunkReturnPct||0)).slice(0,limits.maxLeaders)
+      .map(w=>({...w,scorecardAsOf:at,qualificationStage:'EXPLORATORY'}));
+  }
   function read() {
     if (!fs.existsSync(file)) return freshBook();
     if (fs.statSync(file).size > 64 * 1024 * 1024) throw new Error('Pump copy account exceeds its read budget; existing bytes preserved');
     const b = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if(experiment&&(b.experiment?.id!==experiment.id||b.experiment?.policy!==experiment.policy))throw new Error('Pump experiment identity mismatch; existing bytes preserved');
     const t = now(), validPosition = p => p && p.mode === 'PAPER' && p.orderSubmitted === false && typeof p.id === 'string' && p.id
       && typeof p.rawAmount === 'string' && p.rawAmount.length <= 64 && integerRaw(p.rawAmount) && assetAddress(p.mint) && isWalletAddress(p.wallet)
       && finiteNumber(p.costSol) && p.costSol > 0 && finiteNumber(p.sizeSol) && p.sizeSol > 0 && p.costSol >= p.sizeSol
@@ -72,7 +83,7 @@ export function createPumpfunCopyPaper({ dataDir = process.env.MONEY_PRINTER_DAT
     if (b.schema !== PUMP_COPY_SCHEMA || b.mode !== 'PAPER' || b.ordersSubmitted !== 0 || !validSettings(b.settings)
       || !timestamp(b.startedAt, t) || !finiteNumber(b.startUsd) || b.startUsd !== b.settings.startUsd || !finiteNumber(b.realizedPnlSol)
       || !Array.isArray(b.open) || b.open.length > b.settings.maxOpen || !b.open.every(validPosition) || new Set(b.open.map(p => p.id)).size !== b.open.length
-      || !Array.isArray(b.history) || b.history.length > 1000 || !b.history.every(validHistory) || new Set(b.history.map(p => p.id)).size !== b.history.length
+      || !Array.isArray(b.history) || !b.history.every(validHistory) || new Set(b.history.map(p => p.id)).size !== b.history.length
       || b.history.some(p => b.open.some(o => o.id === p.id)) || !Array.isArray(b.seen) || b.seen.length > 2048 || b.seen.some(x => typeof x !== 'string')
       || !Array.isArray(b.decisions) || b.decisions.length > 100 || b.decisions.some(d => !timestamp(d.at, t) || d.orderSubmitted !== false)
       || ![b.lastRunAt,b.lastMarkAt].every(x => x === null || timestamp(x, t))
@@ -141,18 +152,18 @@ export function createPumpfunCopyPaper({ dataDir = process.env.MONEY_PRINTER_DAT
       jito: q.plan.jito, quote: q.plan.quote } : null });
   function status(b, card, t) {
     if (b.startSol === null) return 'WAITING_FOR_SOL_PRICE';
-    if (!qualifiedPumpCopyWallets(card, { asOf: t, settings: b.settings }).length) return 'WAITING_FOR_WALLET_EVIDENCE';
+    if (!leaders(card,t,b.settings).length) return 'WAITING_FOR_WALLET_EVIDENCE';
     return b.lastError ? 'QUOTE_UNAVAILABLE' : 'PAPER_READY';
   }
   function view() {
-    const b = read(), t = now(), card = scorecard(), leaders = qualifiedPumpCopyWallets(card, { asOf: t, settings: b.settings });
+    const b = read(), t = now(), card = scorecard(), selected = leaders(card,t,b.settings);
     const marksFresh = b.open.every(p => timestamp(p.lastQuoteAt,t) && t - p.lastQuoteAt <= b.settings.maxQuoteAgeMs && finiteNumber(p.markedNetSol));
     const equitySol = b.cashSol === null || !marksFresh ? null : b.cashSol + b.open.reduce((sum, p) => sum + p.markedNetSol, 0);
     const fxFresh = timestamp(b.fxAt,t) && t - b.fxAt <= b.settings.maxSignalAgeMs;
-    return { ...b, status: status(b, card, t), leaders, equitySol, equityUsd: equitySol === null || !fxFresh ? null : equitySol * b.solUsd,
+    return { ...b, status: status(b, card, t), leaders:selected, equitySol, equityUsd: equitySol === null || !fxFresh ? null : equitySol * b.solUsd,
       markedValueStatus: marksFresh ? 'FRESH' : 'UNAVAILABLE', stats: { closed: b.history.length, wins: b.history.filter(p => p.pnlSol > 0).length,
         pnlSol: b.realizedPnlSol, retainedHistory: b.history.length },
-      note: 'Only new buys by wallets with prior profitable round trips, also profitable without their best trip. Fills use fresh exact-size native/Jupiter quotes plus modeled slippage and network fees. Missing quotes never become fills or closes.',
+      note: experiment?'Unqualified exploratory cohort; weaker leader evidence is explicit. Exact-size follower quotes and modeled costs still required. Independent consensus requires observed distinct cluster labels.':'Only new buys by wallets with prior profitable round trips, also profitable without their best trip. Fills use fresh exact-size native/Jupiter quotes plus modeled slippage and network fees. Missing quotes never become fills or closes.',
       liveExecutionAllowed: false, ordersSubmitted: 0 };
   }
   async function onSignal(signal, { mode = 'paper', entriesAllowed = true, solUsd, solUsdAt, card = scorecard() } = {}) {
@@ -164,9 +175,14 @@ export function createPumpfunCopyPaper({ dataDir = process.env.MONEY_PRINTER_DAT
         || !timestamp(signal.ts,t) || signal.ts < b.startedAt || t - signal.ts > limits.maxSignalAgeMs) return decision(b, signal, 'SKIP', 'old-or-invalid-source-signal');
       const key = `${signal.wallet}:${signal.mint}:${signal.signature || signal.ts}`;
       if (b.seen.includes(key)) return { accepted: false, reason: 'duplicate-signal', orderSubmitted: false, ordersSubmitted: 0 };
-      b.seen.push(key); b.seen = b.seen.slice(-2048);
-      const leader = qualifiedPumpCopyWallets(card, { asOf: Number(signal.ts), settings: limits }).find(w => w.wallet === signal.wallet);
+      const leader = leaders(card,Number(signal.ts),limits).find(w => w.wallet === signal.wallet);
       if (!leader) return decision(b, signal, 'SKIP', 'wallet-evidence-unqualified');
+      if(experiment?.policy==='consensus'){
+        const witnesses=(b.decisions||[]).filter(d=>d.mint===signal.mint&&d.reason==='awaiting-independent-consensus'&&t-d.at<=60_000&&d.wallet!==signal.wallet);
+        // Cluster labels must be observed; unlabeled wallets cannot establish independence.
+        const cluster=leader.clusterId||leader.cluster;
+        if(!cluster||!witnesses.some(d=>d.cluster&&d.cluster!==cluster))return decision(b,signal,'SKIP','awaiting-independent-consensus',{cluster:cluster||null});
+      }
       if (!fund(b, solUsd, solUsdAt)) return decision(b, signal, 'SKIP', 'fresh-sol-price-required');
       if (b.open.length >= limits.maxOpen || b.open.some(p => p.mint === signal.mint)) return decision(b, signal, 'SKIP', 'open-cap-or-mint-held');
       const reserve = b.startSol * limits.reservePct / 100, exposure = b.open.reduce((sum, p) => sum + p.costSol, 0);
@@ -175,7 +191,7 @@ export function createPumpfunCopyPaper({ dataDir = process.env.MONEY_PRINTER_DAT
       if (!(sizeSol > limits.fallbackNetworkFeeSol * 10)) return decision(b, signal, 'SKIP', 'paper-budget-reserve');
       let buy, sell, rawAmount, costSol, roundTripNetSol, roundTripCostPct;
       try {
-        buy = await quote(b, { mint: signal.mint, user: signal.wallet, action: 'BUY', sizeSol }, Number(signal.ts));
+        buy = await quote(b, { mint: signal.mint, user: signal.wallet, action: 'BUY', sizeSol }, t);
         if (Math.abs(buy.solAmount - sizeSol) > 1e-9) throw new Error('Executable buy quote amount mismatch');
         rawAmount = haircutRaw(buy.rawAmount, limits.slippageBps);
         if (!integerRaw(rawAmount)) throw new Error('Executable output rounded to zero');
@@ -192,6 +208,7 @@ export function createPumpfunCopyPaper({ dataDir = process.env.MONEY_PRINTER_DAT
           sizeSol, costSol, entryQuote: quoteEvidence(buy), entryNetworkFeeSol: networkFee(buy, limits), slippageBps: limits.slippageBps,
           leaderAtEntry: leader, roundTripCostPct, markedNetSol: roundTripNetSol, lastQuoteAt: sell.observedAt,
           exitPolicy: { takeProfitPct: limits.takeProfitPct, stopLossPct: limits.stopLossPct, maxHoldMs: limits.maxHoldMs }, orderSubmitted: false };
+        b.seen.push(key); b.seen=b.seen.slice(-2048);
         b.cashSol -= costSol; b.open.push(p); b.lastError = null; b.lastRunAt = now();
         return decision(b, signal, 'OPEN', 'scored-wallet-new-buy', { position: p });
     });
@@ -216,7 +233,7 @@ export function createPumpfunCopyPaper({ dataDir = process.env.MONEY_PRINTER_DAT
         } catch (e) { p.markedNetSol = null; p.lastQuoteError = errorText(e); errors.push(p.lastQuoteError); continue; }
           const trade = { ...p, closedAt: now(), exitQuote: quoteEvidence(q), exitNetworkFeeSol: networkFee(q, b.settings), proceedsSol: credit,
             pnlSol: credit - p.costSol, returnPct: ret, reason, orderSubmitted: false };
-          b.cashSol += credit; b.open = b.open.filter(x => x.id !== p.id); b.history.unshift(trade); b.history = b.history.slice(0, 1000);
+          b.cashSol += credit; b.open = b.open.filter(x => x.id !== p.id); b.history.unshift(trade);
           b.realizedPnlSol += trade.pnlSol;
           decision(b, p, 'CLOSE', reason, { trade }); closed++;
       }
@@ -244,3 +261,5 @@ export function createPumpfunCopyPaper({ dataDir = process.env.MONEY_PRINTER_DAT
 }
 let singleton;
 export function pumpfunCopyPaper() { return singleton ||= createPumpfunCopyPaper(); }
+let explorers;
+export function pumpfunCopyExperiments(){return explorers||= ['emerging','consensus'].map(policy=>createPumpfunCopyPaper({experiment:{id:`pump-${policy}-v1`,policy},settings:{minTrips:2,stakeUsd:5,maxOpen:4,reservePct:5,maxExposurePct:90,maxRoundTripCostPct:10,markEveryMs:10_000,maxQuotesPerMinute:24,maxHoldMs:30*60_000}}));}

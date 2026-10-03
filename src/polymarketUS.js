@@ -94,6 +94,20 @@ async function bboFetch(slug){
  if(!r.ok)throw new Error(`bbo ${r.status}`);
  return (await r.json())?.marketData||{};
 }
+// Full read-only book for the singles executor. Aggregate BBO depth is not assumed
+// to be quantity at the displayed best price.
+export async function usSingleExecutableMarket(market,{fetchImpl=globalThis.fetch,now=Date.now}={}){
+ const slug=String(market?.slug||market?.marketSlug||'');if(!slug)throw new Error('US market slug required');
+ const r=await fetchImpl(`https://gateway.polymarket.us/v1/markets/${encodeURIComponent(slug)}/book`,{headers:{accept:'application/json','user-agent':UA()},signal:AbortSignal.timeout(9000)});
+ if(!r.ok)throw new Error(`US executable book HTTP ${r.status}`);
+ const raw=await r.json(),book=raw.marketData||raw.book||raw;
+ if(book.marketSlug&&book.marketSlug!==slug)throw new Error('US book identity mismatch');
+ if(book.state!=='MARKET_STATE_OPEN')throw new Error('US book is not open for execution');
+ const levels=rows=>(Array.isArray(rows)?rows:[]).map(l=>({price:Number(l.px?.value??l.px),quantity:Number(l.qty)})).filter(l=>Number.isFinite(l.price)&&l.price>0&&l.price<1&&Number.isFinite(l.quantity)&&l.quantity>0);
+ const bids=levels(book.bids).sort((a,b)=>b.price-a.price),asks=levels(book.offers).sort((a,b)=>a.price-b.price);
+ if(!bids.length||!asks.length||asks[0].price<bids[0].price)throw new Error('US two-sided executable depth unavailable');
+ const at=now();return {...market,slug,bid:bids[0].price,ask:asks[0].price,bidSize:bids.filter(l=>l.price===bids[0].price).reduce((s,l)=>s+l.quantity,0),askSize:asks.filter(l=>l.price===asks[0].price).reduce((s,l)=>s+l.quantity,0),quoteAt:at,observedAt:at,quoteSource:'polymarket-us-public-book',providerQuoteAt:book.transactTime||null};
+}
 // Item 11: events.list({live:true}) returns stale closed games. Use the shared
 // date-windowed in-play scanner so `liveSports` reflects real in-play markets.
 async function liveSportsEvents(){

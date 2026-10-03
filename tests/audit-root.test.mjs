@@ -64,13 +64,13 @@ test('daily orders wait for a post-decision observed quote while the open window
     fs.writeFileSync(daily.barsFile(dir), JSON.stringify({ version: 1, bars: { 'BTC-USD': bars }, today: { 'BTC-USD': { d: '2026-10-03', o: 110 } } }));
     let at = now - 10_000;
     const run = () => daily.runDailyOnce({ dataDir: dir, now, env: { ROBINHOOD_DAILY_SYMBOLS: 'BTC-USD' }, labDaily: null,
-      fetchFn: () => { throw new Error('unexpected fetch'); }, quoteFn: () => ({ bid: 110, ask: 111, at }) });
+      fetchFn: () => { throw new Error('unexpected fetch'); }, quoteFn: () => ({symbol:'BTC-USD',supported:true,source:'robinhood-v2',bid:110,ask:111,bidSize:100,askSize:100,quantityStep:.000001,at}) });
     let r = await run();
     assert.equal(r.book.pending.length, 1); assert.equal(r.book.fills.length, 0);
     now += 15_000; at = now;
     r = await run();
     assert.equal(r.book.pending.length, 0); assert.equal(r.book.fills.length, 1);
-    assert.equal(r.book.fills[0].priceSource, 'robinhood-quote');
+    assert.equal(r.book.fills[0].priceSource, 'robinhood-quote:robinhood-v2');
     assert.equal(r.book.lastDecision.at, now - 15_000, 'a new quote fills the persisted decision without deciding twice');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

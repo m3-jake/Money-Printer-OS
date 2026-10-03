@@ -29,7 +29,7 @@ export function equitiesReadiness(env=process.env){
 // stay applied when a proposal is withdrawn; a fresh book without a qualifying proposal runs the defaults.
 export function equitiesChampionFile(dataDir){return path.join(dataDir,'lab-link','robinhood-equities-champion.json')}
 const sameValue=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
-const EQUITIES_EVALUATOR='equities-close-next-open-v2';
+const EQUITIES_EVALUATOR='equities-close-next-open-v3';
 const APPLIED_POLICY_SCHEMA='mpo.equities-applied-policy.v1';
 const sha256=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v);
 const finite=v=>typeof v==='number'&&Number.isFinite(v);

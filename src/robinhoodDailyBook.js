@@ -246,6 +246,7 @@ function fillOne(book, order, { price, priceSource, late, fee, now,quoteEvidence
 export function observedDailyQuote(q,symbol,{now,eligibleAt=0,side=null,quantity=null}={}){
   if(!q||q.symbol!==symbol||q.supported!==true||!/^(robinhood(?:-[\w.-]+)?|v[12])$/i.test(String(q.source||'')))return {ok:false,reason:'SUPPORTED_ROBINHOOD_QUOTE_REQUIRED'};
   if(!(q.bid>0)||!(q.ask>=q.bid)||!Number.isFinite(q.at)||q.at>now||now-q.at>30000||q.at<eligibleAt)return {ok:false,reason:'POST_DECISION_FRESH_QUOTE_REQUIRED'};
+  if(q.feeRatio!==undefined&&q.feeRatio!==null&&(!Number.isFinite(Number(q.feeRatio))||Number(q.feeRatio)<0||Number(q.feeRatio)>=.25))return {ok:false,reason:'OBSERVED_FEE_UNSUPPORTED'};
   if(side&&quantity!==null){const available=Number(q.executableQuantity??(side==='buy'?q.askSize:q.bidSize));if(!(available>=quantity))return {ok:false,reason:'EXACT_SIZE_EXECUTION_EVIDENCE_REQUIRED'}}
   return {ok:true,reason:null};
 }
@@ -262,16 +263,16 @@ async function fillPending(book, store, { now, fee, quoteFn, quoteWindowMs,shado
     const eligibleAt=order.eligibleAt??order.decidedAt+DAILY_DEFAULTS.processingLatencyMs;
     let q=null;try{q=typeof quoteFn==='function'?await quoteFn(order.symbol,{side:order.side,quantity:order.side==='sell'?book.sleeves[order.symbol].qty:null,budgetUsd:book.sleeves[order.symbol].cashUsd,decidedAt:order.decidedAt,eligibleAt}):null}catch(e){order.waitReason=e.code||'QUOTE_UNAVAILABLE'}
     if(executionClock)now=executionClock();
-    const sl=book.sleeves[order.symbol],quantity=order.side==='buy'&&q?.ask>0?sl.cashUsd*(1-fee)/(q.ask*(1+book.slipBps/1e4)):sl.qty;
+    const actualFee=Math.max(fee,feeFrom(q?.feeRatio)),sl=book.sleeves[order.symbol],quantity=order.side==='buy'&&q?.ask>0?sl.cashUsd*(1-actualFee)/(q.ask*(1+book.slipBps/1e4)):sl.qty;
     const valid=observedDailyQuote(q,order.symbol,{now,eligibleAt,side:order.side,quantity});
     let evidence=null;
-    if(valid.ok){price=order.side==='buy'?q.ask:q.bid;priceSource=`robinhood-quote:${q.source}`;evidence={symbol:q.symbol,source:q.source,quoteAt:q.at,decisionAt:order.decidedAt,eligibleAt,quantity,quantityStep:q.quantityStep||null,availableQuantity:Number(q.executableQuantity??(order.side==='buy'?q.askSize:q.bidSize)),executionModel:q.executionModel||'observed-depth-plus-slippage.v1'};delete order.waitReason}
+    if(valid.ok){price=order.side==='buy'?q.ask:q.bid;priceSource=`robinhood-quote:${q.source}`;evidence={symbol:q.symbol,source:q.source,quoteAt:q.at,decisionAt:order.decidedAt,eligibleAt,quantity,feeRatio:actualFee,quantityStep:q.quantityStep||null,availableQuantity:Number(q.executableQuantity??(order.side==='buy'?q.askSize:q.bidSize)),executionModel:q.executionModel||'observed-depth-plus-slippage.v1'};delete order.waitReason}
     else if(shadow){
       const o = openOf(store, order.symbol, order.fillDay);
       if (o > 0) { price = o; priceSource = 'coinbase-open'; }
     }else{order.waitReason=order.waitReason||valid.reason;keep.push(order);continue}
     if (!price) { keep.push(order); continue; }
-    const f = fillOne(book, order, { price, priceSource, late:shadow?!inWindow:false, fee, now,quoteEvidence:evidence });
+    const f = fillOne(book, order, { price, priceSource, late:shadow?!inWindow:false, fee:evidence?actualFee:fee, now,quoteEvidence:evidence });
     if (f) out.push(f);
   }
   book.pending = keep;
@@ -300,11 +301,11 @@ async function markForwardDay(book,day,{quoteFn,now,fee,executionClock=null}){
   if(executionClock)now=executionClock();
   if(!observedDailyQuote(q,symbol,{now,eligibleAt:now-30000}).ok)return false;observed[symbol]=q}
  const slip=book.slipBps/1e4,alloc=book.startUsd/book.symbols.length;
- if(!book.executionBench){const quantity={};let residual=0;for(const s of book.symbols){const q=observed[s],step=Number(q.quantityStep)||.000001,qty=Math.floor(alloc*(1-fee)/(q.ask*(1+slip))/step)*step;if(!(Number(q.executableQuantity??q.askSize)>=qty))return false;quantity[s]=qty;residual+=alloc-qty*q.ask*(1+slip)/(1-fee)}book.executionBench={startAt:now,qty:quantity,cashUsd:residual,source:'SUPPORTED_ROBINHOOD_OBSERVED_QUOTES',feeRatio:fee}}
+ if(!book.executionBench){const quantity={},fees={};let residual=0;for(const s of book.symbols){const q=observed[s],actualFee=Math.max(fee,feeFrom(q.feeRatio)),step=Number(q.quantityStep)||.000001,qty=Math.floor(alloc*(1-actualFee)/(q.ask*(1+slip))/step)*step;if(!(Number(q.executableQuantity??q.askSize)>=qty))return false;quantity[s]=qty;fees[s]=actualFee;residual+=alloc-qty*q.ask*(1+slip)/(1-actualFee)}book.executionBench={startAt:now,qty:quantity,cashUsd:residual,source:'SUPPORTED_ROBINHOOD_OBSERVED_QUOTES',feeRatio:fee,feesBySymbol:fees}}
  let equity=0,baseline=book.executionBench.cashUsd||0;const evidence=[];
  for(const s of book.symbols){const q=observed[s],sl=book.sleeves[s],required=Math.max(sl.qty,book.executionBench.qty[s]||0);
   if(!(Number(q.executableQuantity??q.bidSize)>=required))return false;
-  const bidNet=q.bid*(1-slip)*(1-fee);sl.observedMark={at:q.at,valueUsd:sl.qty*bidNet,quantity:sl.qty,source:q.source};equity+=sl.cashUsd+sl.qty*bidNet;baseline+=(book.executionBench.qty[s]||0)*bidNet;evidence.push({symbol:s,quoteAt:q.at,source:q.source,availableQuantity:Number(q.executableQuantity??q.bidSize)})}
+  const actualFee=Math.max(fee,feeFrom(q.feeRatio)),bidNet=q.bid*(1-slip)*(1-actualFee);sl.observedMark={at:q.at,valueUsd:sl.qty*bidNet,quantity:sl.qty,source:q.source,feeRatio:actualFee};equity+=sl.cashUsd+sl.qty*bidNet;baseline+=(book.executionBench.qty[s]||0)*bidNet;evidence.push({symbol:s,quoteAt:q.at,source:q.source,feeRatio:actualFee,availableQuantity:Number(q.executableQuantity??q.bidSize)})}
  book.equityDaily.push({d:day,equityUsd:r2(equity),benchUsd:r2(baseline),cashUsd:Object.values(book.sleeves).reduce((sum,s)=>sum+s.cashUsd,0),paramsHash:book.source?.paramsHash||null,executionEvidence:true,valuationAt:now,valuationSource:'ROBINHOOD_EXECUTABLE_QUOTES',quoteEvidence:evidence});return true;
 }
 

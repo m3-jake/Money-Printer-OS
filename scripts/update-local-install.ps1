@@ -111,6 +111,33 @@ Say "`n== Stopping the running apps" Cyan
 Stop-App 'Money Printer OS'
 Stop-App 'Money Printer Evolution Lab'
 
+# Preserve paper accounting and journals after writers have stopped. Copy-only backups;
+# market tapes and caches are left in place and never deleted or reset by the installer.
+$dataBackup = Join-Path $work 'paper-data-backup'
+New-Item -ItemType Directory -Force $dataBackup | Out-Null
+$dataBackupManifest = @()
+foreach ($label in @('Money Printer OS', 'Money Printer Evolution Lab')) {
+  $source = Join-Path $env:APPDATA "$label\data"
+  if (-not (Test-Path -LiteralPath $source)) { continue }
+  $destination = Join-Path $dataBackup $label
+  New-Item -ItemType Directory -Force $destination | Out-Null
+  $rootFiles = @(Get-ChildItem -LiteralPath $source -File | Where-Object { $_.Extension -in @('.json','.sqlite') -or $_.Name -match '\.sqlite-(wal|shm)$' -or $_.Name -in @('journal.ndjson','project-journal.ndjson') })
+  foreach ($item in $rootFiles) {
+    $target = Join-Path $destination $item.Name
+    Copy-Item -LiteralPath $item.FullName -Destination $target
+    $sourceHash=(Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256).Hash.ToLower()
+    $backupHash=(Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToLower()
+    if ($sourceHash -ne $backupHash) { throw "Paper data backup did not verify: $($item.Name)" }
+    $dataBackupManifest += [ordered]@{ source=$item.FullName; backup=$target; bytes=$item.Length; sha256=$backupHash; verified=$true }
+  }
+  foreach ($folder in @('experiments','daily-shadow','robinhood-equities','robinhood-daily','lab-link','workbench','module-research','research-evidence','pump-profit-evidence')) {
+    $targetSource = Join-Path $source $folder
+    if (Test-Path -LiteralPath $targetSource) { Copy-Item -LiteralPath $targetSource -Destination (Join-Path $destination $folder) -Recurse }
+  }
+}
+$dataBackupManifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $dataBackup 'MANIFEST.json') -Encoding UTF8
+Say "Paper data backup: $dataBackup" Green
+
 # 3. Back up and swap as one transaction. If either copy fails, restore both old archives.
 function Swap($appDir, $newAsar, $label, $bak) {
   $res = Join-Path $appDir 'resources'; $cur = Join-Path $res 'app.asar'
@@ -160,8 +187,8 @@ function Wait-Json($url, $seconds = 35) {
   return $null
 }
 Say "`n== Starting and verifying paired release" Cyan
-Start-Process (Join-Path $labApp 'Money Printer Evolution Lab.exe')
-Start-Process (Join-Path $mpoApp 'Money Printer OS.exe')
+Start-Process (Join-Path $labApp 'Money Printer Evolution Lab.exe') -WindowStyle Hidden
+Start-Process (Join-Path $mpoApp 'Money Printer OS.exe') -WindowStyle Hidden
 $mpoHealth = Wait-Health 'http://127.0.0.1:8792/api/health'
 $mpoState = Wait-Json 'http://127.0.0.1:8792/api/state'
 $labHealth = Wait-Health 'http://127.0.0.1:8793/api/health'
@@ -186,8 +213,8 @@ if ($healthError) {
   Stop-App 'Money Printer OS'
   Stop-App 'Money Printer Evolution Lab'
   Restore-Pair $healthError
-  Start-Process (Join-Path $labApp 'Money Printer Evolution Lab.exe')
-  Start-Process (Join-Path $mpoApp 'Money Printer OS.exe')
+  Start-Process (Join-Path $labApp 'Money Printer Evolution Lab.exe') -WindowStyle Hidden
+  Start-Process (Join-Path $mpoApp 'Money Printer OS.exe') -WindowStyle Hidden
   Fail 'new pair failed post-install verification; previous pair restored and relaunched'
 }
 

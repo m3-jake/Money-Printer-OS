@@ -86,8 +86,8 @@ const champ = (patch = {}, candPatch = {}) => {
   const metric=(totalReturnPct,maxDrawdownPct)=>({sessions:126,totalReturnPct,maxDrawdownPct});
   return { schema: 'mpo.lab-module-champion.v1', module: 'robinhood-equities', publishedAt: clock, qualificationStage: 'PAPER_REVIEW', paperPromotionAllowed: true, paperOnly: true,
     stateSchema: 'mpo.champion-state.v1', state: 'PAPER', liveActivationAllowed: false, automaticLivePromotionAllowed: false,
-    evidence:{evaluatorVersion:'equities-close-next-open-v2',datasetHash:'a'.repeat(64),experimentId:'b'.repeat(64),trials:129,costs:{...costs,known:true},
-      freeze:{schema:'mpo.equities-freeze.v1',evaluatorVersion:'equities-close-next-open-v2',datasetHash:'c'.repeat(64),candidateHash:Strat.paramsHash('tactical-a',params),candidate:{params},incumbentHash:Strat.paramsHash('tactical-a',incumbent),incumbent:{params:incumbent},costs,trials:129,frozenAt:clock-201*day,historyThrough:clock-202*day},
+    evidence:{evaluatorVersion:'equities-close-next-open-v3',datasetHash:'a'.repeat(64),experimentId:'b'.repeat(64),trials:129,costs:{...costs,known:true},
+      freeze:{schema:'mpo.equities-freeze.v1',evaluatorVersion:'equities-close-next-open-v3',datasetHash:'c'.repeat(64),candidateHash:Strat.paramsHash('tactical-a',params),candidate:{params},incumbentHash:Strat.paramsHash('tactical-a',incumbent),incumbent:{params:incumbent},costs,trials:129,frozenAt:clock-201*day,historyThrough:clock-202*day},
       prospective:{pass:true,sessions:126,accessId:'isolated-fixture-receipt',start:clock-200*day,end:clock-day,candidate:metric(10,4),incumbent:metric(5,5),buyHoldSpy:metric(12,8),effectiveIndependentGroups:7,
         gates:{costsKnown:true,candidateTraded:true,beatsCash:true,beatsIncumbent:true,boundedDrawdown:true,independentMonths:true,improvementInterval:true},
         interval:{lowerPct:.1,upperPct:1,meanImprovementPct:.55,standardErrorPct:.1,level:1-.05/129,independentGroups:7,adjustedForTrials:129,grouped:true,method:'paired-independent-group-normal-bonferroni'}}},

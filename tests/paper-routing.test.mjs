@@ -36,7 +36,8 @@ test('Kalshi and Polymarket paper placements persist their central proposal IDs 
     const kBook = JSON.parse(fs.readFileSync(kalshi)); assert.equal(k.proposalId, kBook.proposals[0].id); assert.equal(kBook.routeDecisions[0].platform, 'kalshi');
     assert.throws(() => placeKalshiPaperOrder({ ticker: 'KXNFL-1', stakeUsd: 10 }, { file: kalshi, mode: 'live' }), /non-paper/);
     resetPaperSingles({ file: poly, startUsd: 100 });
-    const input = { market: { slug: 'p1', bid: .4, ask: .5, category: 'politics' }, stakeUsd: 10, file: poly, mode: 'paper' };
+    const at=Date.now();
+    const input = { market: { slug: 'p1', bid: .4, ask: .5, bidSize:100,askSize:100,quoteAt:at,category: 'politics' }, now:at,stakeUsd: 10, file: poly, mode: 'paper' };
     const p = placePaperSingle(input), next = placePaperSingle(input), pBook = JSON.parse(fs.readFileSync(poly));
     assert.notEqual(p.proposalId, next.proposalId); assert.ok(pBook.proposals.some(x => x.id === p.proposalId)); assert.equal(pBook.routeDecisions[0].platform, 'polymarket');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }

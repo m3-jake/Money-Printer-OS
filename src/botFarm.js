@@ -14,10 +14,12 @@
 // PAPER ONLY: no order code. Book file: <data>/bot-farm.json. An unreadable file is never overwritten.
 import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { writeFileAtomicSync } from './atomicRename.js';
 import { takerFee } from './core/fees.js';
 import { KALSHI_DEFAULTS, pickWeather, pickBtc, paced, modelGuard, observedBet, settleObserved } from './kalshiBots.js';
 import { FARM_MIN_SETTLED, farmEarlyStop } from './core/farmEvidence.js';
+import { walkBook } from './core/contracts.js';
 
 const SCHEMA = 'mpo.bot-farm.v1';
 export const FARM_START_USD = KALSHI_DEFAULTS.weather.startUsd; // same bankroll as the live bots
@@ -70,7 +72,25 @@ export function labVariants(doc, now = Date.now(), slots = 4) {
 const round = (v, d = 4) => Math.round(v * 10 ** d) / 10 ** d;
 const localDay = t => new Date(t).toLocaleDateString('en-CA');
 
-function emptyBook(v) { return { id: v.id, kind: v.kind, label: v.label, prediction:v.prediction||null,startUsd: FARM_START_USD, cashUsd: FARM_START_USD, open: [], history: [], entered: 0, skippedSlippage: 0, observedOpen: [], observedHistory: [] }; }
+function emptyBook(v) { const capital=v.exploratory?25:FARM_START_USD;return { id: v.id, kind: v.kind, label: v.label, experiment:v.experiment||null,prediction:v.prediction||null,startUsd:capital,cashUsd:capital,funding:[{at:v.experiment?.admittedAt||Date.now(),amountUsd:capital,kind:'INITIAL_FUNDING'}],open: [], history: [], entered: 0, skippedSlippage: 0, observedOpen: [], observedHistory: [] }; }
+export function exploratoryVariants(doc,now=Date.now()){
+  if(doc?.schema!=='mpo.lab-exploratory-proposals.v1'||doc.paperOnly!==true||doc.qualificationEffect!=='NONE')return [];
+  const hash=x=>createHash('sha256').update(JSON.stringify(x)).digest('hex'),out=[];
+  for(const p of (Array.isArray(doc.proposals)?doc.proposals:[]).slice(0,16)){
+    if(!['kalshi-weather','kalshi-btc'].includes(p?.module)||p.qualificationStage!=='EXPLORATORY'||p.paperPromotionAllowed!==false||p.liveActivationAllowed===true||p.capitalUsd!==25||p.maxLossUsd!==25||!p.params||hash(p.params)!==p.paramsHash)continue;
+    if(![p.frozenAt,p.startAfter,p.evaluationEndsAt].every(Number.isSafeInteger)||p.frozenAt>now||p.startAfter<p.frozenAt||now<p.startAfter||now>=p.evaluationEndsAt||p.evaluationEndsAt-p.startAfter>14*86400e3)continue;
+    if(![p.paramsHash,p.corpusHash,p.featureHash,p.codeHash].every(x=>/^[a-f0-9]{64}$/.test(x)))continue;
+    if(!Number.isFinite(p.prediction?.meanPerBet)||!Number.isInteger(p.prediction?.validationN)||p.prediction.validationN<1||p.prediction.role!=='ADAPTIVE_VALIDATION'||p.qualificationEffect!=='NONE')continue;
+    const familyKeys=p.module==='kalshi-weather'?['calibrationSafety','minEdge','maxDisagreement','longshotPrice','longshotMinEdge']:['volMultiple','minEdge','maxDisagreement','longshotPrice','longshotMinEdge'];
+    if(Object.keys(p.params).some(k=>!familyKeys.includes(k)))continue;
+    const bounds={...LAB_OVER,calibrationSafety:[.7,3],minEdge:[.01,.3]};
+    if(!Object.entries(p.params).length||Object.entries(p.params).some(([k,n])=>!bounds[k]||!Number.isFinite(n)||n<bounds[k][0]||n>bounds[k][1]))continue;
+    const identity=hash({paramsHash:p.paramsHash,corpusHash:p.corpusHash,featureHash:p.featureHash,codeHash:p.codeHash});
+    if(p.id!==identity)continue;
+    out.push({id:`explore-${identity.slice(0,20)}`,kind:p.module==='kalshi-weather'?'weather':'btc',label:`Lab exploratory ${p.module}`,over:p.params,lab:true,exploratory:true,experiment:{...p,identity,admittedAt:now,qualificationEffect:'NONE'},prediction:{...p.prediction,unit:'USD',capturedAt:p.frozenAt,admittedAt:now,role:'ADAPTIVE_VALIDATION'}});
+    if(out.length>=2)break;
+  }return out;
+}
 export function variantSettings(v) { return { ...(v.kind === 'weather' ? {...KALSHI_DEFAULTS.weather,stakeUsd:0.5,maxOpen:20} : { ...KALSHI_DEFAULTS.btc, ...BTC_R1 }), ...v.over, enabled: true }; }
 
 // Per-bet P/L t-statistic and a plain verdict.
@@ -85,6 +105,7 @@ export class BotFarm {
   constructor({ dataDir, bots, now = () => Date.now() } = {}) {
     this.file = path.join(dataDir, 'bot-farm.json'); this.bots = bots; this.now = now; this.busy = new Set(); this.recoveryError = null;
     this.labFile = path.join(dataDir, 'lab-link', 'farm-proposals.json');
+    this.exploratoryFile=path.join(dataDir,'lab-link','exploratory-proposals.json');
     this.state = this.load(); this.last = {};
   }
   load() {
@@ -107,7 +128,12 @@ export class BotFarm {
     let lab = []; try { lab = labVariants(JSON.parse(fs.readFileSync(this.labFile, 'utf8')), this.now(),4+replacements).filter(v=>!this.state.books[v.id]?.retirement); } catch {}
     for (const v of lab) this.state.books[v.id] ||= emptyBook(v);
     const active = new Set(lab.map(v => v.id)), retired = Object.values(this.state.books).filter(b => /^lab-/.test(b.id) && !active.has(b.id)).map(b => ({ id: b.id, kind: b.kind, label: b.label || b.id, over: {}, lab: true, withdrawn: true }));
-    return [...FARM_VARIANTS, ...lab, ...retired];
+    let proposed=[];try{proposed=exploratoryVariants(JSON.parse(fs.readFileSync(this.exploratoryFile,'utf8')),this.now());}catch{}
+    // Admission is bounded across the lifetime, not just the current proposal document.
+    const existing=Object.values(this.state.books).filter(b=>b.experiment);
+    for(const v of proposed)if(!this.state.books[v.id]&&existing.length<2){const b=emptyBook(v);this.state.books[v.id]=b;existing.push(b);}
+    const exploration=existing.map(b=>({id:b.id,kind:b.kind,label:b.label,over:b.experiment.params,lab:true,exploratory:true,experiment:b.experiment,withdrawn:this.now()>=b.experiment.evaluationEndsAt}));
+    return [...FARM_VARIANTS, ...lab, ...retired,...exploration];
   }
   save() { if (this.recoveryError) return; fs.mkdirSync(path.dirname(this.file), { recursive: true }); writeFileAtomicSync(this.file, JSON.stringify(this.state)); }
   reset({ confirmation } = {}) {
@@ -136,17 +162,36 @@ export class BotFarm {
         const { cands } = kind === 'weather' ? pickWeather(frame, s, held, now) : pickBtc(frame, s, held, now);
         for (const x of cands) {
           if (x.edge < s.minEdge) continue;
-          if (b.standDown.active) { if (b.observedOpen.length >= s.maxOpen) break; b.observedOpen.push(observedBet(x, now)); last.observed = (last.observed || 0) + 1; continue; }
+          if (b.standDown.active&&!v.exploratory) { if (b.observedOpen.length >= s.maxOpen) break; b.observedOpen.push(observedBet(x, now)); last.observed = (last.observed || 0) + 1; continue; }
           if (b.open.length >= s.maxOpen) break;
-          if (this.enter(b, s, x, now)) last.entered++;
+          if(v.exploratory){if(last.executableAttempts>=3)break;last.executableAttempts=(last.executableAttempts||0)+1;
+            if(await this.enterExecutable(b,{...s,stakeUsd:1,maxOpen:20},x,now,k))last.entered++;
+          }else if (this.enter(b, s, x, now)) last.entered++;
         }
-        for (const p of b.open) { const bid = marks.get(p.ticker)?.[p.side]; if (bid != null) p.markUsd = round(bid * p.qty, 4); }
+        for (const p of b.open) { const bid = marks.get(p.ticker)?.[p.side]; p.indicativeMarkUsd=bid!=null?round(bid*p.qty,4):null;
+          if(!v.exploratory&&bid!=null){p.markUsd=round(bid*p.qty,4);p.markAt=now;p.markKind='TOP_OF_BOOK_INDICATIVE';}
+        }
       }
     } catch (e) { last.error = String(e.message || e).slice(0, 300); }
     finally { this.busy.delete(kind); this.save(); }
     return this.snapshot();
   }
   // Fill at the quoted ask + slippage; the edge must still clear minEdge at that price, after the fee.
+  async enterExecutable(b,s,x,decisionAt,k){
+    try{
+      const quantity=Math.floor(s.stakeUsd/(x.ask+FARM_SLIPPAGE));if(quantity<1)return false;
+      await new Promise(resolve=>setTimeout(resolve,1000));
+      const book=await paced(()=>k.book(x.ticker));
+      if(!Number.isSafeInteger(book.observedAt)||book.observedAt<decisionAt+1000||book.observedAt>this.now()||this.now()-book.observedAt>10_000)return false;
+      const fill=walkBook(book[x.side.toLowerCase()]?.asks||[],quantity);if(!fill.complete)return false;
+      const fee=takerFee(x.feeModel,fill.fills);if(fee==null)return false;
+      const cost=fill.averagePrice*quantity;
+      if(x.pModel-fill.averagePrice-fee/quantity<s.minEdge||cost+fee>b.cashUsd)return false;
+      b.cashUsd=round(b.cashUsd-cost-fee,6);b.entered++;
+      b.open.push({ticker:x.ticker,eventTicker:x.eventTicker,label:x.label,side:x.side,qty:quantity,price:fill.averagePrice,costUsd:round(cost,6),feeUsd:round(fee,6),pModel:x.pModel,marketPrice:x.ask,decisionAt,quoteAt:book.observedAt,openedAt:this.now(),closeAt:x.closeAt,markUsd:null,fillKind:'OBSERVED_DEPTH_PAPER',experimentId:b.id,qualificationStage:'EXPLORATORY'});
+      return true;
+    }catch(e){b.lastExecutionError=String(e.message).slice(0,160);return false;}
+  }
   enter(b, s, x, now) {
     const price = round(Math.min(0.99, x.ask + FARM_SLIPPAGE), 4), qty = Math.floor(s.stakeUsd / price);
     if (qty < 1) return false;
@@ -186,15 +231,15 @@ export class BotFarm {
   snapshot() {
     const today = localDay(this.now()), days = Array.from({ length: 7 }, (_, i) => localDay(this.now() - i * 86400e3));
     const variants = this.variants().map(v => {
-      const b = this.state.books[v.id], h = b.history, n = h.length, open = b.open.reduce((a, p) => a + (p.markUsd ?? p.costUsd), 0), equity = b.cashUsd + open;
+      const b = this.state.books[v.id], h = b.history, n = h.length, marksAvailable=b.open.every(p=>Number.isFinite(p.markUsd)&&p.markAt&&this.now()-p.markAt<=30_000),open=marksAvailable?b.open.reduce((a,p)=>a+p.markUsd,0):null,equity=open===null?null:b.cashUsd+open;
       const byDay = Object.fromEntries(days.map(d => [d, 0])); for (const x of h) { const d = localDay(x.settledAt); if (d in byDay) byDay[d] = round(byDay[d] + x.pnlUsd, 2); }
       const mean = k => n ? round(h.reduce((a, x) => a + x[k], 0) / n, 4) : null;
-      return { id: v.id, kind: v.kind, label: v.label, over: v.over, lab: !!v.lab, withdrawn: !!v.withdrawn, equityUsd: round(equity, 2), returnPct: round((equity - b.startUsd) / b.startUsd * 100, 2), open: b.open.length, entered: b.entered, skippedSlippage: b.skippedSlippage,
+      return { id: v.id, kind: v.kind, label: v.label, over: v.over, lab: !!v.lab, exploratory:!!v.exploratory,experiment:b.experiment||null,qualificationStage:v.exploratory?'EXPLORATORY':'FIXED_FORWARD',operatingState:v.withdrawn?'AWAITING_SETTLEMENT':b.cashUsd<.02?'EXHAUSTED':v.exploratory?'EXPLORING':'EVALUATING',cashUsd:b.cashUsd,capitalUsd:b.startUsd,openCostUsd:b.open.reduce((s,p)=>s+p.costUsd+p.feeUsd,0),markedValueStatus:marksAvailable?(b.open.length?'INDICATIVE':'CASH_ONLY'):'UNAVAILABLE',withdrawn: !!v.withdrawn, equityUsd: equity===null?null:round(equity, 2), returnPct:equity===null?null:round((equity - b.startUsd) / b.startUsd * 100, 2), open: b.open.length, entered: b.entered, skippedSlippage: b.skippedSlippage,
         settled: n, wins: h.filter(x => x.won).length, hitRate: n ? round(h.filter(x => x.won).length / n, 3) : null, pnlUsd: round(h.reduce((a, x) => a + x.pnlUsd, 0), 2), feesUsd: round(h.reduce((a, x) => a + x.feeUsd, 0), 2),
         today: byDay[today], week: round(Object.values(byDay).reduce((a, x) => a + x, 0), 2), byDay, brierModel: mean('brierModel'), brierMarket: mean('brierMarket'), verdict: verdict(h.map(x => x.pnlUsd)),
         retirement:b.retirement||null,standDown: modelGuard([...h, ...(b.observedHistory || [])]), observed: { open: (b.observedOpen || []).length, settled: (b.observedHistory || []).length, wins: (b.observedHistory || []).filter(x => x.won).length } };
     });
-    return { mode: 'PAPER', startedAt: this.state.startedAt, startUsd: FARM_START_USD, slippage: FARM_SLIPPAGE, minSettled: MIN_SETTLED, days, variants, last: this.last, error: this.recoveryError, running: [...this.busy] };
+    return { mode: 'PAPER', startedAt: this.state.startedAt, startUsd: FARM_START_USD, slippage: FARM_SLIPPAGE, minSettled: MIN_SETTLED, days, variants, exploratoryAdmission:{maxLifetimeBooks:2,totalCapitalUsd:50,admitted:variants.filter(v=>v.exploratory).length,status:variants.filter(v=>v.exploratory).length>=2?'COHORT_BUDGET_REACHED':'COLLECTING_PROPOSALS',reason:'New lifetime cohort budget requires explicit operator allocation; previous losses never reset'},last: this.last, error: this.recoveryError, running: [...this.busy] };
   }
 }
 // ticker → { YES: bid, NO: bid } from a frame, to mark open variant bets without extra calls.

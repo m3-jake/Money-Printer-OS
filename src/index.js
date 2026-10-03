@@ -27,12 +27,11 @@ import { copyTradeSignals } from './copyTrade.js';
 import { simulateAggressivePaperExecution } from './executionSimAggressive.js';
 import { parsePumpfunLaunch, PUMPFUN_PROGRAM_ID } from './pumpfun.js';
 import { pumpfunPaperLane } from './pumpfunPaper.js';
-import { pumpfunCopyPaper } from './pumpfunCopyPaper.js';
+import { pumpfunCopyPaper, pumpfunCopyExperiments } from './pumpfunCopyPaper.js';
 import { aggressionParams, exitPresets, operatingProfiles, customExitPolicy, sanitizeCustomExit, openLimitFor, MAX_OPEN_OVERRIDE, isAggressivePaper } from './runtime.js';
 import { recordUniverse, postmortemTrade } from './research.js';
 import { supervisorTick } from './supervisor.js';
 import { proposeTrade, proposeExit, resolveProposal, expireProposals } from './proposals.js';
-import { runArbitragePaperTick } from './arbitragePoller.js';
 import { scheduleShadowTick } from './shadowCollector.js';
 import { routePaperProposal } from './paperRouting.js';
 import { memeIndex } from './indexer.js';
@@ -794,12 +793,7 @@ async function cycle(budget = null) {
   const lead=ranked[0];
   s.system.lastCycle = Date.now();
   supervisorTick(s, ranked);
-  try { s.system.arbitragePaper = await runArbitragePaperTick(marketPlatform(), s, cfg.mode); }
-  catch (e) { s.system.arbitragePaper = { error: compactError(e), ordersSubmitted: 0 }; }
-  try { s.system.pumpfunPaper = await pumpfunPaperLane().maintain({ runtime: s.runtime, mode: cfg.mode, solUsd: s.market?.solUsd }); }
-  catch (e) { s.system.pumpfunPaper = { error: compactError(e), ordersSubmitted: 0 }; }
-  try { s.system.pumpfunCopyPaper = pumpfunCopyPaper().scheduleMaintain({ mode: cfg.mode, solUsd: s.market?.solUsd, solUsdAt: s.market?.solUsdObservedAt }); }
-  catch (e) { s.system.pumpfunCopyPaper = { error: compactError(e), ordersSubmitted: 0 }; }
+  // Native exits and arbitrage have independent venue timers in the dashboard.
   try { s.system.shadowPaper = scheduleShadowTick(marketPlatform(), s, cfg.mode); }
   catch (e) { s.system.shadowPaper = { error: compactError(e), ordersSubmitted: 0 }; }
   if(cfg.mode==='paper'&&s.runtime?.profile==='AGGRESSIVE_PAPER'&&s.system.portfolioRisk?.some(x=>x.flatten)){
@@ -888,17 +882,17 @@ async function main() {
       .then(decision => appendJournal({ type: 'pumpfun-sniper-signal', mode: cfg.mode.toUpperCase(), ...launch, ...decision, source: 'pumpfun:sniper', orderSubmitted: false }))
       .catch(error => appendJournal({ type: 'pumpfun-sniper-error', mode: 'PAPER', mint: launch.mint, error: compactError(error), orderSubmitted: false }));
   }, { programIds: [...cfg.programLogIds, PUMPFUN_PROGRAM_ID], enabled: () => cfg.directStreamEnabled || isAggressivePaper(loadState().runtime, cfg.mode) });
-  const copyBook = pumpfunCopyPaper();
+  const copyBook = pumpfunCopyPaper(), copyBooks=[copyBook,...pumpfunCopyExperiments()];
   let walletStream = null, walletStreamKey = '';
   const refreshCopyStream = () => {
     if (once || cfg.mode !== 'paper') return;
-    const wallets = [...new Set([...copyBook.view().leaders.map(w => w.wallet), ...smartWallets()])].slice(0, 8), key = wallets.join(',');
+    const wallets = [...new Set([...copyBooks.flatMap(b=>b.view().leaders.map(w => w.wallet)), ...smartWallets()])].slice(0, 16), key = wallets.join(',');
     if (key === walletStreamKey) return;
     walletStream?.close?.(); walletStreamKey = key;
     walletStream = startTrackedWalletStream(event => {
-      const signals = copyTradeSignals([event], { mode: cfg.mode, wallets, log: appendJournal });
+      const signals = copyTradeSignals([event], { mode: cfg.mode, wallets, minPnlSol:-Infinity, log: appendJournal });
       const state = loadState();
-      for (const signal of signals) copyBook.onSignal(signal, { mode: cfg.mode, entriesAllowed: !state.system?.paused && !state.system?.killSwitch, solUsd: state.market?.solUsd, solUsdAt: state.market?.solUsdObservedAt })
+      for (const signal of signals) for(const book of copyBooks) book.onSignal(signal, { mode: cfg.mode, entriesAllowed: !state.system?.paused && !state.system?.killSwitch, solUsd: state.market?.solUsd, solUsdAt: state.market?.solUsdObservedAt })
         .then(decision => appendJournal({ type: 'pumpfun-copy-paper-signal', mode: 'PAPER', ...decision }))
         .catch(error => appendJournal({ type: 'pumpfun-copy-paper-error', mode: 'PAPER', error: compactError(error), orderSubmitted: false }));
     }, { wallets });

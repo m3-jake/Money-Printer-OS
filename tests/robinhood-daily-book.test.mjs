@@ -168,6 +168,21 @@ test('forward daily rejects historical opens, stale or missing-depth quotes and 
  }finally{fs.rmSync(dir,{recursive:true,force:true})}
 });
 
+test('observed 2% quote fees constrain forward entries, exits and holding baseline above the fixed floor',async()=>{
+ const dir=tmp(),D0='2026-09-20',m=market(D0),now=t0(addDays(D0,1))+60000,pick=D.pickDailyStrategy(null),symbol='BTC-USD';
+ const book=D.newDailyBook({now,startUsd:25,symbols:[symbol]});book.source=pick;book.lastDecidedDay=D0;
+ const order=side=>({symbol,side,fillDay:addDays(D0,1),decidedForDay:D0,decidedAt:now-1000,eligibleAt:now-750,paramsHash:pick.paramsHash});
+ const quoteFn=s=>({symbol:s,supported:true,source:'v2',bid:99,ask:100,at:now,askSize:100,bidSize:100,feeRatio:.02});
+ const opts={dataDir:dir,now,env:{ROBINHOOD_DAILY_SYMBOLS:symbol},fetchFn:coinbase(m,()=>now),quoteFn,feeRatio:.0095,labDaily:null};
+ try{
+ book.pending=[order('buy')];D.saveDailyBook(dir,book);let r=await D.runDailyOnce(opts);
+ const qty=25*.98/(100*1.0005);assert.ok(Math.abs(r.book.sleeves[symbol].qty-qty)<1e-10);assert.equal(r.book.fills[0].quoteEvidence.feeRatio,.02);assert.equal(r.book.fills[0].feeUsd,.5);
+ assert.equal(r.book.executionBench.feesBySymbol[symbol],.02);assert.equal(r.book.equityDaily[0].quoteEvidence[0].feeRatio,.02);
+ r.book.pending=[order('sell')];D.saveDailyBook(dir,r.book);r=await D.runDailyOnce(opts);
+ const proceeds=Math.round(qty*99*.9995*.98*100)/100;assert.equal(r.book.history[0].proceedsUsd,proceeds);assert.equal(r.book.history[0].quoteEvidence.exit.feeRatio,.02);assert.equal(r.book.sleeves[symbol].cashUsd,proceeds);
+ }finally{fs.rmSync(dir,{recursive:true,force:true})}
+});
+
 test('controller: switches to a cleared Lab proposal and labels it', async () => {
   const dir = tmp(), D0 = '2026-09-20', m = market(D0); let now = t0(addDays(D0, 1)) + 5 * 60_000;
   const lab = { phase: 'PAPER_REVIEW_READY', paperPromotionAllowed: true, proposal: { id: 'RH-DAILY-trend-abc', family: 'trend', params: { smaDays: 150, bandPct: 5 }, stateSchema: 'mpo.champion-state.v1', state: 'PAPER', traderExecutable: false, liveActivationAllowed: false } };

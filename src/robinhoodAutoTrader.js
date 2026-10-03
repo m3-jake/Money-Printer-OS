@@ -40,6 +40,8 @@ import { laneMayPropose } from './evidenceFlags.js';
 import { appendProjectJournal } from './projectJournal.js';
 import { writeFileAtomicSync } from './atomicRename.js';
 import * as RD from './robinhoodDailyBook.js';
+import { readNativeSolFlowFeatures } from './robinhoodExternalFeatures.js';
+import { alphaDb } from './alphaDb.js';
 import { clone, envNum, TICK_MS, DATA_DIR, USER_ROOT, ENV_FILE, now, setRobinhoodClock, symbols, validSymbol, safeMessage, fresh, paper, robinhoodLimits, robinhoodPrimary, primaryFirst, primaryWeights, primaryOrderUsd, robinhoodSymbols } from './robinhoodPolicy.js';
 import { labRobinhoodResearchActive, labAutoApplyEnabled, robinhoodVolGate as labVolGate, robinhoodFitnessParts as labFitnessParts, robinhoodEvolveView as labEvolveView, runRobinhoodEvolveOnce as labEvolveRun, applyRobinhoodEvolution as labEvolveApply, labProposalPass as labPassImpl, loadLabTrial, labTrialRisk, evolveBusyNow, resetLabState, TRIAL_CLOSES, TRIAL_MAX_DD_PCT, TRIAL_IDLE_DAYS, LAB_PASS_MS, LAB_TRIAL_FILE, LAB_RH_CHAMPION_FILE } from './robinhoodLab.js';
 export { robinhoodLimits, robinhoodPrimary, primaryOrderUsd, robinhoodSymbols };
@@ -91,8 +93,34 @@ function explore(strict=paper()){const e=J.loadExplore();e.params=exploreParams(
 function fee(){const f=account?.feeRatio;return Number.isFinite(f)&&f>=0&&f<0.25?f:envNum('ROBINHOOD_FEE_RATIO_FALLBACK',0.0095)}
 function quote(symbol){const q=quotes.get(symbol);if(!fresh(q))fail('validation','A fresh, valid bid/ask quote is required');return q}
 // Daily-bar paper book: a fresh Robinhood-authenticated quote (never the public fallback feed), or null.
-export function robinhoodDailyQuote(symbol){const q=quotes.get(String(symbol||'').toUpperCase());return fresh(q)&&!/^coinbase/i.test(String(q.source||''))?{symbol:q.symbol,bid:q.bid,ask:q.ask,at:q.at,source:String(q.source||'robinhood')}:null}
+export async function robinhoodDailyQuote(symbol,context={}){
+ const sym=String(symbol||'').toUpperCase(),q=quotes.get(sym),pair=pairs.get(sym);
+ if(!fresh(q)||/^coinbase/i.test(String(q.source||''))||!pair?.isApiTradable||!creds().apiKey||!keyObject())return null;
+ // GET-only size estimates: a BBO alone never proves executable capacity.
+ const budget=Number(context.budgetUsd)||envNum('ROBINHOOD_DAILY_START_USD',1000)/RD.DAILY_DEFAULTS.symbols.length;
+ const requested=Math.max(Number(context.quantity)||0,budget/q.ask*1.02),increment=Number(pair.assetIncrement);
+ if(!(requested>0)||!(increment>0))return null;
+ const qty=Math.ceil(requested/increment)*increment,qtyStr=S.formatIncrement(qty,increment);
+ const [asks,bids]=await Promise.all([fetchEstimatedPrice(sym,'ask',[qtyStr]),fetchEstimatedPrice(sym,'bid',[qtyStr])]);
+ return dailyExecutionQuoteFromEstimates({symbol:sym,quantity:Number(qtyStr),increment,asks,bids,receivedAt:now(),eligibleAt:Number(context.eligibleAt||0),accountFeeRatio:fee()});
+}
+export function dailyExecutionQuoteFromEstimates({symbol,quantity,increment,asks,bids,receivedAt,eligibleAt=0,accountFeeRatio}){
+ const exact=rows=>rows.find(r=>r.symbol===symbol&&Math.abs(r.quantity-quantity)<=Math.max(1e-12,quantity*1e-10));
+ const ask=exact(asks),bid=exact(bids);
+ const freshLeg=r=>r&&Number.isFinite(r.at)&&r.at>=eligibleAt&&r.at<=receivedAt&&receivedAt-r.at<=30000;
+ if(!(quantity>0)||!(increment>0)||!freshLeg(ask)||!freshLeg(bid)||!(ask.ask>0)||!(bid.bid>0)||ask.ask<bid.bid)return null;
+ const ratios=[accountFeeRatio,ask.feeRatio,bid.feeRatio,ask.estFee/(quantity*ask.ask),bid.estFee/(quantity*bid.bid)].filter(v=>typeof v==='number'&&Number.isFinite(v)&&v>=0&&v<.25);
+ const feeRatio=Math.max(.0095,...ratios);
+ return {symbol,bid:bid.bid,ask:ask.ask,at:Math.min(ask.at,bid.at),source:'robinhood-v2',supported:true,quantityStep:increment,askSize:ask.quantity,bidSize:bid.quantity,executableQuantity:Math.min(ask.quantity,bid.quantity),feeRatio,executionModel:'robinhood-exact-size-estimated-price.v1'};
+}
 export function robinhoodFeeRatio(){return fee()}
+let externalFlowCache=null;
+export function robinhoodExternalFlow(){
+ const at=now();if(externalFlowCache&&at-externalFlowCache.at<30000)return externalFlowCache;
+ try{return externalFlowCache=readNativeSolFlowFeatures({db:fs.existsSync(path.join(DATA_DIR,'alpha-lab.sqlite'))?alphaDb():null,now:at,supportedSymbols:[...pairs.values()].filter(p=>p.isApiTradable).map(p=>p.symbol)})}
+ catch(e){return {at,signals:[],receipts:[],waits:['INDEXED_SWAP_FEATURE_UNAVAILABLE'],error:safeMessage(e),qualified:false,qualificationEffect:'NONE'};}
+}
+export function robinhoodExternalMomentum(){const p=paper(),r=featureRows(p,['SOL-USD']);return r['SOL-USD']?.signal?.enter===true;}
 const openSymbolsReal=(j=J.loadJournal())=>j.open.map(e=>e.symbol);
 async function refreshFeed(requested=robinhoodSymbols(),force=false){
  const c=creds(),key=keyObject(),hasCredentials=!!(c.apiKey&&key),fingerprint=hasCredentials?createHash('sha256').update(JSON.stringify(c)).digest('hex'):'paper-public';
@@ -700,7 +728,7 @@ function snapshotView(){
  const gauges={strict:Object.fromEntries(Object.entries(rows).map(([s,r])=>[s,gaugeOf(p,r,s)])),explore:Object.fromEntries(Object.entries(exRows).map(([s,r])=>[s,gaugeOf(ex,r,s)]))};
  const exPositions=ex.positions.map(position=>{const q=quotes.get(position.symbol),known=fresh(q);return {...position,markBid:known?q.bid:null,unrealizedUsd:known?S.markToMarket(position,q.bid,fee()):null,unrealizedPct:known?q.bid/position.fillPrice-1:null,ageMs:now()-position.openedAt}});
  const exKnown=exPositions.every(x=>x.unrealizedUsd!==null);
- const exploreView={label:EXPLORE_LABEL,enabled:exploreEnabled()&&!!ex.autopilot.enabled,countsTowardQualification:false,cashUsd:ex.cashUsd,startUsd:ex.startUsd,equityUsd:exKnown?ex.cashUsd+exPositions.reduce((s,x)=>s+x.costUsd+x.unrealizedUsd,0):null,unrealizedUsd:exKnown?exPositions.reduce((s,x)=>s+x.unrealizedUsd,0):null,positions:exPositions,history:ex.history.slice(0,8),stats:ex.stats,params:ex.params,paramsHash:ex.paramsHash,overrides:{...EXPLORE_OVERRIDES},autopilot:ex.autopilot,qualification:ex.qualification,recoveryRequired:!!ex.recoveryRequired};
+ const exploreView={label:EXPLORE_LABEL,enabled:exploreEnabled()&&!!ex.autopilot.enabled,countsTowardQualification:false,cashUsd:ex.cashUsd,startUsd:ex.startUsd,equityUsd:exKnown?ex.cashUsd+exPositions.reduce((s,x)=>s+x.costUsd+x.unrealizedUsd,0):null,unrealizedUsd:exKnown?exPositions.reduce((s,x)=>s+x.unrealizedUsd,0):null,positions:exPositions,history:ex.history.slice(0,8),stats:ex.stats,params:ex.params,paramsHash:ex.paramsHash,overrides:{...EXPLORE_OVERRIDES},autopilot:ex.autopilot,qualification:ex.qualification,recoveryRequired:!!ex.recoveryRequired,externalFlow:robinhoodExternalFlow()};
  const tape=Object.fromEntries(Object.entries(rows).map(([s,r])=>[s,{n:r.features.n,ageMs:r.features.ageMs,quoteSource:quotes.get(s)?.source||null,quoteAgeMs:quotes.get(s)?.at==null?null:now()-quotes.get(s).at,expectedMovePct:r.features.expectedMovePct,costPct:r.costPct,requiredMovePct:r.signal.requiredMovePct,signal:signalEnum(s,r,p,j),reason:signalText(r,p),primary:s===primary.symbol,spark:J.tapeFor(p,s).slice(-60).map(x=>x.mid)}]));
  const entry=e=>{const q=quotes.get(e.symbol),known=fresh(q)&&e.status==='OPEN'&&e.fillVerified;return {id:e.id,symbol:e.symbol,side:e.side,status:e.status,placedBy:e.placedBy,orderType:e.orderType,orderId:e.orderId,requestedUsd:e.requestedUsd,requestedQty:e.requestedQty,filledQty:e.filledQty,avgPrice:e.avgPrice,costUsd:e.costUsd,feeUsd:e.feeUsd,fillVerified:e.fillVerified,markBid:known?q.bid:e.markBid,unrealizedUsd:known?e.filledQty*q.bid*(1-fee())-e.costUsd:e.unrealizedUsd,pnlUsd:e.pnlUsd,exitReason:e.exit?.reason||null,stopPct:e.stopPct,takePct:e.takePct,at:e.at,openedAt:e.openedAt,closedAt:e.closedAt,ageMs:now()-(e.openedAt||e.at),lastNote:e.notes?.length?e.notes[e.notes.length-1].text:null}};
  if(p.qualification.profitFactor===Infinity)p.qualification.profitFactor='infinity';
