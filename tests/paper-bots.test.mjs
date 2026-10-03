@@ -159,7 +159,7 @@ test('the variant farm prices the live bots\' frame, fills at ask + slippage, se
   result.value = 'YES'; now += 11 * 3600e3; marketCalls = 0;
   f = await farm.run('weather');
   assert.equal(marketCalls, 1, 'one settlement lookup for the ticker every variant holds');
-  assert.equal(v('wx-cal-e04').settled, 1); assert.ok(v('wx-cal-e04').pnlUsd > 0); assert.match(v('wx-cal-e04').verdict.text, /too early \(1\/20/);
+  assert.equal(v('wx-cal-e04').settled, 1); assert.ok(v('wx-cal-e04').pnlUsd > 0); assert.match(v('wx-cal-e04').verdict.text, /too early \(1\/30/);
   await bots.run('weather');
   assert.deepEqual(tape.read('kalshi-settle', '2026-10-03').concat(tape.read('kalshi-settle', '2026-10-04')).map(r => r.ticker), ['KXHIGHNY-X-B70.5'], 'a settlement is taped once');
   assert.equal(new BotFarm({ dataDir: dir, bots }).snapshot().variants.find(x => x.id === 'wx-cal-e04').settled, 1, 'the farm book persists');
@@ -317,6 +317,36 @@ test('farm variants started on the revision-1 BTC model keep it; the live r2 mod
   assert.equal(by['btc-v150'].longshotPrice, 0);
   assert.equal(by['btc-live-r2'].volMultiple, 1.0); assert.equal(by['btc-live-r2'].longshotPrice, 0.15);
   assert.equal(by['wx-cal-e07'].minEdge, KALSHI_DEFAULTS.weather.minEdge);
+});
+
+test('farm shares its 30-bet standard and retires losing variants without erasing their evidence',async()=>{
+ const {farmEarlyStop,FARM_MIN_SETTLED}=await import('../src/core/farmEvidence.js');
+ const {BotFarm,MIN_SETTLED,variantSettings,FARM_VARIANTS}=await import('../src/botFarm.js');
+ assert.equal(MIN_SETTLED,FARM_MIN_SETTLED);assert.equal(MIN_SETTLED,30);
+ const h=Array.from({length:20},(_,i)=>({...settledBet(i,{model:0.1,market:0.2}),pnlUsd:-0.1}));
+ assert.equal(farmEarlyStop(h.slice(0,19),12).retire,false);assert.equal(farmEarlyStop(h,12).retire,true);
+ assert.equal(farmEarlyStop([...h,{pnlUsd:10}],12).retire,false);
+ assert.equal(variantSettings(FARM_VARIANTS[0]).stakeUsd,0.5);
+ const dir=tmp(),result={value:null},now=Date.UTC(2026,9,3,12),desk=weatherDesk(now+10*3600e3);
+ const bots=new KalshiPaperBots({dataDir:dir,kalshi:()=>fakeKalshi(result),weather:async()=>desk,now:()=>now});
+ const farm=new BotFarm({dataDir:dir,bots,now:()=>now});farm.state.books['wx-cal-e04'].history=h;
+ const cash=farm.state.books['wx-cal-e04'].cashUsd;
+ const snap=await farm.run('weather'),row=snap.variants.find(v=>v.id==='wx-cal-e04');
+ assert.ok(row.retirement);assert.equal(row.open,0);assert.equal(row.settled,20);
+ assert.equal(farm.state.books['wx-cal-e04'].cashUsd,cash);
+ assert.ok(new BotFarm({dataDir:dir,bots}).state.books['wx-cal-e04'].retirement,'retirement persists');
+});
+
+test('copy drawdown pause stops new buys but preserves cash, history and exit monitoring',async()=>{
+ const {copyRisk,copyAttribution}=await import('../src/copyAttribution.js');
+ const s={startUsd:500,cashUsd:399,open:[],history:[{leader:'wallet',pnlUsd:-101,closedAt:100,marketType:'sports'}]};
+ assert.equal(copyRisk(s).active,true);
+ const attr=copyAttribution(s.history);assert.equal(attr.byLeader[0].pnlUsd,-101);assert.equal(attr.byDelay[0].group,'unknown');
+ assert.equal(attr.byLeader[0].leaderNetProfitUsd,null);
+ const bot=new PolymarketCopyPaper({dataDir:tmp(),fetchImpl:async()=>{throw Error('a paused buy must not fetch')}});
+ Object.assign(bot.state,s,{drawdownPause:copyRisk(s)});
+ assert.equal(await bot.copy({wallet:'wallet',name:'leader'},{side:'BUY',price:0.2,size:1000,asset:'a',title:'title'}),false);
+ assert.equal(bot.state.cashUsd,399);assert.equal(bot.state.history.length,1);
 });
 
 test('a farm variant whose model is worse than the market records observe-only bets, without cash, until it earns its way back', async () => {

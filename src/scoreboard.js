@@ -397,7 +397,12 @@ export function buildScoreboard(inputs = {}, { now = Date.now() } = {}) {
   if (inputs.pumpfun !== undefined) add('pumpfun', () => pumpfunRows(inputs.pumpfun, { now }));
   if (inputs.pumpfunCopy !== undefined) add('pumpfun-copy', () => [pumpfunCopyRow(inputs.pumpfunCopy, { now })]);
   if (inputs.robinhood !== undefined) add('robinhood', () => robinhoodCryptoRows(inputs.robinhood || {}, { now }));
-  if (inputs.robinhoodDaily !== undefined) add('robinhood-daily', () => [robinhoodDailyRow(inputs.robinhoodDaily, { now })]);
+  if (inputs.robinhoodDaily !== undefined) add('robinhood-daily', () => {
+    const rows=[robinhoodDailyRow(inputs.robinhoodDaily,{now})];
+    if(inputs.robinhoodDaily?.shadow){const row=robinhoodDailyRow(inputs.robinhoodDaily.shadow,{now});
+      Object.assign(row,{id:'robinhood-daily-shadow',book:'Walk-forward shadow · NOT QUALIFIED',beatsBaseline:VERDICT.NOT_ENOUGH,reason:'Shadow evidence never qualifies a strategy',countsTowardQualification:false});rows.push(row)}
+    return rows;
+  });
   if (inputs.equities !== undefined) add('equities', () => [equitiesRow(inputs.equities, { now })]);
   if (inputs.polymarket !== undefined) add('polymarket', () => polymarketRows(inputs.polymarket, { now }));
   if (inputs.paperBots !== undefined && inputs.paperBots !== null) add('paper-bots', () => paperBotRows(inputs.paperBots, { now }));

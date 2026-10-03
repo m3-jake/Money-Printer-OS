@@ -290,7 +290,7 @@ function feeFrom(feeRatio) { const f = Number(feeRatio); return Math.max(DAILY_D
 function envNum(env, key, d) { const n = Number(env?.[key]); return Number.isFinite(n) && n > 0 ? n : d; }
 
 // One pass: refresh bars, fill what is due, mark the closed day, decide it once, and fill at the open if possible.
-export async function runDailyOnce({ dataDir, now, clock = () => Date.now(), env = process.env, fetchFn = globalThis.fetch, quoteFn = null, feeRatio = null, labDaily } = {}) {
+export async function runDailyOnce({ dataDir, now, clock = () => Date.now(), env = process.env, fetchFn = globalThis.fetch, quoteFn = null, feeRatio = null, labDaily, shadowPick = null } = {}) {
   const realtime = now === undefined;
   now ??= clock();
   const startUsd = envNum(env, 'ROBINHOOD_DAILY_START_USD', DAILY_DEFAULTS.startUsd);
@@ -301,7 +301,7 @@ export async function runDailyOnce({ dataDir, now, clock = () => Date.now(), env
   if (book.recoveryRequired) return { book, events: ['RECOVERY'] };
   const events = [];
   // Strategy source: re-read the Lab record every pass. A switch applies from the next decision on.
-  const pick = pickDailyStrategy(labDaily === undefined ? readLabDaily(dataDir) : labDaily);
+  const pick = shadowPick && path.basename(dataDir)==='daily-shadow' ? shadowPick : pickDailyStrategy(labDaily === undefined ? readLabDaily(dataDir) : labDaily);
   if (!book.source || book.source.paramsHash !== pick.paramsHash || book.source.kind !== pick.kind) {
     event(book, now, book.source ? `strategy ${book.source.id} -> ${pick.id} (${pick.kind})` : `started on ${pick.id} (${pick.kind})`);
     events.push(`SOURCE ${pick.kind} ${pick.id}`);
@@ -346,6 +346,7 @@ export async function runDailyOnce({ dataDir, now, clock = () => Date.now(), env
 // ---------------------------------------------------------------- qualification (paper evidence only)
 function maxDrawdownPct(values) { let peak = -Infinity, mdd = 0; for (const v of values) { peak = Math.max(peak, v); if (peak > 0) mdd = Math.max(mdd, 1 - v / peak); } return r2(mdd * 100); }
 export function dailyQualification(book, { rules = DAILY_QUALIFICATION } = {}) {
+  if(book.source?.kind==='walk-forward-shadow')return {qualified:false,countsTowardQualification:false,reasons:['SHADOW: never counts toward qualification']};
   const hash = book.source?.paramsHash || null, marks = [];
   // The contiguous tail of marks under the current parameters, cut to the window.
   for (let i = book.equityDaily.length - 1; i >= 0; i--) { const m = book.equityDaily[i]; if (m.paramsHash !== hash) break; marks.unshift(m); }
@@ -395,9 +396,9 @@ export function labDailyVerdict(daily) {
   };
 }
 let state = { running: false, lastRunAt: null, lastError: null, busy: false, lastEvents: [] }, timer = null, firstRun = null;
-export function dailySnapshot({ dataDir, now = Date.now(), labDaily } = {}) {
+export function dailySnapshot({ dataDir, now = Date.now(), labDaily, includeShadow = true } = {}) {
   const book = loadDailyBook(dataDir), store = readDailyBars(dataDir), lab = labDaily === undefined ? readLabDaily(dataDir) : labDaily;
-  const pick = pickDailyStrategy(lab), last = book.equityDaily.at(-1) || null;
+  const pick = book.source?.kind==='walk-forward-shadow' ? book.source : pickDailyStrategy(lab), last = book.equityDaily.at(-1) || null;
   const positions = Object.entries(book.sleeves || {}).map(([symbol, sl]) => {
     const close = store.bars[symbol]?.at(-1)?.c ?? null;
     return { symbol, long: sl.qty > 0, qty: sl.qty, cashUsd: sl.cashUsd, entry: sl.entry, lastClose: close, valueUsd: r2(sl.cashUsd + sl.qty * (close || 0)), unrealizedUsd: sl.qty > 0 && close ? r2(sl.qty * close - (sl.entry?.costUsd || 0)) : null };
@@ -414,7 +415,8 @@ export function dailySnapshot({ dataDir, now = Date.now(), labDaily } = {}) {
       costs: { feeRatio: book.feeRatio ?? DAILY_DEFAULTS.feeFloor, feeFloor: DAILY_DEFAULTS.feeFloor, slipBps: book.slipBps, note: 'fee max(0.95%, account fee) per side plus slippage on both sides' },
       recoveryRequired: !!book.recoveryRequired, recoveryReason: book.recoveryReason || null,
     },
-    qualification: dailyQualification(book),
+    qualification: book.source?.kind==='walk-forward-shadow' ? {qualified:false,reasons:['SHADOW: never counts toward qualification'],countsTowardQualification:false} : dailyQualification(book),
+    ...(includeShadow && path.basename(dataDir)!=='daily-shadow' ? {shadow:fs.existsSync(bookFile(path.join(dataDir,'daily-shadow'))) ? dailySnapshot({dataDir:path.join(dataDir,'daily-shadow'),now,labDaily:lab,includeShadow:false}) : null} : {}),
     data: { source: 'Coinbase public daily candles (UTC days)', lastClosedDay: lastClosedDay(now), latestBar: (ds => ds.length && ds.every(Boolean) ? ds.reduce((a, b) => a < b ? a : b) : null)(book.symbols.map(s => store.bars[s]?.at(-1)?.d || null)), fetchedAt: store.fetchedAt, lastError: store.lastError },
     rules: 'One decision per closed UTC bar, at its close; fills at the next open (Robinhood quote when available, else the Coinbase open). Never repeated on restart; missed days are never decided after the fact.',
     loop: { running: state.running, lastRunAt: state.lastRunAt, lastEvents: state.lastEvents }, lastError: state.lastError,
@@ -430,7 +432,22 @@ export function resetDailyBook({ dataDir, confirmation, now = Date.now(), env = 
 export async function runDailyTick(opts) {
   if (state.busy) return { ran: false, reason: 'busy' };
   state.busy = true;
-  try { const r = await runDailyOnce({ ...opts, feeRatio: typeof opts.feeFn === 'function' ? opts.feeFn() : opts.feeRatio }); state.lastError = null; state.lastEvents = r.events; return { ran: true, events: r.events }; }
+  try { const feeRatio=typeof opts.feeFn==='function'?opts.feeFn():opts.feeRatio;
+    const r = await runDailyOnce({ ...opts, feeRatio });
+    const daily=opts.labDaily===undefined?readLabDaily(opts.dataDir):opts.labDaily;
+    const t=opts.now??Date.now(),stamp=daily?.computedAt??daily?.at;
+    const current=Number.isFinite(stamp)&&stamp<=t&&t-stamp<=48*3600e3&&daily.liveActivationAllowed!==true?daily.leader:null;
+    const previous=loadDailyBook(path.join(opts.dataDir,'daily-shadow')).source;
+    const leader=current || (previous?.kind==='walk-forward-shadow'?previous:null);
+    let shadowEvents=[];
+    if(leader&&validateDailyParams(leader.family,leader.params).ok){
+      const dataDir=path.join(opts.dataDir,'daily-shadow');
+      writeJsonAtomic(barsFile(dataDir),readDailyBars(opts.dataDir));
+      const shadowPick={kind:'walk-forward-shadow',label:'WALK-FORWARD SHADOW · NOT QUALIFIED',id:String(leader.id||'walk-forward'),family:leader.family,params:{...leader.params},paramsHash:dailyParamsHash(leader.family,leader.params),state:'RESEARCH',reasons:['diagnostic forward record only']};
+      const shadow=await runDailyOnce({...opts,dataDir,feeRatio,shadowPick,env:{...(opts.env||process.env),ROBINHOOD_DAILY_START_USD:25},fetchFn:async()=>{throw Error('shadow waits for shared daily cache')}});
+      shadowEvents=shadow.events;
+    }
+    state.lastError = null; state.lastEvents = r.events; return { ran: true, events: r.events, shadowEvents }; }
   catch (e) { state.lastError = { at: Date.now(), message: String(e?.message || e).slice(0, 200) }; return { ran: false, reason: 'error', error: state.lastError.message }; }
   finally { state.lastRunAt = Date.now(); state.busy = false; }
 }

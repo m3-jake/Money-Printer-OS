@@ -18,6 +18,22 @@ const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'mpo-rh-daily-'));
 const t0 = d => Date.parse(d + 'T00:00:00Z');
 const addDays = (d, n) => new Date(t0(d) + n * DAY).toISOString().slice(0, 10);
 const SYMS = ['BTC-USD', 'ETH-USD', 'SOL-USD'];
+test('walk-forward shadow has a separate bank, shares bars and never qualifies or repeats a daily decision',async()=>{
+ const dir=tmp(),now=t0('2026-10-03')+20*60000,m=market('2026-10-03'),calls=[];
+ const labDaily={computedAt:now,phase:'NO_EDGE',paperPromotionAllowed:false,leader:{id:'candidate',family:'trend',params:{smaDays:100,bandPct:2}}};
+ const opts={dataDir:dir,now,labDaily,env:{ROBINHOOD_DAILY_SYMBOLS:SYMS.join(',')},fetchFn:coinbase(m,()=>now,calls)};
+ try{
+  assert.equal((await D.runDailyTick(opts)).ran,true);
+  const snap=D.dailySnapshot({dataDir:dir,now,labDaily});
+  assert.equal(snap.shadow.book.startUsd,25);assert.equal(snap.book.startUsd,25);
+  assert.equal(snap.shadow.source.kind,'walk-forward-shadow');assert.equal(snap.shadow.qualification.qualified,false);
+  const before=JSON.stringify(snap.shadow.book.lastDecision),requests=calls.length;
+  await D.runDailyTick(opts);
+  assert.equal(JSON.stringify(D.dailySnapshot({dataDir:dir,now,labDaily}).shadow.book.lastDecision),before);
+  assert.equal(calls.length,requests,'shadow uses shared bars without an extra request');
+  assert.equal(D.dailyQualification({...D.newDailyBook(),source:snap.shadow.source},{rules:{minRunDays:0,minClosedTrades:0}}).qualified,false);
+ }finally{fs.rmSync(dir,{recursive:true,force:true})}
+});
 // Market: per symbol a map day -> {o,h,l,c}. flat(n) closes at 100 for n days ending at `last`.
 function market(last, n = 300) {
   const m = {};

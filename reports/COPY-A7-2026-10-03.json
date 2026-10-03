@@ -1,0 +1,117 @@
+{
+  "at": "2026-10-03T14:15:25.309Z",
+  "copy": {
+    "startUsd": 500,
+    "risk": {
+      "active": true,
+      "drawdownPct": 0.38766039353598286,
+      "peakUsd": 562.3933000000001,
+      "threshold": 0.15,
+      "reason": "New copies paused at 15% drawdown; existing positions still settle and follow exits"
+    },
+    "attribution": {
+      "n": 62,
+      "byLeader": [
+        {
+          "group": "0x5268527977f700f9bf9b6d5cd843859e4e70135d",
+          "n": 25,
+          "pnlUsd": -46.49229999999999,
+          "feesUsd": 4.930359999999999,
+          "knownEntryDrag": 25,
+          "entryDragUsd": -48.34005596049999,
+          "leaderNetProfitUsd": null
+        },
+        {
+          "group": "0x2a69660046d7acc4ab204d7cc5ba78b0776cd2f7",
+          "n": 31,
+          "pnlUsd": -36.29830000000001,
+          "feesUsd": 5.647280000000001,
+          "knownEntryDrag": 31,
+          "entryDragUsd": -2.0834178179999956,
+          "leaderNetProfitUsd": null
+        },
+        {
+          "group": "0x6ac5bb06a9eb05641fd5e82640268b92f3ab4b6e",
+          "n": 4,
+          "pnlUsd": -23.2282,
+          "feesUsd": 1.41,
+          "knownEntryDrag": 4,
+          "entryDragUsd": 1.3825350399999996,
+          "leaderNetProfitUsd": null
+        },
+        {
+          "group": "0xbc43c8bfbc4d77c2fc9011adad38ba43b88996d3",
+          "n": 2,
+          "pnlUsd": -20.29,
+          "feesUsd": 0.29,
+          "knownEntryDrag": 2,
+          "entryDragUsd": 0.44880450479999984,
+          "leaderNetProfitUsd": null
+        }
+      ],
+      "byMarketType": [
+        {
+          "group": "unknown",
+          "n": 62,
+          "pnlUsd": -126.30880000000005,
+          "feesUsd": 12.277640000000005,
+          "knownEntryDrag": 62,
+          "entryDragUsd": -48.59213423369999,
+          "leaderNetProfitUsd": null
+        }
+      ],
+      "byDelay": [
+        {
+          "group": "over 5 minutes",
+          "n": 10,
+          "pnlUsd": -74.37950000000001,
+          "feesUsd": 2.825,
+          "knownEntryDrag": 10,
+          "entryDragUsd": -39.00086211519999,
+          "leaderNetProfitUsd": null
+        },
+        {
+          "group": "0–60 seconds",
+          "n": 9,
+          "pnlUsd": -43.25599999999999,
+          "feesUsd": 1.97088,
+          "knownEntryDrag": 9,
+          "entryDragUsd": 0.8040872540000015,
+          "leaderNetProfitUsd": null
+        },
+        {
+          "group": "1–5 minutes",
+          "n": 43,
+          "pnlUsd": -8.673299999999987,
+          "feesUsd": 7.481759999999999,
+          "knownEntryDrag": 43,
+          "entryDragUsd": -10.395359372499994,
+          "leaderNetProfitUsd": null
+        }
+      ],
+      "note": "Our realized after-cost results; leader net profitability is unknown without their own fills, fees and exits. Entry price drag excludes unknown leader execution costs."
+    }
+  },
+  "mirror": {
+    "open": 0,
+    "settled": 0,
+    "queued": 3,
+    "recentDecisions": 60,
+    "recentRefusals": {
+      "no unambiguous Kalshi game-winner contract for this game": 2,
+      "not a game-winner market Kalshi also lists": 58
+    },
+    "attribution": {
+      "n": 0,
+      "byLeader": [],
+      "byMarketType": [],
+      "byDelay": [],
+      "note": "Our realized after-cost results; leader net profitability is unknown without their own fills, fees and exits. Entry price drag excludes unknown leader execution costs."
+    }
+  },
+  "limits": [
+    "Mirror refusal counts describe the bounded recent decision log, not lifetime attempts.",
+    "Leader net P/L cannot be verified from weekly gross leaderboard P/L or our copy fills.",
+    "Historical market categories and delays missing from receipts remain unknown."
+  ]
+}

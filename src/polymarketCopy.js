@@ -12,6 +12,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { writeFileAtomicSync } from './atomicRename.js';
 import { takerFee, polymarketFeeModel } from './core/fees.js';
+import { copyAttribution, copyRisk, COPY_EVICT_MIN_CLOSES } from './copyAttribution.js';
 
 const SCHEMA = 'mpo.polymarket-copy-paper.v1';
 const DATA = 'https://data-api.polymarket.com', CLOB = 'https://clob.polymarket.com', GAMMA = 'https://gamma-api.polymarket.com';
@@ -73,13 +74,23 @@ export class PolymarketCopyPaper {
     const s = this.state, st = s.settings;
     try {
       await this.settle();
+      const risk=copyRisk(s);
+      if(risk.active&&!s.drawdownPause?.active)this.decide({action:'PAUSE',reason:risk.reason});
+      s.drawdownPause=s.drawdownPause?.active?s.drawdownPause:risk; // sticky; no automatic loss-hiding reset
+      s.evicted ||= {};
+      for(const f of s.follows){const h=s.history.filter(r=>r.leader===f.wallet&&Number.isFinite(r.pnlUsd));
+        if(h.length>=COPY_EVICT_MIN_CLOSES&&h.reduce((t,r)=>t+r.pnlUsd,0)<0&&!s.evicted[f.wallet]){
+          s.evicted[f.wallet]={at:this.now(),n:h.length,pnlUsd:h.reduce((t,r)=>t+r.pnlUsd,0)};
+          this.decide({leader:f.name,action:'EVICT',reason:'our realized copies lost money after at least 5 closes; existing holdings keep exit monitoring'});
+        }
+      }
       if (st.enabled) {
         // Keep up to `follows` leaders; drop ones followed longer than refollowDays ago and refill from a fresh snapshot.
         const cutoff = this.now() - st.refollowDays * 86400e3;
         s.follows = s.follows.filter(f => f.followedAt >= cutoff || s.open.some(p => p.leader === f.wallet));
         if (s.follows.length < st.follows) {
           const rows = await this.get(`${DATA}/v1/leaderboard?timePeriod=WEEK&orderBy=PNL&limit=50`);
-          s.follows.push(...pickLeaders(rows, { ...st, follows: st.follows - s.follows.length }, new Set(s.follows.map(f => f.wallet)), this.now()));
+          s.follows.push(...pickLeaders(rows, { ...st, follows: st.follows - s.follows.length }, new Set([...s.follows.map(f => f.wallet),...Object.keys(s.evicted)]), this.now()));
         }
         // Every leader trade seen for the first time goes to the tape (botTape.js, stream polycopy-trades), copied or not:
         // [wallet, tradeTime, asset, side, price, size, outcome, title], so leader selection can be studied later.
@@ -111,6 +122,7 @@ export class PolymarketCopyPaper {
       return this.close(pos, 'leader sold');
     }
     if (t.side !== 'BUY') return false;
+    if(s.drawdownPause?.active||s.evicted?.[f.wallet]){this.decide({leader:f.name,title,action:'SKIP',reason:s.drawdownPause?.active?'drawdown pause':'leader evicted after our realized losses'});return false}
     if (leaderUsd < st.minLeaderTradeUsd) return false;
     if (s.open.some(p => p.asset === t.asset)) { this.decide({ leader: f.name, title, action: 'SKIP', reason: 'already holding this outcome' }); return false; }
     if (s.open.length >= st.maxOpen) { this.decide({ leader: f.name, title, action: 'SKIP', reason: 'max open copies' }); return false; }
@@ -122,9 +134,11 @@ export class PolymarketCopyPaper {
     const fee = polymarketFeeModel(m); if (!fee.model) { this.decide({ leader: f.name, title, action: 'SKIP', reason: fee.reason }); return false; }
     const fills = walkBuy(asks, st.stakeUsd, Number(t.price) + st.maxChase), qty = fills.reduce((a, x) => a + x.quantity, 0);
     if (qty <= 0) { this.decide({ leader: f.name, title, action: 'SKIP', reason: 'no depth' }); return false; }
-    const cost = fills.reduce((a, x) => a + x.price * x.quantity, 0), feeUsd = takerFee(fee.model, fills) ?? 0;
+    const cost = fills.reduce((a, x) => a + x.price * x.quantity, 0), feeUsd = takerFee(fee.model, fills);
+    if(!Number.isFinite(feeUsd)||cost+feeUsd>s.cashUsd){this.decide({leader:f.name,title,action:'SKIP',reason:'fees unavailable or total exceeds paper cash'});return false}
     s.cashUsd = round(s.cashUsd - cost - feeUsd, 6);
     s.open.push({ id: `copy-${this.now()}-${String(t.asset).slice(-8)}`, asset: t.asset, conditionId: t.conditionId, title, outcome: t.outcome, outcomeIndex: t.outcomeIndex, leader: f.wallet, leaderName: f.name, leaderPrice: round(Number(t.price), 4), leaderUsd: round(leaderUsd, 2), leaderAt: Number(t.timestamp) * 1000, qty: round(qty, 6), avgPrice: round(cost / qty, 4), costUsd: round(cost, 4), feeUsd: round(feeUsd, 5), feeModel: fee.model, openedAt: this.now(), markUsd: round(cost, 4), endDate: m?.endDate || null, slug: t.eventSlug || t.slug || null });
+    s.open.at(-1).marketType=typeof m?.category==='string'?m.category.slice(0,60):typeof t.marketType==='string'?t.marketType.slice(0,60):'unknown';
     this.decide({ leader: f.name, title, outcome: t.outcome, action: 'COPY', price: round(cost / qty, 3), leaderPrice: round(Number(t.price), 3), lagSec: Math.round((this.now() - Number(t.timestamp) * 1000) / 1000) });
     return true;
   }
@@ -162,6 +176,7 @@ export class PolymarketCopyPaper {
     let run = s.startUsd; const curve = [{ at: null, equityUsd: s.startUsd }]; for (const x of h.slice().reverse()) { run += x.pnlUsd; curve.push({ at: x.closedAt, equityUsd: round(run, 2) }); }
     return { id: 'polycopy', label: 'Polymarket copy bot', mode: 'PAPER', venue: 'polymarket.com (global), not Polymarket US', epoch: s.epoch, settings: s.settings, startUsd: s.startUsd, cashUsd: round(s.cashUsd, 2), equityUsd: round(equity, 2), returnPct: round((equity - s.startUsd) / s.startUsd * 100, 2),
       follows: s.follows, open: s.open.map(({ feeModel, ...p }) => p), history: h.slice(0, 50).map(({ feeModel, ...p }) => p), decisions: s.decisions.slice(0, 30), curve: curve.slice(-200), byLeader: Object.values(byLeader).sort((a, b) => b.pnlUsd - a.pnlUsd),
+      attribution:copyAttribution(h),drawdownPause:s.drawdownPause||copyRisk(s),evicted:s.evicted||{},
       stats: { closed: n, wins, hitRate: n ? round(wins / n, 3) : null, pnlUsd: round(h.reduce((a, x) => a + x.pnlUsd, 0), 2), feesUsd: round(h.reduce((a, x) => a + x.feeUsd + (x.exitFeeUsd || 0), 0), 2) },
       lastRunAt: s.lastRunAt, lastError: this.recoveryError || s.lastError, lastNote: s.lastNote, running: this.busy };
   }

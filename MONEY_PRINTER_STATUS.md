@@ -62,6 +62,48 @@ Architecture, active work and release evidence live in `.agent-state/PROJECT_STA
 ledger remains `AUDIT.md` and `PROGRESS.md`. Later sections below are historical unless dated
 as the current release. Last updated: 2026-10-03.
 
+## Batch PF-15 (2026-10-03, Codex): copy attribution and loss pause (run item A7)
+
+Measured read-only at 10:15 EDT: Polymarket copy has 62 closes, -$126.31 realized, and a marked drawdown of
+38.77% from the reconstructed realized-equity peak. Delay buckets: 9 copies within 60 seconds lost $43.26;
+43 within 1–5 minutes lost $8.67; 10 over 5 minutes lost $74.38. These are attribution, not causal estimates.
+All historical market categories are unknown; future receipts retain an explicit provider category when present.
+Leader net profit is unknown: gross weekly leaderboard P/L does not provide their fills, fees or exits.
+`reports/COPY-A7-2026-10-03.json` records the bounded observations; the diagnostic script makes no requests.
+
+New copies pause at 15% drawdown; the pause persists while existing positions still settle and follow sells.
+Leaders with at least 5 realized losing copies are evicted from new buys; their holdings retain exit monitoring.
+The $500 bank stays intact (changing it belongs under Needs bing). Attribution by wallet, category and delay is
+in Advanced, with explicit unknown leader returns. Copy fees must fit existing cash and cannot fall back to zero.
+The mirror has zero open/settled and 3 queued buys. Of its last 60 refusals, 58 were not game-winner markets and
+2 had no unambiguous target. The existing successful-match/settlement fixture passes: no evidence justifies
+weakening identity rules. New lifetime matcher counters start at their instrumentation timestamp and show misses.
+Targeted paper-bot tests 23/23; full suite evidence below when completed.
+
+## Batch PF-14 (2026-10-03, Codex): farm evidence standard and retirement (run item A6)
+
+One trader-owned `core/farmEvidence.js` supplies the 30-settlement minimum and identical deterministic bootstrap
+CIs to both apps through shared-core. The HUD reads the farm minimum. Weather variants use $0.50 stakes with
+20 open slots on unchanged $12.50 books and the existing shared market frame; no added requests and no duplicate
+strikes of one event to inflate evidence. Daily settlement rates require actual observation after release.
+After 20 real settlements, a family-wise corrected CI upper bound below cash permanently retires new entries.
+Existing positions still settle; history, losses and retirement receipts persist. Retired fixed slots admit extra
+valid Lab proposals under the same strict validation; no unqualified replacement is manufactured.
+Targeted tests cover minimum parity, early stopping, cash/history preservation and persisted retirement.
+
+## Batch PF-13 (2026-10-03, Codex): daily walk-forward shadow (run item A5)
+
+The brief's claim that the daily book only runs proposals was outdated: it already runs an unqualified default
+family. A separate $25 shadow book now runs the fresh Lab walk-forward leader. It shares cached bars without
+extra downloads, preserves its history when candidates change, and continues managing the prior candidate
+when the Lab has no fresh replacement. Both the Advanced view and scoreboard label it NOT QUALIFIED.
+Qualification explicitly refuses this source even when custom thresholds are supplied. One daily decision,
+next-open fills, modeled fees and slippage remain. No existing book was reset or resized.
+Targeted daily/scoreboard tests 23/23, including separate banks, shared cache and restart invariance.
+
+A4 final full validation: trader 1,251 pass / 20 intentional skips; Lab 396 pass.
+Run checkpoint: A1–A7 source implemented; forward observation for A3/A6 pending release; A8 next; B1–D3 open.
+
 ## Batch PF-12 (2026-10-03, Codex): prospective sealed holdout (run item A4)
 
 The Lab no longer repeatedly cuts the newest 20% as its promotion holdout. A search winner freezes its

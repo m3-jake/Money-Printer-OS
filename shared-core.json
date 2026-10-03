@@ -3,6 +3,10 @@
   "owner": "money-printer-os",
   "note": "Edit these files only in the trader, then run scripts/sync-shared-core.mjs. Parity tests in both repos fail on drift.",
   "files": {
+    "src/core/farmEvidence.js": {
+      "lab": "src/core/farmEvidence.js",
+      "sha256": "28f017fd4c981f059dc004a13f9e8d21c77f44ceaefc7f1661fce99ba0c48829"
+    },
     "src/core/paperTrading.js": {
       "lab": "src/core/paperTrading.js",
       "sha256": "e8c28ea53800f6dabc0a9dad80d8e46f078b63b82b61323785be75da33758069"
@@ -69,7 +73,7 @@
     }
   },
   "syncedFrom": {
-    "traderCommit": "46bf6a2",
-    "at": "2026-10-03T14:07:22.500Z"
+    "traderCommit": "ec002b8",
+    "at": "2026-10-03T14:12:00.236Z"
   }
 }

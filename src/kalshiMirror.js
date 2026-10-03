@@ -11,6 +11,7 @@
 // price. It settles on Kalshi's own result.
 // PAPER ONLY: no order code. Book file: <data>/kalshi-mirror-paper.json. An unreadable book is never overwritten.
 import fs from 'node:fs';
+import { copyAttribution } from './copyAttribution.js';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { writeFileAtomicSync } from './atomicRename.js';
@@ -112,6 +113,9 @@ export class KalshiMirrorPaper {
           const consume = () => { s.queue = s.queue.filter(x => x.key !== q.key); this.save(); };
           if (!validTrade(q, this.now())) { this.decide({ leader: q.leader, title: q.title, action: 'SKIP', reason: 'invalid, future or stale leader trade' }); consume(); continue; }
           const m = mirrorTarget(q, board?.events || []);
+          s.matcher ||= {since:this.now(),checked:0,matched:0,misses:{}};
+          s.matcher.checked++;
+          if(m.contract)s.matcher.matched++;else s.matcher.misses[m.reason||'unknown']=(s.matcher.misses[m.reason||'unknown']||0)+1;
           if (!m.contract) { this.decide({ leader: q.leader, title: q.title, action: 'SKIP', reason: m.reason }); consume(); continue; }
           if (s.open.some(p => p.ticker === m.contract.sourceId)) { this.decide({ leader: q.leader, title: q.title, action: 'SKIP', reason: 'already holding this team' }); consume(); continue; }
           if (s.open.length >= st.maxOpen) { this.decide({ leader: q.leader, title: q.title, action: 'SKIP', reason: 'max open mirrors' }); consume(); continue; }
@@ -166,7 +170,7 @@ export class KalshiMirrorPaper {
     if (this.recoveryError) return { id: 'kalshimirror', label: 'Kalshi mirror of Polymarket leaders', mode: 'PAPER', recoveryRequired: true, startUsd: null, cashUsd: null, equityUsd: null, returnPct: null, settings: this.state.settings, queued: 0, open: [], history: [], decisions: [], stats: { settled: null, wins: null, pnlUsd: null, feesUsd: null }, lastRunAt: null, lastError: this.recoveryError, lastNote: 'Existing book preserved; recovery required', running: this.busy };
     const s = this.state, h = s.history, n = h.length, open = s.open.reduce((a, p) => a + (p.markUsd ?? p.costUsd), 0), equity = s.cashUsd + open;
     return { id: 'kalshimirror', label: 'Kalshi mirror of Polymarket leaders', mode: 'PAPER', epoch: s.epoch, settings: s.settings, startUsd: s.startUsd, cashUsd: round(s.cashUsd, 2), equityUsd: round(equity, 2), returnPct: round((equity - s.startUsd) / s.startUsd * 100, 2),
-      queued: s.queue.length, open: s.open, history: h.slice(0, 50), decisions: s.decisions.slice(0, 30),
+      queued: s.queue.length, open: s.open, history: h.slice(0, 50), decisions: s.decisions.slice(0, 30), matcher:s.matcher||null,attribution:copyAttribution(h),
       stats: { settled: n, wins: h.filter(x => x.won).length, pnlUsd: round(h.reduce((a, x) => a + x.pnlUsd, 0), 2), feesUsd: round(h.reduce((a, x) => a + x.feeUsd, 0), 2) },
       lastRunAt: s.lastRunAt, lastError: this.recoveryError || s.lastError, lastNote: s.lastNote, running: this.busy };
   }

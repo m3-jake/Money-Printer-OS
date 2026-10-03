@@ -1,5 +1,5 @@
 // Forward-test farm (2026-10-03, Research Workbench phase 3; see docs/EVOLUTION-LAB-AUDIT-2026-10-02.md).
-// A small, fixed set of paper variants of the Kalshi weather and BTC bots, each with its own $500 paper book,
+// A small, fixed set of paper variants of the Kalshi weather and BTC bots, each with its own $12.50 paper book,
 // priced on the same market snapshot (frame) as the live paper bots. That way no extra Kalshi or weather
 // calls are made. The only question it answers is the one a backtest cannot: which settings make money
 // going forward, after fees, on markets nobody has seen yet.
@@ -17,11 +17,12 @@ import path from 'node:path';
 import { writeFileAtomicSync } from './atomicRename.js';
 import { takerFee } from './core/fees.js';
 import { KALSHI_DEFAULTS, pickWeather, pickBtc, paced, modelGuard, observedBet, settleObserved } from './kalshiBots.js';
+import { FARM_MIN_SETTLED, farmEarlyStop } from './core/farmEvidence.js';
 
 const SCHEMA = 'mpo.bot-farm.v1';
 export const FARM_START_USD = KALSHI_DEFAULTS.weather.startUsd; // same bankroll as the live bots
 export const FARM_SLIPPAGE = 0.01;
-export const MIN_SETTLED = 20;
+export const MIN_SETTLED = FARM_MIN_SETTLED;
 // Labels say what differs from the live bot's defaults (weather: calibrated, edge ≥ 7¢, σ × 1.1, gap ≤ 20¢;
 // btc: vol × 1.25, edge ≥ 6¢).
 export const FARM_VARIANTS = Object.freeze([
@@ -46,11 +47,11 @@ const BTC_R1 = Object.freeze({ volMultiple: 1.25, longshotPrice: 0, longshotMinE
 // only from calibrations that beat the current settings on held-out data. Each is checked here: a known kind,
 // an id 'lab-…', and only these settings, inside these bounds. Anything else is ignored.
 const LAB_OVER = { longshotPrice: [0, 0.5], longshotMinEdge: [0, 0.5], volMultiple: [0.5, 4], minEdge: [0.02, 0.3], calibrationSafety: [0.8, 3], maxDisagreement: [0.05, 0.5], sigmaBaseF: [0.5, 8], sigmaPerDayF: [0, 5], biasF: [-10, 10] };
-export function labVariants(doc, now = Date.now()) {
+export function labVariants(doc, now = Date.now(), slots = 4) {
   const out = [];
   const fresh = at => Number.isFinite(at) && at <= now && now - at <= 48 * 3600e3;
   if (doc?.schema !== 'mpo.lab-farm-proposals.v1' || !fresh(doc.at)) return out;
-  for (const v of Array.isArray(doc?.variants) ? doc.variants.slice(0, 4) : []) {
+  for (const v of Array.isArray(doc?.variants) ? doc.variants.slice(0, 32) : []) {
     const e = v?.evidence, h = e?.holdout;
     if (!fresh(v?.at) || v.paperPromotionAllowed !== true || e?.executionVerified !== true
         || e?.availabilityVerified !== true || e?.holdoutConsumedOnce !== true
@@ -61,7 +62,8 @@ export function labVariants(doc, now = Date.now()) {
     if (!/^lab-[a-z0-9-]{3,40}$/.test(String(v?.id)) || !['weather', 'btc'].includes(v.kind) || !v.over || typeof v.over !== 'object') continue;
     const over = {}; let ok = true;
     for (const [k, n] of Object.entries(v.over)) { const lim = LAB_OVER[k]; if (!lim || !Number.isFinite(n) || n < lim[0] || n > lim[1]) { ok = false; break; } over[k] = n; }
-    if (ok && Object.keys(over).length) out.push({ id: v.id, kind: v.kind, label: String(v.label || v.id).slice(0, 60), over, lab: true, reason: String(v.reason || '').slice(0, 200) });
+    if (ok && Object.keys(over).length && !out.some(x=>x.id===v.id)) out.push({ id: v.id, kind: v.kind, label: String(v.label || v.id).slice(0, 60), over, lab: true, reason: String(v.reason || '').slice(0, 200) });
+    if(out.length>=slots)break;
   }
   return out;
 }
@@ -69,7 +71,7 @@ const round = (v, d = 4) => Math.round(v * 10 ** d) / 10 ** d;
 const localDay = t => new Date(t).toLocaleDateString('en-CA');
 
 function emptyBook(v) { return { id: v.id, kind: v.kind, label: v.label, startUsd: FARM_START_USD, cashUsd: FARM_START_USD, open: [], history: [], entered: 0, skippedSlippage: 0, observedOpen: [], observedHistory: [] }; }
-export function variantSettings(v) { return { ...(v.kind === 'weather' ? KALSHI_DEFAULTS.weather : { ...KALSHI_DEFAULTS.btc, ...BTC_R1 }), ...v.over, enabled: true }; }
+export function variantSettings(v) { return { ...(v.kind === 'weather' ? {...KALSHI_DEFAULTS.weather,stakeUsd:0.5,maxOpen:20} : { ...KALSHI_DEFAULTS.btc, ...BTC_R1 }), ...v.over, enabled: true }; }
 
 // Per-bet P/L t-statistic and a plain verdict.
 export function verdict(pnls) {
@@ -101,7 +103,8 @@ export class BotFarm {
   // The fixed variants plus the Lab's current proposals. A proposal that the Lab withdraws keeps its book (history
   // stays visible) but makes no new bets.
   variants() {
-    let lab = []; try { lab = labVariants(JSON.parse(fs.readFileSync(this.labFile, 'utf8')), this.now()); } catch {}
+    const replacements=FARM_VARIANTS.filter(v=>this.state.books[v.id]?.retirement).length;
+    let lab = []; try { lab = labVariants(JSON.parse(fs.readFileSync(this.labFile, 'utf8')), this.now(),4+replacements).filter(v=>!this.state.books[v.id]?.retirement); } catch {}
     for (const v of lab) this.state.books[v.id] ||= emptyBook(v);
     const active = new Set(lab.map(v => v.id)), retired = Object.values(this.state.books).filter(b => /^lab-/.test(b.id) && !active.has(b.id)).map(b => ({ id: b.id, kind: b.kind, label: b.label || b.id, over: {}, lab: true, withdrawn: true }));
     return [...FARM_VARIANTS, ...lab, ...retired];
@@ -127,7 +130,9 @@ export class BotFarm {
         // The same model-vs-market guard as the live bots: a variant whose model is worse than the market's prices
         // records its bets observe-only until it earns its way back.
         b.standDown = modelGuard([...b.history, ...b.observedHistory]);
-        if (v.withdrawn) continue; // settled above; no new bets
+        const stop=farmEarlyStop(b.history,Object.keys(this.state.books).length);
+        if(stop.retire&&!b.retirement)b.retirement={...stop,at:now,reason:'corrected CI upper bound below cash after at least 20 settled bets'};
+        if (v.withdrawn || b.retirement) continue; // settle and mark existing positions, never reset evidence
         const { cands } = kind === 'weather' ? pickWeather(frame, s, held, now) : pickBtc(frame, s, held, now);
         for (const x of cands) {
           if (x.edge < s.minEdge) continue;
@@ -187,7 +192,7 @@ export class BotFarm {
       return { id: v.id, kind: v.kind, label: v.label, over: v.over, lab: !!v.lab, withdrawn: !!v.withdrawn, equityUsd: round(equity, 2), returnPct: round((equity - b.startUsd) / b.startUsd * 100, 2), open: b.open.length, entered: b.entered, skippedSlippage: b.skippedSlippage,
         settled: n, wins: h.filter(x => x.won).length, hitRate: n ? round(h.filter(x => x.won).length / n, 3) : null, pnlUsd: round(h.reduce((a, x) => a + x.pnlUsd, 0), 2), feesUsd: round(h.reduce((a, x) => a + x.feeUsd, 0), 2),
         today: byDay[today], week: round(Object.values(byDay).reduce((a, x) => a + x, 0), 2), byDay, brierModel: mean('brierModel'), brierMarket: mean('brierMarket'), verdict: verdict(h.map(x => x.pnlUsd)),
-        standDown: modelGuard([...h, ...(b.observedHistory || [])]), observed: { open: (b.observedOpen || []).length, settled: (b.observedHistory || []).length, wins: (b.observedHistory || []).filter(x => x.won).length } };
+        retirement:b.retirement||null,standDown: modelGuard([...h, ...(b.observedHistory || [])]), observed: { open: (b.observedOpen || []).length, settled: (b.observedHistory || []).length, wins: (b.observedHistory || []).filter(x => x.won).length } };
     });
     return { mode: 'PAPER', startedAt: this.state.startedAt, startUsd: FARM_START_USD, slippage: FARM_SLIPPAGE, minSettled: MIN_SETTLED, days, variants, last: this.last, error: this.recoveryError, running: [...this.busy] };
   }
