@@ -16,13 +16,18 @@ import { bucketProbability } from './kalshiBots.js';
 export const CITY_TZ = Object.freeze({ NYC: 'America/New_York', CHI: 'America/Chicago', MIA: 'America/New_York', LAX: 'America/Los_Angeles', AUS: 'America/Chicago', DEN: 'America/Denver', PHL: 'America/New_York', ATL: 'America/New_York', SEA: 'America/Los_Angeles', DAL: 'America/Chicago' });
 const SCHEMA = 'mpo.weather-calibration.v1', MONTHS = { JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6, JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12 };
 const DEFAULT_SD = [1.6, 2.6];
+const LAB_MODELS = new Set(['gfs_seamless', 'ecmwf_ifs025', 'icon_seamless', 'gem_seamless']);
+const EVIDENCE_MAX_AGE_MS = 48 * 3600e3;
+const freshEvidence = (at, now) => Number.isSafeInteger(at) && at > 0 && at <= now && now - at <= EVIDENCE_MAX_AGE_MS;
+const safeParams = p => p && Number.isFinite(p.bias) && Math.abs(p.bias) <= 20 && Number.isFinite(p.sd) && p.sd >= 1 && p.sd <= 20;
+const finiteScore = x => Number.isFinite(x) && x <= 0 && x >= Math.log(1e-6) - .001;
 const round = (v, d = 3) => Math.round(v * 10 ** d) / 10 ** d;
 export const dateOfTicker = t => { const m = String(t).match(/-(\d{2})([A-Z]{3})(\d{2})$/); return m ? `20${m[1]}-${String(MONTHS[m[2]]).padStart(2, '0')}-${m[3]}` : null; };
 
 // Daily max per local date from an Open-Meteo hourly block (times are already local when timezone= is set).
 export function dailyMax(times, values) {
   const out = {};
-  times.forEach((t, i) => { const v = values?.[i]; if (v == null || !Number.isFinite(v)) return; const d = t.slice(0, 10); out[d] = out[d] == null ? v : Math.max(out[d], v); });
+  (times || []).forEach((t, i) => { const v = values?.[i]; if (typeof t !== 'string' || v == null || !Number.isFinite(v)) return; const d = t.slice(0, 10); out[d] = out[d] == null ? v : Math.max(out[d], v); });
   return out;
 }
 export function fit(residuals) {
@@ -57,7 +62,7 @@ export class WeatherCalibrator {
     const out = {}; let cursor = '';
     for (let page = 0; page < 3; page++) {
       const j = await this.get(`https://external-api.kalshi.com/trade-api/v2/events?series_ticker=${series}&status=settled&limit=200&with_nested_markets=true${cursor ? '&cursor=' + encodeURIComponent(cursor) : ''}`);
-      for (const e of j.events || []) { const d = dateOfTicker(e.event_ticker), v = (e.markets || []).map(m => Number(m.expiration_value)).find(Number.isFinite); if (d && v != null) out[d] = v; }
+      for (const e of j.events || []) { const d = dateOfTicker(e.event_ticker), v = (e.markets || []).map(m => m.expiration_value).filter(v => v !== null && v !== undefined && v !== '' && typeof v !== 'boolean').map(Number).find(Number.isFinite); if (d && v != null) out[d] = v; }
       const oldest = Object.keys(out).sort()[0]; cursor = j.cursor;
       if (!cursor || (oldest && Date.parse(oldest) < this.now() - this.days * 86400e3)) break;
       await new Promise(r => setTimeout(r, 300));
@@ -93,32 +98,39 @@ export class WeatherCalibrator {
   labBest(cityId, lead) {
     if (!this.labCache || this.now() - this.labCache.at > 300e3) {
       let w = null; try { w = JSON.parse(fs.readFileSync(path.join(path.dirname(this.file), 'lab-link', 'workbench.json'), 'utf8')); } catch {}
-      this.labCache = { at: this.now(), best: w?.schema === 'mpo.lab-workbench.v1' ? w.weather?.best || null : null, models: w?.weather?.models || [] };
+      const now = this.now(), models = w?.weather?.models;
+      const valid = w?.schema === 'mpo.lab-workbench.v1' && freshEvidence(w.updatedAt, now) && freshEvidence(w.weather?.at, now) && Array.isArray(models) && models.length >= 1 && models.length <= 4 && new Set(models).size === models.length && models.every(m => LAB_MODELS.has(m));
+      this.labCache = { at: now, evidenceAt: valid ? w.weather.at : null, updatedAt: valid ? w.updatedAt : null, best: valid ? w.weather.best || null : null, models: valid ? models : [] };
     }
     const b = this.labCache.best?.[cityId]?.[lead];
-    return b?.use && b.model && Number.isFinite(b.bias) && Number.isFinite(b.sd) && Number.isFinite(b.heldOut) ? b : null;
+    return freshEvidence(this.labCache.evidenceAt, this.now()) && freshEvidence(this.labCache.updatedAt, this.now()) && b?.use === true && (LAB_MODELS.has(b.model) && this.labCache.models.includes(b.model) || b.model === 'mean' && this.labCache.models.length >= 2) && safeParams(b) && finiteScore(b.heldOut) && finiteScore(b.default) && b.heldOut > b.default ? b : null;
   }
   // Live daily highs from one Open-Meteo model, or the mean of the Lab's models, cached 30 minutes.
   async forecastModel(cityId, model) {
+    if (!(LAB_MODELS.has(model) || model === 'mean')) return null;
     const key = cityId + ':' + model, hit = this.forecasts.get(key); if (hit && this.now() - hit.at < 1800e3) return hit.highs;
     const city = WEATHER_CITIES.find(c => c.id === cityId); if (!city) return null;
-    const models = model === 'mean' ? (this.labCache?.models?.length ? this.labCache.models : ['gfs_seamless', 'ecmwf_ifs025', 'icon_seamless', 'gem_seamless']) : [model];
+    const models = model === 'mean' ? this.labCache?.models || [] : [model];
+    if (model === 'mean' && models.length < 2 || models.some(m => !LAB_MODELS.has(m))) return null;
     const j = await this.get(`https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}&hourly=temperature_2m&models=${models.join(',')}&forecast_days=3&temperature_unit=fahrenheit&timezone=${encodeURIComponent(CITY_TZ[cityId])}`);
     const per = models.map(m => dailyMax(j.hourly?.time, j.hourly?.[`temperature_2m_${m}`] ?? (models.length === 1 ? j.hourly?.temperature_2m : null)));
-    const highs = {}; for (const d of new Set(per.flatMap(h => Object.keys(h)))) { const xs = per.map(h => h[d]).filter(v => v != null); if (xs.length >= (model === 'mean' ? 2 : 1)) highs[d] = xs.reduce((s, v) => s + v, 0) / xs.length; }
+    const highs = {}; for (const d of new Set(per.flatMap(h => Object.keys(h)))) { const xs = per.map(h => h[d]).filter(Number.isFinite); if (xs.length === models.length) highs[d] = xs.reduce((s, v) => s + v, 0) / xs.length; }
     this.forecasts.set(key, { at: this.now(), highs }); return highs;
   }
   // Model for one city/market date, or null (the bot then uses the NWS forecast with its default settings).
   // The Lab's model is used when it beats the default on held-out days and scores better than this calibration.
   async model(cityId, date) {
+    if (!CITY_TZ[cityId] || !/^20\d{2}-\d{2}-\d{2}$/.test(date)) return null;
     const c = this.state?.cities?.[cityId];
-    const today = new Intl.DateTimeFormat('en-CA', { timeZone: CITY_TZ[cityId] }).format(new Date(this.now())), lead = date === today ? 0 : 1, L = c?.leads?.[lead];
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: CITY_TZ[cityId] }).format(new Date(this.now())), daysAhead = (Date.parse(date) - Date.parse(today)) / 86400e3;
+    if (![0, 1].includes(daysAhead)) return null;
+    const lead = daysAhead, L = c?.leads?.[lead];
     const lab = this.labBest(cityId, lead);
     if (lab && (!L?.use || lab.heldOut > (L.heldOut?.calibrated ?? -Infinity))) {
       const highs = await this.forecastModel(cityId, lab.model).catch(() => null), f = highs?.[date];
       if (f != null) return { mu: f + lab.bias, sigma: lab.sd, forecast: round(f, 1), lead, bias: lab.bias, source: `lab ${lab.model} + calibration` };
     }
-    if (!L?.use) return null;
+    if (!L?.use || !safeParams(L.params)) return null;
     const highs = await this.forecast(cityId), f = highs?.[date]; if (f == null) return null;
     return { mu: f + L.params.bias, sigma: L.params.sd, forecast: f, lead, bias: L.params.bias, n: L.params.n, source: 'open-meteo + calibration' };
   }
