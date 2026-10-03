@@ -20,6 +20,12 @@ test('coordinated command view preserves unknowns, escapes leaders and keeps rea
  reply={...reply,lab:{connected:true,modules:[{id:'pumpfun',title:'Pump.fun',state:'COLLECTING'}]}};await window.MPOCommandCenter.load(true);assert.match(window.MPOCommandCenter.html(),/COLLECTING/);
 });
 
+test('two overview graphs map all quotes and independent paper books with exact price inspection',()=>{
+ const window={},document={addEventListener(){}};const context=vm.createContext({window,document,Date});vm.runInContext(read('public/js/mpo-command-graphs.js'),context);
+ const d={markets:{assets:[{id:'btc',symbol:'BTC-USD',venue:'Robinhood crypto',price:101,bid:100,ask:102,at:Date.now(),source:'v2',kind:'BBO'}],predictions:Array.from({length:1001},(_,i)=>({id:'c'+i,symbol:'<unsafe>',title:'Market',venue:'kalshi',bid:.2,ask:null}))},books:[{id:'a',module:'Pump.fun',label:'A',kind:'paper',unit:'SOL',pnl:-.1,closes:3},{id:'b',module:'Robinhood',label:'B',kind:'paper',unit:'USD',pnl:1,closes:4}],lab:{modules:[{id:'pumpfun',title:'Pump.fun',state:'COLLECTING'}]},activity:{pump:{open:5}}};
+ const html=window.MPOCommandGraphs.html(d);assert.match(html,/1001 contracts/);assert.match(html,/1001 unknown/);assert.match(html,/Market & price atlas/);assert.match(html,/System → research/);assert.match(html,/5 open/);assert.match(html,/\$101/);assert.match(html,/-0.100 SOL/);assert.match(html,/1.00 USD/);assert.doesNotMatch(html,/<unsafe>/);
+});
+
 function botHarness({ hosts = [], active = null, hidden = false, reply = () => ({ ok: true, at: 1 }) } = {}) {
   let now = 100000, calls = 0;
   const timers = [], events = [], listeners = {};

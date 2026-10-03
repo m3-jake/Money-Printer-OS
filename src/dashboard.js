@@ -1,3 +1,5 @@
+import {readBarStore} from './robinhoodEquitiesData.js';
+import {observedUSMarkets} from './polymarketUS.js';
 import { crowdRuntimeView,setCrowdControl } from './crowdRuntime.js';
 import { pumpProfitView } from './pumpProfitRuntime.js';
 import { handleRobinhoodRequest, startRobinhoodLoops, stopRobinhoodLoops, startPracticeLoop, stopPracticeLoop } from './robinhoodHttp.js';
@@ -8,7 +10,7 @@ import { evolutionChampionPolicy } from './learner.js';
 import { dataCoverage } from './dataCoverage.js';
 import { solanaBookView } from './solanaEconomics.js';
 import { traderSwitches } from './killSwitches.js';
-import { robinhoodReadiness,robinhoodExternalFlow,robinhoodExternalMomentum,robinhoodDailyQuote } from './robinhoodAutoTrader.js';
+import { robinhoodReadiness,robinhoodObservedQuotes,robinhoodExternalFlow,robinhoodExternalMomentum,robinhoodDailyQuote } from './robinhoodAutoTrader.js';
 import { tickRobinhoodExternalBooks,robinhoodExternalBookViews } from './robinhoodExternalFeatures.js';
 import { holderRpcHealth } from './rpc.js';
 import { walletScorecardView } from './walletScorecard.js';
@@ -50,7 +52,7 @@ import { BotFarm } from './botFarm.js';
 import { KalshiMirrorPaper } from './kalshiMirror.js';
 import { PolymarketCopyPaper } from './polymarketCopy.js';
 import { LeaderDiscovery } from './leaderDiscovery.js';
-import { commandCenterSnapshot, createLabConnection, RESEARCH_PROFILES } from './commandCenter.js';
+import { commandCenterSnapshot, commandMarketSnapshot, readCommandContracts, createLabConnection, RESEARCH_PROFILES } from './commandCenter.js';
 import { CopyMetadataCache,CopyReadCache,COPY_EXPERIMENT_COHORTS,COPY_POLICY_SUPPORT } from './copyEvent.js';
 import { registerPaperBots } from './scoreboard.js';
 import { createVenueLoops } from './venueLoop.js';
@@ -667,7 +669,7 @@ export function startDashboard() {
       if (req.method === 'GET' && u.pathname === '/api/scoreboard') { const sb=await import('./scoreboard.js'); return json(res, await sb.readScoreboard()); }
       if (req.method === 'GET' && u.pathname === '/api/command-center') {
         const sb=await import('./scoreboard.js'),[board,link]=await Promise.all([sb.readScoreboard(),labConnection.state()]);
-        return json(res,commandCenterSnapshot({state:loadStateCached(),bots:{...paperBotsView(),pumpCopy:pumpfunCopyPaper().summary(),pumpCopyExperiments:pumpfunCopyExperiments().map(b=>b.summary())},board,lab:link.lab,labError:link.error,loops:venueLoops.status(),discovery:paperBots?.leaderDiscovery.snapshot()}));
+        return json(res,commandCenterSnapshot({state:loadStateCached(),bots:{...paperBotsView(),pumpCopy:pumpfunCopyPaper().summary(),pumpCopyExperiments:pumpfunCopyExperiments().map(b=>b.summary())},board,lab:link.lab,labError:link.error,loops:venueLoops.status(),discovery:paperBots?.leaderDiscovery.snapshot(),markets:commandMarketSnapshot({state:loadStateCached(),contracts:readCommandContracts(marketPlatform().store),crypto:robinhoodObservedQuotes(),equities:readBarStore(DATA_DIR),stockQuotes:marketPlatform().stocks.quoteSource.observedQuotes?.()||[],us:observedUSMarkets()})}));
       }
       if (req.method === 'GET' && u.pathname === '/api/data-coverage') return json(res, dataCoverage(DATA_DIR, { force: u.searchParams.get('force') === '1' }));
       if (req.method === 'GET' && u.pathname === '/api/desktop-prefs') return json(res, readDesktopPrefs());

@@ -20,7 +20,8 @@ const num = v => (v === null || v === undefined || v === '' ? null : Number.isFi
 export const cleanSymbols = list => [...new Set((Array.isArray(list) ? list : String(list || '').split(',')).map(s => String(s).trim().toUpperCase()).filter(s => SYMBOL_RE.test(s)))].slice(0, 50);
 
 export class AlpacaQuotes {
-  constructor({ fetchImpl = globalThis.fetch, env = process.env, now = () => Date.now() } = {}) { this.fetch = fetchImpl; this.env = env; this.now = now; this.health = { status: 'IDLE', lastSuccess: null, lastError: null }; }
+  constructor({ fetchImpl = globalThis.fetch, env = process.env, now = () => Date.now() } = {}) { this.fetch = fetchImpl; this.env = env; this.now = now; this.observed = new Map(); this.health = { status: 'IDLE', lastSuccess: null, lastError: null }; }
+  observedQuotes(){return [...this.observed.values()].map(q=>({...q}));}
   configured() { return !!alpacaKeys(this.env); }
   status() { return { id: 'alpaca-iex', ...this.health, status: this.configured() ? this.health.status : 'NOT CONFIGURED', feed: 'IEX (a single exchange, not the consolidated tape)' }; }
   async quotes(symbols) {
@@ -39,6 +40,7 @@ export class AlpacaQuotes {
           quoteAt: Number.isFinite(at) ? at : null, receivedAt: received, source: 'alpaca-iex' };
       }
       this.health = { status: 'CONNECTED', lastSuccess: received, lastError: null };
+      for(const [s,q] of Object.entries(out))this.observed.set(s,{...q});
       return out;
     } catch (e) { this.health = { ...this.health, status: e.code === 'AUTH_ERROR' ? 'AUTH ERROR' : e.code === 'RATE_LIMITED' ? 'DEGRADED' : 'DISCONNECTED', lastError: e.code || 'NETWORK_ERROR' }; throw e; }
   }

@@ -12,7 +12,8 @@ import {createPumpfunCopyPaper,qualifiedPumpCopyWallets} from '../src/pumpfunCop
 import {usSingleExecutableMarket} from '../src/polymarketUS.js';
 import {dailyExecutionQuoteFromEstimates} from '../src/robinhoodAutoTrader.js';
 import {candidateLeaders,LeaderDiscovery,LEADER_SOURCES,discoveredCopyRows} from '../src/leaderDiscovery.js';
-import {commandCenterSnapshot,createLabConnection} from '../src/commandCenter.js';
+import {commandCenterSnapshot,createLabConnection,commandMarketSnapshot,readCommandContracts} from '../src/commandCenter.js';
+import {CoreDatabase} from '../src/core/database.js';
 
 test('leader discovery deduplicates sources and retains the last real candidates on provider failure',async()=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'copy-discovery-')),wallet='0x'+'a'.repeat(40);let offline=false,time=1000,calls=0;
@@ -48,6 +49,15 @@ test('Lab connection coalesces reads and requires profile acknowledgement',async
  const a=c.state(),b=c.state();release();assert.deepEqual(await a,await b);assert.equal(calls,1);await c.state();assert.equal(calls,1);
  await assert.rejects(c.profile('MAX_RESEARCH'),/acknowledge/);await assert.rejects(c.profile('invented'),/Unknown/);
  time+=6000;fail=true;const result=await c.state();assert.equal(result.lab,null);assert.equal(result.error,'offline');
+});
+
+test('price overview reads every stored contract and distinguishes quotes, session closes and unknowns',()=>{
+ const store=new CoreDatabase(':memory:');
+ try{const insert=store.db.prepare('INSERT INTO entities VALUES(?,?,?,?,?,?,?,?,?)');for(let i=0;i<1001;i++)insert.run('c'+i,'Contract','kalshi','t'+i,1000,1000,null,1,JSON.stringify({title:'Contract '+i,yesBid:.3,yesAsk:i===1000?null:.4,currency:'USD'}));
+  const contracts=readCommandContracts(store);assert.equal(contracts.length,1001);
+  const market=commandMarketSnapshot({contracts,crypto:[{symbol:'BTC-USD',bid:100,ask:102,at:1000,source:'v2'}],equities:{provider:'IEX',bars:{SPY:[{d:'2026-10-02',c:600}]}},state:{watchlist:[{mint:'a',symbol:'A',priceUsd:null}]}});
+  assert.equal(market.predictions.length,1001);assert.equal(market.predictions.find(q=>q.id==='c1000').ask,null);assert.equal(market.assets[0].price,101);assert.equal(market.assets[1].kind,'SESSION_CLOSE');assert.equal(market.assets[1].at,null);assert.equal(market.assets[2].price,null);assert.ok(market.predictions.every(p=>!p.executable));
+ }finally{store.db.close();}
 });
 const hash=x=>createHash('sha256').update(JSON.stringify(x)).digest('hex');
 test('exact-size RH estimates reject either invalid quote leg and retain greater observed fees',()=>{

@@ -10,6 +10,7 @@ const PUBLIC=new PolymarketUS({timeout:15000});
 let authClient=null,authKey='';
 let sessionArmed=false,privateWs=null,marketWs=null,marketWsKey='';
 let usCache={at:0,data:null},usBusy=null;
+export function observedUSMarkets(){return {at:usCache.at||null,markets:usCache.data?.opportunities||[]};}
 let incentiveCache={at:0,map:null};
 const bboCache=new Map();
 const stream={connected:false,privateConnected:false,lastMarketAt:0,lastPrivateAt:0,prices:{},trades:{},balance:null,positions:null,orders:null,error:null};

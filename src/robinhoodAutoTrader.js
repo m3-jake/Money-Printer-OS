@@ -751,6 +751,7 @@ export function robinhoodChart({symbol,range='6h'}={}){
  const rows=[...byT.values()].sort((a,b)=>a.t-b.t),ex=exploreStats(clone(explore(p)));
  return C.buildChart({symbol:sym,range:r,rows,params:p.params,books:{strict:p,explore:ex},now:t});
 }
+export function robinhoodObservedQuotes(){return [...quotes.values()].map(q=>({...q}));}
 export async function robinhoodSnapshot({force=false}={}){
  if(snapshotFlight)return snapshotFlight;
  snapshotFlight=(async()=>{try{if(paperOnlyBuild()||robinhoodReadiness().credentialsReady)await refreshFeed([...new Set([...robinhoodSymbols(),...paper().autopilot.symbols,...J.loadJournal().autopilot.symbols])],force)}catch(e){note('snapshot',e)}return snapshotView()})();

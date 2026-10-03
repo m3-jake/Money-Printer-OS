@@ -19,3 +19,8 @@ In MAX_RESEARCH the Lab checks copy receipts every minute, leaderboards every 15
 The overview refreshes every ten seconds while visible, coalesces pending requests and preserves the last real snapshot on errors. It uses readable scrolling instead of shrinking long content, with layouts that respond to the actual window width. Detailed account, risk, source and strategy controls remain available in the workstation.
 
 Regression checks cover candidate rejection and deduplication, outage retention, source category/freshness, coordinated profile acknowledgement, unknown and escaped UI data, resource pressure, worker parity, expanded search budgets, concurrent downloads, and distinct-day replay semantics.
+## Continuous work and price overview
+
+In MAX_RESEARCH, the module scheduler checks for changed evidence every 500 ms, with a one-second cooldown and one outstanding job per module. Ready standing validation batches hand off in 25 ms and check again after one second when idle. New evidence wakes a backed-off standing lane immediately. Unchanged inputs, failed sources, shared capacity limits and exhausted validation budgets retain their backoff; this does not multiply provider requests every millisecond.
+
+The two overview graphs map every stored contract and connect six module feeds to research and independent paper books. Crypto/stock quotes, equity session closes, token listings and contract bid/ask retain their source and observation age. Missing values remain unknown. The contract map supports pointer inspection and keyboard arrows for exact prices. Profit colors do not establish qualification, and USD and SOL accounts remain separate. Pump token positions and wallet-copy blockers are shown independently.
