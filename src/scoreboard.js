@@ -298,13 +298,13 @@ export function paperBotRows({ kalshi = null, farm = null, mirror = null, copy =
   if (farm) {
     const today = new Date(now).toLocaleDateString('en-CA');
     for (const v of Array.isArray(farm.variants) ? farm.variants : []) {
-      const label = `${v.label || v.id}${v.lab ? ' · Lab proposal' : ''}${v.withdrawn ? ' · withdrawn' : ''}`;
+      const label = `${v.label || v.id}${v.lab ? ' · Lab proposal' : ''}${v.exploratory ? ' · UNQUALIFIED EXPLORATION' : ''}${v.withdrawn ? ' · withdrawn' : ''}`;
       const run = farm.lastRun?.[v.kind] || null;
       rows.push(botRow({ id: `kalshi-farm-${v.id}`, module: 'Kalshi farm', book: label, closes: settledCloses(v.history), now,
         snap: { lastRunAt: run?.at ?? null, startUsd: v.startUsd ?? farm.startUsd, equityUsd: v.equityUsd, open: v.open, recoveryRequired: !!farm.error, lastError: run?.error || farm.error || null },
         maxAgeMs: (v.kind === 'btc' ? 10 : 30) * MIN, active: !v.withdrawn, minCloses: finite(farm.minSettled) ?? MIN_CLOSES,
         note: "Forward variant: fills at the quoted ask plus modeled slippage, settles on Kalshi's own result.",
-        extra: { prediction:v.prediction||null,variant: v.id, kind: v.kind, lab: !!v.lab, withdrawn: !!v.withdrawn, settledToday: finite(v.settledByDay?.[today]) ?? 0, standDown: v.standDown || null } }));
+        extra: { prediction:v.prediction||null,variant: v.id, kind: v.kind, lab: !!v.lab, exploratory:!!v.exploratory, qualification:v.exploratory?'UNQUALIFIED_EXPLORATION':'FIXED_FORWARD', countsTowardQualification:!v.exploratory, experiment:v.experiment||null, withdrawn: !!v.withdrawn, settledToday: finite(v.settledByDay?.[today]) ?? 0, standDown: v.standDown || null } }));
     }
   }
   if (mirror) rows.push(botRow({ id: 'kalshi-mirror', module: 'Kalshi mirror', book: 'Copy of Polymarket leaders (game winners)', closes: settledCloses(mirror.history), snap: mirror.snapshot || {}, now,
@@ -393,6 +393,41 @@ export function labRows(lab = {}, { now = Date.now() } = {}) {
 }
 
 // ---------------------------------------------------------------- whole board
+// Standalone books have their own funding; they are never summed into a deployable portfolio.
+export function standaloneBookRow(id, b = {}, { now = Date.now(), unit = 'USD', module = id, label = id } = {}) {
+  const history = Array.isArray(b.history) ? b.history : [], open = Array.isArray(b.open) ? b.open : [];
+  const stats = closeStats(history.map(p => ({ pnl: unit === 'SOL' ? p.pnlSol : p.pnlUsd, at: p.closedAt ?? p.settledAt })));
+  const cost = p => finite(unit === 'SOL' ? p.costSol : p.costUsd);
+  const marks = open.map(p => {
+    const at = toMs(p.markAt ?? p.lastQuoteAt);
+    if (!at || at > now || now - at > (finite(b.settings?.maxQuoteAgeMs) ?? 30000)) return null;
+    return finite(unit === 'SOL' ? p.markedNetSol : p.markValueUsd);
+  });
+  const complete = marks.every(v => v !== null), exposureCost = open.reduce((sum, p) => sum + (cost(p) ?? 0), 0);
+  const markedExposure = complete ? marks.reduce((sum, v) => sum + v, 0) : null;
+  const cash = finite(unit === 'SOL' ? b.cashSol : b.cashUsd), start = finite(unit === 'SOL' ? b.startSol : b.startUsd);
+  const flows = Array.isArray(b.funding) ? b.funding : [], capital = flows.length ? flows.reduce((sum, f) => sum + (finite(unit === 'SOL' ? f.amountSol : f.amountUsd) ?? 0), 0) : start;
+  const equity = cash !== null && markedExposure !== null ? cash + markedExposure : null;
+  const netEconomic = equity !== null && capital !== null ? equity - capital : null;
+  const capitalAt = toMs(b.fundedAt ?? b.createdAt ?? b.startedAt);
+  const capitalDays = flows.length ? flows.reduce((sum, f) => sum + (finite(unit === 'SOL' ? f.amountSol : f.amountUsd) ?? 0) * Math.max(0, now - (toMs(f.at) ?? now)) / 86400000, 0) : start !== null && capitalAt ? start * Math.max(0, now - capitalAt) / 86400000 : null;
+  const independent = new Set(history.map(p => p.eventId ?? p.eventTicker ?? p.marketId ?? p.accession ?? p.id).filter(Boolean)).size;
+  const row = scoreRow({ id, module, book: label, unit, stats, baseline: { kind: 'cash', label: `Cash (0 ${unit})`, netPnl: 0 },
+    fresh: freshness(b.lastRunAt ?? b.lastSettlementAt ?? stats.lastCloseAt, { now, source: 'standalone paper journal' }),
+    extra: { open: open.length, cash, contributedCapital: capital, capitalDays: round(capitalDays), netPerCapitalDay: capitalDays > 0 && netEconomic !== null ? round(netEconomic / capitalDays) : null,
+      exposureCost: round(exposureCost), markedExposure: round(markedExposure), markCoverage: { observed: marks.filter(v => v !== null).length, total: open.length },
+      economicNetPnl: round(netEconomic), independentOutcomes: independent,
+      turnover: round([...open, ...history].reduce((sum, p) => sum + (cost(p) ?? 0), 0)),
+      costs: round([...open, ...history].reduce((sum, p) => sum + (finite(unit === 'SOL' ? p.entryNetworkFeeSol ?? p.feeSol : p.feeUsd) ?? 0) + (finite(unit === 'SOL' ? p.exitNetworkFeeSol ?? p.exitFeeSol : p.exitFeeUsd) ?? 0), 0)),
+      status: b.recoveryRequired ? 'RECOVERY_REQUIRED' : b.status || (open.length ? 'AWAITING_SETTLEMENT' : cash === 0 ? 'EXHAUSTED' : 'COLLECTING'),
+      qualification: b.qualification || (b.experiment?.qualificationEffect === 'NONE' ? 'UNQUALIFIED_EXPLORATION' : 'UNQUALIFIED'), countsTowardQualification: false, experiment:b.experiment||null,closedVerdict: verdict(stats, 0),
+      note: 'Closed-outcome verdict is diagnostic. Economic P/L includes fresh executable marks only; missing marks remain unavailable. Separate hypothetical capital.' } });
+  if (b.recoveryRequired || netEconomic === null || netEconomic <= 0) {
+    row.beatsBaseline = stats.closes < MIN_CLOSES || netEconomic === null || b.recoveryRequired ? VERDICT.NOT_ENOUGH : VERDICT.NO;
+    row.reason = b.recoveryRequired ? 'paper book requires recovery' : netEconomic === null ? 'complete executable marks or capital history unavailable' : 'cash plus executable exposure does not beat contributed capital';
+  }
+  return row;
+}
 export function buildScoreboard(inputs = {}, { now = Date.now() } = {}) {
   const rows = [], errors = [];
   const add = (name, fn) => { try { rows.push(...fn()); } catch (e) { errors.push({ source: name, error: String(e?.message || e).slice(0, 200) }); } };
@@ -410,6 +445,7 @@ export function buildScoreboard(inputs = {}, { now = Date.now() } = {}) {
   if (inputs.paperBots !== undefined && inputs.paperBots !== null) add('paper-bots', () => paperBotRows(inputs.paperBots, { now }));
   if (inputs.platform !== undefined) add('platform', () => platformRows(inputs.platform?.portfolio, { lastEntryAt: inputs.platform?.lastEntryAt, now }));
   if (inputs.lab !== undefined) add('lab', () => labRows(inputs.lab, { now }));
+  for (const item of inputs.standalone || []) add(item.id, () => [standaloneBookRow(item.id, item.book, { now, ...item.options })]);
   for (const e of inputs.errors || []) errors.push(e);
   const count = v => rows.filter(r => r.beatsBaseline === v).length;
   return {
@@ -451,6 +487,21 @@ export async function readScoreboard({ now = Date.now(), maxAgeMs = 5000 } = {})
   const { fileURLToPath } = await import('node:url');
   const dataDir = path.resolve(process.env.MONEY_PRINTER_DATA_DIR || path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data'));
   const readJson = f => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } };
+  inputs.standalone = [];
+  for (const [file, id, module, label, unit] of [
+    ['polymarket-us-singles-paper.json','polymarket-us-singles','Polymarket US','Singles paper','USD'],
+    ['polymarket-us-paper.json','polymarket-us-combos','Polymarket US','Modeled joint combo paper','USD'],
+    ['arbitrage-paper.json','arbitrage-paper','Arbitrage','Paired paper book','USD'],
+    ['pumpfun-sniper-paper.json','pumpfun-native-sniper','Pump.fun','Native sniper paper','SOL'],
+    ['pumpfun-copy-emerging-paper.json','pumpfun-copy-emerging','Pump.fun','Emerging leaders · UNQUALIFIED','SOL'],
+    ['pumpfun-copy-consensus-paper.json','pumpfun-copy-consensus','Pump.fun','Independent consensus · UNQUALIFIED','SOL'],
+    ['disclosure-paper.json','equity-disclosure-paper','Stocks','Form 4 disclosure exploration','USD']
+  ]) {
+    const full = path.join(dataDir, file);
+    if (!fs.existsSync(full)) continue;
+    const book = readJson(full);
+    inputs.standalone.push({ id, book: book && Array.isArray(book.open) && Array.isArray(book.history) ? book : { recoveryRequired: true }, options: { module, label, unit } });
+  }
 
   inputs.pumpfun = await attempt('pumpfun', async () => (await import('./store.js')).loadStateCached());
   inputs.pumpfunCopy = await attempt('pumpfun-copy', async () => (await import('./pumpfunCopyPaper.js')).pumpfunCopyPaper().view());

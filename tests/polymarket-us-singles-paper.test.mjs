@@ -15,9 +15,9 @@ test('single paper book reserves virtual cash, prices Yes and No from public BBO
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'mpo-poly-single-')),file=path.join(dir,'singles.json');
  try{
   resetPaperSingles({startUsd:100,file});
-  const yes=placePaperSingle({market:{slug:'event',title:'Final',ask:.4,bid:.38,category:'sports'},stakeUsd:20,file,now:1});
+  const yes=placePaperSingle({market:{slug:'event',title:'Final',ask:.4,bid:.38,category:'sports',quoteAt:1,askSize:1000},stakeUsd:20,file,now:1});
   assert.equal(yes.outcome,'Yes');assert.ok(yes.quantity>0);assert.ok(yes.feeUsd>0);
-  const no=placePaperSingle({market:{slug:'event-no',ask:.4,bid:.38},outcome:'No',stakeUsd:10,file,now:2});
+  const no=placePaperSingle({market:{slug:'event-no',ask:.4,bid:.38,quoteAt:2,bidSize:1000},outcome:'No',stakeUsd:10,file,now:2});
   assert.equal(no.ask,.62);assert.equal(no.bid,.6);
   const marked=markPaperSingles([{slug:'event',bid:.5},{slug:'event-no',ask:.61,bid:.6}],{file});
   assert.equal(marked.length,2);assert.ok(marked.every(x=>Number.isFinite(x.unrealizedUsd)));
