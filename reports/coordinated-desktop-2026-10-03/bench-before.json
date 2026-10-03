@@ -1,0 +1,146 @@
+{
+  "at": "2026-10-03T19:47:09.916Z",
+  "rounds": 12,
+  "results": [
+    {
+      "app": "trader",
+      "path": "/api/health",
+      "status": 200,
+      "error": null,
+      "n": 12,
+      "p50Ms": 29,
+      "p95Ms": 97,
+      "bytes": 9513
+    },
+    {
+      "app": "trader",
+      "path": "/api/state",
+      "status": 200,
+      "error": null,
+      "n": 12,
+      "p50Ms": 5,
+      "p95Ms": 9,
+      "bytes": 209841
+    },
+    {
+      "app": "trader",
+      "path": "/api/telemetry",
+      "status": 200,
+      "error": null,
+      "n": 12,
+      "p50Ms": 8,
+      "p95Ms": 138,
+      "bytes": 8800
+    },
+    {
+      "app": "trader",
+      "path": "/api/command-center",
+      "status": 200,
+      "error": null,
+      "n": 12,
+      "p50Ms": 467,
+      "p95Ms": 1132,
+      "bytes": 2381285
+    },
+    {
+      "app": "trader",
+      "path": "/api/command-center?view=summary",
+      "status": 200,
+      "error": null,
+      "n": 12,
+      "p50Ms": 473,
+      "p95Ms": 1710,
+      "bytes": 2381288
+    },
+    {
+      "app": "trader",
+      "path": "/api/scoreboard",
+      "status": 200,
+      "error": null,
+      "n": 12,
+      "p50Ms": 20,
+      "p95Ms": 1141,
+      "bytes": 159030
+    },
+    {
+      "app": "trader",
+      "path": "/api/bots",
+      "status": 200,
+      "error": null,
+      "n": 12,
+      "p50Ms": 27,
+      "p95Ms": 38,
+      "bytes": 789265
+    },
+    {
+      "app": "trader",
+      "path": "/api/resources",
+      "status": 200,
+      "error": null,
+      "n": 12,
+      "p50Ms": 2,
+      "p95Ms": 3,
+      "bytes": 150
+    },
+    {
+      "app": "trader",
+      "path": "/api/market-history?ids=crypto:BTC-USD,crypto:ETH-USD,equity:SPY&points=300",
+      "status": 404,
+      "error": null,
+      "n": 12,
+      "p50Ms": 1,
+      "p95Ms": 2,
+      "bytes": 9
+    },
+    {
+      "app": "trader",
+      "path": "/api/market-groups",
+      "status": 404,
+      "error": null,
+      "n": 12,
+      "p50Ms": 0,
+      "p95Ms": 1,
+      "bytes": 9
+    },
+    {
+      "app": "trader",
+      "path": "/api/coordinator",
+      "status": 404,
+      "error": null,
+      "n": 12,
+      "p50Ms": 1,
+      "p95Ms": 1,
+      "bytes": 9
+    },
+    {
+      "app": "trader",
+      "path": "/api/copy-funnel",
+      "status": 404,
+      "error": null,
+      "n": 12,
+      "p50Ms": 1,
+      "p95Ms": 1,
+      "bytes": 9
+    },
+    {
+      "app": "lab",
+      "path": "/api/health",
+      "status": 200,
+      "error": null,
+      "n": 12,
+      "p50Ms": 2,
+      "p95Ms": 7,
+      "bytes": 1040
+    },
+    {
+      "app": "lab",
+      "path": "/api/state",
+      "status": 200,
+      "error": null,
+      "n": 12,
+      "p50Ms": 42,
+      "p95Ms": 51,
+      "bytes": 611616
+    }
+  ]
+}

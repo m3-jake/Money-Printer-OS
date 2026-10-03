@@ -13,8 +13,59 @@ $mpoRepo = 'W:\money-printer-os'
 $labRepo = 'W:\money-printer-evolution-lab'
 $mpoApp = Join-Path $env:LOCALAPPDATA 'Programs\money-printer-os'
 $labApp = Join-Path $env:LOCALAPPDATA 'Programs\money-printer-evolution-lab'
-$work   = Join-Path $env:USERPROFILE "Desktop\Money Printer OS\update-$stamp"
+# Space-aware work folder: the build, boot tests and the verified paper-data backup need roughly the
+# size of the backed-up data plus both archives. The system drive once filled mid-install, so the
+# folder moves to the first candidate drive with that much free plus headroom (MPO_UPDATE_ROOT first).
+# Past-day raw evidence files (research-evidence/raw/*-YYYY-MM-DD.ndjson older than a day) no longer change.
+# They are kept once in <root>/evidence-store and verified by hash, instead of being re-copied every update.
+function Get-SealedEvidence {
+  $raw = Join-Path $env:APPDATA 'Money Printer OS\data\research-evidence\raw'
+  if (-not (Test-Path -LiteralPath $raw)) { return @() }
+  $cutoff = (Get-Date).AddDays(-1)
+  return @(Get-ChildItem -LiteralPath $raw -File | Where-Object { $_.LastWriteTime -lt $cutoff -and $_.Name -match '-\d{4}-\d{2}-\d{2}\.ndjson$' })
+}
+# A sealed file is already stored when the store copy has the same length and write time.
+function Test-Stored($file, $storeRoot) {
+  $copy = Join-Path $storeRoot $file.Name
+  if (-not (Test-Path -LiteralPath $copy)) { return $false }
+  $c = Get-Item -LiteralPath $copy
+  return ($c.Length -eq $file.Length -and $c.LastWriteTimeUtc -eq $file.LastWriteTimeUtc)
+}
+function Get-BackupEstimate($storeRoot) {
+  $bytes = [int64]0
+  foreach ($label in @('Money Printer OS', 'Money Printer Evolution Lab')) {
+    $source = Join-Path $env:APPDATA "$label\data"
+    if (-not (Test-Path -LiteralPath $source)) { continue }
+    $bytes += (Get-ChildItem -LiteralPath $source -File -ErrorAction SilentlyContinue | Where-Object { $_.Extension -in @('.json','.sqlite') -or $_.Name -match '\.sqlite-(wal|shm)$' -or $_.Name -in @('journal.ndjson','project-journal.ndjson') } | Measure-Object Length -Sum).Sum
+    foreach ($folder in @('experiments','daily-shadow','robinhood-equities','robinhood-daily','lab-link','workbench','module-research','research-evidence','pump-profit-evidence')) {
+      $p = Join-Path $source $folder
+      if (Test-Path -LiteralPath $p) { $bytes += (Get-ChildItem -LiteralPath $p -File -Recurse -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum }
+    }
+  }
+  # Sealed evidence already in this root's store costs nothing; the rest is copied there once.
+  foreach ($f in Get-SealedEvidence) { if (Test-Stored $f $storeRoot) { $bytes -= $f.Length } }
+  return $bytes
+}
+$headroom = 5GB   # never leave a drive nearly full for the running apps
+$candidates = @()
+if ($env:MPO_UPDATE_ROOT) { $candidates += $env:MPO_UPDATE_ROOT }
+$candidates += (Join-Path $env:USERPROFILE 'Desktop\Money Printer OS'), 'W:\money-printer-backups'
+$work = $null; $evidenceStore = $null
+foreach ($root in $candidates) {
+  $qualifier = Split-Path $root -Qualifier -ErrorAction SilentlyContinue
+  if (-not $qualifier) { continue }
+  $drive = Get-PSDrive -Name $qualifier.TrimEnd(':') -ErrorAction SilentlyContinue
+  if (-not $drive) { continue }
+  $store = Join-Path $root 'evidence-store'
+  $needBytes = (Get-BackupEstimate $store) + 1GB   # plus archives, boot-test scratch and logs
+  if ($drive.Free -ge $needBytes + $headroom) { $work = Join-Path $root "update-$stamp"; $evidenceStore = $store; break }
+  Write-Host ("Skipping {0}: {1:N1} GB free, need {2:N1} GB plus {3:N0} GB headroom." -f $root, ($drive.Free/1GB), ($needBytes/1GB), ($headroom/1GB)) -ForegroundColor Yellow
+}
+if (-not $work) { Write-Host 'No drive has room for the build and the verified paper-data backup. Nothing was changed. Free space or set MPO_UPDATE_ROOT.' -ForegroundColor Red; if (-not $NonInteractive) { Read-Host 'Press Enter to close' }; exit 1 }
 New-Item -ItemType Directory -Force $work | Out-Null
+# The archive swap writes into the install folder; its drive needs room for one more archive per app.
+$installDrive = Get-PSDrive -Name ((Split-Path $env:LOCALAPPDATA -Qualifier).TrimEnd(':'))
+if ($installDrive.Free -lt 1GB) { Write-Host ("Install drive has only {0:N2} GB free; refusing to swap archives." -f ($installDrive.Free/1GB)) -ForegroundColor Red; if (-not $NonInteractive) { Read-Host 'Press Enter to close' }; exit 1 }
 $log = Join-Path $work 'update.log'
 function Say($m, $c = 'Gray') { Write-Host $m -ForegroundColor $c; Add-Content $log $m -Encoding UTF8 }
 function Fail($m) { Say "FAILED: $m" Red; Say "Nothing installed was changed unless noted above. Log: $log" Yellow; if (-not $NonInteractive) { Read-Host 'Press Enter to close' }; exit 1 }
@@ -132,9 +183,44 @@ foreach ($label in @('Money Printer OS', 'Money Printer Evolution Lab')) {
   }
   foreach ($folder in @('experiments','daily-shadow','robinhood-equities','robinhood-daily','lab-link','workbench','module-research','research-evidence','pump-profit-evidence')) {
     $targetSource = Join-Path $source $folder
-    if (Test-Path -LiteralPath $targetSource) { Copy-Item -LiteralPath $targetSource -Destination (Join-Path $destination $folder) -Recurse }
+    if (-not (Test-Path -LiteralPath $targetSource)) { continue }
+    if ($label -eq 'Money Printer OS' -and $folder -eq 'research-evidence') {
+      # Everything except sealed past-day raw files is copied into this update's backup as before.
+      $sealedNames = @(Get-SealedEvidence | ForEach-Object { $_.Name })
+      $folderTarget = Join-Path $destination $folder
+      foreach ($f in Get-ChildItem -LiteralPath $targetSource -File -Recurse) {
+        if ($f.DirectoryName -eq (Join-Path $targetSource 'raw') -and $sealedNames -contains $f.Name) { continue }
+        $rel = $f.FullName.Substring($targetSource.Length).TrimStart('\')
+        $to = Join-Path $folderTarget $rel
+        New-Item -ItemType Directory -Force (Split-Path $to) | Out-Null
+        Copy-Item -LiteralPath $f.FullName -Destination $to
+      }
+      continue
+    }
+    Copy-Item -LiteralPath $targetSource -Destination (Join-Path $destination $folder) -Recurse
   }
 }
+# Sealed evidence: copied to the persistent store once, hash-verified, and listed in every manifest.
+# STORE-INDEX.json remembers verified hashes so unchanged sealed files are not re-hashed every update.
+New-Item -ItemType Directory -Force $evidenceStore | Out-Null
+$indexFile = Join-Path $evidenceStore 'STORE-INDEX.json'
+$index = @{}
+if (Test-Path -LiteralPath $indexFile) { (Get-Content -LiteralPath $indexFile -Raw | ConvertFrom-Json).PSObject.Properties | ForEach-Object { $index[$_.Name] = $_.Value } }
+foreach ($f in Get-SealedEvidence) {
+  $copy = Join-Path $evidenceStore $f.Name
+  $known = $index[$f.Name]
+  if ((Test-Stored $f $evidenceStore) -and $known -and [int64]$known.bytes -eq $f.Length -and $known.writeUtc -eq $f.LastWriteTimeUtc.ToString('o')) { $storeHash = $known.sha256 }
+  else {
+    $sourceHash = (Get-FileHash -LiteralPath $f.FullName -Algorithm SHA256).Hash.ToLower()
+    if (-not (Test-Stored $f $evidenceStore)) { Copy-Item -LiteralPath $f.FullName -Destination $copy -Force }
+    $storeHash = (Get-FileHash -LiteralPath $copy -Algorithm SHA256).Hash.ToLower()
+    if ($sourceHash -ne $storeHash) { throw "Sealed evidence did not verify in the store: $($f.Name)" }
+    $index[$f.Name] = [ordered]@{ bytes=$f.Length; writeUtc=$f.LastWriteTimeUtc.ToString('o'); sha256=$storeHash; verifiedAt=(Get-Date).ToString('o') }
+  }
+  $dataBackupManifest += [ordered]@{ source=$f.FullName; backup=$copy; bytes=$f.Length; sha256=$storeHash; verified=$true; sealedStore=$true }
+}
+$index | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $indexFile -Encoding UTF8
+Say "Sealed evidence store: $evidenceStore" Green
 $dataBackupManifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $dataBackup 'MANIFEST.json') -Encoding UTF8
 Say "Paper data backup: $dataBackup" Green
 
