@@ -1,4 +1,4 @@
-// Isolated hidden native Electron renderer, source UI, read-only preview; no installed archive is launched.
+// Isolated hidden native Electron renderer, installed UI, read-only endpoints; no installed archive is launched.
 import fs from 'node:fs';
 import path from 'node:path';
 import {spawn} from 'node:child_process';
@@ -13,19 +13,22 @@ try{
  const {app,BrowserWindow}=require('electron'),fs=require('node:fs'),path=require('node:path');
  const pause=ms=>new Promise(r=>setTimeout(r,ms));let win;
  app.setPath('userData',path.join(process.env.TEMP,'userdata'));
- app.whenReady().then(async()=>{
+ app.commandLine.appendSwitch('disable-renderer-backgrounding');app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+ const stage=name=>fs.writeFileSync(process.env.MPO_CHECK_REPORT,JSON.stringify({stage:name,at:new Date().toISOString()}));
+ app.whenReady().then(async()=>{stage('ready');
   win=new BrowserWindow({show:false,width:1280,height:720,webPreferences:{offscreen:true,backgroundThrottling:false}});
+  win.webContents.on('paint',()=>{});win.webContents.setFrameRate(60);
   const origin=process.env.MPO_CHECK_URL;
   win.webContents.session.webRequest.onBeforeRequest((d,cb)=>cb({cancel:d.method!=='GET'||!d.url.startsWith(origin)&&!d.url.startsWith('data:')}));
-  await win.loadURL(origin+'/');await pause(8000);
+  await win.loadURL(origin+'/');stage('loaded');await pause(3000);
   await win.webContents.executeJavaScript("(()=>{document.getElementById('bootOk')?.click();document.getElementById('logonOk')?.click();if(typeof openApp==='function')openApp('command');})()");
-  await pause(14000);
-  const result=await win.webContents.executeJavaScript('('+(async function(){
+  stage('command-open');await pause(5000);
+  stage('frames');const result=await win.webContents.executeJavaScript('('+(async function(){
    const percentile=(xs,p)=>{const s=xs.slice().sort((a,b)=>a-b);return s[Math.min(s.length-1,Math.floor(s.length*p))]??null;};
    const frames=[],interactions=[];let last=performance.now();
    await new Promise(resolve=>{const next=at=>{frames.push(at-last);last=at;if(frames.length>=120)resolve();else requestAnimationFrame(next);};requestAnimationFrame(next);});
    for(let i=0;i<12;i++){const el=document.querySelector('[data-cc-sys="'+(i%2?'modules':'books')+'"]'),t=performance.now();el?.click();await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));interactions.push(performance.now()-t);}
-   return {viewport:[innerWidth,innerHeight],frame:{n:frames.length,p50Ms:percentile(frames,.5),p95Ms:percentile(frames,.95)},interaction:{n:interactions.length,p50Ms:percentile(interactions,.5),p95Ms:percentile(interactions,.95)},charts:document.querySelectorAll('.pw canvas').length,status:document.querySelector('.cc-strip')?.textContent,hud:window.MPOHud?.metrics?.(),limitations:['Hidden native renderer, source preview and real stored/live data; physical pointer latency and visible multi-monitor transitions unmeasured']};
+   return {viewport:[innerWidth,innerHeight],frame:{n:frames.length,p50Ms:percentile(frames,.5),p95Ms:percentile(frames,.95)},interaction:{n:interactions.length,p50Ms:percentile(interactions,.5),p95Ms:percentile(interactions,.95)},charts:document.querySelectorAll('.pw canvas').length,status:document.querySelector('.cc-strip')?.textContent,hud:window.MPOHud?.metrics?.(),limitations:['Hidden native renderer, installed archive UI and real stored/live data; physical pointer latency and visible multi-monitor transitions unmeasured']};
   }).toString()+')()');
   result.at=new Date().toISOString();result.electron=process.versions.electron;result.processes=app.getAppMetrics();
   fs.writeFileSync(process.env.MPO_CHECK_REPORT,JSON.stringify(result,null,2));app.quit();

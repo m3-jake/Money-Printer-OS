@@ -40,7 +40,7 @@ test('copy refill uses only fresh weekly evidence in the frozen category',()=>{
 test('coordination separates discovery, watched leaders, loss pauses, and missing Lab status',()=>{
  const result=commandCenterSnapshot({bots:{polycopy:{status:'PAUSED',follows:[{wallet:'a',name:'A'}],open:[{}],stats:{closed:71,pnlUsd:-136.5},lastRunAt:900,drawdownPause:{active:true,reason:'drawdown'}}},discovery:{candidates:[{},{}],lastSuccessAt:500},now:1000});
  assert.equal(result.copy.uniqueLeaders,1);assert.equal(result.copy.books[0].paused,true);assert.equal(result.copy.books[0].lastRunAt,900);assert.equal(result.copy.catalogue.lastSuccessAt,500);assert.equal(result.lab.connected,false);assert.equal(result.lab.resources,null);assert.equal(result.profiles.lab,null);
- assert.equal(commandCenterSnapshot().copy.uniqueLeaders,null);assert.ok(operatingProfiles.MAX_RESEARCH);assert.equal(operatingProfiles.MAX_RESEARCH.paidModelCalls,0);
+ assert.equal(commandCenterSnapshot({state:{runtime:{profile:"MAX",researchMode:"MAX_RESEARCH"}}}).profiles.trader,"MAX_RESEARCH");assert.equal(commandCenterSnapshot().copy.uniqueLeaders,null);assert.ok(operatingProfiles.MAX_RESEARCH);assert.equal(operatingProfiles.MAX_RESEARCH.paidModelCalls,0);
 });
 
 test('Lab connection coalesces reads and requires profile acknowledgement',async()=>{
