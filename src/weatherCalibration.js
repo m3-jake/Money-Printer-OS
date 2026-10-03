@@ -88,10 +88,36 @@ export class WeatherCalibrator {
     const j = await this.get(`https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}&hourly=temperature_2m&forecast_days=3&temperature_unit=fahrenheit&timezone=${encodeURIComponent(CITY_TZ[cityId])}`);
     const highs = dailyMax(j.hourly.time, j.hourly.temperature_2m); this.forecasts.set(cityId, { at: this.now(), highs }); return highs;
   }
+  // The Evolution Lab's per-city, per-lead best forecast model (lab-link/workbench.json, its weather-models job):
+  // one of gfs_seamless / ecmwf_ifs025 / icon_seamless / gem_seamless, or 'mean' of them, with bias and sd.
+  labBest(cityId, lead) {
+    if (!this.labCache || this.now() - this.labCache.at > 300e3) {
+      let w = null; try { w = JSON.parse(fs.readFileSync(path.join(path.dirname(this.file), 'lab-link', 'workbench.json'), 'utf8')); } catch {}
+      this.labCache = { at: this.now(), best: w?.schema === 'mpo.lab-workbench.v1' ? w.weather?.best || null : null, models: w?.weather?.models || [] };
+    }
+    const b = this.labCache.best?.[cityId]?.[lead];
+    return b?.use && b.model && Number.isFinite(b.bias) && Number.isFinite(b.sd) && Number.isFinite(b.heldOut) ? b : null;
+  }
+  // Live daily highs from one Open-Meteo model, or the mean of the Lab's models, cached 30 minutes.
+  async forecastModel(cityId, model) {
+    const key = cityId + ':' + model, hit = this.forecasts.get(key); if (hit && this.now() - hit.at < 1800e3) return hit.highs;
+    const city = WEATHER_CITIES.find(c => c.id === cityId); if (!city) return null;
+    const models = model === 'mean' ? (this.labCache?.models?.length ? this.labCache.models : ['gfs_seamless', 'ecmwf_ifs025', 'icon_seamless', 'gem_seamless']) : [model];
+    const j = await this.get(`https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}&hourly=temperature_2m&models=${models.join(',')}&forecast_days=3&temperature_unit=fahrenheit&timezone=${encodeURIComponent(CITY_TZ[cityId])}`);
+    const per = models.map(m => dailyMax(j.hourly?.time, j.hourly?.[`temperature_2m_${m}`] ?? (models.length === 1 ? j.hourly?.temperature_2m : null)));
+    const highs = {}; for (const d of new Set(per.flatMap(h => Object.keys(h)))) { const xs = per.map(h => h[d]).filter(v => v != null); if (xs.length >= (model === 'mean' ? 2 : 1)) highs[d] = xs.reduce((s, v) => s + v, 0) / xs.length; }
+    this.forecasts.set(key, { at: this.now(), highs }); return highs;
+  }
   // Model for one city/market date, or null (the bot then uses the NWS forecast with its default settings).
+  // The Lab's model is used when it beats the default on held-out days and scores better than this calibration.
   async model(cityId, date) {
-    const c = this.state?.cities?.[cityId]; if (!c?.leads) return null;
-    const today = new Intl.DateTimeFormat('en-CA', { timeZone: CITY_TZ[cityId] }).format(new Date(this.now())), lead = date === today ? 0 : 1, L = c.leads[lead];
+    const c = this.state?.cities?.[cityId];
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: CITY_TZ[cityId] }).format(new Date(this.now())), lead = date === today ? 0 : 1, L = c?.leads?.[lead];
+    const lab = this.labBest(cityId, lead);
+    if (lab && (!L?.use || lab.heldOut > (L.heldOut?.calibrated ?? -Infinity))) {
+      const highs = await this.forecastModel(cityId, lab.model).catch(() => null), f = highs?.[date];
+      if (f != null) return { mu: f + lab.bias, sigma: lab.sd, forecast: round(f, 1), lead, bias: lab.bias, source: `lab ${lab.model} + calibration` };
+    }
     if (!L?.use) return null;
     const highs = await this.forecast(cityId), f = highs?.[date]; if (f == null) return null;
     return { mu: f + L.params.bias, sigma: L.params.sd, forecast: f, lead, bias: L.params.bias, n: L.params.n, source: 'open-meteo + calibration' };

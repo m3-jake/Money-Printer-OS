@@ -40,7 +40,7 @@ export const FARM_VARIANTS = Object.freeze([
 // The Evolution Lab's Research Workbench may propose up to four extra variants (lab-link/farm-proposals.json),
 // only from calibrations that beat the current settings on held-out data. Each is checked here: a known kind,
 // an id 'lab-…', and only these settings, inside these bounds. Anything else is ignored.
-const LAB_OVER = { volMultiple: [0.5, 4], minEdge: [0.02, 0.3], calibrationSafety: [1, 3], maxDisagreement: [0.05, 0.5], sigmaBaseF: [0.5, 8], sigmaPerDayF: [0, 5], biasF: [-10, 10] };
+const LAB_OVER = { volMultiple: [0.5, 4], minEdge: [0.02, 0.3], calibrationSafety: [0.8, 3], maxDisagreement: [0.05, 0.5], sigmaBaseF: [0.5, 8], sigmaPerDayF: [0, 5], biasF: [-10, 10] };
 export function labVariants(doc) {
   const out = [];
   for (const v of Array.isArray(doc?.variants) ? doc.variants.slice(0, 4) : []) {

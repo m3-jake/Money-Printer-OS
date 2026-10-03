@@ -198,3 +198,18 @@ test('the farm runs Evolution Lab proposals only when they are well formed and i
   fs.rmSync(file);
   assert.equal(farm.snapshot().variants.find(x => x.id === 'lab-btc-v16').withdrawn, true, 'withdrawn, history kept');
 });
+
+test('the weather calibrator uses the Evolution Lab\'s best model when it beats this calibration on held-out days', async () => {
+  const { WeatherCalibrator } = await import('../src/weatherCalibration.js');
+  const dir = tmp(); fs.mkdirSync(path.join(dir, 'lab-link'));
+  const now = Date.UTC(2026, 9, 3, 16), today = '2026-10-03', tomorrow = '2026-10-04';
+  fs.writeFileSync(path.join(dir, 'lab-link', 'workbench.json'), JSON.stringify({ schema: 'mpo.lab-workbench.v1', weather: { models: ['gfs_seamless', 'ecmwf_ifs025'], best: { NYC: [{ model: 'mean', bias: 1.5, sd: 1.2, use: true, heldOut: -1.6 }, { model: 'gfs_seamless', bias: 0, sd: 2, use: false, heldOut: -2.4 }] } } }));
+  let asked = '';
+  const fetchImpl = async url => { asked = String(url); const time = [`${today}T12:00`, `${today}T15:00`, `${tomorrow}T15:00`]; return { ok: true, json: async () => ({ hourly: { time, temperature_2m_gfs_seamless: [70, 74, 80], temperature_2m_ecmwf_ifs025: [71, 76, 81] } }) }; };
+  const cal = new WeatherCalibrator({ dataDir: dir, fetchImpl, now: () => now });
+  cal.state = { cities: { NYC: { leads: { 0: { use: true, params: { bias: 0.5, sd: 1.5 }, heldOut: { calibrated: -1.9 } }, 1: { use: false } } } } };
+  const m = await cal.model('NYC', today);
+  assert.equal(m.source, 'lab mean + calibration'); assert.equal(m.forecast, 75); assert.equal(m.mu, 76.5, 'mean of 74 and 76, + 1.5 bias'); assert.equal(m.sigma, 1.2);
+  assert.match(asked, /models=gfs_seamless,ecmwf_ifs025/);
+  assert.equal(await cal.model('NYC', tomorrow), null, 'lead 1: the Lab model does not beat the default and this calibration has none');
+});
