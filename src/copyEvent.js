@@ -62,3 +62,12 @@ export class CopyReadCache extends CopyMetadataCache {
     try { return await promise; } finally { this.pending.delete(key); }
   }
 }
+export function copyLatencySummary(receipts = []) {
+  const rows = receipts.slice(-2000), percentile = values => {
+    const sorted = values.filter(v => Number.isFinite(v) && v >= 0).sort((a, b) => a - b);
+    return { n: sorted.length, p50Ms: sorted.length ? sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * .5) - 1)] : null, p95Ms: sorted.length ? sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * .95) - 1)] : null };
+  };
+  const filled = rows.filter(r => r.status === 'FILLED' && Array.isArray(r.fills) && r.fills.length);
+  const rejects = {}; for (const r of rows) if (r.status !== 'FILLED') rejects[r.reason || r.status || 'unknown'] = (rejects[r.reason || r.status || 'unknown'] || 0) + 1;
+  return { retainedReceipts: rows.length, scope: 'recent bounded forward receipts; historical unknown timings excluded', sourceToObserve: percentile(rows.map(r => r.firstObservedAt - r.eventAt)), observeToDecision: percentile(rows.map(r => r.decisionAt - r.firstObservedAt)), observeToFill: percentile(filled.map(r => (r.fillAt ?? r.quoteAt) - r.firstObservedAt)), sourceToFill: percentile(filled.map(r => (r.fillAt ?? r.quoteAt) - r.eventAt)), filled: filled.length, rejectionReasons: rejects };
+}

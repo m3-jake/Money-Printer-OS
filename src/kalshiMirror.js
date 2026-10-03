@@ -137,16 +137,14 @@ export class KalshiMirrorPaper {
       wallet: leader?.wallet || null, side: t.side || 'BUY', sourceTradeId: t.transactionHash, sourceQuantity: Number(t.size) || null, sourceAt: Number(t.timestamp) * 1000, firstObservedAt: this.now(), leaderSelection: { ...leader }, attempts: 0 };
     if (!t.transactionHash || !t.asset || !validTrade(q, this.now())) { this.decide({ leader: q.leader, title: q.title, action: 'SKIP', reason: 'invalid, future or stale leader trade' }); this.save(); return; }
     this.state.seen.push(key); if (this.state.seen.length > 3000) this.state.seen.splice(0, this.state.seen.length - 3000);
-    this.state.queue.push(q);
+    this.state.queue.push(q); let queueError = null;
     if (this.state.queue.length > 50) {
       const droppedIndex = this.state.queue.findIndex(x => x.side !== 'SELL');
       if (droppedIndex >= 0) { const [dropped] = this.state.queue.splice(droppedIndex, 1); this.decide({ leader: dropped.leader, title: dropped.title, action: 'SKIP', reason: 'bounded mirror entry queue full; exits prioritized' }); }
-      else { // Coalesce exit pressure for the same source position; never discard a pending executable exit.
-        const prior = this.state.queue.slice(0, -1).find(x => x.asset === q.asset && x.wallet === q.wallet && x.leader === q.leader);
-        if (prior) { prior.sourceQuantity = Number.isFinite(prior.sourceQuantity) && Number.isFinite(q.sourceQuantity) ? prior.sourceQuantity + q.sourceQuantity : null; prior.remainingExitQty = null; this.state.queue.pop(); }
-        else { this.state.queue.pop(); this.state.seen = this.state.seen.filter(k => k !== key); this.decide({ action: 'WAIT', reason: 'mirror exit queue full; source event left retryable' }); }
+      else {
+        this.state.queue.pop(); this.state.seen = this.state.seen.filter(k => k !== key); queueError = 'mirror exit queue full; source handoff left retryable'; this.decide({ action: 'WAIT', reason: queueError });
       }
-    } this.save();
+    } this.save(); if (queueError) throw new Error(queueError);
   }
 
   async get(url) { const loader = async () => { const r = await this.fetch(url, { headers: { accept: 'application/json', 'user-agent': 'MoneyPrinterOS/0.5' }, signal: AbortSignal.timeout?.(15000) }); if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }; return this.readCache ? this.readCache.get(url, loader) : loader(); }

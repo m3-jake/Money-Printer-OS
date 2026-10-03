@@ -5,13 +5,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { PolymarketCopyPaper } from '../src/polymarketCopy.js';
 import { KalshiMirrorPaper } from '../src/kalshiMirror.js';
-import { fetchLeaderTrades, classifyCopyMarket, CopyMetadataCache, CopyReadCache } from '../src/copyEvent.js';
+import { fetchLeaderTrades, classifyCopyMarket, CopyMetadataCache, CopyReadCache, copyLatencySummary } from '../src/copyEvent.js';
 const NOW = 1800000000000, wallet = '0x' + 'a'.repeat(40);
 const fixture = t => { const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'copy-pipeline-')); t.after(() => fs.rmSync(dir, { recursive: true, force: true })); return dir; };
 const trade = (patch = {}) => ({ transactionHash: 'buy', timestamp: NOW / 1000, asset: 'asset', side: 'BUY', size: 100, price: .5, title: 'Bitcoin above $100000?', outcome: 'Yes', outcomeIndex: 0, ...patch });
 function setup(dir, overrides = {}) {
   const env = { now: NOW + 1000, trades: [trade()], offline: false, bids: [{ price: .49, size: 100 }], calls: [], ...overrides };
-  const create = extra => new PolymarketCopyPaper({ dataDir: dir, now: () => env.now, fetchImpl: async url => { env.calls.push(url); if (url.includes('/trades')) return { ok: true, json: async () => env.trades }; if (url.includes('/book')) { if (env.offline) throw new Error('offline'); return { ok: true, json: async () => ({ asks: [{ price: .51, size: 100 }], bids: env.bids }) }; } return { ok: true, json: async () => [{ feesEnabled: false, closed: false, tags: [{ label: 'Crypto' }] }] }; }, ...extra });
+  const create = extra => new PolymarketCopyPaper({ dataDir: dir, now: () => env.now, fetchImpl: async url => { env.calls.push(url); if (url.includes('/trades')) return { ok: true, json: async () => env.trades }; if (url.includes('/book')) { if (env.offline) throw new Error('offline'); if (env.bookGate) await env.bookGate; return { ok: true, json: async () => ({ asks: [{ price: .51, size: 100 }], bids: env.bids }) }; } return { ok: true, json: async () => [{ feesEnabled: false, closed: env.closed || false, outcomePrices: '["1","0"]', tags: [{ label: 'Crypto' }] }] }; }, ...extra });
   const bot = create(); bot.state.follows = [{ wallet, name: 'leader', followedAt: NOW - 1000 }]; bot.state.settings.follows = 1; bot.state.settings.stakeUsd = 5; bot.state.settings.minLeaderTradeUsd = 1; return { env, bot, create };
 }
 test('transient entry intent survives restart and duplicate/out-of-order pages without duplicate exposure', async t => {
@@ -75,4 +75,45 @@ test('Kalshi mirrored exits retain failed bids and persist wallet/timing attribu
   now += 1000; bot.enqueue({ wallet, name: 'leader' }, { ...buy, transactionHash: 'exit', side: 'SELL', timestamp: now / 1000 }); await bot.run({ settlement: false }); assert.equal(bot.state.queue.length, 1);
   bids = [{ price: .6, quantity: 100 }]; bot = new KalshiMirrorPaper({ dataDir: dir, kalshi: () => k, sports: async () => ({ events }), now: () => now }); await bot.run({ settlement: false });
   assert.equal(bot.state.queue.length, 0); assert.equal(bot.state.open.length, 0); assert.equal(bot.state.history[0].status, 'LEADER_SOLD'); assert.equal(bot.state.history[0].exitSourceTradeId, 'exit');
+});
+test('multiple failed leader exits retain distinct quantities and never replay earlier partial requests', async t => {
+  const { env, bot, create } = setup(fixture(t)); await bot.run({ settlement: false }); const qty = bot.state.open[0].qty;
+  env.bids = []; env.trades = [trade({ transactionHash: 'exit-a', side: 'SELL', size: 40 }), trade({ transactionHash: 'exit-b', side: 'SELL', size: 10 })]; await bot.run({ settlement: false });
+  assert.equal(Object.keys(bot.state.open[0].exitRequests).length, 2); assert.ok(Math.abs(bot.state.open[0].pendingExitQty - qty / 2) < .000002);
+  env.bids = [{ price: .49, size: 100 }]; const restarted = create(); await restarted.run({ settlement: false }); const cash = restarted.state.cashUsd;
+  assert.ok(Math.abs(restarted.state.open[0].qty - qty / 2) < .000002); await restarted.run({ settlement: false }); assert.equal(restarted.state.cashUsd, cash); assert.equal(restarted.state.history.length, 2);
+});
+test('settlement can complete during a failed exit lookup without double payout', async t => {
+  const { env, bot } = setup(fixture(t)); await bot.run({ settlement: false }); const qty = bot.state.open[0].qty, cash = bot.state.cashUsd;
+  let release; env.bookGate = new Promise(r => { release = r; }); env.trades = [trade({ transactionHash: 'exit', side: 'SELL', size: 100 })];
+  const running = bot.run({ settlement: false }); await new Promise(r => setTimeout(r, 15)); env.closed = true; await bot.runSettlement(); release(); await running;
+  assert.equal(bot.state.open.length, 0); assert.equal(bot.state.history.length, 1); assert.equal(bot.state.history[0].status, 'RESOLVED'); assert.ok(Math.abs(bot.state.cashUsd - cash - qty) < .000002);
+});
+test('source handoff retry remains durable after the follower entry has filled', async t => {
+  const dir = fixture(t); let unavailable = true, handed = 0; const { bot, create } = setup(dir);
+  const handoff = () => { if (unavailable) throw Error('mirror offline'); handed++; }; bot.onLeaderEvent = handoff;
+  await bot.run({ settlement: false }); assert.equal(bot.state.open.length, 1); assert.equal(bot.snapshot().pendingHandoffs, 1);
+  unavailable = false; const restarted = create({ onLeaderEvent: handoff }); await restarted.run({ settlement: false }); assert.equal(handed, 1); assert.equal(restarted.snapshot().pendingHandoffs, 0); assert.equal(restarted.state.open.length, 1);
+});
+test('category specialist uses documented category leaderboard and requires provider-labeled markets', async t => {
+  const dir = fixture(t); let now = NOW, trades = [], category = 'Crypto', calls = [];
+  const bot = new PolymarketCopyPaper({ dataDir: dir, now: () => now, experiment: { id: 'crypto-v1', policy: 'category-specialist', category: 'CRYPTO', exploratory: true, startUsd: 25, settings: { stakeUsd: 1, follows: 1, minLeaderTradeUsd: 1, minLeaderVolumeUsd: 0, minLeaderMargin: 0 } }, fetchImpl: async url => { calls.push(url); return { ok: true, json: async () => url.includes('leaderboard') ? [{ proxyWallet: wallet, pnl: 100, vol: 1000 }] : url.includes('/trades') ? trades : url.includes('/book') ? { asks: [{ price: .51, size: 100 }], bids: [] } : [{ feesEnabled: false, category }] }; } });
+  await bot.run({ settlement: false }); assert.ok(calls.some(u => u.includes('category=CRYPTO')));
+  now += 1000; trades = [trade({ timestamp: now / 1000 })]; await bot.run({ settlement: false }); assert.equal(bot.state.open.length, 1); assert.equal(bot.state.open[0].receipt.leaderSelection.leaderboardCategory, 'CRYPTO');
+  category = 'Sports'; now += 1000; trades = [trade({ asset: 'other', transactionHash: 'sports', timestamp: now / 1000 })]; await bot.run({ settlement: false }); assert.equal(bot.state.open.length, 1); assert.match(bot.state.decisions[0].reason, /provider-labeled crypto/);
+});
+test('bounded latency summary excludes unknown timings and separates observation from fill', () => {
+  const s = copyLatencySummary([{ eventAt: 1000, firstObservedAt: 2000, decisionAt: 2500, quoteAt: 2600, fillAt: 2700, status: 'FILLED', fills: [{ price: .5, quantity: 1 }] }, { status: 'SKIPPED', reason: 'missing source' }]);
+  assert.deepEqual(s.sourceToObserve, { n: 1, p50Ms: 1000, p95Ms: 1000 }); assert.equal(s.observeToFill.p95Ms, 700); assert.equal(s.rejectionReasons['missing source'], 1);
+});
+test('four independent cohorts reuse discovery while retaining four fresh follower books', async t => {
+  const root = fixture(t), readCache = new CopyReadCache(), metadataCache = new CopyMetadataCache(); let now = NOW, trades = [], discoveryReads = 0, books = 0;
+  const bots = Array.from({ length: 4 }, (_, i) => new PolymarketCopyPaper({ dataDir: path.join(root, `cohort-${i}`), readCache, metadataCache, now: () => now, experiment: { id: `cohort-${i}`, policy: 'direct', exploratory: true, startUsd: 25, settings: { follows: 1, stakeUsd: 1, minLeaderTradeUsd: 1, minLeaderVolumeUsd: 0, minLeaderMargin: 0 } }, fetchImpl: async url => { if (url.includes('leaderboard') || url.includes('/trades')) discoveryReads++; if (url.includes('/book')) books++; return { ok: true, json: async () => url.includes('leaderboard') ? [{ proxyWallet: wallet, pnl: 100, vol: 1000 }] : url.includes('/trades') ? trades : url.includes('/book') ? { asks: [{ price: .51, size: 100 }], bids: [] } : [{ feesEnabled: false }] }; } }));
+  await Promise.all(bots.map(b => b.run({ settlement: false }))); assert.equal(discoveryReads, 2);
+  readCache.entries.clear(); now += 1000; trades = [trade({ timestamp: now / 1000 })]; await Promise.all(bots.map(b => b.run({ settlement: false })));
+  assert.equal(discoveryReads, 3); assert.equal(books, 4); assert.ok(bots.every(b => b.state.open.length === 1)); assert.equal(new Set(bots.map(b => b.file)).size, 4);
+});
+test('restart completes receipt journaling for an already committed exposure', async t => {
+  const { env, bot, create } = setup(fixture(t)); await bot.run({ settlement: false }); const i = Object.values(bot.state.intents).find(i => i.status === 'FILLED'); i.receiptLogged = false; bot.state.receipts = []; bot.save();
+  const restarted = create(); await restarted.run({ settlement: false }); assert.equal(restarted.state.receipts.length, 1); assert.equal(restarted.state.receipts[0].status, 'FILLED'); assert.equal(restarted.state.open.length, 1);
 });
