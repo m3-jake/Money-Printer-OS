@@ -1,10 +1,4 @@
-# Money Printer OS — current status
-
-## Current installed pair — October 3, 2026
-
-Trader **alpha.93 @ 89fa8d7**, Lab **alpha.28 @ 9cfaa89**; both **MAX_RESEARCH**. Paired receipts/archive hashes, live running commits, and 24 retained accounting records were verified. Full suites: trader 1,399 passed / 20 intentional live-order skips, Lab 365 passed; final label and contract checks also passed. Paper-only and paid models disabled.
-
-Start external review at `docs/LLM_REVIEW.md`. Completed desktop brief and measured evidence: `reports/coordinated-desktop-2026-10-03/README.md`. The earlier release sections below are historical. The separately queued policy-keyed Pump study and remaining shared HUD extraction are open follow-ups; neither was represented as a completed desktop deliverable.
+# Money Printer OS: status ledger
 
 ## Paper-potential build entry point — 2026-10-03
 
@@ -252,7 +246,7 @@ open, last close):
 - **Evolution Lab** lives in a separate repo, `money-printer-evolution-lab`, and is the shared research brain for every module: Solana (labLoop/BEAST), plus parallel `module-robinhood` and `module-polymarket` workers (`src/moduleResearch.js`). Valid module ids come from its `src/researchModules.js`. It writes `<trader data>/lab-link/modules/<id>.json` and paper-only `<id>-champion.json`. It is NOT the dropped "agent lab" harness.
 - **Web demo (2026-10-02):** `web-demo/` + `scripts/web-demo/` build a static, browser-only copy of the HUD for a website. `demo-shim.js` answers `/api/*` from a recorded PAPER session (sandboxed engine, scrubbed env, no keys or user data), and refuses every write. Each page load is a new session: a 1 SOL book run by the Lab champion copied in from `lab-link/` at recording time, played for ~30 min from its opening frame. Published to Cloudflare Pages (`money-printer`, moneyprinter.bangbowbing.net). See `web-demo/README.md`; covered by `test:web-demo`.
 - **HUD boot and logo (2026-10-02):** the boot overlay is a Win98-style log-on over open sky. OK, Enter or 6 idle seconds pull the camera back to the hill and fire `mpo:logon`, which shows the welcome and the grabbable money shower (`welcomeShower()`). The corner logo (`initLogoStretch()`) stretches on drag, slingshots on release, glides to a stop and fades back home after 3.5 s idle; its shine lives in the same `.logo-skin`.
-- **Tests:** 167 suites in `tests/` across 37 targets, run by `npm run test:all` (`test:wiring` fails first if a suite becomes unreachable). Alpha.84 adds observed-chart history, motion, and data-boundary regressions. The 20 Robinhood real-money order-path tests remain explicitly skipped because this paper-only build refuses that dispatch; active safety tests still pin the live boundary and outbound audit. Full-suite results are recorded separately from suite reachability.
+- **Tests:** 158 suites in `tests/` across 36 targets, run by `npm run test:all` (`test:wiring` fails first if a suite becomes unreachable). Alpha.84 adds observed-chart history, motion, and data-boundary regressions. The 20 Robinhood real-money order-path tests remain explicitly skipped because this paper-only build refuses that dispatch; active safety tests still pin the live boundary and outbound audit. Full-suite results are recorded separately from suite reachability.
 
 ## Confirmed working (2026-09-28, remediation pass P4.3)
 

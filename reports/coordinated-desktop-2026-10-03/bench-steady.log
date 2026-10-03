@@ -1,0 +1,14 @@
+trader 200  p50    22 ms  p95   158 ms       9499 B  /api/health
+trader 200  p50     3 ms  p95    27 ms     189188 B  /api/state
+trader 200  p50     6 ms  p95    24 ms       9340 B  /api/telemetry
+trader 200  p50    38 ms  p95   752 ms    2502804 B  /api/command-center
+trader 200  p50     2 ms  p95   181 ms     146286 B  /api/command-center?view=summary
+trader 200  p50     2 ms  p95     4 ms     159051 B  /api/scoreboard
+trader 200  p50    24 ms  p95    37 ms     792213 B  /api/bots
+trader 200  p50     1 ms  p95     2 ms        150 B  /api/resources
+trader 200  p50     2 ms  p95    23 ms      63612 B  /api/market-history?ids=crypto:BTC-USD,crypto:ETH-USD,equity:SPY&points=300
+trader 200  p50     1 ms  p95   105 ms       8788 B  /api/market-groups
+trader 200  p50     1 ms  p95     1 ms      45308 B  /api/coordinator
+trader 200  p50     1 ms  p95   160 ms      46224 B  /api/copy-funnel
+lab    200  p50     2 ms  p95     6 ms       1040 B  /api/health
+lab    200  p50    39 ms  p95    46 ms     641020 B  /api/state

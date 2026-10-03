@@ -1,12 +1,9 @@
-# Release status — 2026-10-03
+# Release status — October 3, 2026
 
-Installed pair: Money Printer OS `0.5.0-alpha.89` @ `3fa7d3b` + Evolution Lab `0.1.0-alpha.25` @ `258286f`, installed
-2026-10-03 14:30 America/New_York with `scripts/update-local-install.ps1` (backups `app.asar.backup-20261003-142927`; restore
-both as a pair). A package version alone is not installation evidence: compare `PAIRED-RELEASE.json` in both
-installs with the running apps' `/api/health` build commits.
+Installed pair: Money Printer OS `0.5.0-alpha.93` @ `89fa8d7764a315fae8503e20aac07261a62ffd6a` + Evolution Lab `0.1.0-alpha.28` @ `9cfaa899b4d6a95d7d753314652b481d7d12dd46`. Final paired installation: 2026-10-03 20:33:05 UTC, both MAX_RESEARCH.
 
-Final verification, archive hashes, test totals, data backup and operating settings:
-`reports/paper-potential-2026-10-03/INSTALL-VERIFICATION.md`. Both full suites and both archive smokes passed;
-runtime hashes/commits match the paired receipts. Both apps persist FAST_PAPER_STEADY and paid models remain off.
+Matching `PAIRED-RELEASE.json` files, archive SHA-256 hashes, clean packaged provenance and live running commits passed. Retention passed for all 24 recorded books, capital/experiment identities, receipt hashes and loss pauses. Paper-only authority remains locked; paid models disabled.
 
-Earlier release records: `docs/history/agent-state/RELEASE_STATUS-to-2026-10-03.md` and the ledger history.
+Evidence: `reports/coordinated-desktop-2026-10-03/README.md`, `installed-after.json`, `runtime-final.json`, and `installer-verified.log`. Verified data backup: `W:/money-printer-backups/update-20261003-163121/paper-data-backup`. Both resources directories retain `app.asar.backup-20261003-163121`; restore both as a pair.
+
+The later commits documenting and publishing review evidence do not change the installed runtime source. Earlier alpha.89/alpha.25 verification remains in `reports/paper-potential-2026-10-03/INSTALL-VERIFICATION.md`; older records are historical. GitHub review entry point: `docs/LLM_REVIEW.md`.

@@ -1,0 +1,225 @@
+
+> money-printer-os@0.5.0-alpha.89 test:all
+> npm run test:wiring && npm run test:paired-safety && npm run test:recovery && npm run test:discovery && npm run test:solana && npm run test:turnover && npm run test:updater && npm run test:execution && npm run test:unit-economics && npm run test:settlement && npm run test:polymarket-us && npm run test:combos && npm run test:edge-robustness && npm run test:accounting && npm run test:replay && npm run test:experiments && npm run test:research && npm run test:evidence && npm run test:poly-research-eval && npm run test:evolution && npm run test:lab-link && npm run test:visual && npm run test:release-gate && npm run test:latency && npm run test:robinhood && npm run test:robinhood-equities && npm run test:lane-contracts && npm run test:fitness && npm run test:unattended && npm run test:upgrade && npm run test:pump-profit && npm run test:paper-completion && npm run test:wallet-crowd && npm run test:paper-bots && npm run test:web-demo && npm run test:paper-potential
+
+
+> money-printer-os@0.5.0-alpha.89 test:wiring
+> node --test tests/test-wiring.test.mjs tests/doc-drift.test.mjs tests/src-reachability.test.mjs
+
+✔ the engine line states the export surface and the guard src/index.js actually has (2.0167ms)
+✔ the counts the documents of record quote are the counts on disk (0.8347ms)
+✔ the enter() open item is closed and the suite that closed it is reached by test:all (1.4294ms)
+✔ the disproven import premise survives only as a labelled correction (113.0677ms)
+✔ the agent-state entry points are not older than the record they describe (1.5378ms)
+✔ the open list routes its install item to the release status record (0.5877ms)
+✔ every file in src/ is reachable from a runtime entry point (215.4259ms)
+✔ the reachability walk sees every import form the app uses (0.2756ms)
+✔ runtime code never imports from tools/ (252.7614ms)
+test coverage map (158 suites across 37 targets):
+  test:accounting: 1 file
+  test:combos: 2 files
+  test:discovery: 1 file
+  test:edge-robustness: 1 file
+  test:evidence: 7 files
+  test:evolution: 3 files
+  test:executable-replay: 1 file
+  test:execution: 2 files
+  test:experiments: 1 file
+  test:fitness: 3 files
+  test:lab-link: 5 files
+  test:lane-contracts: 16 files
+  test:latency: 2 files
+  test:paired-safety: 4 files
+  test:paper-bots: 5 files
+  test:paper-completion: 20 files
+  test:paper-potential: 7 files
+  test:poly-research-eval: 1 file
+  test:polymarket-us: 2 files
+  test:pump-profit: 3 files
+  test:recovery: 7 files
+  test:release-gate: 2 files
+  test:replay: 1 file
+  test:research: 7 files
+  test:robinhood: 17 files
+  test:robinhood-equities: 2 files
+  test:settlement: 1 file
+  test:solana: 4 files
+  test:turnover: 2 files
+  test:unattended: 5 files
+  test:unit-economics: 2 files
+  test:updater: 4 files
+  test:upgrade: 6 files
+  test:visual: 9 files
+  test:wallet-crowd: 2 files
+  test:web-demo: 1 file
+  test:wiring: 3 files
+✔ every suite on disk is reachable from npm run test:all (2.7714ms)
+✔ every test path a script names exists, and no file is named twice in one target (23.4255ms)
+✔ the coverage map is complete and printed (telemetry, not a guess) (1.79ms)
+✔ no embedded Robinhood panel copy is left to drift (0.6235ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 611.52
+
+> money-printer-os@0.5.0-alpha.89 test:paired-safety
+> node --test tests/paired-coverage-20260930.test.mjs tests/paired-transport-20260930.test.mjs tests/manual-quote-clock-20260930.test.mjs tests/transport-redirect-20260930.test.mjs
+
+✔ manual practice/run leaves clock sampling to the post-fetch implementation (3.1088ms)
+✔ manual practice/order leaves clock sampling to the post-fetch implementation (2.5559ms)
+✔ manual practice/close leaves clock sampling to the post-fetch implementation (1.2357ms)
+✔ practice implementation retains the dynamic clock after awaited quote acquisition (1.0566ms)
+✔ zero books and zero verified books never grant promotion (1.9446ms)
+✔ complete scoped evidence is required, and mixed missing coverage is partial (2.6905ms)
+✔ unknown fee, realized or position basis is not a reconciliation (0.969ms)
+✔ cash verdict from an older snapshot cannot certify newer balances (0.2838ms)
+✔ duplicate scopes cannot manufacture independent coverage (0.4596ms)
+✔ recovery state and incorrect account identity refuse promotion (0.363ms)
+✔ unrecognized mirror status and fabricated RECONCILED flags are not proof (0.2719ms)
+✔ diagnostic retention is bounded and contains no raw secrets, queries or payloads (5.0901ms)
+✔ existing read wrappers are allowlisted, including order supervision and pagination (1.5166ms)
+✔ non-read methods, action aliases, encoded actions, override queries and GET bodies are denied (0.452ms)
+✔ real dispatch barrier rejects mutations before signing on every configured destination (4.3848ms)
+✔ transport refuses 301 redirects without following or retaining signatures (7.086ms)
+✔ transport refuses 302 redirects without following or retaining signatures (3.6351ms)
+✔ transport refuses 303 redirects without following or retaining signatures (1.7157ms)
+✔ transport refuses 307 redirects without following or retaining signatures (1.4751ms)
+✔ transport refuses 308 redirects without following or retaining signatures (1.6843ms)
+✔ transport refuses already-followed redirects without following or retaining signatures (1.5555ms)
+ℹ tests 21
+ℹ suites 0
+ℹ pass 21
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 211.5133
+
+> money-printer-os@0.5.0-alpha.89 test:recovery
+> node --test tests/store-recovery.test.mjs tests/cycle-recovery.test.mjs tests/cycle-budget.test.mjs tests/risk-prefetch.test.mjs tests/venue-loop.test.mjs tests/journal-append-contract.test.mjs tests/trade-path.test.mjs
+
+✔ a fast cycle never trips its budget (5.7492ms)
+✔ past the deadline the next phase boundary abandons the cycle (0.8238ms)
+✔ an explicit abort cancels work without throwing at the abort site (0.5213ms)
+✔ a zero budget disables the deadline instead of expiring instantly (0.3888ms)
+✔ the market requester cancels an in-flight read when the cycle signal aborts (5.2746ms)
+✔ an already-aborted signal rejects before the fetch is made (0.5396ms)
+✔ without a signal the requester behaves exactly as before (51.2318ms)
+✔ the engine installs the budget signal for every market read and asserts per phase (2.4221ms)
+✔ a stalled cycle is abandoned: it records its last stage, aborts in-flight work and never saves (1.5666ms)
+✔ the engine loop races each cycle against a stall timer, skips a late save, and health reports STALLED (2.4152ms)
+✔ the desktop supervisor needs three missed health probes (5 s each) before it swaps the dashboard for recovery (1.0047ms)
+✔ a refused recovery save still leaves evidence in the journal and in memory (371.6352ms)
+✔ a successful recovery save persists the counter and clears the flag (48.9027ms)
+✔ an unreadable state file is journaled instead of replacing the cycle failure (17.1285ms)
+✔ a process killed mid-write still reports the error on the next boot (635.9722ms)
+✔ a streak of cycle errors degrades health until a clean cycle clears it (75.9639ms)
+✔ a clean cycle with no streak writes nothing (12.9062ms)
+✔ clearing the streak does not clear an unrelated degraded flag (26.9322ms)
+✔ the degradation threshold is configurable per call (41.102ms)
+✔ an abandoned cycle is counted apart from errors, and a streak of them degrades (82.8986ms)
+✔ diagnostics are per-cycle state, not a log: they cannot grow with uptime (155.1066ms)
+✔ every per-cycle diagnostics push in index.js stays condition-guarded (3.1644ms)
+journal append cost, 1000 rows (~390 KB): one batch 3.80 ms, per-row 1339.66 ms (352.8x, 1.340 ms per row)
+✔ the cycle volume is one append for 30 rows; everything else is one append per event (331.3756ms)
+✔ a batch writes exactly the bytes a run of single appends writes (batching stays format-preserving) (30.7698ms)
+✔ ts is stamped per row and a caller-supplied ts is never rewritten (16.6542ms)
+✔ journal activity cannot change state.json: its bytes are the state's, never the journal's (47.7063ms)
+✔ per-row appends cost an order of magnitude more than the batch the engine uses (1367.5391ms)
+✔ the engine batches the cycle volume and appends one row per event, never per row (2.3969ms)
+✔ request never blocks: risk is unknown until the background lookup answers (9.9658ms)
+✔ a failed or empty lookup stays unknown; answers expire after the TTL (2.0555ms)
+✔ circuit breaker: three failures in a row pause lookups; nothing is guessed while it is open (1.7137ms)
+✔ the queue is bounded and concurrency is respected (34.0554ms)
+✔ the engine cycle no longer awaits mintRisk and fails closed on unknown risk (1.7573ms)
+✔ first launch initializes, while zero cash survives reload (343.8988ms)
+✔ truncated primary recovers exact balance and pauses entries (12.4406ms)
+✔ unrecoverable files are preserved instead of minting a new bankroll (57.6382ms)
+✔ missing primary recovers backup with a visible pause (10.5433ms)
+✔ saving recovered state cannot destroy the good backup (28.8709ms)
+✔ invalid balances and shapes never replace valid primary or backup (119.2833ms)
+✔ valid saves retain the preceding account as recoverable backup (27.7008ms)
+✔ transient Windows EPERM during primary publication is retried (81.0973ms)
+✔ failed primary publication leaves the old account readable (20.298ms)
+✔ failed backup publication keeps prior recovery bytes (24.6845ms)
+✔ F1 legacy state without a ledger reconstructs lifetime pnl through loadState (9.7092ms)
+✔ F3 uncapped strategy totals beat the 1500-row history ring, and the cut is stamped (15.0669ms)
+✔ F4 a stale accounting alert is cleared once the books are clean (8.5234ms)
+✔ F2 a small hole on a 1 SOL bankroll now raises PAPER_IDENTITY (8.5224ms)
+✔ F6 saveState refuses realized cash with no basis sold, and publishes nothing (30.2682ms)
+✔ F6 realized cash above what the position could possibly be worth is refused (10.4233ms)
+✔ F6 a position appearing with positive realized cash is refused (11.0449ms)
+✔ F6 ordinary opens and closes are unaffected (35.5737ms)
+✔ save caps the research blob: learner outcomes, universe and postmortems (47.1847ms)
+✔ heavy research lives in research-state.json; state.json keeps the account and small research fields (22.4555ms)
+✔ an old state.json with inline research migrates on the next save (28.987ms)
+✔ a missing or torn research file never blocks the account (12.2742ms)
+✔ research-state.json is rewritten at most every RESEARCH_SAVE_MS; state.json saves are not held back (30.3551ms)
+✔ P2.1 the validated section map and the backup bound cannot drift from the account side (6.2101ms)
+✔ P2.1 a torn research file is reported, and rebuilt-empty sections never replace it (31.1916ms)
+✔ P2.1 a damaged file that still parses is damaged too (JSON.parse alone would have emptied the dataset) (24.1494ms)
+✔ P2.1 a torn research file with a valid backup recovers the sections and repairs itself (37.7789ms)
+✔ P2.1 sections that would not read back are refused instead of published (16.302ms)
+✔ P2.1 the preceding research file becomes a recoverable backup, and an unreadable one never does (65.6383ms)
+✔ P2.1 repairing the file resumes publication without hiding what happened (56.4958ms)
+✔ P2.1 an empty-but-valid section never turns into an account recovery (12.3703ms)
+✔ P3.2 state written by a newer build survives this one, counter or no counter (42.1423ms)
+bigint: Failed to load bindings, pure JS will be used (try npm run rebuild?)
+ALERT: EXIT TP -1.4% · stale-purge
+ALERT: EXIT TP -50.8% · stop-loss
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+MONEY PRINTER ENGINE 12.6 // PAPER // COLD 0 // 0 TRACKED // 0 HELD // 83ms
+trade-path: mpo-trade-path-MNNMBp left under C:\Users\jakem\AppData\Local\Temp — EPERM (a handle outside the platform's close seam survived)
+✔ exec #5: the trade path is reachable from a test — cycle, enter and updatePositions are exported (1.2342ms)
+✔ a paper entry driven in-process debits cash by basis + fee and books the entry fee as realized loss (18.4474ms)
+✔ a duplicate entry for the same mint is refused by the brain, not only by the caller (4.2734ms)
+✔ the exit ladder reaches stale-purge through the real close path: position gone, cash up, cooldown set (13.956ms)
+✔ a stop-loss fires when the mark collapses but the tick did not jump, and the loss is booked (5.852ms)
+✔ one full cycle runs in-process against the stubbed market and persists its counters (128.7838ms)
+✔ the trade path reaches only the hosts this stub knows about (coupling is measured, not assumed) (1.1838ms)
+✔ a hung venue is reported STALLED, is not run on top of itself, and the other venues keep their cadence (7.8648ms)
+✔ errors are per venue and stop() clears every timer (2.0176ms)
+✔ the dashboard runs the paper bots through venue loops and health reads cached state (2.0357ms)
+ℹ tests 75
+ℹ suites 0
+ℹ pass 75
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2589.2325
+
+> money-printer-os@0.5.0-alpha.89 test:discovery
+> node --test tests/discovery-budget.test.mjs
+
+✔ the fan-out is sized from the configured budget and interval (1.2904ms)
+✔ a wider budget or a slower cycle widens the fan-out (0.196ms)
+✔ the fan-out never exceeds what is left of the window (0.1695ms)
+✔ an unlimited budget leaves the fan-out alone (0.1489ms)
+✔ the address limit is always at least one batch (0.1587ms)
+✔ a budget-sized fan-out is never refused, while the old 960-address fan-out is (82.3596ms)
+✔ discoverCandidates sizes its slice from the budget, not from a fixed oversample (1.151ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 532.7509
+
+> money-printer-os@0.5.0-alpha.89 test:solana
+> node --test tests/solana-fair.test.mjs tests/holder-rpc.test.mjs tests/wallet-scorecard.test.mjs tests/live-gate.test.mjs
+
+[holder-rpc] RATE_LIMITED via 127.0.0.1:64888: 429 Too Many Requests: {"jsonrpc":"2.0","id":"0c6b1719-132a-45c5-8224-c50ad6b55884","error":{"code":429,"message":"Too many requests for a specific RPC call"}}
+✔ a 429 from the holder RPC is counted and reported, not swallowed (801.7342ms)
+[holder-rpc] OK via 127.0.0.1:64893
+✔ with a working holder RPC, holders and their owners come back and are counted (930.2336ms)
+[holder-rpc] OK via 127.0.0.1:55399
+[holder-rpc] BUDGET via 127.0.0.1:55399
+✔ the daily cap stops holder calls before they are sent (1587.4203ms)
+[holder-rpc] OK via 127.0.0.1:55405

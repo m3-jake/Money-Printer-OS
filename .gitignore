@@ -8,3 +8,5 @@ __pycache__/
 .build-version
 .build-commit
 web-demo/dist/
+# Generated upload package; source and review evidence are committed separately.
+/web-demo/money-printer-upload.zip

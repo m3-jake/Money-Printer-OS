@@ -1,0 +1,50 @@
+bigint: Failed to load bindings, pure JS will be used (try npm run rebuild?)
+✔ funnel counts a completed follower position once across partial exit slices (8.6818ms)
+✔ missing/malformed book remains unavailable with a visible error and is never rewritten (35.2591ms)
+✔ candidate first observation survives removal, rediscovery and process restart (155.546ms)
+bigint: Failed to load bindings, pure JS will be used (try npm run rebuild?)
+[MPOS][MODE] Polymarket US=LIVE_CAPABLE_UNARMED | realEnabled=true | armed=false | credentials=false
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+[journal] +467 from git
+[MPOS][MODE] Robinhood=PAPER | P&L=PAPER | live code enabled=false | real-host POSTs code-locked
+Dashboard: http://127.0.0.1:0
+✔ authentic SIP repair restores early and interior IEX gaps without replacing observed primary bars (43.3282ms)
+✔ unavailable SIP repair retains IEX observations and reports authentic missing dates (2.1206ms)
+✔ calendar: holidays, early closes, DST and completed-session rules (8.1899ms)
+✔ data: NO_DATA without a key, no fetch; invalid symbols rejected; partial bars dropped; Alpaca shape parsed (389.366ms)
+✔ strategy: no lookahead, deterministic hash, trend exits in a crash, month-end rotation (221.8036ms)
+✔ baseline replay: strategy vs buy-and-hold SPY vs cash on the same window (581.6132ms)
+✔ book: fees, fractional flooring, $1 minimum, T+1 settled cash (5.1131ms)
+✔ book: corrupt file forces recovery and is never overwritten (81.8248ms)
+✔ controller: decide once per session, fill at next open exactly once, late fill after PC off, snapshot shape (4341.7842ms)
+✔ controller: without a key it reports NO_DATA, writes nothing, fetches nothing (9.3257ms)
+✔ HTTP: read-only GET route with the local guard (2668.0114ms)
+✔ bonding-curve buy: SOL spent excludes rent and fee, the curve PDA is dropped (308.8684ms)
+✔ PumpSwap sell paid in WSOL: SOL received counts the WSOL leg, pool rows are dropped (27.8661ms)
+✔ router swap where the owner signs but a relayer pays the fee (17.9901ms)
+✔ temporary WSOL wrapped and closed inside the tx, non-signer recipients and failed txs (23.5982ms)
+✔ Helius enhanced path records SOL from accountData instead of a hard-coded 0, fee payer only (12.6242ms)
+✔ FIFO realized PnL with partial sells, fees charged, hold time, one round trip (13.7852ms)
+✔ no lookahead: events at or after asOf never change the score, an open trip is not a win (18.6293ms)
+✔ PDAs, non-signers and legs without SOL are excluded; unmatched sells are not free profit (23.4575ms)
+✔ earliness only on mints with complete history; grading needs 10 round trips with shrinkage (33.688ms)
+✔ Wallet Intel ingestion keeps only on-curve owners and prunes legacy pool/program profiles (48.5121ms)
+✔ indexer tick: oldest-first pull, signer swaps with SOL stored, scorecard and health written (702.73ms)
+✔ hard daily cap: no call beyond it, progress kept, status BUDGET; the cap survives a restart (211.6937ms)
+✔ spend is paced over the UTC day, the kill flag stops all calls, and keys never reach health (126.248ms)
+✔ default cap fits the Helius free plan next to the holder cap; enhanced calls cost 100 from the same ledger (161.8662ms)
+✔ the research collector runs the lean indexer tick without the alpha worker (3.2085ms)
+✔ wallet follow-up retains fetched exits when a later request exhausts the credit budget (143.9649ms)
+✔ duplicate index paths do not add an event twice to wallet token positions (5.1437ms)
+✔ forecast reads coalesce, reject over-budget requests and keep first receipt and revision through restart (63.3309ms)
+✔ NWS identical concurrent requests share their actual receipt time (125.8206ms)
+✔ weather rules must bind exact station, target day and Fahrenheit maximum (163.4365ms)
+✔ weather tape preserves forecast availability and binding rather than inventing provenance for older rows (1.4356ms)
+ℹ tests 35
+ℹ suites 0
+ℹ pass 35
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9027.7484

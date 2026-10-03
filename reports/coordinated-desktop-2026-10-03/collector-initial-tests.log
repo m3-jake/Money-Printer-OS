@@ -1,0 +1,66 @@
+✔ probability models are calibrated distributions (3.737ms)
+✔ sides are scored after the taker fee, and large model/market gaps are refused (2.5392ms)
+✔ weather bot enters at the live book, settles from the market result and scores model vs market (528.7452ms)
+✔ an unreadable book is never overwritten; reset needs the typed phrase (15.1849ms)
+✔ copy bot follows a point-in-time leaderboard and copies only trades made after following (66.918ms)
+✔ weather calibration: fitted bias/sigma are used only when they beat the default on held-out days (9.3764ms)
+✔ the weather bot prices with the calibrated model when one is available (168.3248ms)
+✔ the weather-nws control arm never uses the calibration, so the A/B compares only the forecast model (170.1704ms)
+✔ the bot tape appends one JSON line per row, gzips finished days and drops days past keepDays (19.0933ms)
+✔ the variant farm prices the live bots' frame, fills at ask + slippage, settles once per ticker and tapes it (575.0034ms)
+✔ Kalshi books on the old $500 defaults move once to the $25 wallet ($12.50 per bot); the old file is kept (15.3992ms)
+✔ the farm runs Evolution Lab proposals only when they are well formed and inside the bounds; a withdrawn one keeps its book (7.2244ms)
+✔ the weather calibrator uses the Evolution Lab's best model when it beats this calibration on held-out days (8.5443ms)
+✔ the Kalshi mirror copies a leader's game-winner buy onto Kalshi at Kalshi's price, and refuses anything else (835.755ms)
+✔ model guard: no verdict under 10 settled bets; stands down when the model is worse than the market; window is the latest 20 (0.6965ms)
+✔ model guard compares unrounded scores even when the displayed scores tie (0.2116ms)
+✔ longshot guard: a side under 15 cents needs a 15-cent edge; dearer sides are unaffected (0.2481ms)
+✔ a saved BTC book moves to model revision 2 once: settings change, history stays, the change is logged (8.5739ms)
+✔ a bot whose model is worse than the market stands down: no cash is used, bets are observed and settle, and it can earn its way back (178.6738ms)
+✔ farm variants started on the revision-1 BTC model keep it; the live r2 model runs as its own variant (0.5783ms)
+✔ farm shares its 30-bet standard and retires losing variants without erasing their evidence (20.6558ms)
+✔ copy drawdown pause stops new buys but preserves cash, history and exit monitoring (2.004ms)
+✔ a farm variant whose model is worse than the market records observe-only bets, without cash, until it earns its way back (175.7239ms)
+✔ a new BTC model revision is judged only on its own bets, not the previous model's (1.6409ms)
+✔ the mirror matches a Kalshi game by date and both teams when the board has no Polymarket contract; team codes match Kalshi sides (1.3438ms)
+✔ the mirror watches sports-leaderboard wallets and queues buys and exits after it started watching (12.9343ms)
+✔ the bots price with the shared kalshiModel the Lab replays (run B4) (1.1655ms)
+bigint: Failed to load bindings, pure JS will be used (try npm run rebuild?)
+[MPOS][MODE] Polymarket US=LIVE_CAPABLE_UNARMED | realEnabled=true | armed=false | credentials=false
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+[journal] +467 from git
+[MPOS][MODE] Robinhood=PAPER | P&L=PAPER | live code enabled=false | real-host POSTs code-locked
+Dashboard: http://127.0.0.1:0
+✔ calendar: holidays, early closes, DST and completed-session rules (4.6674ms)
+✔ data: NO_DATA without a key, no fetch; invalid symbols rejected; partial bars dropped; Alpaca shape parsed (129.683ms)
+✔ strategy: no lookahead, deterministic hash, trend exits in a crash, month-end rotation (65.1381ms)
+✔ baseline replay: strategy vs buy-and-hold SPY vs cash on the same window (163.4604ms)
+✔ book: fees, fractional flooring, $1 minimum, T+1 settled cash (1.5405ms)
+✔ book: corrupt file forces recovery and is never overwritten (4.2749ms)
+✔ controller: decide once per session, fill at next open exactly once, late fill after PC off, snapshot shape (1078.0247ms)
+✔ controller: without a key it reports NO_DATA, writes nothing, fetches nothing (4.7003ms)
+✔ HTTP: read-only GET route with the local guard (9487.2ms)
+✔ Helius indexing uses the configured cap and explicit request cost accounting (62.8309ms)
+✔ bonding-curve buy: SOL spent excludes rent and fee, the curve PDA is dropped (84.3835ms)
+✔ PumpSwap sell paid in WSOL: SOL received counts the WSOL leg, pool rows are dropped (4.5546ms)
+✔ router swap where the owner signs but a relayer pays the fee (5.0186ms)
+✔ temporary WSOL wrapped and closed inside the tx, non-signer recipients and failed txs (5.0045ms)
+✔ Helius enhanced path records SOL from accountData instead of a hard-coded 0, fee payer only (2.5194ms)
+✔ FIFO realized PnL with partial sells, fees charged, hold time, one round trip (4.5049ms)
+✔ no lookahead: events at or after asOf never change the score, an open trip is not a win (2.2355ms)
+✔ PDAs, non-signers and legs without SOL are excluded; unmatched sells are not free profit (2.1615ms)
+✔ earliness only on mints with complete history; grading needs 10 round trips with shrinkage (5.5695ms)
+✔ Wallet Intel ingestion keeps only on-curve owners and prunes legacy pool/program profiles (4.316ms)
+✔ indexer tick: oldest-first pull, signer swaps with SOL stored, scorecard and health written (56.3239ms)
+✔ hard daily cap: no call beyond it, progress kept, status BUDGET; the cap survives a restart (32.6719ms)
+✔ spend is paced over the UTC day, the kill flag stops all calls, and keys never reach health (36.0594ms)
+✔ default cap fits the Helius free plan next to the holder cap; enhanced calls cost 100 from the same ledger (44.7005ms)
+✔ the research collector runs the lean indexer tick without the alpha worker (1.299ms)
+ℹ tests 52
+ℹ suites 0
+ℹ pass 52
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 11329.1947

@@ -1,0 +1,48 @@
+✔ bounded durable requests survive restart and unchanged phase chatter cannot duplicate work (118.285ms)
+✔ completion and unchanged-evidence receipts stop retries; new outcomes wake a new identity (68.9753ms)
+✔ failed/expired requests back off and an existing request is not replaced by fresh evidence (88.4779ms)
+✔ aging eventually serves lower priority lanes despite fresh high priority work (57.383ms)
+✔ prospective decisions do not mutate accounting or treat absent controls as evidence (43.0881ms)
+✔ real Lab frozen exploratory nomination reaches separate trader admission and coordinator evaluation without qualification (99.8771ms)
+✔ feed notifications coalesce one intelligence coordination wake and close cancels it (2305.0941ms)
+✔ actual Lab publisher transports frozen dataset/code/output receipts to the trader; common gate stays intact (30.7309ms)
+✔ dataset corruption, output disagreement and missing freeze receipt fail closed (14.9626ms)
+✔ registry refuses output fields altered after verification and preserves operator pauses (20.5513ms)
+✔ publisher without explicit evaluated inputs cannot create verified provenance (9.4783ms)
+✖ every file in src/ is reachable from a runtime entry point (425.917ms)
+✔ the reachability walk sees every import form the app uses (0.7395ms)
+✔ runtime code never imports from tools/ (336.8092ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 13
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2968.8404
+
+✖ failing tests:
+
+test at tests\src-reachability.test.mjs:13:1
+✖ every file in src/ is reachable from a runtime entry point (425.917ms)
+  AssertionError [ERR_ASSERTION]: move offline tools to tools/ or delete dead code: src/copyFunnel.js, src/traderProcesses.js
+  + actual - expected
+
+  + [
+  +   'src/copyFunnel.js',
+  +   'src/traderProcesses.js'
+  + ]
+  - []
+
+      at TestContext.<anonymous> (file:///W:/money-printer-os/tests/src-reachability.test.mjs:16:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1306:25)
+      at Test.start (node:internal/test_runner/test:1177:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:385:17) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ 'src/copyFunnel.js', 'src/traderProcesses.js' ],
+    expected: [],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }

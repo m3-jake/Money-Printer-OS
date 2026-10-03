@@ -60,6 +60,42 @@
         "ROBINHOOD_REAL_ENABLED": "false",
         "MPO_RESEARCH_COLLECTOR": "false"
       }
+    },
+    {
+      "name": "web-demo",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "scripts/web-demo/serve.mjs",
+        "8840"
+      ],
+      "port": 8840
+    },
+    {
+      "name": "lab-flow-preview",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "../money-printer-evolution-lab/scripts/lab-preview-server.mjs",
+        "8850"
+      ],
+      "port": 8850
+    },
+    {
+      "name": "hud-preview",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "scripts/hud-preview-server.mjs",
+        "8860"
+      ],
+      "port": 8860
+    },
+    {
+      "name": "lab-ui-preview",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "../money-printer-evolution-lab/scripts/lab-preview-server.mjs",
+        "8875"
+      ],
+      "port": 8875
     }
   ]
 }

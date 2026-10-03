@@ -1,0 +1,28 @@
+✔ stock BBO current values retain the session-history identity (1.3475ms)
+✔ summary omits growing membership but accounts for durable members (1.3945ms)
+✔ chart normalization preserves observation source, availability and gaps without filling missing sides (5.4823ms)
+✔ coordination maps global CLOB and copy to separate objectives and truthful waiting loops (4.318ms)
+✔ copy funnel displays every retained policy, unknown counts, separate currencies and loss pauses (3.0081ms)
+bigint: Failed to load bindings, pure JS will be used (try npm run rebuild?)
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+✔ leader discovery deduplicates sources and retains the last real candidates on provider failure (21.311ms)
+✔ discovery never elevates leaderboard profit to follower qualification and rejects nonfinite data (0.6679ms)
+✔ copy refill uses only fresh weekly evidence in the frozen category (1.4783ms)
+✔ coordination separates discovery, watched leaders, loss pauses, and missing Lab status (1.3119ms)
+✔ Lab connection coalesces reads and requires profile acknowledgement (2.1906ms)
+✔ price overview reads every stored contract and distinguishes quotes, session closes and unknowns (25.1041ms)
+✔ exact-size RH estimates reject either invalid quote leg and retain greater observed fees (0.8387ms)
+✔ US singles read exact best-level capacity and reject crossed or mismatched books (1.5759ms)
+✔ steady preserves fast paper lanes and cannot enable real orders (0.3764ms)
+✔ exploratory admission checks identities, frozen window and authority without qualification bypass (1.5807ms)
+✔ admitted books freeze params and capital; changing proposal does not reset prior outcomes (18.4187ms)
+✔ prospective collector retains separate exact-depth receipts and settles without backfilling (28.1627ms)
+✔ exploratory Pump cohorts do not alter the qualified wallet gate or share cash (5.9298ms)
+ℹ tests 18
+ℹ suites 0
+ℹ pass 18
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1510.8842

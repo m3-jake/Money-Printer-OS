@@ -1,0 +1,116 @@
+
+> money-printer-os@0.5.0-alpha.89 test:all
+> npm run test:wiring && npm run test:paired-safety && npm run test:recovery && npm run test:discovery && npm run test:solana && npm run test:turnover && npm run test:updater && npm run test:execution && npm run test:unit-economics && npm run test:settlement && npm run test:polymarket-us && npm run test:combos && npm run test:edge-robustness && npm run test:accounting && npm run test:replay && npm run test:experiments && npm run test:research && npm run test:evidence && npm run test:poly-research-eval && npm run test:evolution && npm run test:lab-link && npm run test:visual && npm run test:release-gate && npm run test:latency && npm run test:robinhood && npm run test:robinhood-equities && npm run test:lane-contracts && npm run test:fitness && npm run test:unattended && npm run test:upgrade && npm run test:pump-profit && npm run test:paper-completion && npm run test:wallet-crowd && npm run test:paper-bots && npm run test:web-demo && npm run test:paper-potential
+
+
+> money-printer-os@0.5.0-alpha.89 test:wiring
+> node --test tests/test-wiring.test.mjs tests/doc-drift.test.mjs tests/src-reachability.test.mjs
+
+✖ the engine line states the export surface and the guard src/index.js actually has (3.5634ms)
+✖ the counts the documents of record quote are the counts on disk (1.0548ms)
+✔ the enter() open item is closed and the suite that closed it is reached by test:all (2.0291ms)
+✔ the disproven import premise survives only as a labelled correction (108.5522ms)
+✔ the agent-state entry points are not older than the record they describe (1.2987ms)
+✔ the open list routes its install item to the release status record (0.4503ms)
+✔ every file in src/ is reachable from a runtime entry point (190.4156ms)
+✔ the reachability walk sees every import form the app uses (0.3075ms)
+✔ runtime code never imports from tools/ (245.0934ms)
+test coverage map (158 suites across 37 targets):
+  test:accounting: 1 file
+  test:combos: 2 files
+  test:discovery: 1 file
+  test:edge-robustness: 1 file
+  test:evidence: 7 files
+  test:evolution: 3 files
+  test:executable-replay: 1 file
+  test:execution: 2 files
+  test:experiments: 1 file
+  test:fitness: 3 files
+  test:lab-link: 5 files
+  test:lane-contracts: 16 files
+  test:latency: 2 files
+  test:paired-safety: 4 files
+  test:paper-bots: 5 files
+  test:paper-completion: 20 files
+  test:paper-potential: 7 files
+  test:poly-research-eval: 1 file
+  test:polymarket-us: 2 files
+  test:pump-profit: 3 files
+  test:recovery: 7 files
+  test:release-gate: 2 files
+  test:replay: 1 file
+  test:research: 7 files
+  test:robinhood: 17 files
+  test:robinhood-equities: 2 files
+  test:settlement: 1 file
+  test:solana: 4 files
+  test:turnover: 2 files
+  test:unattended: 5 files
+  test:unit-economics: 2 files
+  test:updater: 4 files
+  test:upgrade: 6 files
+  test:visual: 9 files
+  test:wallet-crowd: 2 files
+  test:web-demo: 1 file
+  test:wiring: 3 files
+✔ every suite on disk is reachable from npm run test:all (3.2445ms)
+✔ every test path a script names exists, and no file is named twice in one target (25.9274ms)
+✔ the coverage map is complete and printed (telemetry, not a guess) (2.1113ms)
+✔ no embedded Robinhood panel copy is left to drift (0.6407ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 11
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 594.8171
+
+✖ failing tests:
+
+test at tests\doc-drift.test.mjs:55:1
+✖ the engine line states the export surface and the guard src/index.js actually has (3.5634ms)
+  AssertionError [ERR_ASSERTION]: the export surface moved — name the new set here and in the Engine / HUD line together
+  + actual - expected
+
+    [
+      'main',
+      'cycle',
+      'enter',
+      'updatePositions',
+  +   'actions'
+    ]
+
+      at TestContext.<anonymous> (file:///W:/money-printer-os/tests/doc-drift.test.mjs:58:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1306:25)
+      at Test.start (node:internal/test_runner/test:1177:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:385:17) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ 'main', 'cycle', 'enter', 'updatePositions', 'actions' ],
+    expected: [ 'main', 'cycle', 'enter', 'updatePositions' ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at tests\doc-drift.test.mjs:68:1
+✖ the counts the documents of record quote are the counts on disk (1.0548ms)
+  AssertionError [ERR_ASSERTION]: MONEY_PRINTER_STATUS.md quotes a stale suite count
+
+  156 !== 158
+
+      at TestContext.<anonymous> (file:///W:/money-printer-os/tests/doc-drift.test.mjs:72:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1306:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:897:18)
+      at Test.postRun (node:internal/test_runner/test:1447:19)
+      at Test.run (node:internal/test_runner/test:1372:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 156,
+    expected: 158,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

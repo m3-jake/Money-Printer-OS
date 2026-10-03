@@ -1,0 +1,19 @@
+✔ crypto tape keeps per-point provenance, candle closes only, and no invented points (9.9271ms)
+✔ downsampling is bounded, keeps the last real observation per bucket and its range (11.7343ms)
+✔ the tape is read incrementally and restarts after compaction (9.6646ms)
+✔ equity bars stay session closes with honest missing-session gaps (2.4425ms)
+✔ session charts preserve early closes and SIP repair provenance (4.0975ms)
+✔ contract history keeps PROB units, availability and missing sides (4.3428ms)
+✔ groups account for every contract and report window change only where history exists (5.9721ms)
+✔ quotes page, filter and answer If-None-Match with 304 (4.3624ms)
+✔ command-center summary drops contract rows but accounts for them, and summarizes leader replay (2.6782ms)
+✔ history and window-baseline caches remain isolated between data stores (15.6135ms)
+✔ a current contract observation refreshes history even without a new archived version (6.5427ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 302.5358
