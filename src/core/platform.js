@@ -349,7 +349,8 @@ export class MarketPlatform {
   async capturePredictionEvidence({limit=6,now=Date.now()}={}){
     if(this.predictionCaptureBusy)return {status:'RUNNING',ordersSubmitted:0};
     this.predictionCaptureBusy=true;
-    const report={at:now,books:0,settlements:0,errors:[],ordersSubmitted:0};
+    const report={at:now,status:'RUNNING',stage:'DISCOVERY',books:0,settlements:0,errors:[],ordersSubmitted:0};
+    this.predictionCapture=report;
     try{
       // Rotate bounded discovery across the live research families. Metadata is never a fill.
       const series=['KXBTC','KXBTCD','KXHIGHNY','KXHIGHCHI','KXHIGHAUS','KXHIGHLAX'];
@@ -364,17 +365,19 @@ export class MarketPlatform {
       const continuing=eligible.filter(c=>this.predictionCaptureCohort?.has(c.id)).slice(0,bound);
       const selected=[...continuing,...eligible.filter(c=>!continuing.some(x=>x.id===c.id))].slice(0,bound);
       this.predictionCaptureCohort=new Set(selected.map(c=>c.id));
+      report.stage='EXECUTABLE_BOOKS';
       for(let i=0;i<selected.length;i+=2)await Promise.allSettled(selected.slice(i,i+2).map(async c=>{
         this.predictionCaptureTimes.set(c.id,now);
         try{await this.book('kalshi',c.sourceId);report.books++;}catch(e){report.errors.push(String(e.message).slice(0,160));}
       }));
       const due=contracts.filter(c=>c.data.closeAt<=now&&!c.data.settlementOutcome)
         .sort((a,b)=>(this.predictionCaptureTimes.get(a.id)||0)-(this.predictionCaptureTimes.get(b.id)||0)).slice(0,2);
-      for(const c of due){this.predictionCaptureTimes.set(c.id,now);try{const v=await this.contract('kalshi',c.sourceId);if(v.data.settlementOutcome)report.settlements++;}catch(e){report.errors.push(String(e.message).slice(0,160));}}
+      report.stage='SETTLEMENTS';
+      await Promise.allSettled(due.map(async c=>{this.predictionCaptureTimes.set(c.id,now);try{const v=await this.contract('kalshi',c.sourceId);if(v.data.settlementOutcome)report.settlements++;}catch(e){report.errors.push(String(e.message).slice(0,160));}}));
       this.publishPredictionHandoff();
       report.status=report.books?'COLLECTING':'WAITING_FOR_EXECUTABLE_DEPTH';
     }catch(e){report.status='BLOCKED';report.errors.push(String(e.message).slice(0,160));}
-    finally{this.predictionCaptureBusy=false;this.predictionCapture=report;}
+    finally{report.stage='COMPLETE';report.completedAt=Date.now();this.predictionCaptureBusy=false;this.predictionCapture=report;}
     return report;
   }
   publishPredictionHandoff(){
