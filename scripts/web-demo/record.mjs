@@ -57,6 +57,7 @@ const keep = ['PATH', 'Path', 'SYSTEMROOT', 'SystemRoot', 'COMSPEC', 'PATHEXT', 
 const env = Object.fromEntries(keep.filter(k => process.env[k]).map(k => [k, process.env[k]]));
 Object.assign(env, {
   MODE: 'paper', ENABLE_LIVE_TRADING: 'false', OPEN_DASHBOARD: 'false', ALPHA_WORKER_ENABLED: 'false',
+  POLYMARKET_US_REAL_ENABLED: 'false', POLYMARKET_REAL_ENABLED: 'false', ROBINHOOD_REAL_ENABLED: 'false',
   DASHBOARD_HOST: '127.0.0.1', DASHBOARD_PORT: String(ENGINE_PORT),
   MONEY_PRINTER_DATA_DIR: path.join(sandbox, 'data'),
   HOME: sandbox, USERPROFILE: sandbox, APPDATA: sandbox, LOCALAPPDATA: sandbox, TEMP: sandbox, TMP: sandbox,
