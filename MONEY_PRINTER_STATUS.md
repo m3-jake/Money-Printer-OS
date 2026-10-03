@@ -59,6 +59,33 @@ Architecture, active work and release evidence live in `.agent-state/PROJECT_STA
 ledger remains `AUDIT.md` and `PROGRESS.md`. Later sections below are historical unless dated
 as the current release. Last updated: 2026-10-03.
 
+## Batch PF-7 (2026-10-03, Claude): engine stall watchdog, no more reload storm, weather replay verdict (alpha.85)
+
+Found while finishing the audit on WITCHDOCTOR (alpha.84 installed):
+
+- **Engine stall.**
+  - **What happened:** the Pump.fun engine finished its last cycle at 07:54:53 UTC, right after a paper stop-loss
+    exit, and then sat inside one cycle for 100+ minutes. `/api/health` still said HEALTHY.
+  - **Why:** the cycle budget only cancels wired fetches and checks phase boundaries.
+  - **Fix:** the loop now races each cycle against 2× its budget (at least 60 s). A stalled cycle is abandoned:
+    - its last stage is recorded;
+    - in-flight work is aborted;
+    - its late save is skipped;
+    - it is journaled, and trading continues.
+  - `/api/health` reports STALLED, and `/api/telemetry` carries the engine heartbeat, so the HUD turns red
+    ("Engine stalled · N min").
+- **Reload storm.**
+  - **What happened:** `desktop.log` showed the dashboard reloading every ~10 s under load. The supervisor swapped
+    the HUD for the recovery page on a single 1.5 s health timeout, then reloaded it on the next answer.
+  - **Fix:** the probe waits 5 s, and the recovery page needs three misses in a row.
+- **Weather replay verdict** (690 city-days, 10 cities, 300 variants on 12 cores; Codex's replay agrees).
+  - The live weather settings lost about 9¢ per $1 bet on validation (200 bets) and on holdout (207 bets).
+  - The best variant (σ × 1.6, edge ≥ 7¢, gap ≤ 10¢) made +19¢ per bet on 61 holdout bets, with a CI spanning zero.
+  - Nothing is promoted. The weather bot stays a $12.50 paper experiment, and the forward farm decides.
+- **Still open.** The risk step can take about 11 s per cycle. It waits on slow general Solana RPC calls. Holder
+  lookups already use the dedicated Helius RPC and are circuit-broken. Moving the risk lookups off the cycle is a
+  trading-flow change for a later batch.
+
 ## Browser and desktop UI corrections (2026-10-03, Codex)
 
 - Cloudflare Pages now deploys the browser demo automatically after relevant pushes to `main`.

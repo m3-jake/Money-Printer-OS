@@ -71,3 +71,15 @@ export function renewComputeLease(token, { file = computeBudgetFile(), ttlMs = 6
 export function releaseComputeLease(token, { file = computeBudgetFile() } = {}) {
   return transaction(file, state => { state.leases = state.leases.filter(l => l.token !== token || l.pid !== process.pid); return { ok: true }; });
 }
+
+// A normal collision must not orphan a live owner's slots. Retain ownership while the
+// asynchronous retry yields to the process currently committing the shared budget.
+export async function releaseComputeLeaseAsync(token, { file = computeBudgetFile(), timeoutMs = 15000, retryMs = 25 } = {}) {
+  const started = Date.now();
+  for (;;) {
+    const result = releaseComputeLease(token, { file });
+    if (result.ok) return result;
+    if (result.reason !== 'budget busy' || Date.now() - started >= timeoutMs) throw new Error(`lease release failed: ${result.reason}`);
+    await new Promise(resolve => setTimeout(resolve, retryMs));
+  }
+}

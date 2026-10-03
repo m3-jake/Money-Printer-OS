@@ -186,7 +186,8 @@ test('the engine batches the cycle volume and appends one row per event, never p
   // Pump copy adds three bounded event sites: one decoded signal, one asynchronous quote error,
   // and one startup subscription error. It does not journal a per-candidate cycle loop.
   assert.equal((engine.match(/appendJournal\(\{ type: 'pumpfun-copy-paper-(?:signal|error)'/g) || []).length, 3);
-  assert.ok(singleSites <= 35,
+  // alpha.85 adds one: the stall watchdog journals an abandoned (stalled) cycle, once per stall.
+  assert.ok(singleSites <= 36,
     `the engine's single appends are per event (${singleSites} event sites); a per-row append raises this count`);
   // Exactly one line in the merged engine appends inside a loop, and it is named here instead of hidden:
   // the on-chain flow observer writes one row per signal, but only when the snapshot was NOT cached — a
