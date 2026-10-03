@@ -57,7 +57,7 @@
   const visible = () => { const p = root(), w = p?.closest('.window'); return !!(p && w && p.classList.contains('on') && !w.classList.contains('hidden') && !w.classList.contains('glance')); };
   function draw(force = false) { const r = root(); if (!visible() || (!force && drawn === r.id + ':' + stamp)) return; if (!force && r.contains(document.activeElement) && document.activeElement.matches('input,select')) return; drawn = r.id + ':' + stamp; const top = r.scrollTop; r.innerHTML = `<div class="core-app whale-app">${error ? `<p class="core-error" role="alert">${escape(error)}</p>` : ''}${view()}</div>`; r.scrollTop = top; }
   async function act(fn) { if (busy) return; busy = true; error = ''; stamp++; draw(true); try { await fn(); } catch (e) { error = e.message; } finally { busy = false; stamp++; draw(true); } }
-  async function refresh(force = false) { if (!visible() || (!force && Date.now() - lastFetch < 30000)) return; lastFetch = Date.now(); await act(async () => { data = await api('/whales?minSol=' + minSol); }); }
+  async function refresh(force = false) { if (!(visible() || window.MPOProgramVisible?.('whales')) || (!force && Date.now() - lastFetch < 30000)) return; lastFetch = Date.now(); await act(async () => { data = await api('/whales?minSol=' + minSol); }); }
   document.addEventListener('click', e => { const b = e.target.closest('[data-whale]'); if (!b || !root()?.contains(b)) return; if (b.dataset.whale === 'token') act(async () => { token = await api('/whales/token?mint=' + encodeURIComponent(b.dataset.m)); wallet = null; }); if (b.dataset.whale === 'wallet') act(async () => { wallet = await api('/whales/wallet?address=' + encodeURIComponent(b.dataset.a)); }); });
   document.addEventListener('change', e => { if (root()?.contains(e.target) && e.target.matches('[data-whale-min]')) { minSol = Number(e.target.value) || 10; refresh(true); } });
   document.addEventListener('submit', e => {
@@ -67,5 +67,16 @@
     act(async () => { if (kind === 'wallet') wallet = await api('/whales/wallet?address=' + encodeURIComponent(q)); else { token = await api('/whales/token?mint=' + encodeURIComponent(q)); wallet = null; } });
   });
   setInterval(() => { if (!document.hidden) refresh(); }, 15000);
+  // Simple view: whale-sized Pump.fun swaps, recurring holders and mint authorities.
+  function glanceCard() {
+    if (!data) return glance({ title: 'Whale Watch · Solana', pill: { label: error ? 'Unavailable' : 'Loading', tone: error ? 'bad' : 'warn' }, hero: null, visual: `<div class="g-empty">${escape(error || 'Loading Solana research data…')}</div>` });
+    const flow = data.flow || [], buys = flow.filter(f => /buy/i.test(f.side)), sol = flow.reduce((t, f) => t + (f.sol || 0), 0);
+    return glance({ title: 'Whale Watch · Solana', pill: { label: `indexer ${String(data.scorecard?.indexer?.status || 'unknown').toLowerCase()}`, tone: data.available?.events ? 'ok' : 'warn' },
+      hero: sol.toFixed(1), heroUnit: 'SOL', heroSub: `whale swaps of at least ${minSol} SOL · ${buys.length} buys, ${flow.length - buys.length} sells`,
+      stats: [{ label: 'Swaps', value: String(flow.length) }, { label: 'Recurring holders', value: String((data.recurring || []).length) }, { label: 'Mint authorities', value: String((data.authorities || []).length) }],
+      visual: `<div class="g-rows g-scroll">${flow.slice(0, 12).map(f => gRow(`${f.side} ${f.symbol || String(f.mint || '').slice(0, 6)}`, `${f.label || String(f.wallet || '').slice(0, 6) + '…'} · ${when(f.ts)}`, f.sol.toFixed(2) + ' SOL', /buy/i.test(f.side) ? 'ok' : 'bad')).join('') || `<div class="g-empty">${data.available?.events ? 'No swaps above this size.' : 'No indexed swaps yet (the wallet indexer needs a Helius key).'}</div>`}</div>`,
+      foot: gFoot(['observations, not signals', 'Advanced: token graphs, wallets']) });
+  }
+  addEventListener('DOMContentLoaded', () => window.MPOProgramGlance?.register('whales', { render: glanceCard, sig: () => [stamp, error] }));
   window.MPOWhales = { render() { draw(); refresh(); } };
 })();

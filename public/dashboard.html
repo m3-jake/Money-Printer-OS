@@ -1753,6 +1753,8 @@ function programActive(host){const t=activeTab[host];return hasTabs(host)&&t&&t!
 window.MPOProgramActive=programActive;
 window.MPOProgramVisible=id=>{const h=hostOf(id);return h!==id&&glanceVisible(h)&&programActive(h)===id};
 function programFallback(id){const a=appMeta(id);return glance({title:a?.[1]||id,pill:{label:'Simple view',tone:''},hero:null,visual:`<div class="g-empty">${polyEscape(a?.[1]||id)} shows its full workstation in Advanced.</div>`,action:'<button class="g-action" data-open-advanced>Open Advanced</button>'})}
+// Cards whose data arrives asynchronously redraw within 2 s (a signature check; nothing renders unless it changed).
+setInterval(()=>{if(!document.hidden)renderPrograms()},2000);
 function renderPrograms(){
  for(const h of HOSTS){const id=programActive(h);if(!id||!glanceVisible(h))continue;const def=PROGRAM_GLANCE[id],el=document.getElementById('glance-'+h);if(!el)continue;
   const key=JSON.stringify(def?.sig?def.sig():null);if(renderSig.get('p:'+id)===key&&el.dataset.program===id)continue;renderSig.set('p:'+id,key);
@@ -1760,6 +1762,79 @@ function renderPrograms(){
   el.innerHTML=def?def.render():programFallback(id);el.dataset.program=id;el._mpoHTML=null;def?.after?.(el);
   el.querySelector('[data-open-advanced]')?.addEventListener('click',()=>setDetail(h,true));}
 }
+// Pump.fun window programs (state lives here, so their cards do too).
+const gAgo=t=>{if(!t)return 'never';const m=Math.round((Date.now()-t)/60000);return m<1?'just now':m<90?m+' min ago':m<2880?Math.round(m/60)+' h ago':Math.round(m/1440)+' d ago'};
+const gShort=a=>{a=String(a||'');return a.length>12?a.slice(0,4)+'…'+a.slice(-4):a};
+PROGRAM_GLANCE.evolution={sig:()=>{const e=state?.evolutionLoop||{},w=window.MPOBots?.data?.lab;return[e.status,e.generation,state?.labLink?.connected,w?.updatedAt]},render(){
+ const e=state?.evolutionLoop||{},l=state?.labLink||{},w=window.MPOBots?.data?.lab,jobs=Object.entries(w?.jobs||{}),ok=jobs.filter(([,j])=>j.ok).length,farm=w?.farm,b=w?.btcVol;
+ return glance({title:'Evolution Lab · Research Workbench',pill:l.connected?{label:'Lab connected',tone:'ok'}:{label:'Lab not connected',tone:'warn'},
+  hero:w?`${ok}/${jobs.length}`:'—',heroUnit:w?'jobs ok':'',heroSub:w?polyEscape(farm?.note||'Reviewing the paper-bot farm'):'The Workbench publishes once the Lab on this PC runs',
+  stats:[{label:'Furnace',value:polyEscape(String(w?.furnace||e.status||'—').toLowerCase())},{label:'Farm variants',value:String(farm?.variants??'—')},{label:'BTC vol fit',value:b?.best!=null?'× '+b.best:'—',tone:b?.recommend?'g-pos':''}],
+  visual:`<div class="g-rows g-scroll">${jobs.map(([id,j])=>gRow(id,`every ${j.everyMin} min · ${gAgo(j.lastRunAt)}${j.error?' · '+j.error:''}`,'',j.ok===false?'bad':j.lastRunAt?'ok':'warn')).join('')||'<div class="g-empty">No Workbench jobs reported yet.</div>'}</div>`,
+  foot:gFoot([e.champion?.id&&'champion '+e.champion.id,'paper only','Advanced: lab link, champion, gates'])})}};
+PROGRAM_GLANCE.wallet={sig:()=>[state?.walletIntel?.wallets?.length,state?.walletIntel?.holderRpc?.status,state?.walletIntel?.holderRpc?.calls],render(){
+ const w=state?.walletIntel?.wallets||[],h=state?.walletIntel?.holderRpc||{},top=w.slice().sort((a,b)=>(b.realizedPnlSol||0)-(a.realizedPnlSol||0)).slice(0,10);
+ return glance({title:'Wallet Intel · Pump.fun',pill:h.status==='OK'?{label:'Holder data ok',tone:'ok'}:{label:'Holder data '+String(h.status||'waiting').toLowerCase().replace('_',' '),tone:'warn'},
+  hero:String(w.length),heroUnit:'wallets scored',heroSub:`${polyEscape(h.provider||'holder RPC')}${h.dedicated?'':' (public RPC)'} · ${h.calls||0}${h.dailyBudget?' / '+h.dailyBudget:''} calls today`,
+  stats:[{label:'Profitable',value:String(w.filter(x=>(x.realizedPnlSol||0)>0).length),tone:'g-pos'},{label:'Round trips',value:String(w.reduce((s,x)=>s+(x.roundTrips||0),0))},{label:'Best win rate',value:w.length?Math.round(Math.max(...w.map(x=>x.winRate||0))*100)+'%':'—'}],
+  visual:`<div class="g-rows g-scroll">${top.map(x=>gRow(gShort(x.wallet),`${x.roundTrips||0} trips · win ${Math.round((x.winRate||0)*100)}%`,`<span class="${(x.realizedPnlSol||0)>=0?'g-pos':'g-neg'}">${fmt(x.realizedPnlSol,3)} SOL</span>`,(x.realizedPnlSol||0)>=0?'ok':'bad')).join('')||'<div class="g-empty">No wallet intelligence collected yet.</div>'}</div>`,
+  foot:gFoot(['realized P/L per wallet','observations, not advice'])})}};
+PROGRAM_GLANCE.risk={sig:()=>{const s=state||{},p=s.portfolio||{};return[p.positionsValueSol,p.unrealizedPnlSol,s.dailyPnlSol,s.consecutiveLosses,s.system?.health,s.config?.dailyLossLimitSol,(s.positions||[]).length]},render(){
+ const s=state||{},p=s.portfolio||{},limit=Number(s.config?.dailyLossLimitSol)||0,daily=Number(s.dailyPnlSol||0),used=limit>0?Math.min(100,Math.max(0,(-daily)/limit*100)):0,pos=s.positions||[];
+ return glance({title:'Risk Radar · Pump.fun paper',pill:s.system?.killSwitch?{label:'Kill switch on',tone:'bad'}:used>=80?{label:'Near daily loss limit',tone:'bad'}:used>=50?{label:'Watch the daily limit',tone:'warn'}:{label:'Inside limits',tone:'ok'},
+  hero:Math.round(used)+'<small>%</small>',heroSub:limit?`of today's ${fmt(limit,3)} SOL loss limit used · today ${gSigned(daily,4)} SOL`:'No daily loss limit set',
+  stats:[{label:'Open exposure',value:fmt(p.positionsValueSol,4)+' SOL'},{label:'Unrealized',value:gSigned(p.unrealizedPnlSol,4),tone:gTone(p.unrealizedPnlSol)},{label:'Losses in a row',value:String(s.consecutiveLosses||0),tone:(s.consecutiveLosses||0)>=3?'g-neg':''}],
+  visual:`<div class="g-rows g-scroll">${pos.map(x=>gRow(x.symbol||gShort(x.mint),`held ${gAgo(x.openedAt||x.entryTime)}`,`<span class="${gTone(x.pnlPct)}">${gSigned(x.pnlPct,1,'%')}</span>`,Number(x.pnlPct)>=0?'ok':'bad')).join('')||'<div class="g-empty">No open positions.</div>'}</div>`,
+  foot:gFoot([polyEscape(String(s.system?.health||'—').toLowerCase()),'paper book','Advanced: limits and exposure detail'])})}};
+PROGRAM_GLANCE.archive={sig:()=>[journal.length,journal.at(-1)?.ts],render(){
+ const rows=journal.slice(-200),errs=rows.filter(x=>x.type==='error'),types=new Set(rows.map(x=>x.type));
+ return glance({title:'Archive · runtime log',pill:errs.length?{label:errs.length+' errors',tone:'bad'}:{label:'No errors',tone:'ok'},
+  hero:String(rows.length),heroUnit:'entries',heroSub:rows.length?'latest '+gAgo(rows.at(-1).ts)+': '+polyEscape(String(rows.at(-1).msg||rows.at(-1).message||rows.at(-1).type||'').slice(0,80)):'Nothing logged yet',
+  stats:[{label:'Errors',value:String(errs.length),tone:errs.length?'g-neg':''},{label:'Kinds',value:String(types.size)},{label:'Last entry',value:rows.length?gAgo(rows.at(-1).ts):'—'}],
+  visual:`<div class="g-rows g-scroll">${rows.slice(-12).reverse().map(x=>gRow(String(x.msg||x.message||x.type||''),`${x.type||''} · ${gAgo(x.ts)}`,'',x.type==='error'?'bad':'ok')).join('')||'<div class="g-empty">No entries.</div>'}</div>`,
+  foot:gFoot(['runtime log','Journal has the milestones'])})}};
+PROGRAM_GLANCE.control={sig:()=>{const s=state||{};return[s.mode,s.system?.paused,s.system?.killSwitch,s.config,s.runtime]},render(){
+ const s=state||{},c=s.config||{},paused=!!s.system?.paused,killed=!!s.system?.killSwitch;
+ const rows=[['Max open positions',c.maxOpenPositions??'—'],['Max total exposure',c.maxTotalExposureSol!=null?fmt(c.maxTotalExposureSol,3)+' SOL':'—'],['Daily loss limit',c.dailyLossLimitSol!=null?fmt(c.dailyLossLimitSol,3)+' SOL':'—'],['Stop loss',c.stopLossPct!=null?c.stopLossPct+'%':'—'],['Scan every',c.scanIntervalSec!=null?c.scanIntervalSec+' s':'—']];
+ return glance({title:'Control Bay · Pump.fun',pill:killed?{label:'Kill switch',tone:'bad'}:paused?{label:'Paused',tone:'warn'}:{label:'Running',tone:'ok'},
+  hero:killed?'Kill switch':paused?'Paused':'Running',heroText:true,heroSub:'paper trading · every change is logged',
+  stats:[{label:'Mode',value:polyEscape(String(s.mode||'paper').toUpperCase())},{label:'Paused',value:paused?'yes':'no',tone:paused?'g-neg':''},{label:'Kill switch',value:killed?'on':'off',tone:killed?'g-neg':''}],
+  visual:`<div class="g-rows">${rows.map(([k,v])=>gRow(k,'',polyEscape(String(v)),null)).join('')}</div>`,
+  foot:gFoot(['Advanced: change settings, pause, kill switch'])})}};
+PROGRAM_GLANCE.researchmon={sig:()=>[researchMonitor?.status,researchMonitor?.completed,researchMonitor?.total,(researchMonitor?.running||[]).length],render(){
+ const r=researchMonitor||{},running=r.running||[],total=Number(r.total||0),done=Number(r.completed||0),leaders=(r.leaderboard?.length?r.leaderboard:r.experiments)||[];
+ return glance({title:'Lab Monitor · experiments',pill:String(r.status||'idle').toUpperCase()==='RUNNING'?{label:'Running',tone:'ok'}:String(r.status).toUpperCase()==='ERROR'?{label:'Error',tone:'bad'}:{label:String(r.status||'idle').toLowerCase(),tone:''},
+  hero:total?Math.round(done/total*100)+'<small>%</small>':'—',heroSub:total?`${done} of ${total} experiments done · ${Number(r.queueRemaining||0)} queued`:'No experiment batch running',
+  stats:[{label:'Running',value:String(running.length)},{label:'Lifetime tested',value:Number(r.lifetimeTested||done).toLocaleString()},{label:'Rejected',value:String(Object.values(r.rejections||{}).reduce((s,x)=>s+Number(x||0),0))}],
+  visual:`<div class="g-rows g-scroll">${leaders.slice(0,10).map(x=>gRow(x.id||x.name||'experiment',polyEscape(String(x.status||x.verdict||'')),x.score!=null?fmt(x.score,3):'',/pass|qualif|keep/i.test(String(x.status||x.verdict))?'ok':'warn')).join('')||'<div class="g-empty">No experiments yet.</div>'}</div>`,
+  foot:gFoot(['research only','Advanced: rejections and full leaderboard'])})}};
+PROGRAM_GLANCE.network={sig:()=>[networkState?.peers?.length,(networkState?.peers||[]).filter(p=>p.online).length,networkState?.messages?.length,networkState?.error],render(){
+ const n=networkState||{},peers=n.peers||[],online=peers.filter(p=>p.online),msgs=n.messages||[];
+ return glance({title:'Network · your machines',pill:n.error?{label:'Error',tone:'bad'}:online.length?{label:online.length+' online',tone:'ok'}:{label:'Only this machine',tone:''},
+  hero:String(online.length),heroUnit:'peers online',heroSub:n.room?'room '+polyEscape(n.room):'Private mesh between your own Money Printer OS machines',
+  stats:[{label:'Known peers',value:String(peers.length)},{label:'Messages',value:String(msgs.length)},{label:'This machine',value:polyEscape(n.self?.name||'—')}],
+  visual:`<div class="g-rows g-scroll">${peers.map(p=>gRow(p.name||p.nodeId||'peer',`${p.online?'online':'last seen '+gAgo(p.lastSeen)}${p.mode?' · '+String(p.mode).toLowerCase():''}`,'',p.online?'ok':'warn')).join('')||'<div class="g-empty">No other machines have joined yet.</div>'}</div>`,
+  foot:gFoot(['signed messages','Advanced: chat and contributions'])})}};
+PROGRAM_GLANCE.log={sig:()=>[journal.length,journal.at(-1)?.ts],render(){
+ const rows=journal.slice(-180),errs=rows.filter(x=>x.type==='error').length,evo=rows.filter(x=>x.type==='evolution').length,last=rows.at(-1);
+ return glance({title:'Live log',pill:errs?{label:errs+' errors',tone:'bad'}:{label:'Clean',tone:'ok'},
+  hero:String(rows.length),heroUnit:'lines',heroSub:last?`latest ${gAgo(last.ts)}: ${polyEscape(String(last.msg||last.message||last.type||'').slice(0,90))}`:'Waiting for the first log line',
+  stats:[{label:'Errors',value:String(errs),tone:errs?'g-neg':''},{label:'Evolution',value:String(evo)},{label:'Last line',value:last?gAgo(last.ts):'—'}],
+  visual:`<div class="g-rows g-scroll">${rows.slice(-14).reverse().map(x=>gRow(String(x.msg||x.message||x.type||''),`${x.type||''} · ${new Date(x.ts||Date.now()).toLocaleTimeString()}`,'',x.type==='error'?'bad':'ok')).join('')||'<div class="g-empty">No log lines yet.</div>'}</div>`,
+  foot:gFoot(['newest first','Advanced: the full scrolling log'])})}};
+PROGRAM_GLANCE.updater={sig:()=>[updateState?.status,updateState?.current,updateState?.note],render(){
+ const u=updateState||{},st=String(u.status||'IDLE').toUpperCase(),good=['CURRENT','READY'].includes(st),busy=['CHECKING','INSTALLING'].includes(st);
+ return glance({title:'Updater',pill:good?{label:st==='READY'?'Update ready':'Up to date',tone:'ok'}:busy?{label:st.toLowerCase(),tone:'warn'}:{label:st.toLowerCase(),tone:''},
+  hero:'v'+polyEscape(String(u.current||state?.build?.version||'—')),heroText:true,heroSub:polyEscape(u.note||'Signed updates only; nothing installs without your click.'),
+  stats:[{label:'Status',value:polyEscape(st.toLowerCase())},{label:'Mode',value:polyEscape(String(state?.mode||'paper').toUpperCase())},{label:'Build',value:polyEscape(String(state?.build?.provenance?.sourceCommit||'').slice(0,7)||'—')}],
+  visual:`<div class="g-brand"><img src="/assets/money-printer-logo-512.png" alt=""><div><div class="g-brand-name">MONEY PRINTER OS</div><div class="g-hero-sub">paper research desk</div></div></div>`,
+  action:'<button class="g-action" data-open-advanced>Check for updates</button>'})}};
+PROGRAM_GLANCE.settings={sig:()=>[displayPrefs,state?.mode],render(){
+ const d=displayPrefs,rows=[['Text size',{S:'Small',M:'Medium',L:'Large',XL:'Extra large'}[d.textSize]||d.textSize],['View',d.fullDetail?'Advanced everywhere':'Simple (Advanced per window)'],['Motion',d.lowMotion?'Low motion':'Full motion'],['On launch',d.restoreOnLaunch?'Reopen my windows':'Empty desktop'],['Trading mode',String(state?.mode||'paper').toUpperCase()]];
+ return glance({title:'Settings',pill:{label:'Paper only build',tone:'ok'},hero:'Your desktop',heroText:true,heroSub:'Display, motion and launch preferences · background and data options in Advanced',
+  stats:[{label:'Text',value:polyEscape(String(d.textSize))},{label:'View',value:d.fullDetail?'Advanced':'Simple'},{label:'Motion',value:d.lowMotion?'Low':'Full'}],
+  visual:`<div class="g-rows">${rows.map(([k,v])=>gRow(k,'',polyEscape(String(v)),null)).join('')}</div>`,
+  action:'<button class="g-action" data-open-advanced>Change settings</button>'})}};
 function renderGlances(){for(const h of HOSTS){const g=GLANCE[h];if(!g||!glanceVisible(h)||programActive(h))continue;const el=document.getElementById('glance-'+h);if(el&&el.dataset.program){delete el.dataset.program;renderSig.delete('g:'+h)}const key=JSON.stringify(g.sig());if(renderSig.get('g:'+h)===key)continue;renderSig.set('g:'+h,key);g.render()}}
 function renderAll(force=false){
  const t0=performance.now();

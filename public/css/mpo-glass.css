@@ -107,8 +107,9 @@
 .icon span, .icon .label { color: #fff; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55), 0 0 8px rgba(0, 0, 0, 0.25); }
 
 /* ---- Window contents: clear, so the glass reads through ----------------------------------------- */
-.glancepane, .glance, .body, .tabpane, .body.tabbed { background: transparent !important; }
-.glance { color: var(--glass-ink); }
+/* .glance is also the class a Simple-mode window carries, so the window itself is excluded here. */
+.glancepane, .glance:not(.window), .body, .tabpane, .body.tabbed { background: transparent !important; }
+.glance:not(.window) { color: var(--glass-ink); }
 .g-title { color: var(--glass-ink); font-weight: 700; letter-spacing: 0.01em; }
 .g-pill { border: 1px solid rgba(255, 255, 255, 0.6) !important; border-radius: 999px !important; background: rgba(255, 255, 255, 0.45) !important; color: var(--glass-ink) !important; }
 

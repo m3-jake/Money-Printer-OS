@@ -62,7 +62,7 @@
     root.scrollTop = top;
   }
   async function refresh(force = false) {
-    if (busy || (!force && Date.now() - lastFetch < 10000) || !IDS.some(visible)) return;
+    if (busy || (!force && Date.now() - lastFetch < 10000) || !IDS.some(id => visible(id) || window.MPOProgramVisible?.(id))) return;
     busy = true; lastFetch = Date.now();
     try {
       const [j, c] = await Promise.all([fetch('/api/polymarket-us/combos/journal', { cache: 'no-store' }), fetch('/api/platform/status', { cache: 'no-store' })]);
@@ -71,6 +71,38 @@
     } catch (e) { error = e.message; }
     finally { busy = false; stamp++; IDS.forEach(draw); }
   }
+  // Simple views for Positions, History and Performance.
+  const waiting = title => glance({ title, pill: { label: error ? 'Unavailable' : 'Loading', tone: error ? 'bad' : 'warn' }, hero: null, visual: `<div class="g-empty">${escape(error || 'Loading the combo journal…')}</div>` });
+  const CARDS = {
+    pmpositions() {
+      if (!journal) return waiting('Polymarket · positions');
+      const open = journal.open || [], paper = corePoly().flatMap(a => a.positions.map(p => ({ ...p, account: a.account }))), cost = paper.reduce((t, p) => t + (Number(p.costBasis) || 0), 0);
+      return glance({ title: 'Polymarket · positions', pill: open.length ? { label: `${open.length} live unreconciled`, tone: 'warn' } : { label: 'Paper only', tone: 'ok' },
+        hero: String(paper.length + open.length), heroUnit: 'open', heroSub: `${paper.length} paper positions · ${open.length} live combos`,
+        stats: [{ label: 'Paper cost basis', value: usd(cost) }, { label: 'Live combos', value: String(open.length) }, { label: 'Unverified fills', value: String(open.filter(x => x.fillVerified !== true).length) }],
+        visual: `<div class="g-rows g-scroll">${[...open.map(x => gRow(legs(x), `LIVE · ${x.status} · ${when(x.at)}`, usd(x.costUsd), x.fillVerified === true ? 'ok' : 'warn')), ...paper.map(p => gRow(p.instrumentId, `paper · ${p.strategyId}`, usd(p.costBasis), 'ok'))].join('') || '<div class="g-empty">No open positions.</div>'}</div>`,
+        foot: gFoot(['read only', 'Advanced: fills, ledger, verification']) });
+    },
+    pmhistory() {
+      if (!journal) return waiting('Polymarket · history');
+      const rows = journal.history || [], pnl = rows.reduce((t, x) => t + (Number(x.pnlUsd) || 0), 0), won = rows.filter(x => Number(x.pnlUsd) > 0).length;
+      return glance({ title: 'Polymarket · history', pill: { label: `last ${rows.length}`, tone: '' },
+        hero: usd(pnl), heroSub: `net over ${rows.length} settled combos (live, unreconciled)`,
+        stats: [{ label: 'Settled', value: String(rows.length) }, { label: 'Won', value: String(won), tone: won ? 'g-pos' : '' }, { label: 'Lost', value: String(rows.length - won), tone: rows.length - won ? 'g-neg' : '' }],
+        visual: `<div class="g-rows g-scroll">${rows.slice(0, 14).map(x => gRow(legs(x), `${when(x.settledAt || x.at)} · ${x.result || x.status || ''}`, `<span class="${Number(x.pnlUsd) >= 0 ? 'g-pos' : 'g-neg'}">${usd(x.pnlUsd)}</span>`, Number(x.pnlUsd) >= 0 ? 'ok' : 'bad')).join('') || '<div class="g-empty">Nothing settled yet.</div>'}</div>`,
+        foot: gFoot(['fees are inside cost and P/L', 'Advanced: core paper ledger']) });
+    },
+    pmperformance() {
+      const p = journal?.performance; if (!p) return waiting('Polymarket · performance');
+      if (window.MPOViz) MPOViz.set('pm-perf-g', 'lines', { series: [{ label: 'net P/L', color: '#ffb000', points: p.curve }], unit: '$', empty: 'Cumulative P/L appears once combos settle' });
+      return glance({ title: 'Polymarket · performance', pill: { label: `${p.settled} settled`, tone: p.settled >= 30 ? 'ok' : 'warn' },
+        hero: usd(p.netPnlUsd ?? 0), heroSub: `net P/L · ROI ${p.roiPct === null ? '—' : p.roiPct.toFixed(1) + '%'} · win rate ${pct(p.winRate)}${p.winRateCi95 ? ` (95%: ${pct(p.winRateCi95.low)}–${pct(p.winRateCi95.high)})` : ''}`,
+        stats: [{ label: 'Won / lost', value: `${p.won} / ${p.lost}` }, { label: 'Avg implied', value: pct(p.avgImplied) }, { label: 'Realized − implied', value: p.edge === null ? '—' : (p.edge * 100).toFixed(1) + ' pts', tone: p.edge > 0 ? 'g-pos' : p.edge < 0 ? 'g-neg' : '' }],
+        visual: window.MPOViz ? `<div class="g-fill">${MPOViz.canvas('pm-perf-g', 120, 'cumulative net P/L')}</div>` : '',
+        foot: gFoot([p.sampleNote || 'small samples swing widely', 'Advanced: calibration by fill price']) });
+    },
+  };
+  addEventListener('DOMContentLoaded', () => { for (const id of IDS) window.MPOProgramGlance?.register(id, { render: CARDS[id], sig: () => [stamp, error] }); });
   function render() { IDS.forEach(draw); refresh(); }
   setInterval(() => { if (!document.hidden) refresh(); }, 10000);
   window.MPOPolymarket = { render, refresh: () => refresh(true) };

@@ -121,5 +121,28 @@
     else act('reset', { bot, startUsd: Number(input.startUsd), confirmation: input.confirmation }, 'Paper book reset.');
   });
   setInterval(() => { if (!document.hidden && (Object.keys(PANES).some(visible) || document.querySelector('.window[data-app="kalshi"]:not(.hidden)') || document.querySelector('.window[data-app="sportsbook"]:not(.hidden)'))) load(); }, 15000);
+  // Simple views: every Kalshi paper bot (and the farm's leader), and the copy bot with its leaders.
+  const miniRow = (name, b) => gRow(name, `${b.settings.enabled ? 'on' : 'paused'} · ${b.open.length} open · ${b.stats.settled ?? b.stats.closed ?? 0} settled${b.stats.brierModel != null ? ` · model ${b.stats.brierModel < b.stats.brierMarket ? 'beats' : 'trails'} market` : ''}`, `${usd(b.equityUsd)} <span class="${b.returnPct > 0 ? 'g-pos' : b.returnPct < 0 ? 'g-neg' : ''}">${pct(b.returnPct)}</span>`, b.lastError ? 'bad' : b.settings.enabled ? 'ok' : 'warn');
+  function botsCard() {
+    if (!data) return glance({ title: 'Kalshi · paper bots', pill: { label: error ? 'Unavailable' : 'Loading', tone: error ? 'bad' : 'warn' }, hero: null, visual: `<div class="g-empty">${escape(error || 'Loading paper bots…')}</div>` });
+    const k = data.kalshi, w = k.weather, c = k['weather-nws'], b = k.btc, f = data.farm, lead = f?.variants?.slice().sort((x, y) => y.pnlUsd - x.pnlUsd)[0], settled = (f?.variants || []).reduce((t, v) => t + v.settled, 0);
+    if (window.MPOViz) MPOViz.set('bots-g', 'lines', { series: [{ label: 'weather', color: '#39ff68', points: curvePts(w) }, { label: 'control', color: '#7fd3ff', points: curvePts(c || { curve: [] }) }, { label: 'BTC', color: '#ffb000', points: curvePts(b) }], unit: '$', empty: 'Curves start at the first settled bet', zero: false });
+    return glance({ title: 'Kalshi · paper bots', pill: { label: 'Paper only', tone: 'ok' },
+      hero: usd(w.equityUsd + b.equityUsd), heroSub: `weather + BTC paper wallet (started at ${usd(w.startUsd + b.startUsd)})`,
+      stats: [{ label: 'Open bets', value: String(w.open.length + b.open.length) }, { label: 'Settled', value: String(w.stats.settled + b.stats.settled) }, { label: 'Farm leader', value: settled ? escape(lead.id) : '—' }],
+      visual: `${window.MPOViz ? `<div class="g-fill">${MPOViz.canvas('bots-g', 90, 'paper equity after each settled bet')}</div>` : ''}<div class="g-rows">${miniRow('Weather (calibrated)', w)}${c ? miniRow('Weather (NWS control)', c) : ''}${miniRow('BTC range', b)}${f ? gRow('Variant farm', `${f.variants.length} variants · ${settled} settled`, settled ? usd(lead.pnlUsd) : '—', settled ? 'ok' : 'warn') : ''}</div>`,
+      foot: gFoot([data.lab?.farm?.note ? 'Lab: ' + data.lab.farm.note : 'Evolution Lab reviews the farm', 'Advanced: bets, decisions, settings']) });
+  }
+  function copyCard() {
+    if (!data) return glance({ title: 'Polymarket · copy trading', pill: { label: error ? 'Unavailable' : 'Loading', tone: error ? 'bad' : 'warn' }, hero: null, visual: `<div class="g-empty">${escape(error || 'Loading copy bot…')}</div>` });
+    const b = data.polycopy;
+    if (window.MPOViz) MPOViz.set('copy-g', 'lines', { series: [{ label: 'paper equity', color: '#39ff68', points: curvePts(b) }], unit: '$', empty: 'Curve starts at the first closed copy', zero: false });
+    return glance({ title: 'Polymarket · copy trading', pill: { label: b.settings.enabled ? 'Copying (paper)' : 'Paused', tone: b.settings.enabled ? 'ok' : 'warn' },
+      hero: usd(b.equityUsd), heroSub: `<span class="${b.returnPct >= 0 ? 'g-pos' : 'g-neg'}">${pct(b.returnPct)}</span> · copies leaders' new trades at the live book (global Polymarket)`,
+      stats: [{ label: 'Leaders', value: String(b.follows.length) }, { label: 'Open copies', value: String(b.open.length) }, { label: 'Closed P/L', value: usd(b.stats.pnlUsd), tone: b.stats.pnlUsd > 0 ? 'g-pos' : b.stats.pnlUsd < 0 ? 'g-neg' : '' }],
+      visual: `${window.MPOViz ? `<div class="g-fill">${MPOViz.canvas('copy-g', 90, 'paper equity after each closed copy')}</div>` : ''}<div class="g-rows g-scroll">${(b.byLeader.length ? b.byLeader.map(r => gRow(r.leader, `${r.copies} copies · ${r.settled} closed`, `<span class="${r.pnlUsd >= 0 ? 'g-pos' : 'g-neg'}">${usd(r.pnlUsd)}</span>`, r.pnlUsd >= 0 ? 'ok' : 'bad')) : b.follows.map(f => gRow(f.name, `followed ${when(f.followedAt)} · rank #${f.rank}`, '', 'ok'))).join('') || '<div class="g-empty">No leaders followed yet.</div>'}</div>`,
+      foot: gFoot(['only trades made after following', 'Advanced: copies, decisions, settings']) });
+  }
+  addEventListener('DOMContentLoaded', () => { window.MPOProgramGlance?.register('kalshibots', { render: botsCard, sig: () => [data?.at, error] }); window.MPOProgramGlance?.register('pmcopy', { render: copyCard, sig: () => [data?.at, error] }); });
   window.MPOBots = { render() { draw(); load(); }, get data() { return data; }, load };
 })();

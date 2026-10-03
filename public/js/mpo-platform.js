@@ -216,6 +216,14 @@ window.MPOSPlatform = (() => {
       visual:`<div class="g-rows g-scroll">${pairs.slice(0,12).map(x=>gRow(`${x.aTitle} ↔ ${x.bTitle}`,`${x.classification}${x.orientation?' · '+x.orientation.toLowerCase():''}`,'',/EQUIVALENT|MATCH/i.test(x.classification)?'ok':'warn')).join('')||`<div class="g-empty">${escape(error||'No candidate pairs among the loaded contracts.')}</div>`}</div>`,
       foot:gFoot(['settlement terms are checked separately','Advanced: compare rules and depth'])});
   }
+  function marketsGlance(){
+    const poly=contracts.filter(c=>c.provider==='polymarket'),mid=c=>{const d=c.data||{};return d.yesBid!=null&&d.yesAsk!=null?(d.yesBid+d.yesAsk)/2:d.yesAsk??d.yesBid??null};
+    return glance({title:'Polymarket · markets',pill:{label:'Research · paper',tone:''},hero:String(poly.length),heroUnit:'contracts loaded',heroSub:'Polymarket listings in the shared market snapshot (YES price shown)',
+      stats:[{label:'With a price',value:String(poly.filter(c=>mid(c)!=null).length)},{label:'Kalshi contracts',value:String(contracts.filter(c=>c.provider==='kalshi').length)},{label:'Errors',value:error?'1':'0',tone:error?'g-neg':''}],
+      visual:`<div class="g-rows g-scroll">${poly.slice(0,14).map(c=>{const m=mid(c);return gRow(c.data?.title||c.sourceId,c.data?.category||'polymarket',m==null?'—':Math.round(m*100)+'¢','ok')}).join('')||'<div class="g-empty">No Polymarket contracts loaded yet.</div>'}</div>`,
+      foot:gFoot(['Advanced: search, order books, details'])});
+  }
+  addEventListener('DOMContentLoaded',()=>window.MPOProgramGlance?.register('predictionmarkets',{render:marketsGlance,sig:()=>[contracts.length,error]}));
   addEventListener('DOMContentLoaded',()=>window.MPOProgramGlance?.register('arbitrage',{render:arbGlance,sig:()=>[contracts.length,candidates?.pairs?.length,error]}));
   function render(){
     ids.forEach(draw);
