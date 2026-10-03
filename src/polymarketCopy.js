@@ -14,6 +14,7 @@ import { createHash } from 'node:crypto';
 import { writeFileAtomicSync } from './atomicRename.js';
 import { assertPaperPrimaryAvailable, markPaperInitialized } from './paperBookStore.js';
 import { CopyWorkBudget } from './copyWorkBudget.js';
+import { discoveredCopyRows } from './leaderDiscovery.js';
 import { takerFee, polymarketFeeModel } from './core/fees.js';
 import { copyAttribution, copyRisk, COPY_EVICT_MIN_CLOSES } from './copyAttribution.js';
 import { copyEvent, tradeKey, validCopyTrade, fetchLeaderTrades, classifyCopyMarket, CopyMetadataCache, boundedCopyMap, copyLatencySummary, oppositeCopyOutcome, COPY_POLICY_SUPPORT } from './copyEvent.js';
@@ -45,9 +46,9 @@ export function walkSell(bids, qty) {
 const sortBook = b => ({ asks: (b?.asks || []).slice().sort((x, y) => x.price - y.price), bids: (b?.bids || []).slice().sort((x, y) => y.price - x.price) });
 
 export class PolymarketCopyPaper {
-  constructor({ dataDir, tape = null, onLeaderBuy = null, onLeaderEvent = null, metadataCache = null, readCache = null, experiment = null, fetchImpl = globalThis.fetch, now = () => Date.now(), workBudget = {} } = {}) {
+  constructor({ dataDir, tape = null, onLeaderBuy = null, onLeaderEvent = null, metadataCache = null, readCache = null, candidateSource = null, experiment = null, fetchImpl = globalThis.fetch, now = () => Date.now(), workBudget = {} } = {}) {
     this.file = path.join(dataDir, 'polymarket-copy-paper.json'); this.tape = tape; this.onLeaderBuy = onLeaderBuy; this.fetch = fetchImpl; this.now = now; this.busy = false; this.recoveryError = null; this.state = this.load();
-    this.workBudget = new CopyWorkBudget(workBudget); this.onLeaderEvent = onLeaderEvent; this.metadataCache = metadataCache || new CopyMetadataCache({ now }); this.readCache = readCache;
+    this.workBudget = new CopyWorkBudget(workBudget); this.onLeaderEvent = onLeaderEvent; this.metadataCache = metadataCache || new CopyMetadataCache({ now }); this.readCache = readCache; this.candidateSource = candidateSource;
     this.state.intents ||= {}; this.state.cursors ||= {}; this.state.exitLeaders ||= []; this.state.sourceHoldings ||= {}; this.state.receipts ||= [];
     if (experiment && !this.recoveryError) {
       if (!experiment.id || !['direct', 'liquidity-scaled', 'no-trade', 'random-eligible', 'category-specialist', 'momentum-confirmed', 'fade'].includes(experiment.policy)) throw new Error('copy experiment requires id and executable policy');
@@ -121,7 +122,8 @@ export class PolymarketCopyPaper {
         s.exitLeaders = [...new Map(s.exitLeaders.filter(f => s.open.some(p => p.leader === f.wallet)).map(f => [f.wallet, f])).values()];
         if (st.enabled && s.follows.length < st.follows) {
           const category = s.experiment?.policy === 'category-specialist' ? `&category=${s.experiment.category}` : '';
-          let rows = await this.get(`${DATA}/v1/leaderboard?timePeriod=WEEK&orderBy=PNL&limit=50${category}`);
+          let rows = discoveredCopyRows(this.candidateSource?.(), {category:s.experiment?.policy==='category-specialist'?s.experiment.category:'ALL',now:this.now()});
+          if (!rows.length) rows = await this.get(`${DATA}/v1/leaderboard?timePeriod=WEEK&orderBy=PNL&limit=50${category}`);
           if (s.experiment?.policy === 'random-eligible') rows = rows.slice().sort((a, b) => { const score = r => createHash('sha256').update(`${s.experiment.strategyHash}:${r.proxyWallet}`).digest('hex'); return score(a).localeCompare(score(b)); });
           s.follows.push(...pickLeaders(rows, { ...st, follows: st.follows - s.follows.length }, new Set([...s.follows.map(f => f.wallet),...Object.keys(s.evicted)]), this.now()));
           if (category) for (const f of s.follows) { f.leaderboardCategory = s.experiment.category; f.source = `leaderboard ${s.experiment.category} WEEK by PnL`; }

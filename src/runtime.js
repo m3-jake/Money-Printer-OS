@@ -6,6 +6,7 @@ export const isAggressivePaper=(runtime,mode=cfg.mode)=>mode==='paper'&&String(r
 // These profiles share the existing controls; exploratory books carry their own funded limits.
 operatingProfiles.FAST_PAPER_STEADY={aggression:72,exitPreset:'fair',entryFrequency:'high',researchMode:'FAST_PAPER_STEADY',paperLanes:{arbitrage:true,nativeSniper:false},paidModelCalls:0};
 operatingProfiles.BURST_RESEARCH={...operatingProfiles.FAST_PAPER_STEADY,researchMode:'BURST_RESEARCH'};
+operatingProfiles.MAX_RESEARCH={...operatingProfiles.FAST_PAPER_STEADY,researchMode:'MAX_RESEARCH'};
 export function paperLaneEnabled(runtime,lane,mode=cfg.mode){return mode==='paper'&&(runtime?.paperLanes?.[lane]===true||isAggressivePaper(runtime,mode));}
 export function defaults(){return{profile:'FAIR',aggression:72,maxCandidates:cfg.maxCandidates,entryFrequency:'normal',exitPreset:'fair',followLabBest:true,controlMode:'LAB_AUTO',strategies:{UNIFIED_EDGE:true},favorites:[],blacklist:[],pinned:[],visualIntensity:90,autonomyLevel:4,workspace:'TRADE'}}
 export function aggressionParams(v){v=Math.max(0,Math.min(100,Number(v)||0));return{minScore:Math.round(70-v*.38),minStrategyScore:Math.round(68-v*.36),maxOpenPositions:Math.max(1,Math.round(1+v/15)),sizeFactor:.25+v/95,allowWarnings:v>=20}}

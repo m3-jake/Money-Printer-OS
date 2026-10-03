@@ -11,6 +11,44 @@ import {exploratoryVariants,BotFarm} from '../src/botFarm.js';
 import {createPumpfunCopyPaper,qualifiedPumpCopyWallets} from '../src/pumpfunCopyPaper.js';
 import {usSingleExecutableMarket} from '../src/polymarketUS.js';
 import {dailyExecutionQuoteFromEstimates} from '../src/robinhoodAutoTrader.js';
+import {candidateLeaders,LeaderDiscovery,LEADER_SOURCES,discoveredCopyRows} from '../src/leaderDiscovery.js';
+import {commandCenterSnapshot,createLabConnection} from '../src/commandCenter.js';
+
+test('leader discovery deduplicates sources and retains the last real candidates on provider failure',async()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'copy-discovery-')),wallet='0x'+'a'.repeat(40);let offline=false,time=1000,calls=0;
+ const row={proxyWallet:wallet,userName:'Leader',pnl:100,vol:1000,rank:1};
+ const fetchImpl=async()=>{calls++;if(offline)throw Error('provider offline');return {ok:true,json:async()=>[row,{...row,proxyWallet:'invalid'},{...row,proxyWallet:'0x'+'b'.repeat(40),pnl:-1}]};};
+ const discovery=new LeaderDiscovery({dataDir:dir,fetchImpl,now:()=>time});
+ try{const first=await discovery.run();assert.equal(calls,LEADER_SOURCES.length);assert.equal(first.candidates.length,1);assert.equal(first.candidates[0].sources.length,5);assert.equal(first.rejected,10);assert.equal(first.candidates[0].qualification,'UNQUALIFIED');
+  offline=true;time=2000;const failed=await discovery.run();assert.equal(failed.status,'ERROR');assert.equal(failed.lastRunAt,2000);assert.equal(failed.lastSuccessAt,1000);assert.deepEqual(failed.candidates,first.candidates);assert.equal(discovery.snapshot().running,false);
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+test('discovery never elevates leaderboard profit to follower qualification and rejects nonfinite data',()=>{
+ const result=candidateLeaders([{period:'DAY',category:'ALL',rows:[{proxyWallet:'0x'+'c'.repeat(40),pnl:Infinity,vol:200},{proxyWallet:'0x'+'d'.repeat(40),pnl:20,vol:100}]}],100);
+ assert.equal(result.rejected,1);assert.equal(result.candidates[0].qualification,'UNQUALIFIED');assert.match(result.candidates[0].note,/follower/);
+});
+
+test('copy refill uses only fresh weekly evidence in the frozen category',()=>{
+ const source={period:'WEEK',category:'SPORTS',observedAt:1000,rank:2,pnl:90,volume:300};
+ const catalogue={candidates:[{proxyWallet:'0x'+'a'.repeat(40),userName:'A',pnl:999,vol:999,sources:[source]}]};
+ assert.deepEqual(discoveredCopyRows(catalogue,{category:'SPORTS',now:2000}),[{proxyWallet:'0x'+'a'.repeat(40),userName:'A',rank:2,pnl:90,vol:300}]);
+ assert.deepEqual(discoveredCopyRows(catalogue,{category:'ALL',now:2000}),[]);assert.deepEqual(discoveredCopyRows(catalogue,{category:'SPORTS',now:0}),[]);assert.deepEqual(discoveredCopyRows(catalogue,{category:'SPORTS',now:21*60000}),[]);
+});
+
+test('coordination separates discovery, watched leaders, loss pauses, and missing Lab status',()=>{
+ const result=commandCenterSnapshot({bots:{polycopy:{status:'PAUSED',follows:[{wallet:'a',name:'A'}],open:[{}],stats:{closed:71,pnlUsd:-136.5},lastRunAt:900,drawdownPause:{active:true,reason:'drawdown'}}},discovery:{candidates:[{},{}],lastSuccessAt:500},now:1000});
+ assert.equal(result.copy.uniqueLeaders,1);assert.equal(result.copy.books[0].paused,true);assert.equal(result.copy.books[0].lastRunAt,900);assert.equal(result.copy.catalogue.lastSuccessAt,500);assert.equal(result.lab.connected,false);assert.equal(result.lab.resources,null);assert.equal(result.profiles.lab,null);
+ assert.equal(commandCenterSnapshot().copy.uniqueLeaders,null);assert.ok(operatingProfiles.MAX_RESEARCH);assert.equal(operatingProfiles.MAX_RESEARCH.paidModelCalls,0);
+});
+
+test('Lab connection coalesces reads and requires profile acknowledgement',async()=>{
+ let release,calls=0,time=10000,fail=false;const held=new Promise(r=>release=r);
+ const c=createLabConnection({now:()=>time,fetchImpl:async(url,opt)=>{calls++;if(opt.method==='POST')return {ok:true,json:async()=>({ok:true,policy:{profile:'FAST_PAPER_STEADY'}})};await held;if(fail)throw Error('offline');return {ok:true,json:async()=>({build:{},schedulerPolicy:{profile:'BURST_RESEARCH'}})};}});
+ const a=c.state(),b=c.state();release();assert.deepEqual(await a,await b);assert.equal(calls,1);await c.state();assert.equal(calls,1);
+ await assert.rejects(c.profile('MAX_RESEARCH'),/acknowledge/);await assert.rejects(c.profile('invented'),/Unknown/);
+ time+=6000;fail=true;const result=await c.state();assert.equal(result.lab,null);assert.equal(result.error,'offline');
+});
 const hash=x=>createHash('sha256').update(JSON.stringify(x)).digest('hex');
 test('exact-size RH estimates reject either invalid quote leg and retain greater observed fees',()=>{
  const args={symbol:'SOL-USD',quantity:1,increment:.001,receivedAt:10000,eligibleAt:9000,accountFeeRatio:.0095,

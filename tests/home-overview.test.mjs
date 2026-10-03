@@ -10,6 +10,16 @@ const dashboard = read('public/dashboard.html');
 const platformSource = read('public/js/mpo-platform.js');
 const classes = (...names) => ({ contains: name => names.includes(name) });
 
+test('coordinated command view preserves unknowns, escapes leaders and keeps readable scrolling',async()=>{
+ const window={MPOSPlatform:{render(){}}},document={hidden:false,addEventListener(){},querySelector(){return null;}};
+ let reply={schema:'mpo.command-center.v1',at:Date.now(),lab:{connected:false},copy:{books:[],uniqueLeaders:null,catalogue:{candidates:[{proxyWallet:'a',userName:'<script>bad</script>',sources:[]}]}}};
+ const context=vm.createContext({window,document,Date,AbortSignal,fetch:async()=>({ok:true,json:async()=>reply}),setInterval(){},addEventListener(){}});
+ vm.runInContext(read('public/js/mpo-command-center.js'),context);
+ assert.match(window.MPOCommandCenter.html(),/Unknown/);await window.MPOCommandCenter.load(true);
+ const html=window.MPOCommandCenter.html();assert.match(html,/command-brain/);assert.match(html,/&lt;script&gt;bad/);assert.doesNotMatch(html,/<script>bad/);assert.match(html,/Lab unavailable/);assert.match(html,/data-cc-profile="MAX_RESEARCH"/);
+ reply={...reply,lab:{connected:true,modules:[{id:'pumpfun',title:'Pump.fun',state:'COLLECTING'}]}};await window.MPOCommandCenter.load(true);assert.match(window.MPOCommandCenter.html(),/COLLECTING/);
+});
+
 function botHarness({ hosts = [], active = null, hidden = false, reply = () => ({ ok: true, at: 1 }) } = {}) {
   let now = 100000, calls = 0;
   const timers = [], events = [], listeners = {};

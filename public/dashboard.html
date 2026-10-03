@@ -15,11 +15,13 @@
 <script src="/js/mpo-bots.js"></script>
 <script src="/js/mpo-account.js"></script>
 <link rel="stylesheet" href="/css/mpo-platform.css">
+<link rel="stylesheet" href="/css/mpo-command-center.css">
 <link rel="stylesheet" href="/css/mpo-mac.css">
 <link rel="stylesheet" href="/css/mpo-glass.css">
 <link rel="stylesheet" href="/css/mpo-overviews.css">
 <script src="/js/wallet-crowd.js"></script>
 <script src="/js/mpo-platform.js"></script>
+<script src="/js/mpo-command-center.js"></script>
 <script src="/js/mpo-polymarket.js"></script>
 <script src="/js/mpo-stocks.js"></script>
 <script src="/js/mpo-marketlab.js"></script>
@@ -133,6 +135,7 @@ const HOSTS=APPS.filter(a=>!a[4]).map(a=>a[0]);
 const tabsOf=host=>[host,...APPS.filter(a=>a[4]===host).map(a=>a[0])];
 const hasTabs=host=>tabsOf(host).length>1;
 const defaultLayout={
+command:{x:120,y:42,w:1080,h:740},
 robinhood:{x:200,y:90,w:880,h:720},stocks:{x:170,y:60,w:900,h:680},marketlab:{x:140,y:50,w:940,h:700},macro:{x:110,y:40,w:980,h:720},edgar:{x:130,y:60,w:980,h:680},weather:{x:150,y:70,w:1000,h:700},sports:{x:160,y:50,w:1020,h:720},wire:{x:600,y:40,w:640,h:760},whales:{x:120,y:60,w:980,h:720},
 trade:{x:120,y:70,w:790,h:690},sportsbook:{x:250,y:140,w:880,h:600},
 system:{x:660,y:80,w:520,h:470},journal:{x:90,y:56,w:740,h:540},money:{x:320,y:120,w:620,h:520}
@@ -354,7 +357,7 @@ function fitWindow(w){
  if(!w||w.classList.contains('hidden'))return;
  const pane=fitPaneOf(w);if(!pane)return;
  // Research desks contain long tables and forms. Keep their text readable and scroll the content.
- const scrollDesk=!!pane.querySelector('.core-app,.mpo-overview');
+ const scrollDesk=!!pane.querySelector('.core-app,.mpo-overview,.command-brain');
  w.querySelectorAll('.tabpane,.body,.glancepane').forEach(p=>{if(p!==pane)p.style.zoom=p.style.width=p.style.height=p.style.overflow=''});
  pane.style.zoom=pane.style.width=pane.style.height=pane.style.overflow='';
  // Fit off: actual size at the chosen text size, scrolling if it does not fit.

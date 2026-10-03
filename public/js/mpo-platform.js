@@ -111,6 +111,7 @@ window.MPOSPlatform = (() => {
     return `<div class="g-scroll"><ul class="overview-list">${rows.map(r=>overviewLine(`${r.module} · ${r.book}`,`${r.closes}/${r.minCloses} closes · ${r.beatsBaseline}${flag(r)}`,r.netPnl===null||r.netPnl===undefined?'Unknown':sbAmount(r.netPnl,r.unit))).join('')}</ul></div>`;
   }
   function commandOverview(){
+    if(window.MPOCommandCenter)return window.MPOCommandCenter.html();
     const sources=overviewArray(diag?.sources),jobs=Object.values(window.MPOBots?.data?.lab?.jobs||{}),ledger=overviewArray(snapshot?.ledger),beats=ledger.map(r=>plotAt(r.at)).filter(v=>v!=null).sort((a,b)=>a-b);
     const health=sources.length?[...new Set(sources.map(s=>s.status||'UNKNOWN'))].slice(0,8).map(label=>({label,value:sources.filter(s=>(s.status||'UNKNOWN')===label).length})):[];
     const lab=jobs.length?[{label:'Completed',value:jobs.filter(j=>j.ok===true).length},{label:'Failed',value:jobs.filter(j=>j.ok===false).length},{label:'Unreported',value:jobs.filter(j=>j.ok==null).length}]:[];

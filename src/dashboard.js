@@ -49,6 +49,8 @@ import { BotTape } from './botTape.js';
 import { BotFarm } from './botFarm.js';
 import { KalshiMirrorPaper } from './kalshiMirror.js';
 import { PolymarketCopyPaper } from './polymarketCopy.js';
+import { LeaderDiscovery } from './leaderDiscovery.js';
+import { commandCenterSnapshot, createLabConnection, RESEARCH_PROFILES } from './commandCenter.js';
 import { CopyMetadataCache,CopyReadCache,COPY_EXPERIMENT_COHORTS,COPY_POLICY_SUPPORT } from './copyEvent.js';
 import { registerPaperBots } from './scoreboard.js';
 import { createVenueLoops } from './venueLoop.js';
@@ -67,6 +69,7 @@ const packageMeta = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 
 const MAX_BODY = 32 * 1024;
 const DATA_DIR = path.resolve(process.env.MONEY_PRINTER_DATA_DIR || path.join(ROOT,'data'));
 let paperBots = null;
+const labConnection = createLabConnection();
 const venueLoops = createVenueLoops();
 // The Evolution Lab's Research Workbench summary (lab-link/workbench.json), if the Lab on this machine has published one.
 function readLabWorkbench(){try{const w=JSON.parse(fs.readFileSync(path.join(DATA_DIR,'lab-link','workbench.json'),'utf8'));return w&&w.schema==='mpo.lab-workbench.v1'?w:null;}catch{return null;}}
@@ -499,14 +502,16 @@ export function startDashboard() {
   const tape=new BotTape({dataDir:DATA_DIR}),kalshiBots=new KalshiPaperBots({dataDir:DATA_DIR,calibration,tape,kalshi:()=>marketPlatform().providers.providers.get('kalshi')||null,weather:()=>marketPlatform().weatherSnapshot()});
   // The Kalshi mirror copies the Polymarket leaders' game-winner buys onto Kalshi (src/kalshiMirror.js).
   const copyReads=new CopyReadCache();
+  const leaderDiscovery=new LeaderDiscovery({dataDir:DATA_DIR,tape,cache:copyReads});
   const mirror=new KalshiMirrorPaper({dataDir:DATA_DIR,readCache:copyReads,fetchImpl:globalThis.fetch,kalshi:()=>marketPlatform().providers.providers.get('kalshi')||null,sports:()=>marketPlatform().sportsSnapshot()});
   const copyMetadata=new CopyMetadataCache();
-  const copyExperiments=COPY_EXPERIMENT_COHORTS.map(({id,policy,category,startUsd})=>new PolymarketCopyPaper({dataDir:path.join(DATA_DIR,'experiments',id),tape,readCache:copyReads,metadataCache:copyMetadata,experiment:{id,policy,...(category?{category}:{}),exploratory:true,startUsd,settings:{stakeUsd:1,maxOpen:10,follows:3,minLeaderTradeUsd:10,minLeaderVolumeUsd:0,minLeaderMargin:0,processingLatencyMs:250,maxTradeAgeMs:120_000}}}));
-  paperBots={calibration,tape,kalshi:kalshiBots,farm:new BotFarm({dataDir:DATA_DIR,bots:kalshiBots}),mirror,copyExperiments,copy:new PolymarketCopyPaper({dataDir:DATA_DIR,tape,readCache:copyReads,metadataCache:copyMetadata,onLeaderEvent:(f,t)=>mirror.enqueue(f,t)})};
+  const copyExperiments=COPY_EXPERIMENT_COHORTS.map(({id,policy,category,startUsd})=>new PolymarketCopyPaper({dataDir:path.join(DATA_DIR,'experiments',id),tape,readCache:copyReads,candidateSource:()=>leaderDiscovery.snapshot(),metadataCache:copyMetadata,experiment:{id,policy,...(category?{category}:{}),exploratory:true,startUsd,settings:{stakeUsd:1,maxOpen:10,follows:3,minLeaderTradeUsd:10,minLeaderVolumeUsd:0,minLeaderMargin:0,processingLatencyMs:250,maxTradeAgeMs:120_000}}}));
+  paperBots={calibration,tape,leaderDiscovery,kalshi:kalshiBots,farm:new BotFarm({dataDir:DATA_DIR,bots:kalshiBots}),mirror,copyExperiments,copy:new PolymarketCopyPaper({dataDir:DATA_DIR,tape,readCache:copyReads,candidateSource:()=>leaderDiscovery.snapshot(),metadataCache:copyMetadata,onLeaderEvent:(f,t)=>mirror.enqueue(f,t)})};
   registerPaperBots(()=>paperBots);
   // Each paper venue has its own timer, run budget and stall watchdog (src/venueLoop.js, run C2): a venue whose run
   // hangs is reported STALLED in /api/health and never holds up another venue or the HUD.
   if(process.env.MPO_PAPER_BOTS!=='false'&&!process.env.NODE_TEST_CONTEXT){const v=venueLoops,disclosureQuoteAdapter=createDisclosureEquityQuoteAdapter();
+    v.add('copy-leader-discovery',{everyMs:15*60_000,firstMs:12_000,stallMs:60_000,run:()=>leaderDiscovery.run()});
     if(!fs.existsSync(SINGLE_PAPER_FILE)&&!fs.existsSync(SINGLE_PAPER_FILE+'.verified.json')&&!fs.existsSync(SINGLE_PAPER_FILE+'.initialized.json'))resetPaperSingles({startUsd:25});
     v.add('kalshi-evidence',{everyMs:30_000,firstMs:35_000,run:()=>marketPlatform().capturePredictionEvidence()});
     v.add('robinhood-external-paper',{everyMs:15_000,firstMs:50_000,run:()=>{const features=robinhoodExternalFlow(),s=loadStateCached();return tickRobinhoodExternalBooks({dataDir:DATA_DIR,features,momentum:robinhoodExternalMomentum(),supportedSymbols:features.supportedSymbols||[],quoteFn:robinhoodDailyQuote,enabled:cfg.mode==='paper'&&!s.system?.paused&&!s.system?.killSwitch});}});
@@ -660,6 +665,10 @@ export function startDashboard() {
       if (req.method === 'GET' && u.pathname === '/api/network') { const r=await meshRequest('GET','/state'); return json(res,r.body,r.status); }
       if (req.method === 'GET' && u.pathname === '/api/resources') return json(res, resourceSnapshot());
       if (req.method === 'GET' && u.pathname === '/api/scoreboard') { const sb=await import('./scoreboard.js'); return json(res, await sb.readScoreboard()); }
+      if (req.method === 'GET' && u.pathname === '/api/command-center') {
+        const sb=await import('./scoreboard.js'),[board,link]=await Promise.all([sb.readScoreboard(),labConnection.state()]);
+        return json(res,commandCenterSnapshot({state:loadStateCached(),bots:{...paperBotsView(),pumpCopy:pumpfunCopyPaper().summary(),pumpCopyExperiments:pumpfunCopyExperiments().map(b=>b.summary())},board,lab:link.lab,labError:link.error,loops:venueLoops.status(),discovery:paperBots?.leaderDiscovery.snapshot()}));
+      }
       if (req.method === 'GET' && u.pathname === '/api/data-coverage') return json(res, dataCoverage(DATA_DIR, { force: u.searchParams.get('force') === '1' }));
       if (req.method === 'GET' && u.pathname === '/api/desktop-prefs') return json(res, readDesktopPrefs());
       if (req.method === 'GET' && u.pathname === '/api/unit-economics') return json(res, readApiUnitEconomics());
@@ -677,7 +686,7 @@ export function startDashboard() {
       if (req.method === 'GET' && u.pathname === '/api/pumpfun/paper') return json(res, { ...pumpfunPaperLane().view(), orderSubmitted: false });
       if (req.method === 'GET' && u.pathname === '/api/pumpfun/copy/experiments') return json(res,{mode:'PAPER',experiments:pumpfunCopyExperiments().map(b=>b.view()),ordersSubmitted:0});
       if (req.method === 'GET' && u.pathname === '/api/disclosure/paper') return json(res,disclosurePaperView());
-      if (req.method === 'GET' && u.pathname === '/api/operating-profiles') return json(res,{active:loadStateCached().runtime?.profile,profiles:['FAST_PAPER_STEADY','BURST_RESEARCH'],paidModelCalls:0,paperOnly:true,copyPolicySupport:COPY_POLICY_SUPPORT,predictionCapture:marketPlatform().predictionCapture||null});
+      if (req.method === 'GET' && u.pathname === '/api/operating-profiles') return json(res,{active:loadStateCached().runtime?.profile,profiles:['FAST_PAPER_STEADY','BURST_RESEARCH','MAX_RESEARCH'],paidModelCalls:0,paperOnly:true,copyPolicySupport:COPY_POLICY_SUPPORT,predictionCapture:marketPlatform().predictionCapture||null});
       if (req.method === 'GET' && u.pathname === '/api/robinhood-external-paper') return json(res,{paperOnly:true,features:robinhoodExternalFlow(),books:robinhoodExternalBookViews({dataDir:DATA_DIR})});
       if (req.method === 'GET' && u.pathname === '/api/pumpfun/copy-paper') return json(res, pumpfunCopyPaper().view());
       if (req.method === 'GET' && u.pathname === '/api/polymarket-us/combos/journal') { const j=usComboJournalView({historyLimit:500}); return json(res, {...j,performance:comboPerformance(j.history,j.open)}); }
@@ -698,6 +707,10 @@ export function startDashboard() {
 
       // Every desktop mutation below, including legacy queues and updater requests, is local JSON.
       if(!localMutationAllowed(req))return json(res,{ok:false,error:'Local same-origin JSON request required'},403);
+      if(u.pathname==='/api/command-center/research'){
+        const b=await body(req);if(b.__error||!RESEARCH_PROFILES.includes(b.profile))return json(res,{ok:false,error:b.__error||'Unknown research profile'},400);
+        try{const lab=await labConnection.profile(b.profile),action=queue('profile',{profile:b.profile});return json(res,{ok:true,labProfile:lab.policy.profile,traderProfileQueued:true,actionId:action.id});}catch(e){return json(res,{ok:false,error:e.message},503);}
+      }
       if (u.pathname.startsWith('/api/bots/')) {
         const b = await body(req); if (b.__error) return json(res,{ok:false,error:b.__error},400);
         const action = u.pathname.slice('/api/bots/'.length), bot = String(b.bot||'');
