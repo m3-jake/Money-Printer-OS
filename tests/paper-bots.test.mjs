@@ -406,3 +406,12 @@ test('the mirror watches sports-leaderboard wallets and queues only their buys m
   assert.ok(calls <= 5);
   assert.equal(await new KalshiMirrorPaper({ dataDir: tmp(), kalshi: () => null }).pollSportsLeaders(), 0, 'no fetch, no polling (offline tests)');
 });
+
+test('the bots price with the shared kalshiModel the Lab replays (run B4)', async () => {
+  const M = await import('../src/kalshiModel.js'), B = await import('../src/kalshiBots.js');
+  for (const k of ['normCdf', 'bucketProbability', 'probAbove', 'btcContractProbability', 'realizedVol', 'scoreSides', 'weatherMuSigma']) assert.equal(B[k], M[k], k);
+  const s = { calibrationSafety: 1.1, biasF: 0.5, sigmaBaseF: 1.6, sigmaPerDayF: 1 };
+  assert.deepEqual(M.weatherMuSigma({ cm: { mu: 70, sigma: 2 }, settings: s }), { mu: 70, sigma: 2.2, calibrated: true });
+  assert.deepEqual(M.weatherMuSigma({ nwsHigh: 70, hours: 24, settings: s }), { mu: 70.5, sigma: 2.6, calibrated: false });
+  assert.equal(M.weatherMuSigma({ settings: s }), null);
+});
