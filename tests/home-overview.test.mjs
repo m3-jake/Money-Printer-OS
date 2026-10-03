@@ -319,3 +319,113 @@ test('Pump.fun labels the scanner mode and the separate copy paper book without 
   assert.match(html, /\$25\.00/);
   assert.doesNotMatch(html, /\$125\.00/);
 });
+
+function navigationHarness() {
+  const apps = vm.runInNewContext(dashboard.match(/const APPS=\[([\s\S]*?)\n\];/)[0] + '\nAPPS');
+  const calls = [], reads = [], listeners = {};
+  const record = name => (...args) => calls.push([name, ...args]);
+  const document = { hidden: false, addEventListener(type, callback) { listeners[type] = callback; } };
+  const context = vm.createContext({
+    document, RH_VIEWS: Object.fromEntries(['paper', 'why', 'charts', 'explore', 'daily', 'stocks', 'practice', 'more'].map(id => [id, id])), rhView: 'paper',
+    appMeta: id => apps.find(a => a[0] === id), hostOf: id => apps.find(a => a[0] === id)?.[4] || id,
+    openApp: record('open'), setDetail: record('detail'), rhSave: record('save'), renderRobinhood: record('renderRH'), renderAll: record('renderAll'),
+    rhLoadChart: force => { calls.push(['chart', force]); reads.push('/api/robinhood/chart'); },
+    rhLoadEquities: force => { calls.push(['equities', force]); reads.push('/api/robinhood-equities'); },
+    fetch: (url, options) => { assert.notEqual(options?.method, 'POST'); reads.push(url); return Promise.resolve({ ok: true }); },
+    post: () => assert.fail('overview navigation must not submit a trading action'),
+    addEventListener(type, callback) { listeners[type] = callback; },
+  });
+  vm.runInContext(read('public/js/mpo-overview-navigation.js'), context);
+  const click = dataset => {
+    let prevented = false;
+    listeners.click({ target: { closest: () => ({ dataset }) }, preventDefault() { prevented = true; } });
+    return prevented;
+  };
+  return { calls, reads, document, context, click, event: type => listeners[type]?.() };
+}
+
+test('overview navigation opens child programs in Advanced and keeps host homes in Simple', () => {
+  for (const [id, host] of [['weather', 'command'], ['wallet', 'trade'], ['pmcopy', 'sportsbook'], ['kalshibots', 'kalshi'], ['settings', 'system']]) {
+    const h = navigationHarness();
+    assert.equal(h.click({ overviewOpen: id }), true);
+    assert.deepEqual(h.calls, [['open', id], ['detail', host, true]]);
+    assert.deepEqual(h.reads, []);
+  }
+  for (const id of ['money', 'trade', 'robinhood', 'sportsbook', 'kalshi', 'command']) {
+    const h = navigationHarness();
+    assert.equal(h.click({ overviewOpen: id }), true);
+    assert.deepEqual(h.calls, [['open', id]], 'a host link preserves its opening overview: ' + id);
+    assert.deepEqual(h.reads, []);
+    const detail = navigationHarness();
+    assert.equal(detail.click({ overviewOpen: id, overviewDetail: 'true' }), true);
+    assert.deepEqual(detail.calls, [['open', id], ['detail', id, true]]);
+  }
+});
+
+test('Robinhood overview links select and persist the intended section with only necessary GET loaders', () => {
+  for (const section of ['paper', 'why', 'charts', 'explore', 'daily', 'stocks', 'practice', 'more']) {
+    const h = navigationHarness();
+    assert.equal(h.click({ overviewSection: section }), true);
+    assert.equal(h.context.rhView, section);
+    assert.deepEqual(h.calls.slice(0, 4), [['open', 'robinhood'], ['detail', 'robinhood', true], ['save', 'mpo-rh-view', section], ['renderRH', true]]);
+    assert.deepEqual(h.reads, section === 'charts' ? ['/api/robinhood/chart'] : section === 'stocks' ? ['/api/robinhood-equities'] : []);
+    assert.equal(h.calls.length, section === 'charts' || section === 'stocks' ? 5 : 4);
+  }
+});
+
+test('overview navigation ignores invalid destinations and never treats inherited names as Robinhood sections', () => {
+  for (const dataset of [{ overviewOpen: 'missing' }, { overviewOpen: '__proto__' }, { overviewSection: 'constructor' }, { overviewSection: '__proto__' }, { overviewSection: 'missing', overviewOpen: 'trade' }]) {
+    const h = navigationHarness();
+    assert.equal(h.click(dataset), false);
+    assert.deepEqual(h.calls, []); assert.deepEqual(h.reads, []);
+  }
+  const h = navigationHarness();
+  h.event('mpo:overview-data');
+  assert.deepEqual(h.calls, [['renderAll']]);
+  h.document.hidden = true; h.event('mpo:overview-data');
+  assert.equal(h.calls.length, 1, 'background pages do not repaint');
+});
+
+test('same-host detail buttons emit the explicit dataset instead of linking back to the overview', () => {
+  const native = dashboardHarness();
+  const nav = native.run("overviewNav([['trade','Portfolio details',true],['trade','Open Pump.fun']])");
+  assert.match(nav, /data-overview-open="trade" data-overview-detail="true"/);
+  assert.equal((nav.match(/data-overview-detail/g) || []).length, 1);
+  const p = platformHarness();
+  assert.match(p.kalshiOverview(), /data-overview-open="kalshi" data-overview-detail="true"/);
+  assert.match(p.commandOverview(), /data-overview-open="command" data-overview-detail="true"/);
+});
+
+test('Money alone keeps platform and scoreboard snapshots flowing without a detail window', async () => {
+  let snapshots = 0;
+  const requests = [], events = [], timers = [];
+  const window = {};
+  const document = { hidden: false, addEventListener() {}, getElementById: () => null,
+    querySelector: selector => selector.includes('data-app="money"') ? { classList: classes('glance') } : null,
+  };
+  const context = vm.createContext({ window, document, addEventListener() {},
+    setInterval: fn => { timers.push(fn); },
+    CustomEvent: class { constructor(type) { this.type = type; } }, dispatchEvent: e => events.push(e.type),
+    fetch: async (url, options) => {
+      assert.notEqual(options?.method, 'POST'); requests.push(url);
+      const body = url.includes('/scoreboard') ? { rows: [] } : url.includes('/entities') ? { entities: [] } : url.endsWith('/status') ? { at: ++snapshots } : {};
+      return { ok: true, json: async () => body };
+    },
+  });
+  vm.runInContext(platformSource, context);
+  window.MPOSPlatform.install({ open() {} });
+  await new Promise(setImmediate);
+  const initial = window.MPOSPlatform.overview.snapshot.at, initialRequests = requests.length, initialEvents = events.length;
+  assert.ok(initial > 0, 'the platform is available before any detail page opens');
+  assert.ok(initialRequests >= 5);
+  assert.equal(Object.getOwnPropertyDescriptor(window.MPOSPlatform, 'overview').set, undefined);
+  timers[0](); timers[0]();
+  await new Promise(setImmediate);
+  assert.equal(window.MPOSPlatform.overview.snapshot.at, initial + 1);
+  assert.equal(requests.length, initialRequests + 5, 'concurrent paints share a single platform refresh');
+  assert.equal(requests.slice(initialRequests).filter(url => url === '/api/scoreboard').length, 1);
+  assert.equal(events.length, initialEvents + 1);
+  assert.ok(events.every(type => type === 'mpo:overview-data'));
+  document.hidden = true; timers[0]();
+  assert.equal(requests.length, initialRequests + 5);
+});
