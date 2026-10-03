@@ -62,7 +62,7 @@ export function labVariants(doc, now = Date.now(), slots = 4) {
     if (!/^lab-[a-z0-9-]{3,40}$/.test(String(v?.id)) || !['weather', 'btc'].includes(v.kind) || !v.over || typeof v.over !== 'object') continue;
     const over = {}; let ok = true;
     for (const [k, n] of Object.entries(v.over)) { const lim = LAB_OVER[k]; if (!lim || !Number.isFinite(n) || n < lim[0] || n > lim[1]) { ok = false; break; } over[k] = n; }
-    if (ok && Object.keys(over).length && !out.some(x=>x.id===v.id)) out.push({ id: v.id, kind: v.kind, label: String(v.label || v.id).slice(0, 60), over, lab: true, reason: String(v.reason || '').slice(0, 200) });
+    if (ok && Object.keys(over).length && !out.some(x=>x.id===v.id)) out.push({ id: v.id, kind: v.kind, label: String(v.label || v.id).slice(0, 60), over, lab: true, prediction:{...h,unit:'USD',capturedAt:now},reason: String(v.reason || '').slice(0, 200) });
     if(out.length>=slots)break;
   }
   return out;
@@ -70,7 +70,7 @@ export function labVariants(doc, now = Date.now(), slots = 4) {
 const round = (v, d = 4) => Math.round(v * 10 ** d) / 10 ** d;
 const localDay = t => new Date(t).toLocaleDateString('en-CA');
 
-function emptyBook(v) { return { id: v.id, kind: v.kind, label: v.label, startUsd: FARM_START_USD, cashUsd: FARM_START_USD, open: [], history: [], entered: 0, skippedSlippage: 0, observedOpen: [], observedHistory: [] }; }
+function emptyBook(v) { return { id: v.id, kind: v.kind, label: v.label, prediction:v.prediction||null,startUsd: FARM_START_USD, cashUsd: FARM_START_USD, open: [], history: [], entered: 0, skippedSlippage: 0, observedOpen: [], observedHistory: [] }; }
 export function variantSettings(v) { return { ...(v.kind === 'weather' ? {...KALSHI_DEFAULTS.weather,stakeUsd:0.5,maxOpen:20} : { ...KALSHI_DEFAULTS.btc, ...BTC_R1 }), ...v.over, enabled: true }; }
 
 // Per-bet P/L t-statistic and a plain verdict.

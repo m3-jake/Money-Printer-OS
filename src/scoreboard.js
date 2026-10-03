@@ -10,6 +10,7 @@
 // baseline (cash 0, do-nothing 0, buy-and-hold SPY, buy-and-hold coins), beats baseline (YES/NO only once
 // n >= MIN_CLOSES, else NOT ENOUGH DATA), net without the single best trade, and data freshness.
 export const SCOREBOARD_SCHEMA = 'mpo.scoreboard.v1';
+import {forwardScorecard} from './core/forwardScorecard.js';
 // The repo's existing evidence gates all use 20 closes (evidenceFlags minCloses, Robinhood qualification,
 // Polymarket MIN_SETTLED_PER_WINDOW), so the scoreboard uses the same bar.
 export const MIN_CLOSES = 20;
@@ -277,6 +278,7 @@ function botRow({ id, module, book, closes, snap, maxAgeMs, active, minCloses = 
     extra: { group: module, active, recoveryRequired, startUsd: finite(snap?.startUsd), equityUsd: recoveryRequired ? null : finite(snap?.equityUsd),
       open: Array.isArray(snap?.open) ? snap.open.length : finite(snap?.open), lastError: snap?.lastError ? String(snap.lastError).slice(0, 200) : null, ...extra } });
   if (recoveryRequired) Object.assign(row, { beatsBaseline: VERDICT.NOT_ENOUGH, reason: 'book needs recovery; its file was kept' });
+  row.forwardScorecard=forwardScorecard(extra.prediction||null,recoveryRequired?[]:closes.map(c=>({pnlUsd:c.pnl})));
   return row;
 }
 const settledCloses = h => (Array.isArray(h) ? h : []).map(x => ({ pnl: x?.pnlUsd, at: x?.settledAt ?? x?.closedAt }));
@@ -302,7 +304,7 @@ export function paperBotRows({ kalshi = null, farm = null, mirror = null, copy =
         snap: { lastRunAt: run?.at ?? null, startUsd: v.startUsd ?? farm.startUsd, equityUsd: v.equityUsd, open: v.open, recoveryRequired: !!farm.error, lastError: run?.error || farm.error || null },
         maxAgeMs: (v.kind === 'btc' ? 10 : 30) * MIN, active: !v.withdrawn, minCloses: finite(farm.minSettled) ?? MIN_CLOSES,
         note: "Forward variant: fills at the quoted ask plus modeled slippage, settles on Kalshi's own result.",
-        extra: { variant: v.id, kind: v.kind, lab: !!v.lab, withdrawn: !!v.withdrawn, settledToday: finite(v.settledByDay?.[today]) ?? 0, standDown: v.standDown || null } }));
+        extra: { prediction:v.prediction||null,variant: v.id, kind: v.kind, lab: !!v.lab, withdrawn: !!v.withdrawn, settledToday: finite(v.settledByDay?.[today]) ?? 0, standDown: v.standDown || null } }));
     }
   }
   if (mirror) rows.push(botRow({ id: 'kalshi-mirror', module: 'Kalshi mirror', book: 'Copy of Polymarket leaders (game winners)', closes: settledCloses(mirror.history), snap: mirror.snapshot || {}, now,
@@ -328,7 +330,7 @@ export function paperBotInputs(pb) {
       variants: snap.variants.map(v => {
         const h = books[v.id]?.history || [], settledByDay = {};
         for (const x of h) { const d = new Date(x.settledAt).toLocaleDateString('en-CA'); settledByDay[d] = (settledByDay[d] || 0) + 1; }
-        return { ...v, startUsd: books[v.id]?.startUsd, history: h, settledByDay };
+        return { ...v, prediction:books[v.id]?.prediction||null,startUsd: books[v.id]?.startUsd, history: h, settledByDay };
       }) };
   }
   const book = o => o ? { snapshot: { ...o.snapshot(), recoveryRequired: !!o.recoveryError }, history: o.recoveryError ? [] : o.state?.history || [] } : null;
