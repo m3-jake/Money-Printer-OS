@@ -1045,6 +1045,18 @@ img.bill.phys.grabbing { cursor: grabbing; z-index: 5; }
 .logon-buttons { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 14px; }
 .logon-hint { color: #626672; font-size: 10px; }
 .logon-buttons .btn { min-width: 112px; font-weight: bold; }
+/* bangbowbing accounts on the web demo's log-on (js/mpo-account.js). */
+.logon-tabs { display: flex; gap: 2px; margin: 0 0 8px; border-bottom: 1px solid #8a8f99; }
+.logon-tabs button { padding: 4px 10px; border: 1px solid #8a8f99; border-bottom: 0; background: #d9d9d9; color: #26334f; font: bold 11px var(--mpo-font-chrome); cursor: pointer; }
+.logon-tabs button.on { background: #fff; position: relative; top: 1px; }
+.logon-input { height: 23px; padding: 0 6px; min-width: 0; background: #fff; color: #102039; border: 2px inset #c8c8c8; font: 12px var(--mpo-font-chrome); }
+.logon-input:focus { outline: 1px dotted #102039; outline-offset: -4px; }
+.logon-row label { color: #26334f; }
+.logon-error { min-height: 15px; margin: 6px 0 0 84px !important; color: #a00; font-size: 11px; }
+.logon-buttons .btn.logon-link { min-width: 0; font-weight: normal; }
+.acct-chip { display: inline-flex; align-items: center; gap: 4px; margin-right: 6px; }
+.acct-chip button { padding: 2px 7px; border: 1px solid #0003; border-radius: 3px; background: #ffffff8c; color: inherit; font: 600 11px var(--mpo-font-chrome); cursor: pointer; }
+.acct-chip .acct-name::before { content: ''; display: inline-block; width: 7px; height: 7px; margin-right: 5px; border-radius: 50%; background: #57ac39; vertical-align: 0; }
 .desktop .wallpaper, .desktop .sky-clouds, .desktop .hill-foreground, .desktop .cloud-shadows, .desktop .grass-layer { transform-origin: 50% 0; transition: transform 2.8s cubic-bezier(.22,.7,.18,1); }
 .desktop.camera-sky .wallpaper { transform: scale(1.5); }
 .desktop.camera-sky .sky-clouds { transform: scale(2) translateY(-4%); }

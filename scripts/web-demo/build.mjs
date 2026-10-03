@@ -38,6 +38,9 @@ const page = (file, edit) => {
   let html = relative(fs.readFileSync(path.join(PUBLIC, file), 'utf8'), '');
   html = edit(html).replace('<title>', shimTags + '<title>');
   if (file === 'dashboard.html') {
+    // The website's config carries the bangbowbing accounts switch (js/mpo-account.js). Async: a slow
+    // bangbowbing.net never holds up the demo, and without it the demo stays guest-only.
+    html = html.replace(shimTags, shimTags + '<script async src="https://bangbowbing.net/config/site-config.js" onload="window.__BBB_CONFIG_DONE=1" onerror="window.__BBB_CONFIG_DONE=1"></script>\n');
     html = html.replace('</head>', '<link rel="stylesheet" href="mobile.css">\n</head>');
     html = html.replace('</body>', '<script src="mobile.js"></script>\n</body>');
   }

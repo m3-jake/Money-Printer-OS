@@ -13,6 +13,7 @@
 <script src="/js/mpo-viz.js"></script>
 <script src="/js/mpo-roll.js"></script>
 <script src="/js/mpo-bots.js"></script>
+<script src="/js/mpo-account.js"></script>
 <link rel="stylesheet" href="/css/mpo-platform.css">
 <link rel="stylesheet" href="/css/mpo-mac.css">
 <script src="/js/wallet-crowd.js"></script>
@@ -1983,9 +1984,13 @@ function boot(){
  const stage=(label,width)=>{status.textContent=label;bar.style.width=width};
  stage('Waking up your workspace…','12%');
  setTimeout(()=>stage('Preparing your desktop…','62%'),motionReduced()?0:360);
- setTimeout(()=>{stage('Desktop ready. Enter when you like.','100%');if(!ok)return logOn();ok.disabled=false;ok.onclick=logOn;ok.focus({preventScroll:true});
-  const wait=()=>{clearTimeout(logonTimer);logonTimer=setTimeout(logOn,LOGON_AUTO_MS)};wait();
-  $('#boot').addEventListener('pointermove',wait);document.addEventListener('keydown',e=>{if(!loggedOn&&e.key==='Enter'){e.preventDefault();logOn()}})},motionReduced()?0:900);
+ setTimeout(()=>{stage('Desktop ready. Enter when you like.','100%');if(!ok)return logOn();
+  const plain=()=>{ok.disabled=false;ok.onclick=logOn;ok.focus({preventScroll:true});
+   const wait=()=>{clearTimeout(logonTimer);logonTimer=setTimeout(logOn,LOGON_AUTO_MS)};wait();
+   $('#boot').addEventListener('pointermove',wait);document.addEventListener('keydown',e=>{if(!loggedOn&&e.key==='Enter'){e.preventDefault();logOn()}})};
+  // Web demo: bangbowbing accounts (js/mpo-account.js) take over the log-on box; with the hub off they hand back to plain().
+  if(window.MPOAccountUI?.mount({logOn,plain}))return;
+  plain()},motionReduced()?0:900);
 }
 function logOn(){
  if(loggedOn)return;loggedOn=true;clearTimeout(logonTimer);

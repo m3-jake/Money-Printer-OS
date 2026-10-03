@@ -236,6 +236,9 @@
 .logon .bootprog i { background: linear-gradient(90deg, #745a9f, #9d88ba); }
 .logon-status-light { background: #679565; box-shadow: 0 0 0 2px #bdd6b5; }
 .logon-buttons .btn { border: 1px solid #5d4d7c; border-radius: 5px; background: #e3dcf0; color: #302842; box-shadow: 0 2px 0 #fff inset; }
+.logon-tabs { border-bottom-color: #aaa5ae; }
+.logon-tabs button { border-color: #aaa5ae; border-radius: 5px 5px 0 0; background: #e4e1df; color: #30283a; }
+.logon-input { border: 1px solid #9c97a1; border-radius: 3px; box-shadow: inset 0 1px 2px #2222; }
 .logon-buttons .btn:disabled { border-color: #aaa5ae; color: #78717c; background: #e7e5e3; }
 
 @media (max-width: 900px) {

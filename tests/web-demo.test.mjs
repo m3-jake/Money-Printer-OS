@@ -90,3 +90,48 @@ test('every page load is a new session: the timeline starts at its first frame a
   clock += 600_000;
   assert.equal((await telemetry()).tick, 2, 'holds at the end instead of jumping back to the start');
 });
+
+// bangbowbing accounts (public/js/mpo-account.js) against scripts/web-demo/mock-hub.mjs, which mirrors the hub's API.
+function accountFactory() {
+  const window = {};
+  vm.runInContext(fs.readFileSync(path.join(ROOT, 'public', 'js', 'mpo-account.js'), 'utf8'), vm.createContext({ window, URLSearchParams, JSON, Object, Array, Number, String, Math, Promise, Set, Error, setTimeout, clearTimeout }));
+  return window.MPOAccountFactory;
+}
+const memoryStorage = () => { const m = new Map(); return { getItem: k => m.has(k) ? m.get(k) : null, setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k), m }; };
+
+test('accounts follow the website\'s hub switch: off means no requests, and ?hub= only works on localhost', async () => {
+  const create = accountFactory(); let calls = 0; const fetchImpl = async () => { calls++; throw new Error('no network'); };
+  const off = create({ config: { siteOrigin: 'https://bangbowbing.net', hub: { enabled: false, base: '' } }, fetchImpl, storage: memoryStorage(), location: { hostname: 'moneyprinter.bangbowbing.net', search: '' } });
+  assert.equal(off.enabled, false); await assert.rejects(off.signIn('a@b.co', 'x'), /not online yet/); assert.equal(await off.resume(), null); assert.equal(calls, 0);
+  const on = create({ config: { siteOrigin: 'https://bangbowbing.net', hub: { enabled: true, base: '' } }, fetchImpl, storage: memoryStorage(), location: { hostname: 'moneyprinter.bangbowbing.net', search: '?hub=https://evil.example' } });
+  assert.equal(on.base, 'https://bangbowbing.net', 'an empty base is the website origin; ?hub= is ignored off localhost');
+  const dev = create({ config: null, fetchImpl, storage: memoryStorage(), location: { hostname: '127.0.0.1', search: '?hub=http://127.0.0.1:9' } });
+  assert.equal(dev.enabled, true); assert.equal(dev.base, 'http://127.0.0.1:9');
+  assert.ok(fs.readFileSync(path.join(build(), 'index.html'), 'utf8').includes('<script async src="https://bangbowbing.net/config/site-config.js"'), 'the demo reads the website\'s switch');
+});
+
+test('register, resume, cloud-saved desktop and sign-out against the hub API; a down hub never signs anyone out', async () => {
+  const { createMockHub } = await import('../scripts/web-demo/mock-hub.mjs');
+  const { server } = createMockHub(); await new Promise(r => server.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${server.address().port}`, create = accountFactory(), storage = memoryStorage();
+  const make = (fetchImpl = fetch) => create({ config: { hub: { enabled: true, base } }, fetchImpl, storage, location: { hostname: 'moneyprinter.bangbowbing.net', search: '' } });
+  try {
+    const a = make();
+    await assert.rejects(a.register('x@y.co', 'no', 'longenough'), /3-20/);
+    assert.equal((await a.register('tester@example.test', 'demo_tester', 'mockhub-test-0001')).displayName, 'demo_tester');
+    assert.ok(storage.m.get('mpo-hub-auth').includes('refresh'), 'only the refresh token is stored');
+    assert.equal(await a.loadDesktop(), null, 'no save yet');
+    storage.setItem('mpo-display', '{"fullDetail":true}'); storage.setItem('unrelated', 'x');
+    await a.saveDesktop(a.collectPrefs());
+    const down = make(async () => ({ ok: false, status: 503, json: async () => ({ error: 'down' }) }));
+    assert.equal(await down.resume(), null); assert.ok(storage.m.get('mpo-hub-auth'), 'a 5xx keeps the session');
+    const b = make(); assert.equal((await b.resume()).displayName, 'demo_tester', 'a new page resumes the session');
+    storage.removeItem('mpo-display');
+    const save = await b.loadDesktop(); assert.deepEqual(Object.keys(save.prefs), ['mpo-display'], 'only desktop preferences are saved');
+    assert.equal(b.applyPrefs(save.prefs), true); assert.equal(storage.getItem('mpo-display'), '{"fullDetail":true}'); assert.equal(b.applyPrefs(save.prefs), false, 'nothing to apply twice');
+    await b.signOut(); assert.equal(b.user, null); assert.equal(storage.getItem('mpo-hub-auth'), null);
+    const c = make(); assert.equal(await c.resume(), null, 'signed out stays signed out');
+    await assert.rejects(c.signIn('tester@example.test', 'wrong-password'), /Wrong email or password/);
+    assert.equal((await c.signIn('tester@example.test', 'mockhub-test-0001')).displayName, 'demo_tester');
+  } finally { server.close(); }
+});
