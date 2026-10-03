@@ -255,10 +255,17 @@ img.sky-cloud,
 .brand-mark { filter: drop-shadow(1px 2px 2px #0004); }
 /* Persistent corner product mark: the spiked-cash render sits beside the text
    logo at all times (same asset as the boot mark, Money and Updater panels). */
-.mpo-logo{--logo-dx:0px;--logo-dy:0px;--logo-stretch:1;--logo-squash:1;--logo-angle:0deg;--logo-tilt:0deg;--logo-ox:50%;--logo-oy:50%;position:relative;animation:mpoFloat 6s ease-in-out infinite;pointer-events:auto;cursor:grab;touch-action:none;filter:drop-shadow(0 5px 5px #0005)}
-.mpo-logo.is-stretching{animation-play-state:paused;cursor:grabbing;filter:drop-shadow(0 9px 8px #0007)}
-.brand-logo{display:block;width:240px;height:auto;animation:mpoBreathe 4.5s ease-in-out infinite;transform:translate(var(--logo-dx),var(--logo-dy)) rotate(var(--logo-angle)) scale(var(--logo-stretch),var(--logo-squash)) rotate(calc(-1 * var(--logo-angle))) rotate(var(--logo-tilt));transform-origin:var(--logo-ox) var(--logo-oy);transition:transform 120ms cubic-bezier(.2,.8,.2,1),filter 120ms;will-change:transform}
-.mpo-logo.is-stretching .brand-logo{transition:none}
+.mpo-logo{--logo-x:0px;--logo-y:0px;--logo-stretch:1;--logo-squash:1;--logo-angle:0deg;--logo-tilt:0deg;--logo-ox:50%;--logo-oy:50%;position:relative;animation:mpoFloat 6s ease-in-out infinite;pointer-events:none;filter:drop-shadow(0 5px 5px #0005)}
+.mpo-logo.is-stretching,.mpo-logo.is-flying,.mpo-logo.away{animation-play-state:paused}
+.mpo-logo.is-stretching{filter:drop-shadow(0 9px 8px #0007)}
+/* Away from its corner (dragged, flying or parked) the logo rides above the windows. */
+.brand:has(.mpo-logo.away,.mpo-logo.is-stretching){z-index:100000}
+.logo-body{position:relative;pointer-events:auto;cursor:grab;touch-action:none;transform:translate(var(--logo-x),var(--logo-y));transition:opacity .6s ease}
+.logo-body.is-gone{opacity:0}
+.mpo-logo.is-stretching .logo-body{cursor:grabbing}
+.logo-skin{position:relative;transform:rotate(var(--logo-angle)) scale(var(--logo-stretch),var(--logo-squash)) rotate(calc(-1 * var(--logo-angle))) rotate(var(--logo-tilt));transform-origin:var(--logo-ox) var(--logo-oy);transition:transform 120ms cubic-bezier(.2,.8,.2,1);will-change:transform}
+.mpo-logo.is-stretching .logo-skin,.mpo-logo.is-flying .logo-skin{transition:none}
+.brand-logo{display:block;width:240px;height:auto;animation:mpoBreathe 4.5s ease-in-out infinite}
 .shine{position:absolute;inset:0;overflow:hidden;pointer-events:none;mask:url('/assets/mpo-logo-3d.webp') center/100% 100% no-repeat;-webkit-mask:url('/assets/mpo-logo-3d.webp') center/100% 100% no-repeat}
 .shine::before{content:'';position:absolute;inset:0 auto 0 0;width:28%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.55),transparent);mix-blend-mode:screen;animation:mpoShine 9s linear infinite}
 @keyframes mpoFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
@@ -723,7 +730,7 @@ img.sky-cloud,
   position: absolute;
   inset: 0;
   z-index: 1000;
-  background: #008080;
+  background: transparent;
   display: grid;
   place-items: center;
   color: #000;
@@ -1012,3 +1019,35 @@ img.bill.phys.grabbing { cursor: grabbing; z-index: 5; }
   .grass-layer::before,
   .grass-layer::after { animation: none; transform: none; }
 }
+
+/* Log-on screen (see boot() in dashboard.html). The camera starts zoomed into the sky above the hill and
+   pulls back on log-on: far layers move least and near layers most, so the hill rises into view with
+   depth. The desktop chrome waits out the camera move, then fades in. */
+.logon { width: 440px; text-align: left; }
+.logon-banner { display: flex; align-items: center; gap: 12px; padding: 10px 14px; margin: 2px 2px 0; background: linear-gradient(90deg, #0a246a, #3a6ea5 60%, #6eb7f5); border-bottom: 2px solid #404040; }
+.logon-banner .bootmark { width: 48px; height: 48px; margin: 0; image-rendering: auto; }
+.logon-banner .bootlogo { margin: 0; font-size: 24px; }
+.logon-body { padding: 12px 16px 14px; }
+.logon-body p { margin: 0 0 12px; }
+.logon-row { display: grid; grid-template-columns: 84px 1fr; align-items: center; margin: 6px 0; }
+.logon-field { display: block; height: 20px; line-height: 18px; padding: 0 4px; background: #fff; color: #000; border: 2px solid; border-color: #808080 #fff #fff #808080; box-shadow: inset 1px 1px 0 #404040; letter-spacing: .5px; cursor: default; }
+.logon .bootline { margin: 12px 0 4px; color: #000; }
+.logon .bootprog i { transition: width .85s linear; }
+.logon-buttons { display: flex; justify-content: flex-end; margin-top: 12px; }
+.logon-buttons .btn { min-width: 76px; }
+.desktop .wallpaper, .desktop .sky-clouds, .desktop .hill-foreground, .desktop .cloud-shadows, .desktop .grass-layer { transform-origin: 50% 0; transition: transform 2.8s cubic-bezier(.22,.7,.18,1); }
+.desktop.camera-sky .wallpaper { transform: scale(1.5); }
+.desktop.camera-sky .sky-clouds { transform: scale(2) translateY(-4%); }
+.desktop.camera-sky .hill-foreground, .desktop.camera-sky .cloud-shadows { transform: scale(3.2); }
+.desktop.camera-sky .grass-layer { transform: scale(3.6); }
+.desktop .brand, .desktop .icons, .desktop #windows, .desktop .taskbar, .desktop .money-event-feed { transition: opacity .9s ease 1.7s; }
+.desktop.camera-sky .brand, .desktop.camera-sky .icons, .desktop.camera-sky #windows, .desktop.camera-sky .taskbar, .desktop.camera-sky .money-event-feed { opacity: 0; pointer-events: none; }
+.mpo-low-motion .desktop :is(.wallpaper, .sky-clouds, .hill-foreground, .cloud-shadows, .grass-layer, .brand, .icons, #windows, .taskbar, .money-event-feed), .mpo-low-motion .logon .bootprog i { transition: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  .desktop .wallpaper, .desktop .sky-clouds, .desktop .hill-foreground, .desktop .cloud-shadows, .desktop .grass-layer, .desktop .brand, .desktop .icons, .desktop #windows, .desktop .taskbar, .desktop .money-event-feed, .logon .bootprog i { transition: none; }
+}
+.mpo-welcome { position: absolute; left: 50%; top: 34%; z-index: 9000; pointer-events: none; white-space: nowrap; font: italic bold clamp(22px, 5vw, 48px) var(--mpo-font-brand); letter-spacing: -1px; color: #fff; text-shadow: 3px 3px #000, -1px -1px #000; animation: mpoWelcome 4.2s cubic-bezier(.2,.8,.2,1) forwards; }
+.mpo-welcome span { color: #b7ff74; }
+@keyframes mpoWelcome { 0% { opacity: 0; transform: translate(-50%,-38%) scale(.85); } 14%, 78% { opacity: 1; transform: translate(-50%,-50%) scale(1); } 100% { opacity: 0; transform: translate(-50%,-58%) scale(1.02); } }
+@media (prefers-reduced-motion: reduce) { .mpo-welcome { animation: none; transform: translate(-50%,-50%); } }
+.mpo-low-motion .mpo-welcome { animation: none; transform: translate(-50%,-50%); }

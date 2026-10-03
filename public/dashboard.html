@@ -27,7 +27,7 @@
 <script src="/js/mpo-whales.js"></script>
 </head>
 <body>
-<div class="desktop" id="desktop">
+<div class="desktop camera-sky" id="desktop">
   <div class="wallpaper"></div>
   <div class="sky-clouds" aria-hidden="true">
     <img class="sky-cloud" src="/assets/clouds/09.webp" alt="" style="width:30vw;top:3%;animation-duration:420s;animation-delay:-300s">
@@ -51,14 +51,14 @@
   <div class="grass-layer" aria-hidden="true"></div>
   <div class="money-layer market-fx" id="moneyRain"></div>
   <div class="money-layer market-fx money-pile" id="moneyPile"></div>
-  <div class="brand"><div class="mpo-logo" role="img" aria-label="Money Printer OS"><img class="brand-logo" src="/assets/mpo-logo-3d.webp" alt="" aria-hidden="true" width="960" height="591" draggable="false"><span class="shine" aria-hidden="true"></span></div><small id="runningVersion"></small></div>
+  <div class="brand"><div class="mpo-logo" role="img" aria-label="Money Printer OS"><div class="logo-body"><div class="logo-skin"><img class="brand-logo" src="/assets/mpo-logo-3d.webp" alt="" aria-hidden="true" width="960" height="591" draggable="false"><span class="shine" aria-hidden="true"></span></div></div></div><small id="runningVersion"></small></div>
   <div class="icons" id="icons"></div>
   <div class="money-event-feed" id="moneyEventFeed" aria-live="polite"></div>
   <div id="windows"></div>
   <div class="startmenu" id="startMenu"><div class="rail">MONEY PRINTER OS</div><div class="menuitems" id="startItems"></div></div>
   <div class="taskbar"><button class="start" id="startBtn"><img class="tico" src="/assets/icons/money.png" alt=""> Start</button><div class="tasks" id="tasks"></div><button class="task-tool" id="tileBtn" title="Tile: arrange every open window to fill the desktop, no overlap">▦ Tile</button><div class="mode-switch" role="group" aria-label="Window mode"><button class="task-tool" id="modeSimple" title="Simple mode: every window shows its clean glance">Simple</button><button class="task-tool" id="modeAdvanced" title="Advanced mode: every window shows its full workstation">Advanced</button></div><div class="tray"><span class="led" id="feedLed"></span><span class="mpo-badge mpo-badge--paper" id="trayMode">PAPER</span><span class="mpo-badge" id="paperQualificationBadge" title="Read-only paper research status. This never unlocks or starts live trading.">PAPER QUALIFICATION · LOADING</span><span id="hudReadStatus" role="status">Connecting…</span><span id="clock"></span></div></div>
   <div class="dialog-layer" id="dialogLayer"><div class="dialog hidden" id="dialog" role="dialog" aria-modal="true" aria-labelledby="dialogTitle"><div class="titlebar"><div class="title" id="dialogTitle">Money Printer OS</div><div class="win-buttons"><button type="button" id="dialogX">×</button></div></div><div class="msg"><div class="mpo-dialog-ico" aria-hidden="true">!</div><div><b id="dialogHead"></b><p id="dialogText"></p><button class="btn" id="dialogOk">OK</button></div></div></div><div class="dialog mpo-dialog hidden" id="polyConfirm" role="dialog" aria-modal="true" aria-labelledby="polyConfirmTitle"><div class="titlebar"><div class="title" id="polyConfirmTitle">Confirm</div><div class="win-buttons"><button type="button" id="polyConfirmX">×</button></div></div><div class="msg"><span class="mpo-dialog-ico" aria-hidden="true">!</span><div><b id="polyConfirmHead"></b><div id="polyConfirmBody"></div><p id="polyConfirmCountdown"></p><input class="field" id="polyConfirmPhrase" autocomplete="off" spellcheck="false"><div class="toolbar"><button class="btn" id="polyConfirmRequote" hidden>Re-quote</button><button class="btn" id="polyConfirmCancel">Cancel</button><button class="btn" id="polyConfirmOk" disabled>Confirm</button></div></div></div></div></div>
-  <div class="boot" id="boot"><div class="bootbox"><div class="titlebar"><div class="title">Money Printer OS</div></div><div class="bootbody dark terminal"><img class="bootmark" src="/assets/money-printer-logo-512.png" alt="" width="64" height="64"><div class="bootlogo">MONEY <span>PRINTER</span> OS</div><div class="bootline" id="bootText">Loading desktop…</div><div class="progress bootprog"><i id="bootBar"></i></div></div></div></div>
+  <div class="boot" id="boot"><div class="bootbox logon" role="dialog" aria-labelledby="bootTitle"><div class="titlebar"><div class="title" id="bootTitle">Log On to Money Printer OS</div></div><div class="logon-banner"><img class="bootmark" src="/assets/money-printer-logo-512.png" alt="" width="64" height="64"><div class="bootlogo">MONEY <span>PRINTER</span> OS</div></div><div class="logon-body"><p>Type a user name and password to log on to Money Printer OS.</p><div class="logon-row"><span>User name:</span><span class="logon-field">Trader</span></div><div class="logon-row"><span>Password:</span><span class="logon-field" aria-label="Password (not needed)">••••••••••</span></div><div class="bootline" id="bootText">Loading desktop…</div><div class="progress bootprog"><i id="bootBar"></i></div><div class="logon-buttons"><button type="button" class="btn" id="bootOk" disabled>OK</button></div></div></div></div>
 </div>
 <script>
 const fetch=window.MPOHud.fetch;
@@ -567,33 +567,68 @@ function buildIcons(){
  const pulse=el=>{if(!el)return;$$('.icon').forEach(x=>x.classList.remove('sel','press'));selectedIcon=el.dataset.app;el.classList.add('press');setTimeout(()=>el.classList.remove('press'),180)};
  $$('.icon').forEach(el=>{el.onclick=()=>pulse(el);el.ondblclick=()=>{pulse(el);openApp(el.dataset.app)};el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();pulse(el);openApp(el.dataset.app)}}});
 }
+// The corner logo is a toy. Drag it and it stretches toward the pointer like a rubber band (pull past
+// the band's reach and it gets towed along). Let go and the stored stretch plus the flick slingshot it
+// that way with a squash-and-stretch boing; it glides across the desktop, bounces off the edges and
+// slides to a halt, ready to be flicked again. Left alone away from its corner, it fades out and fades
+// back in at home. The shine sits inside the same skin, so it stretches and travels with the logo.
 function initLogoStretch(){
- const logo=$('.mpo-logo'),img=logo?.querySelector('.brand-logo');if(!logo||!img)return;
- let drag=null,anim=null;
- const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
- const neutral=()=>{for(const [k,v] of [['--logo-dx','0px'],['--logo-dy','0px'],['--logo-stretch','1'],['--logo-squash','1'],['--logo-angle','0deg'],['--logo-tilt','0deg'],['--logo-ox','50%'],['--logo-oy','50%']])logo.style.setProperty(k,v)};
- const release=()=>{
-  if(!drag)return;drag=null;logo.classList.remove('is-stretching');
-  const from=getComputedStyle(img).transform;neutral();
-  if(motionReduced()||typeof img.animate!=='function')return;
-  anim?.cancel();anim=img.animate([{transform:from},{transform:'translate(0,0) scale(.94,1.06) rotate(-1.8deg)'},{transform:'translate(0,0) scale(1.045,.965) rotate(1deg)'},{transform:'translate(0,0) scale(.985,1.015) rotate(-.35deg)'},{transform:'none'}],{duration:640,easing:'cubic-bezier(.18,.82,.18,1)'});
+ const logo=$('.mpo-logo'),body=logo?.querySelector('.logo-body'),skin=logo?.querySelector('.logo-skin');if(!logo||!body||!skin)return;
+ const clamp=(n,a,b)=>Math.max(a,Math.min(b,n)),set=(k,v)=>logo.style.setProperty(k,v);
+ const REACH=150,FRICTION=2.6,MAX_V=2600,IDLE_MS=3500;
+ const S={x:0,y:0,vx:0,vy:0,boing:0,boingV:0,axis:0,drag:null,raf:0,last:0};let idleTimer=0;
+ const skinVars=(stretch,squash,angle,tilt)=>{set('--logo-stretch',stretch.toFixed(3));set('--logo-squash',squash.toFixed(3));set('--logo-angle',angle.toFixed(2)+'deg');set('--logo-tilt',tilt.toFixed(2)+'deg')};
+ const place=()=>{set('--logo-x',S.x.toFixed(1)+'px');set('--logo-y',S.y.toFixed(1)+'px');logo.classList.toggle('away',Math.hypot(S.x,S.y)>1)};
+ const origin=(ox,oy)=>{set('--logo-ox',ox);set('--logo-oy',oy)};
+ // Offsets that keep the whole logo on the desktop, above the taskbar.
+ const bounds=()=>{const r=body.getBoundingClientRect(),hx=r.left-S.x,hy=r.top-S.y,floor=$('.taskbar')?.getBoundingClientRect().top||innerHeight;return {minX:-hx,maxX:innerWidth-r.width-hx,minY:-hy,maxY:floor-r.height-hy}};
+ const goHomeLater=()=>{clearTimeout(idleTimer);if(Math.hypot(S.x,S.y)<2)return;
+  idleTimer=setTimeout(()=>{if(S.drag||S.raf)return goHomeLater();body.classList.add('is-gone');
+   setTimeout(()=>{if(!S.drag){S.x=S.y=0;place()}body.classList.remove('is-gone')},650)},IDLE_MS)};
+ const settle=()=>{S.raf=0;S.vx=S.vy=S.boing=S.boingV=0;skinVars(1,1,0,0);origin('50%','50%');logo.classList.remove('is-flying');goHomeLater()};
+ function step(now){
+  const dt=Math.min(.04,(now-S.last)/1000);S.last=now;const b=bounds();
+  S.x+=S.vx*dt;S.y+=S.vy*dt;
+  const wall=(axis,speed)=>{S.axis=axis;S.boingV-=Math.min(9,speed/260)};
+  if(S.x<b.minX||S.x>b.maxX){const sp=Math.abs(S.vx);S.x=clamp(S.x,b.minX,b.maxX);S.vx=-S.vx*.55;wall(90,sp)}
+  if(S.y<b.minY||S.y>b.maxY){const sp=Math.abs(S.vy);S.y=clamp(S.y,b.minY,b.maxY);S.vy=-S.vy*.55;wall(0,sp)}
+  const f=Math.exp(-FRICTION*dt);S.vx*=f;S.vy*=f;
+  S.boingV+=(-170*S.boing-9*S.boingV)*dt;S.boing+=S.boingV*dt; // damped spring: the rubber band ringing out
+  const speed=Math.hypot(S.vx,S.vy),flow=Math.min(.3,speed/6000),s=S.boing+flow;
+  skinVars(clamp(1+s,.62,1.9),clamp(1-s*.45,.72,1.3),S.axis,clamp(S.vx/420,-7,7));place();
+  if(speed<8&&Math.abs(S.boing)<.004&&Math.abs(S.boingV)<.06)return settle();
+  S.raf=requestAnimationFrame(step);
+ }
+ const launch=()=>{if(S.raf)return;logo.classList.add('is-flying');S.last=performance.now();S.raf=requestAnimationFrame(step)};
+ body.addEventListener('pointerdown',e=>{
+  if(motionReduced()||e.button!==0)return;e.preventDefault();clearTimeout(idleTimer);
+  if(S.raf){cancelAnimationFrame(S.raf);S.raf=0}S.vx=S.vy=S.boing=S.boingV=0;logo.classList.remove('is-flying');body.classList.remove('is-gone');
+  const r=skin.getBoundingClientRect(),gx=clamp((e.clientX-r.left)/Math.max(1,r.width),0,1),gy=clamp((e.clientY-r.top)/Math.max(1,r.height),0,1);
+  S.drag={id:e.pointerId,sx:e.clientX,sy:e.clientY,bx:S.x,by:S.y,dx:0,dy:0,stretch:1,angle:0,pts:[{t:performance.now(),x:e.clientX,y:e.clientY}]};
+  logo.classList.add('is-stretching');body.setPointerCapture?.(e.pointerId);
+  origin(((1-gx)*100).toFixed(1)+'%',((1-gy)*100).toFixed(1)+'%');
+ });
+ body.addEventListener('pointermove',e=>{
+  const d=S.drag;if(!d||e.pointerId!==d.id)return;const now=performance.now();
+  let dx=e.clientX-d.sx,dy=e.clientY-d.sy,dist=Math.hypot(dx,dy);
+  if(dist>REACH){const k=1-REACH/dist,mx=dx*k,my=dy*k;d.sx+=mx;d.sy+=my;d.bx+=mx;d.by+=my;dx-=mx;dy-=my;dist=REACH} // towed
+  const b=bounds();d.dx=dx;d.dy=dy;d.angle=Math.atan2(dy,dx)*180/Math.PI;d.stretch=clamp(1+dist/185,1,1.9);
+  S.x=clamp(d.bx+dx*.46,b.minX,b.maxX);S.y=clamp(d.by+dy*.46,b.minY,b.maxY);place();
+  skinVars(d.stretch,clamp(1-dist/780,.78,1),d.angle,clamp(dx/90,-2.4,2.4));
+  d.pts.push({t:now,x:e.clientX,y:e.clientY});while(d.pts.length>2&&now-d.pts[0].t>90)d.pts.shift();
+ });
+ const release=e=>{
+  const d=S.drag;if(!d||(e.pointerId!=null&&e.pointerId!==d.id))return;S.drag=null;logo.classList.remove('is-stretching');
+  const now=performance.now(),p0=d.pts[0],p1=d.pts.at(-1),span=Math.max(.016,(p1.t-p0.t)/1000),fresh=now-p1.t<=120;
+  // Slingshot: the flick plus the stretch still stored in the band, both pointing where you pulled.
+  S.vx=clamp((fresh?(p1.x-p0.x)/span:0)*.9+d.dx*6,-MAX_V,MAX_V);S.vy=clamp((fresh?(p1.y-p0.y)/span:0)*.9+d.dy*6,-MAX_V,MAX_V);
+  const speed=Math.hypot(S.vx,S.vy);S.axis=speed>1?Math.atan2(S.vy,S.vx)*180/Math.PI:d.angle;
+  S.boing=clamp(d.stretch-1,0,.9);S.boingV=-Math.min(6,speed/500);
+  if(speed<1&&S.boing<.01){skinVars(1,1,0,0);return goHomeLater()}
+  launch();
  };
- logo.addEventListener('pointerdown',e=>{
-  if(motionReduced()||e.button!==0)return;e.preventDefault();anim?.cancel();
-  const r=img.getBoundingClientRect(),grabX=clamp((e.clientX-r.left)/Math.max(1,r.width),0,1),grabY=clamp((e.clientY-r.top)/Math.max(1,r.height),0,1);
-  drag={id:e.pointerId,x:e.clientX,y:e.clientY,grabX,grabY};
-  logo.classList.add('is-stretching');logo.setPointerCapture?.(e.pointerId);
-  logo.style.setProperty('--logo-ox',((1-grabX)*100).toFixed(1)+'%');
-  logo.style.setProperty('--logo-oy',((1-grabY)*100).toFixed(1)+'%');
- });
- logo.addEventListener('pointermove',e=>{
-  if(!drag||e.pointerId!==drag.id)return;const dx=clamp(e.clientX-drag.x,-170,170),dy=clamp(e.clientY-drag.y,-140,140),dist=Math.hypot(dx,dy);
-  const angle=Math.atan2(dy,dx)*180/Math.PI,stretch=clamp(1+dist/185,1,1.9),squash=clamp(1-dist/780,.78,1);
-  logo.style.setProperty('--logo-dx',(dx*.46).toFixed(1)+'px');logo.style.setProperty('--logo-dy',(dy*.46).toFixed(1)+'px');
-  logo.style.setProperty('--logo-stretch',stretch.toFixed(3));logo.style.setProperty('--logo-squash',squash.toFixed(3));
-  logo.style.setProperty('--logo-angle',angle.toFixed(2)+'deg');logo.style.setProperty('--logo-tilt',clamp(dx/90,-2.4,2.4).toFixed(2)+'deg');
- });
- logo.addEventListener('pointerup',release);logo.addEventListener('pointercancel',release);logo.addEventListener('lostpointercapture',release);
+ body.addEventListener('pointerup',release);body.addEventListener('pointercancel',release);body.addEventListener('lostpointercapture',release);
+ addEventListener('resize',()=>{const b=bounds();S.x=clamp(S.x,b.minX,b.maxX);S.y=clamp(S.y,b.minY,b.maxY);place()});
 }
 function appShell(id,title){
  const L=saved[id]||heroLayout(id);
@@ -1939,10 +1974,32 @@ async function refreshUpdater(){
 async function refreshResearchMonitor(){
  try{const r=await fetch('/api/research-monitor',{cache:'no-store',signal:AbortSignal.timeout(4000)});if(r.ok)researchMonitor=await r.json();else researchMonitor={...researchMonitor,status:'error',error:'monitor HTTP '+r.status}}catch(e){researchMonitor={...researchMonitor,status:'error',error:e.message||'research monitor unavailable'}}renderSig.delete('researchmon');renderAll()
 }
+// Log-on: a Win98-style log-on box over open sky while the desktop loads. OK, Enter, or a few quiet
+// seconds pull the camera back from the sky to the hill, and the desktop fades in. The fields are
+// decoration, not inputs: nothing is typed or checked, so the screen can never collect a password.
+// mpo:logon fires at log-on; LOGON_CAMERA_MS later the camera has settled and the desktop is in.
+const LOGON_AUTO_MS=6000,LOGON_CAMERA_MS=2700;let loggedOn=false,logonTimer=0;
 function boot(){
- $('#bootText').textContent='Desktop loaded · connecting to local services…';$('#bootBar').style.width='100%';
- requestAnimationFrame(()=>$('#boot').classList.add('hide'));
+ const ok=$('#bootOk');$('#bootText').textContent='Loading desktop…';
+ requestAnimationFrame(()=>$('#bootBar').style.width='100%');
+ setTimeout(()=>{$('#bootText').textContent='Desktop ready. Press OK to log on.';if(!ok)return logOn();ok.disabled=false;ok.onclick=logOn;ok.focus({preventScroll:true});
+  const wait=()=>{clearTimeout(logonTimer);logonTimer=setTimeout(logOn,LOGON_AUTO_MS)};wait();
+  $('#boot').addEventListener('pointermove',wait);document.addEventListener('keydown',e=>{if(!loggedOn&&e.key==='Enter'){e.preventDefault();logOn()}})},motionReduced()?0:900);
 }
+function logOn(){
+ if(loggedOn)return;loggedOn=true;clearTimeout(logonTimer);
+ $('#boot').classList.add('hide');requestAnimationFrame(()=>$('#desktop').classList.remove('camera-sky'));
+ dispatchEvent(new CustomEvent('mpo:logon'));
+}
+// First thing after log-on: a short welcome and a shower of every kind of bill ($100s in each fold, $1s
+// and stacks). They are ordinary burst bills, so they can be grabbed and thrown before the session has
+// earned a burst of its own.
+function welcomeShower(){
+ const hello=document.createElement('div');hello.className='mpo-welcome';hello.setAttribute('aria-hidden','true');hello.innerHTML='Welcome to <span>Money Printer OS</span>';$('#desktop').appendChild(hello);setTimeout(()=>hello.remove(),4300);
+ const rain=$('#moneyRain');if(!rain||motionReduced())return;
+ fxRainHost(rain);rain.insertAdjacentHTML('beforeend',makeBurstBills(22,1,'welcome')+makeBurstBills(14,.1,'welcome'));rain.style.opacity='1';
+}
+addEventListener('mpo:logon',()=>setTimeout(welcomeShower,motionReduced()?0:LOGON_CAMERA_MS));
 // One refresh includes fetching, parsing and applying the result. A slow request cannot queue
 // multiple renders of the same payload behind the transport's single in-flight read.
 function singleFlightRefresh(fn){let pending=null;return(...args)=>pending||(pending=Promise.resolve().then(()=>fn(...args)).finally(()=>{pending=null}))}

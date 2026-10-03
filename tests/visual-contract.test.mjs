@@ -164,7 +164,9 @@ test('chrome stays opaque and the simplified alpha56 shell contract is pinned', 
   assert.match(css, /\.titlebar\s*\{[^}]*background:\s*var\(--mpo-navy\)/);
   assert.match(css, /\.taskbar\s*\{[^}]*z-index:\s*100/);
   assert.match(css, /\.brand\s*\{[^}]*z-index:\s*6/);
-  assert.match(css, /\.boot\s*\{[^}]*background:\s*#008080/);
+  // The boot overlay is a log-on box over open sky (the desktop starts zoomed into it), not a teal screen.
+  assert.match(css, /\.boot\s*\{[^}]*background:\s*transparent/);
+  assert.match(html, /<div class="desktop camera-sky" id="desktop">/);
   assert.match(html, /LAYOUT_VERSION='2026-09-26-glance'/);
   assert.match(html, /\['trade','Pump\.fun'/);assert.match(html, /\['robinhood','Robinhood'/);assert.match(html, /\['researchmon','Lab Monitor','LAB','dark','trade'/);
   assert.doesNotMatch(html, /<div class="menu" title="Menus are not wired">/);
