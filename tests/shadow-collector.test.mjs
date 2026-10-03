@@ -29,7 +29,7 @@ test('US No shadows and marks use complementary Yes BBO with honest modeled fee 
     const [row]=recordUSSingleShadow([p],{at:1000,opportunities:[market]},{file,now:1000});
     assert.ok(Math.abs(row.shadowPrice-(.4+.05*.4*.6))<1e-9);
     assert.equal(row.depthVerified,false);assert.match(row.feeTreatment,/MODELED/);
-    fs.writeFileSync(path.join(dir,'book'),JSON.stringify({open:[p]}));
+    fs.writeFileSync(path.join(dir,'book'),JSON.stringify({mode:'PAPER',cashUsd:22,startUsd:25,open:[p],history:[]}));
     assert.ok(Math.abs(markPaperSingles([market],{file:path.join(dir,'book')})[0].markBid-.3)<1e-9);
   }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });

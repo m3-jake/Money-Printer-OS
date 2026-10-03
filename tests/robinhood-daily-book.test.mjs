@@ -54,7 +54,7 @@ function coinbase(m, clock, calls = []) {
     return { ok: true, status: 200, json: async () => rows.map(b => [b.t / 1000, b.l, b.h, b.o, b.c, 1]) };
   };
 }
-const rhQuote = (bid, ask, at) => sym => sym === 'BTC-USD' ? { symbol: sym, bid, ask, at, source: 'v2' } : null;
+const rhQuote = (bid, ask, at) => sym => ({ symbol: sym, bid:sym==='BTC-USD'?bid:100, ask:sym==='BTC-USD'?ask:100.1, at, source: 'v2',supported:true,bidSize:100,askSize:100 });
 
 test('Lab signal parity: the executor rule reproduces the Lab replay trades for every family', { skip: !fs.existsSync(path.resolve(process.env.MPO_LAB_SRC || 'W:/money-printer-evolution-lab/src', 'robinhoodDaily.js')) && 'Lab repo not found' }, async () => {
   const L = await import(pathToFileURL(path.resolve(process.env.MPO_LAB_SRC || 'W:/money-printer-evolution-lab/src', 'robinhoodDaily.js')).href);
@@ -97,7 +97,7 @@ test('strategy source: the Lab proposal only when championState clears it for pa
   assert.equal(D.pickDailyStrategy({ ...cleared, proposal: { ...cleared.proposal, family: 'martingale', params: {} } }).kind, 'lab-default');
 });
 
-test('controller: one decision per closed bar, next-open fill on a Robinhood quote, multi-day hold, Coinbase open when late, never repeated', async () => {
+test('controller: prospective Robinhood quotes fill multi-day holds at any hour without historical late fills', async () => {
   const dir = tmp(), D0 = '2026-09-20', m = market(D0);
   m['BTC-USD'].set(D0, { o: 100, h: 105.5, l: 99.8, c: 105 }); // close > SMA200 x 1.02 -> BUY
   m['BTC-USD'].set(addDays(D0, 1), { o: 106, h: 107, l: 105, c: 106 });
@@ -105,6 +105,7 @@ test('controller: one decision per closed bar, next-open fill on a Robinhood quo
   let now = t0(addDays(D0, 1)) + 10 * 60_000; const calls = [], fetchFn = coinbase(m, () => now, calls);
   const run = (extra = {}) => D.runDailyOnce({ dataDir: dir, now, env: { ROBINHOOD_DAILY_SYMBOLS: SYMS.join(',') }, fetchFn, labDaily: null, ...extra });
   let r = await run({ quoteFn: rhQuote(106.9, 107, now), feeRatio: 0.001 });
+  const firstEvents=r.events;now+=1000;r=await run({ quoteFn:rhQuote(106.9,107,now),feeRatio:.001 });r.events=[...firstEvents,...r.events];
   assert.ok(r.events.includes('DECIDED buy BTC-USD for the 2026-09-21 open'), r.events.join());
   assert.ok(r.events.some(e => e.startsWith('FILLED buy BTC-USD 2026-09-21 @ robinhood-quote:v2')), r.events.join());
   assert.equal(r.book.source.kind, 'lab-default'); assert.equal(r.book.lastDecidedDay, D0);
@@ -127,12 +128,13 @@ test('controller: one decision per closed bar, next-open fill on a Robinhood quo
   m['BTC-USD'].set(addDays(D0, 5), { o: 89, h: 90, l: 88, c: 89 });
   now = t0(addDays(D0, 5)) + 10 * 3600_000;
   r = await run({ quoteFn: rhQuote(95, 95.1, now) });
+  const exitEvents=r.events;now+=1000;r=await run({quoteFn:rhQuote(95,95.1,now)});r.events=[...exitEvents,...r.events];
   assert.ok(r.events.includes('DECIDED sell BTC-USD for the 2026-09-25 open'), r.events.join());
   assert.equal(r.book.missedDays, 2, 'two closed bars were never decided after the fact');
   const trade = r.book.history[0];
-  assert.equal(trade.exitDay, '2026-09-25'); assert.equal(trade.priceSource.exit, 'coinbase-open'); assert.equal(trade.late.exit, true);
+  assert.equal(trade.exitDay, '2026-09-25'); assert.equal(trade.priceSource.exit, 'robinhood-quote:v2'); assert.equal(trade.late.exit, false);
   assert.equal(trade.holdDays, 4); assert.equal(trade.entryDay, '2026-09-21');
-  const proceeds = sl.qty * 89 * (1 - 0.0005) * (1 - 0.0095);
+  const proceeds = sl.qty * 95 * (1 - 0.0005) * (1 - 0.0095);
   assert.ok(Math.abs(trade.proceedsUsd - Math.round(proceeds * 100) / 100) < 0.011); assert.ok(trade.pnlUsd < 0);
   assert.equal(r.book.sleeves['BTC-USD'].qty, 0);
   r = await run({ quoteFn: rhQuote(95, 95.1, now) });
@@ -143,7 +145,7 @@ test('controller: one decision per closed bar, next-open fill on a Robinhood quo
   assert.ok(calls.every(u => u.hostname === 'api.exchange.coinbase.com'));
 });
 
-test('controller: a decision is saved before its fill; without any price it waits and fills once when the open is known', async () => {
+test('controller: decision is durable and missing quote waits until a supported executable quote arrives', async () => {
   const dir = tmp(), D0 = '2026-09-20', m = market(D0);
   m['BTC-USD'].set(D0, { o: 100, h: 105.5, l: 99.8, c: 105 });
   let now = t0(addDays(D0, 1)) + 5 * 60_000; const fetchFn = coinbase(m, () => now);
@@ -152,9 +154,18 @@ test('controller: a decision is saved before its fill; without any price it wait
   const saved = JSON.parse(fs.readFileSync(D.bookFile(dir), 'utf8')); assert.equal(saved.lastDecidedDay, D0); assert.equal(saved.pending.length, 1);
   m['BTC-USD'].set(addDays(D0, 1), { o: 106, h: 106, l: 106, c: 106 });
   now += 20 * 60_000;
-  r = await D.runDailyOnce({ dataDir: dir, now, env: { ROBINHOOD_DAILY_SYMBOLS: SYMS.join(',') }, fetchFn, labDaily: null });
-  assert.equal(r.book.pending.length, 0); assert.equal(r.book.fills.length, 1); assert.equal(r.book.fills[0].priceSource, 'coinbase-open');
+  r = await D.runDailyOnce({ dataDir: dir, now, env: { ROBINHOOD_DAILY_SYMBOLS: SYMS.join(',') }, fetchFn, labDaily: null,quoteFn:rhQuote(105.9,106,now) });
+  assert.equal(r.book.pending.length, 0); assert.equal(r.book.fills.length, 1); assert.equal(r.book.fills[0].priceSource, 'robinhood-quote:v2');
   assert.equal(r.book.fills[0].refPrice, 106); assert.ok(!r.events.some(e => e.startsWith('DECIDED')), 'not decided twice');
+});
+test('forward daily rejects historical opens, stale or missing-depth quotes and floors actual lots',async()=>{
+ const dir=tmp(),D0='2026-09-20',m=market(D0);m['BTC-USD'].set(D0,{o:100,h:105.5,l:99.8,c:105});m['BTC-USD'].set(addDays(D0,1),{o:1,h:1,l:1,c:1});
+ let now=t0(addDays(D0,1))+10*3600000;const run=(quoteFn)=>D.runDailyOnce({dataDir:dir,now,env:{ROBINHOOD_DAILY_SYMBOLS:SYMS.join(',')},fetchFn:coinbase(m,()=>now),labDaily:null,quoteFn});
+ try{let r=await run(null);assert.equal(r.book.pending.length,1);assert.equal(r.book.fills.length,0);assert.equal(r.book.equityDaily.length,0);
+  now+=1000;r=await run(sym=>({...rhQuote(109,110,now-2000)(sym),quantityStep:.01}));assert.equal(r.book.fills.length,0);
+  r=await run(sym=>({...rhQuote(109,110,now)(sym),askSize:0}));assert.equal(r.book.pending.length,1);
+  r=await run(sym=>({...rhQuote(109,110,now)(sym),quantityStep:.01}));assert.equal(r.book.fills[0].refPrice,110);assert.equal(r.book.fills[0].qty,.07);assert.ok(r.book.sleeves['BTC-USD'].cashUsd>0);assert.equal(r.book.fills[0].executionEvidence,true);
+ }finally{fs.rmSync(dir,{recursive:true,force:true})}
 });
 
 test('controller: switches to a cleared Lab proposal and labels it', async () => {
@@ -168,9 +179,9 @@ test('controller: switches to a cleared Lab proposal and labels it', async () =>
 test('qualification: minimum trades and days over a long window, beats cash and buy-and-hold, drawdown and profit factor', () => {
   const hash = 'h1', b = D.newDailyBook({ now: 0 }); b.source = { paramsHash: hash };
   const days = 200, start = '2026-01-01';
-  b.equityDaily = Array.from({ length: days }, (_, i) => ({ d: addDays(start, i), equityUsd: 1000 * (1 + 0.001 * i), benchUsd: 1000 * (1 + 0.0005 * i) - (i === 100 ? 60 : 0), paramsHash: hash }));
+  b.equityDaily = Array.from({ length: days }, (_, i) => ({ d: addDays(start, i), equityUsd: 1000 * (1 + 0.001 * i), benchUsd: 1000 * (1 + 0.0005 * i) - (i === 100 ? 60 : 0), paramsHash: hash,executionEvidence:true,valuationSource:'ROBINHOOD_EXECUTABLE_QUOTES' }));
   const trade = (i, pnl) => ({ symbol: 'BTC-USD', exitDay: addDays(start, 10 + i * 15), pnlUsd: pnl, paramsHash: hash,
-    priceSource: { entry: 'robinhood-quote:v2', exit: 'robinhood-quote:v2' }, late: { entry: false, exit: false } });
+    priceSource: { entry: 'robinhood-quote:v2', exit: 'robinhood-quote:v2' }, late: { entry: false, exit: false },executionEvidence:true,quoteEvidence:{entry:{quoteAt:1},exit:{quoteAt:2}} });
   b.history = Array.from({ length: 12 }, (_, i) => trade(i, i % 3 ? 20 : -10));
   let q = D.dailyQualification(b);
   assert.equal(q.qualified, true, q.reasons.join('; ')); assert.equal(q.liveEligible, false); assert.equal(q.metrics.closedTrades, 12);

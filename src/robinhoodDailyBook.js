@@ -14,8 +14,8 @@
 //   - Exactly one decision per closed UTC bar, taken at the first run after that bar closes, persisted before
 //     any fill, so a restart never decides the same bar twice. Days the app was off are counted as missed and
 //     never decided after the fact.
-//   - Decisions use the close of day D; the fill is at the open of D+1. A fresh Robinhood quote (ask to buy,
-//     bid to sell) is used when one is available within the open window; otherwise the Coinbase open of D+1.
+//   - Decisions use the close of day D; forward fills require a fresh supported Robinhood quote
+//     after decision plus processing latency. Historical next-open proxies belong only to daily-shadow.
 //   - Costs: fee max(0.95%, account fee) per side plus slippage (default 5 bps) on both sides.
 //   - Long or flat per symbol, one equal sleeve per symbol, holds for as many days as the signal says.
 import fs from 'node:fs';
@@ -35,7 +35,7 @@ export const DAILY_BOOK_LABELS = Object.freeze({
 export const LAB_DEFAULT_DAILY = Object.freeze({ family: 'trend', params: Object.freeze({ smaDays: 200, bandPct: 2 }) });
 export const DAILY_DEFAULTS = Object.freeze({
   startUsd: 25, feeFloor: 0.0095, slipBps: 5, symbols: Object.freeze(['BTC-USD', 'ETH-USD', 'SOL-USD', 'DOGE-USD', 'XRP-USD', 'AVAX-USD', 'LINK-USD', 'ADA-USD']),
-  quoteWindowMin: 30, retryMs: 15 * 60_000, barsKeep: 500, historyDays: 299,
+  quoteWindowMin: 30, processingLatencyMs:250,retryMs: 15 * 60_000, barsKeep: 500, historyDays: 299,
 });
 // Qualification suited to a book that trades one or two times a month. Paper evidence only: passing it never
 // unlocks live execution (liveEligible is always false).
@@ -208,61 +208,70 @@ export function loadDailyBook(dataDir, init = {}) {
   try {
     const b = JSON.parse(raw);
     if (b?.schema !== DAILY_BOOK_SCHEMA || b.version !== 1 || !b.sleeves || !Array.isArray(b.pending) || !Array.isArray(b.history)) throw new Error('shape');
+    if(!Array.isArray(b.symbols)||b.symbols.some(s=>!SYMBOL_RE.test(s)||!b.sleeves[s]||!Number.isFinite(b.sleeves[s].cashUsd)||b.sleeves[s].cashUsd<0||!Number.isFinite(b.sleeves[s].qty)||b.sleeves[s].qty<0))throw new Error('invalid sleeve capital');
     return { ...b, execution: 'paper-only', liveEligible: false };
   } catch { return { ...newDailyBook(init), recoveryRequired: true, recoveryReason: 'corrupt daily paper book; review it, then reset with RESET DAILY' }; }
 }
 export function saveDailyBook(dataDir, book) { if (book.recoveryRequired) return false; writeJsonAtomic(bookFile(dataDir), book); return true; }
 function event(book, now, text) { book.events = [{ at: now, text: String(text).slice(0, 200) }, ...(book.events || [])].slice(0, 40); }
 
-function fillOne(book, order, { price, priceSource, late, fee, now }) {
+function fillOne(book, order, { price, priceSource, late, fee, now,quoteEvidence=null }) {
   const sl = book.sleeves[order.symbol], slip = book.slipBps / 1e4;
   if (order.side === 'buy') {
     if (sl.qty > 0 || !(sl.cashUsd > 0)) return null;
-    const fillPrice = price * (1 + slip), costUsd = sl.cashUsd, feeUsd = costUsd * fee, qty = (costUsd - feeUsd) / fillPrice;
-    sl.qty = qty; sl.cashUsd = 0;
-    sl.entry = { day: order.fillDay, refPrice: price, fillPrice: r4(fillPrice), costUsd: r2(costUsd), feeUsd: r2(feeUsd), priceSource, late, paramsHash: order.paramsHash, at: now };
+    const fillPrice = price * (1 + slip),wanted=sl.cashUsd*(1-fee)/fillPrice,step=quoteEvidence?.quantityStep;
+    const qty=step>0?Math.floor(wanted/step)*step:wanted;if(!(qty>0))return null;
+    const costUsd=qty*fillPrice/(1-fee),feeUsd=costUsd*fee;
+    sl.qty = qty; sl.cashUsd = Math.max(0,sl.cashUsd-costUsd);
+    sl.entry = { day: dayKey(now), refPrice: price, fillPrice: r4(fillPrice), costUsd: r2(costUsd), feeUsd: r2(feeUsd), priceSource, late, paramsHash: order.paramsHash, at: now,quoteEvidence,executionEvidence:!!quoteEvidence };
     const f = { at: now, day: order.fillDay, decidedForDay: order.decidedForDay, symbol: order.symbol, side: 'buy', qty, refPrice: price, fillPrice: r4(fillPrice), notionalUsd: r2(costUsd), feeUsd: r2(feeUsd), priceSource, late, paramsHash: order.paramsHash };
-    book.fills = [f, ...book.fills].slice(0, 200);
+    Object.assign(f,{quoteEvidence,executionEvidence:!!quoteEvidence,decisionAt:order.decidedAt,filledAt:now});book.fills = [f, ...book.fills];
     return f;
   }
   if (!(sl.qty > 0)) return null;
   const fillPrice = price * (1 - slip), gross = sl.qty * fillPrice, feeUsd = gross * fee, proceeds = gross - feeUsd, e = sl.entry || {};
   const trade = {
-    symbol: order.symbol, entryDay: e.day || null, exitDay: order.fillDay, holdDays: e.day ? Math.round((dayStart(order.fillDay) - dayStart(e.day)) / DAY) : null,
+    symbol: order.symbol, entryDay: e.day || null, exitDay: dayKey(now), holdDays: e.day ? Math.round((dayStart(dayKey(now)) - dayStart(e.day)) / DAY) : null,
     entryPrice: e.fillPrice ?? null, exitPrice: r4(fillPrice), costUsd: e.costUsd ?? null, proceedsUsd: r2(proceeds), feesUsd: r2((e.feeUsd || 0) + feeUsd),
     pnlUsd: r2(proceeds - (e.costUsd || 0)), returnPct: e.costUsd ? r2((proceeds / e.costUsd - 1) * 100) : null,
     paramsHash: e.paramsHash === order.paramsHash ? order.paramsHash : null, entryParamsHash: e.paramsHash || null, exitParamsHash: order.paramsHash,
-    priceSource: { entry: e.priceSource || null, exit: priceSource }, late: { entry: !!e.late, exit: late }, closedAt: now,
+    priceSource: { entry: e.priceSource || null, exit: priceSource }, late: { entry: !!e.late, exit: late }, closedAt: now,executionEvidence:e.executionEvidence===true&&!!quoteEvidence,quoteEvidence:{entry:e.quoteEvidence||null,exit:quoteEvidence},entryDecisionAt:e.quoteEvidence?.decisionAt??null,exitDecisionAt:order.decidedAt,
   };
   const f = { at: now, day: order.fillDay, decidedForDay: order.decidedForDay, symbol: order.symbol, side: 'sell', qty: sl.qty, refPrice: price, fillPrice: r4(fillPrice), notionalUsd: r2(gross), feeUsd: r2(feeUsd), priceSource, late, paramsHash: order.paramsHash };
   sl.cashUsd = r2(sl.cashUsd + proceeds); sl.qty = 0; sl.entry = null;
-  book.history = [trade, ...book.history].slice(0, 500);
-  book.fills = [f, ...book.fills].slice(0, 200);
+  book.history = [trade, ...book.history];
+  Object.assign(f,{quoteEvidence,executionEvidence:!!quoteEvidence,decisionAt:order.decidedAt,filledAt:now});book.fills = [f, ...book.fills];
   return f;
 }
-// Fill pending orders at the open of their fill day. A fresh Robinhood quote counts only inside the open window
-// of that day; otherwise the Coinbase open of the fill day. Orders without any price stay pending.
-function fillPending(book, store, { now, fee, quoteFn, quoteWindowMs }) {
+export function observedDailyQuote(q,symbol,{now,eligibleAt=0,side=null,quantity=null}={}){
+  if(!q||q.symbol!==symbol||q.supported!==true||!/^(robinhood(?:-[\w.-]+)?|v[12])$/i.test(String(q.source||'')))return {ok:false,reason:'SUPPORTED_ROBINHOOD_QUOTE_REQUIRED'};
+  if(!(q.bid>0)||!(q.ask>=q.bid)||!Number.isFinite(q.at)||q.at>now||now-q.at>30000||q.at<eligibleAt)return {ok:false,reason:'POST_DECISION_FRESH_QUOTE_REQUIRED'};
+  if(side&&quantity!==null){const available=Number(q.executableQuantity??(side==='buy'?q.askSize:q.bidSize));if(!(available>=quantity))return {ok:false,reason:'EXACT_SIZE_EXECUTION_EVIDENCE_REQUIRED'}}
+  return {ok:true,reason:null};
+}
+// Existing forward intents retry on current quotes at any hour. Exits never expire.
+// Candle opens are permitted only in the explicitly unqualified research shadow.
+async function fillPending(book, store, { now, fee, quoteFn, quoteWindowMs,shadow=false,executionClock=null }) {
   const out = [], keep = [];
   for (const order of book.pending) {
     const openMs = dayStart(order.fillDay);
     if (now < openMs) { keep.push(order); continue; }
     const inWindow = now - openMs <= quoteWindowMs;
     let price = null, priceSource = null;
-    const q = inWindow && typeof quoteFn === 'function' ? quoteFn(order.symbol) : null;
-    if (q && Number.isFinite(q.bid) && q.bid > 0 && Number.isFinite(q.ask) && q.ask >= q.bid
-        && Number.isFinite(q.at) && q.at <= now && now - q.at <= 30_000 && q.at >= order.decidedAt) {
-      price = order.side === 'buy' ? q.ask : q.bid; priceSource = q.source ? `robinhood-quote:${q.source}` : 'robinhood-quote';
-    } else if (inWindow && typeof quoteFn === 'function') {
-      // Cached quotes normally predate a new decision. Keep it pending for the next
-      // observed quote instead of immediately consuming an historical candle fill.
-      keep.push(order); continue;
-    } else {
+    if(!shadow&&order.side==='buy'&&(now-order.decidedAt>DAY||order.paramsHash!==book.source?.paramsHash)){event(book,now,`CANCELLED ${order.symbol} stale forward entry intent`);continue}
+    const eligibleAt=order.eligibleAt??order.decidedAt+DAILY_DEFAULTS.processingLatencyMs;
+    let q=null;try{q=typeof quoteFn==='function'?await quoteFn(order.symbol,{side:order.side,quantity:order.side==='sell'?book.sleeves[order.symbol].qty:null,budgetUsd:book.sleeves[order.symbol].cashUsd,decidedAt:order.decidedAt,eligibleAt}):null}catch(e){order.waitReason=e.code||'QUOTE_UNAVAILABLE'}
+    if(executionClock)now=executionClock();
+    const sl=book.sleeves[order.symbol],quantity=order.side==='buy'&&q?.ask>0?sl.cashUsd*(1-fee)/(q.ask*(1+book.slipBps/1e4)):sl.qty;
+    const valid=observedDailyQuote(q,order.symbol,{now,eligibleAt,side:order.side,quantity});
+    let evidence=null;
+    if(valid.ok){price=order.side==='buy'?q.ask:q.bid;priceSource=`robinhood-quote:${q.source}`;evidence={symbol:q.symbol,source:q.source,quoteAt:q.at,decisionAt:order.decidedAt,eligibleAt,quantity,quantityStep:q.quantityStep||null,availableQuantity:Number(q.executableQuantity??(order.side==='buy'?q.askSize:q.bidSize)),executionModel:q.executionModel||'observed-depth-plus-slippage.v1'};delete order.waitReason}
+    else if(shadow){
       const o = openOf(store, order.symbol, order.fillDay);
       if (o > 0) { price = o; priceSource = 'coinbase-open'; }
-    }
+    }else{order.waitReason=order.waitReason||valid.reason;keep.push(order);continue}
     if (!price) { keep.push(order); continue; }
-    const f = fillOne(book, order, { price, priceSource, late: !inWindow, fee, now });
+    const f = fillOne(book, order, { price, priceSource, late:shadow?!inWindow:false, fee, now,quoteEvidence:evidence });
     if (f) out.push(f);
   }
   book.pending = keep;
@@ -281,9 +290,22 @@ function markDay(book, store, day, fee) {
   }
   let eq = 0, bench = 0;
   for (const s of book.symbols) { const sl = book.sleeves[s]; eq += sl.cashUsd + sl.qty * closes[s]; bench += (book.bench.qty[s] || 0) * closes[s]; }
-  book.equityDaily.push({ d: day, equityUsd: r2(eq), benchUsd: r2(bench), cashUsd: book.startUsd, paramsHash: book.source?.paramsHash || null });
-  if (book.equityDaily.length > 1500) book.equityDaily.splice(0, book.equityDaily.length - 1500);
+  book.equityDaily.push({ d: day, equityUsd: r2(eq), benchUsd: r2(bench), cashUsd: book.startUsd, paramsHash: book.source?.paramsHash || null,executionEvidence:false,valuationSource:'COINBASE_DAILY_RESEARCH_PROXY' });
   return true;
+}
+async function markForwardDay(book,day,{quoteFn,now,fee,executionClock=null}){
+ if(book.equityDaily.at(-1)?.d>=day)return false;
+ const observed={};
+ for(const symbol of book.symbols){let q=null;try{q=typeof quoteFn==='function'?await quoteFn(symbol,{side:'sell',quantity:Math.max(book.sleeves[symbol].qty,book.executionBench?.qty?.[symbol]||0),budgetUsd:book.startUsd/book.symbols.length,valuation:true,eligibleAt:now-30000}):null}catch{}
+  if(executionClock)now=executionClock();
+  if(!observedDailyQuote(q,symbol,{now,eligibleAt:now-30000}).ok)return false;observed[symbol]=q}
+ const slip=book.slipBps/1e4,alloc=book.startUsd/book.symbols.length;
+ if(!book.executionBench){const quantity={};let residual=0;for(const s of book.symbols){const q=observed[s],step=Number(q.quantityStep)||.000001,qty=Math.floor(alloc*(1-fee)/(q.ask*(1+slip))/step)*step;if(!(Number(q.executableQuantity??q.askSize)>=qty))return false;quantity[s]=qty;residual+=alloc-qty*q.ask*(1+slip)/(1-fee)}book.executionBench={startAt:now,qty:quantity,cashUsd:residual,source:'SUPPORTED_ROBINHOOD_OBSERVED_QUOTES',feeRatio:fee}}
+ let equity=0,baseline=book.executionBench.cashUsd||0;const evidence=[];
+ for(const s of book.symbols){const q=observed[s],sl=book.sleeves[s],required=Math.max(sl.qty,book.executionBench.qty[s]||0);
+  if(!(Number(q.executableQuantity??q.bidSize)>=required))return false;
+  const bidNet=q.bid*(1-slip)*(1-fee);sl.observedMark={at:q.at,valueUsd:sl.qty*bidNet,quantity:sl.qty,source:q.source};equity+=sl.cashUsd+sl.qty*bidNet;baseline+=(book.executionBench.qty[s]||0)*bidNet;evidence.push({symbol:s,quoteAt:q.at,source:q.source,availableQuantity:Number(q.executableQuantity??q.bidSize)})}
+ book.equityDaily.push({d:day,equityUsd:r2(equity),benchUsd:r2(baseline),cashUsd:Object.values(book.sleeves).reduce((sum,s)=>sum+s.cashUsd,0),paramsHash:book.source?.paramsHash||null,executionEvidence:true,valuationAt:now,valuationSource:'ROBINHOOD_EXECUTABLE_QUOTES',quoteEvidence:evidence});return true;
 }
 
 function feeFrom(feeRatio) { const f = Number(feeRatio); return Math.max(DAILY_DEFAULTS.feeFloor, Number.isFinite(f) && f >= 0 && f < 0.25 ? f : 0); }
@@ -307,16 +329,20 @@ export async function runDailyOnce({ dataDir, now, clock = () => Date.now(), env
     events.push(`SOURCE ${pick.kind} ${pick.id}`);
   }
   book.source = { kind: pick.kind, label: pick.label, id: pick.id, family: pick.family, params: pick.params, paramsHash: pick.paramsHash, state: pick.state, reasons: pick.reasons, since: book.source?.paramsHash === pick.paramsHash ? book.source.since : now };
+  const shadow=path.basename(dataDir)==='daily-shadow'&&book.source.kind==='walk-forward-shadow';
+  book.executionPolicy=shadow?'HISTORICAL_PROXY_RESEARCH_ONLY':'PROSPECTIVE_ROBINHOOD_QUOTES_ONLY';
   const { store } = await refreshDailyBars(dataDir, book.symbols, { now, fetchFn });
   if (realtime) now = clock();
   // 1) Orders due at an open that has already passed (decided earlier, not yet filled).
-  for (const f of fillPending(book, store, { now, fee, quoteFn, quoteWindowMs })) events.push(`FILLED ${f.side} ${f.symbol} ${f.day} @ ${f.priceSource}${f.late ? ' (late)' : ''}`);
+  for (const f of await fillPending(book, store, { now, fee, quoteFn, quoteWindowMs,shadow,executionClock:realtime?clock:null })) events.push(`FILLED ${f.side} ${f.symbol} ${f.day} @ ${f.priceSource}${f.late ? ' (late)' : ''}`);
+  if(realtime)now=clock();
   // 2) Mark and decide the newest closed day, once.
   const D = lastClosedDay(now);
   const ready = book.symbols.every(s => store.bars[s]?.at(-1)?.d === D);
   if (!ready) events.push('WAITING_FOR_BARS');
   else {
-    markDay(book, store, D, fee);
+    if(shadow)markDay(book,store,D,fee);else if(!await markForwardDay(book,D,{quoteFn,now,fee,executionClock:realtime?clock:null}))events.push('WAITING_FOR_EXECUTABLE_VALUATION');
+    if(realtime)now=clock();
     if (!book.lastDecidedDay || D > book.lastDecidedDay) {
       if (book.lastDecidedDay) book.missedDays += Math.max(0, Math.round((dayStart(D) - dayStart(book.lastDecidedDay)) / DAY) - 1);
       const bySymbol = {};
@@ -327,7 +353,7 @@ export async function runDailyOnce({ dataDir, now, clock = () => Date.now(), env
         const want = dailySignal(pick.family, pick.params, bars, i, holding);
         if (want === null || want === holding) { bySymbol[s] = { action: 'HOLD', long: holding, close: bars[i].c }; continue; }
         const side = want ? 'buy' : 'sell';
-        book.pending.push({ symbol: s, side, decidedForDay: D, fillDay: addDays(D, 1), decidedAt: now, paramsHash: pick.paramsHash, family: pick.family });
+        book.pending.push({ symbol: s, side, decidedForDay: D, fillDay: addDays(D, 1), decidedAt: now,eligibleAt:now+DAILY_DEFAULTS.processingLatencyMs,paramsHash: pick.paramsHash, family: pick.family });
         bySymbol[s] = { action: side.toUpperCase(), close: bars[i].c };
         events.push(`DECIDED ${side} ${s} for the ${addDays(D, 1)} open`);
       }
@@ -335,7 +361,7 @@ export async function runDailyOnce({ dataDir, now, clock = () => Date.now(), env
       book.lastDecision = { day: D, at: now, paramsHash: pick.paramsHash, family: pick.family, bySymbol };
       // Persist the decision before any fill, so a crash between the two never decides this bar again.
       saveDailyBook(dataDir, book);
-      for (const f of fillPending(book, store, { now, fee, quoteFn, quoteWindowMs })) events.push(`FILLED ${f.side} ${f.symbol} ${f.day} @ ${f.priceSource}${f.late ? ' (late)' : ''}`);
+      for (const f of await fillPending(book, store, { now, fee, quoteFn, quoteWindowMs,shadow,executionClock:realtime?clock:null })) events.push(`FILLED ${f.side} ${f.symbol} ${f.day} @ ${f.priceSource}${f.late ? ' (late)' : ''}`);
     }
   }
   book.feeRatio = fee;
@@ -365,8 +391,9 @@ export function dailyQualification(book, { rules = DAILY_QUALIFICATION } = {}) {
     beatsBuyHold: bookRet !== null && benchRet !== null && bookRet > benchRet,
     drawdownVsBuyHold: win.length > 1 && bookDd <= benchDd,
     profitFactor: pf !== null && pf >= rules.minProfitFactor,
-    observedExecution: trades.length > 0 && trades.every(t => !t.late?.entry && !t.late?.exit
+    observedExecution: trades.length > 0 && trades.every(t => t.executionEvidence===true&&t.quoteEvidence?.entry&&t.quoteEvidence?.exit&&!t.late?.entry && !t.late?.exit
       && String(t.priceSource?.entry || '').startsWith('robinhood-quote') && String(t.priceSource?.exit || '').startsWith('robinhood-quote')),
+    observedValuation:win.length>0&&win.every(m=>m.executionEvidence===true&&m.valuationSource==='ROBINHOOD_EXECUTABLE_QUOTES'),
   };
   const reasons = [];
   if (!gates.runDays) reasons.push(`${runDays} of ${rules.minRunDays} paper days under ${hash || 'these params'}`);
@@ -376,6 +403,7 @@ export function dailyQualification(book, { rules = DAILY_QUALIFICATION } = {}) {
   if (!gates.drawdownVsBuyHold) reasons.push(`drawdown ${bookDd}% is deeper than buy-and-hold ${benchDd}%`);
   if (!gates.profitFactor) reasons.push(`profit factor ${pf === null ? '--' : pf === Infinity ? 'inf' : r2(pf)} < ${rules.minProfitFactor}`);
   if (!gates.observedExecution) reasons.push('qualification requires prospectively observed entry and exit quotes; candle-open or late fills are diagnostic only');
+  if(!gates.observedValuation)reasons.push('qualification requires executable Robinhood portfolio and baseline valuations; existing daily-candle proxies remain research evidence');
   return {
     qualified: Object.values(gates).every(Boolean), gates, reasons, rules: { ...rules },
     metrics: { paramsHash: hash, from: win[0]?.d || null, to: last, runDays, closedTrades: trades.length, returnPct: bookRet === null ? null : r2(bookRet), buyHoldReturnPct: benchRet === null ? null : r2(benchRet), maxDrawdownPct: bookDd, buyHoldMaxDrawdownPct: benchDd, profitFactor: pf === Infinity ? 'infinity' : pf === null ? null : r2(pf) },
@@ -401,7 +429,9 @@ export function dailySnapshot({ dataDir, now = Date.now(), labDaily, includeShad
   const pick = book.source?.kind==='walk-forward-shadow' ? book.source : pickDailyStrategy(lab), last = book.equityDaily.at(-1) || null;
   const positions = Object.entries(book.sleeves || {}).map(([symbol, sl]) => {
     const close = store.bars[symbol]?.at(-1)?.c ?? null;
-    return { symbol, long: sl.qty > 0, qty: sl.qty, cashUsd: sl.cashUsd, entry: sl.entry, lastClose: close, valueUsd: r2(sl.cashUsd + sl.qty * (close || 0)), unrealizedUsd: sl.qty > 0 && close ? r2(sl.qty * close - (sl.entry?.costUsd || 0)) : null };
+    const shadow=book.source?.kind==='walk-forward-shadow',mark=sl.observedMark,observed=mark&&mark.quantity===sl.qty&&mark.at<=now&&now-mark.at<=30000;
+    const exposure=sl.qty===0?0:shadow&&close?sl.qty*close:observed?mark.valueUsd:null;
+    return { symbol, long: sl.qty > 0, qty: sl.qty, cashUsd: sl.cashUsd, entry: sl.entry, lastClose: close, valueUsd:exposure===null?null:r2(sl.cashUsd+exposure),unrealizedUsd:sl.qty>0&&exposure!==null?r2(exposure-(sl.entry?.costUsd||0)):null,valuationSource:shadow?'RESEARCH_CANDLE_PROXY':observed?'ROBINHOOD_EXECUTABLE_QUOTES':'AWAITING_EXECUTABLE_QUOTE',markAt:observed?mark.at:null };
   });
   return {
     at: now, execution: 'paper-only', liveEligible: false, label: (book.source || pick).label, source: book.source || { ...pick, since: null },
@@ -418,13 +448,14 @@ export function dailySnapshot({ dataDir, now = Date.now(), labDaily, includeShad
     qualification: book.source?.kind==='walk-forward-shadow' ? {qualified:false,reasons:['SHADOW: never counts toward qualification'],countsTowardQualification:false} : dailyQualification(book),
     ...(includeShadow && path.basename(dataDir)!=='daily-shadow' ? {shadow:fs.existsSync(bookFile(path.join(dataDir,'daily-shadow'))) ? dailySnapshot({dataDir:path.join(dataDir,'daily-shadow'),now,labDaily:lab,includeShadow:false}) : null} : {}),
     data: { source: 'Coinbase public daily candles (UTC days)', lastClosedDay: lastClosedDay(now), latestBar: (ds => ds.length && ds.every(Boolean) ? ds.reduce((a, b) => a < b ? a : b) : null)(book.symbols.map(s => store.bars[s]?.at(-1)?.d || null)), fetchedAt: store.fetchedAt, lastError: store.lastError },
-    rules: 'One decision per closed UTC bar, at its close; fills at the next open (Robinhood quote when available, else the Coinbase open). Never repeated on restart; missed days are never decided after the fact.',
+    rules: 'One decision per closed UTC bar; forward fills require fresh supported Robinhood quotes after decision plus processing latency and size evidence. Missing quotes retain exit intents. Historical candle opens belong only to the unqualified research shadow. Missed days are not decided retrospectively.',
     loop: { running: state.running, lastRunAt: state.lastRunAt, lastEvents: state.lastEvents }, lastError: state.lastError,
   };
 }
 export function resetDailyBook({ dataDir, confirmation, now = Date.now(), env = process.env } = {}) {
   if (confirmation !== 'RESET DAILY') { const e = new Error('Type RESET DAILY to confirm'); e.code = 'confirmation'; throw e; }
   const book = newDailyBook({ startUsd: envNum(env, 'ROBINHOOD_DAILY_START_USD', DAILY_DEFAULTS.startUsd), now });
+  if(fs.existsSync(bookFile(dataDir))){const archive=path.join(dataDir,'robinhood-daily-archives',`${now}-${process.pid}-${Math.random().toString(36).slice(2)}.json`);fs.mkdirSync(path.dirname(archive),{recursive:true});fs.copyFileSync(bookFile(dataDir),archive,fs.constants.COPYFILE_EXCL);book.previousEvidenceArchive=archive}
   event(book, now, 'daily paper book reset');
   writeJsonAtomic(bookFile(dataDir), book);
   return dailySnapshot({ dataDir, now });

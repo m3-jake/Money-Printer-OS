@@ -270,6 +270,8 @@ test('readScoreboard reads the real modules from a data dir without writing to i
   fs.writeFileSync(path.join(TMP, 'lab-link', 'polymarket-combo-champion.json'), JSON.stringify({ schema: 'mpo.lab-module-champion.v1', module: 'polymarket-combo', liveActivationAllowed: false, state: 'SHADOW', stateSchema: 'mpo.champion-state.v1', publishedAt: NOW - MIN, candidate: { holdout: { combos: 8, roi: 0.02 } } }));
   const { KalshiPaperBots } = await import('../src/kalshiBots.js'), { BotFarm } = await import('../src/botFarm.js');
   const { KalshiMirrorPaper } = await import('../src/kalshiMirror.js'), { PolymarketCopyPaper } = await import('../src/polymarketCopy.js');
+  const { COPY_EXPERIMENT_COHORTS } = await import('../src/copyEvent.js');
+  for (const { id, policy, category, startUsd } of COPY_EXPERIMENT_COHORTS) new PolymarketCopyPaper({ dataDir: path.join(TMP, 'experiments', id), experiment: { id, policy, ...(category ? { category } : {}), exploratory: true, startUsd } });
   const before = fs.readdirSync(TMP).sort();
   const kalshi = new KalshiPaperBots({ dataDir: TMP });
   const bots = { kalshi, farm: new BotFarm({ dataDir: TMP, bots: kalshi }), mirror: new KalshiMirrorPaper({ dataDir: TMP }), copy: new PolymarketCopyPaper({ dataDir: TMP }) };
@@ -281,6 +283,10 @@ test('readScoreboard reads the real modules from a data dir without writing to i
   const ids = board.rows.map(r => r.id);
   for (const id of ['pumpfun-fair', 'pumpfun-sprint', 'pumpfun-copy', 'robinhood-strategy', 'robinhood-exploration', 'robinhood-practice', 'robinhood-daily', 'robinhood-equities', 'kalshi-bot-weather', 'kalshi-bot-weather-nws', 'kalshi-bot-btc', 'kalshi-farm-wx-cal-e07', 'kalshi-farm-btc-v100', 'kalshi-mirror', 'polymarket-copy', 'lab-robinhood', 'lab-polymarket-combo']) assert.ok(ids.includes(id), id);
   assert.equal(new Set(ids).size, ids.length, 'every book appears exactly once');
+  const copyRows = board.rows.filter(r => COPY_EXPERIMENT_COHORTS.some(c => c.scoreboardId === r.id));
+  assert.equal(copyRows.length, 7, 'all seven nested hypothetical portfolios have a distinct scoreboard row');
+  assert.equal(COPY_EXPERIMENT_COHORTS.reduce((n, c) => n + c.startUsd, 0), 175);
+  assert.match(copyRows.find(r => r.id === 'polymarket-copy-crypto').book, /CRYPTO/);
   assert.ok(!ids.includes('lab-solana') && !ids.includes('platform-kalshi'), 'no retired furnace row and no empty core-ledger placeholder');
   SB.registerPaperBots(null);
   const rh = board.rows.find(r => r.id === 'robinhood-strategy');

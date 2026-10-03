@@ -11,6 +11,7 @@
 // n >= MIN_CLOSES, else NOT ENOUGH DATA), net without the single best trade, and data freshness.
 export const SCOREBOARD_SCHEMA = 'mpo.scoreboard.v1';
 import {forwardScorecard} from './core/forwardScorecard.js';
+import { COPY_EXPERIMENT_COHORTS } from './copyEvent.js';
 // The repo's existing evidence gates all use 20 closes (evidenceFlags minCloses, Robinhood qualification,
 // Polymarket MIN_SETTLED_PER_WINDOW), so the scoreboard uses the same bar.
 export const MIN_CLOSES = 20;
@@ -410,9 +411,9 @@ export function standaloneBookRow(id, b = {}, { now = Date.now(), unit = 'USD', 
   const receivables=(b.dividendReceivables||[]).filter(x=>!x.paidAt).reduce((sum,x)=>sum+(finite(x.amountUsd)??0),0);
   const equity = cash !== null && markedExposure !== null ? cash + markedExposure+receivables : null;
   const netEconomic = equity !== null && capital !== null ? equity - capital : null;
-  const capitalAt = toMs(b.fundedAt ?? b.createdAt ?? b.startedAt);
+  const capitalAt = toMs(b.fundedAt ?? b.createdAt ?? b.startedAt ?? b.experiment?.startedAt);
   const capitalDays = flows.length ? flows.reduce((sum, f) => sum + (finite(unit === 'SOL' ? f.amountSol : f.amountUsd) ?? 0) * Math.max(0, now - (toMs(f.at) ?? now)) / 86400000, 0) : start !== null && capitalAt ? start * Math.max(0, now - capitalAt) / 86400000 : null;
-  const independent = new Set(history.map(p => p.eventId ?? p.eventTicker ?? p.marketId ?? p.accession ?? p.id).filter(Boolean)).size;
+  const independent = new Set(history.map(p => p.conditionId ?? p.eventId ?? p.eventTicker ?? p.marketId ?? p.accession ?? p.parentPositionId ?? p.id).filter(Boolean)).size;
   const row = scoreRow({ id, module, book: label, unit, stats, baseline: { kind: 'cash', label: `Cash (0 ${unit})`, netPnl: 0 },
     fresh: freshness(b.lastRunAt ?? b.lastSettlementAt ?? stats.lastCloseAt, { now, source: 'standalone paper journal' }),
     extra: { open: open.length, cash, contributedCapital: capital, capitalDays: round(capitalDays), netPerCapitalDay: capitalDays > 0 && netEconomic !== null ? round(netEconomic / capitalDays) : null,
@@ -428,6 +429,14 @@ export function standaloneBookRow(id, b = {}, { now = Date.now(), unit = 'USD', 
     row.reason = b.recoveryRequired ? 'paper book requires recovery' : netEconomic === null ? 'complete executable marks or capital history unavailable' : 'cash plus executable exposure does not beat contributed capital';
   }
   return row;
+}
+export function pumpProfitScoreboardBooks(state) {
+  if (!state || !Array.isArray(state.books)) return [];
+  return [['active',state.books],['discovery',state.discoveryBooks||[]]].flatMap(([phase,books])=>books.map(b=>({
+    id:`pump-profit-${phase}-${b.id}`,options:{module:'Pump profit experiments',label:`${phase} ${b.id} · UNQUALIFIED`,unit:'SOL'},
+    book:{...b,open:(b.positions||[]).map(p=>({...p,costSol:p.remainingSol})),history:(b.history||[]).map(p=>({...p,costSol:p.sizeSol})),createdAt:state.createdAt,lastRunAt:state.updatedAt,
+      status:state.status,qualification:'UNQUALIFIED_EXPLORATION',experiment:{id:b.id,phase,protocolHash:state.protocolHash,policy:b.candidateId,qualificationEffect:'NONE'}}
+  })));
 }
 export function buildScoreboard(inputs = {}, { now = Date.now() } = {}) {
   const rows = [], errors = [];
@@ -497,12 +506,19 @@ export async function readScoreboard({ now = Date.now(), maxAgeMs = 5000 } = {})
     ['pumpfun-copy-emerging-paper.json','pumpfun-copy-emerging','Pump.fun','Emerging leaders · UNQUALIFIED','SOL'],
     ['pumpfun-copy-consensus-paper.json','pumpfun-copy-consensus','Pump.fun','Independent consensus · UNQUALIFIED','SOL'],
     ['disclosure-paper.json','equity-disclosure-paper','Stocks','Form 4 disclosure exploration','USD']
-    ,...['direct','liquidity-scaled','random-eligible','no-trade'].map(policy=>[`experiments/polycopy-${policy}-v1/polymarket-copy-paper.json`,`polymarket-copy-${policy}`,'Polymarket copy',`${policy} · UNQUALIFIED $25 cohort`,'USD'])
+    ,...['momentum_only','external_native_flow_only','momentum_plus_external_native_flow'].map(policy=>[`experiments/rh-${policy}/paper.json`,`robinhood-external-${policy}`,'Robinhood external flow',`${policy} · UNQUALIFIED $25 cohort`,'USD'])
+    ,...COPY_EXPERIMENT_COHORTS.map(({id,policy,category,scoreboardId,startUsd})=>[`experiments/${id}/polymarket-copy-paper.json`,scoreboardId,'Polymarket copy',`${category?`${category} `:''}${policy} · UNQUALIFIED $${startUsd} cohort`,'USD'])
   ]) {
     const full = path.join(dataDir, file);
     if (!fs.existsSync(full)) continue;
     const book = readJson(full);
     inputs.standalone.push({ id, book: book && Array.isArray(book.open) && Array.isArray(book.history) ? book : { recoveryRequired: true }, options: { module, label, unit } });
+  }
+  const pumpProfitFile=path.join(dataDir,'pump-profit-experiments.json');
+  if(fs.existsSync(pumpProfitFile)){
+    const state=readJson(pumpProfitFile);
+    if(!state||!Array.isArray(state.books))inputs.errors.push({source:'pump-profit-experiments',error:'RECOVERY_REQUIRED: existing experiment checkpoint unreadable'});
+    else inputs.standalone.push(...pumpProfitScoreboardBooks(state));
   }
 
   inputs.pumpfun = await attempt('pumpfun', async () => (await import('./store.js')).loadStateCached());
