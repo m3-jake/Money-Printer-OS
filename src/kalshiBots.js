@@ -166,7 +166,7 @@ export class KalshiPaperBots {
     const s = b.settings, wx = await this.weather(); if (!wx) throw new Error('weather desk unavailable');
     const now = this.now(), held = new Set(b.open.map(p => p.eventTicker));
     const cands = []; let disagreements = 0;
-    let calibrated = 0;
+    let priced = 0, calibrated = 0;
     for (const c of wx.cities || []) for (const m of c.markets || []) {
       if (held.has(m.eventTicker)) continue;
       const hours = (m.closeAt - now) / 3600e3; if (!(hours >= s.minHoursToClose)) continue;
@@ -174,7 +174,7 @@ export class KalshiPaperBots {
       // otherwise the NWS forecast with the default bias and sigma.
       const cm = s.useCalibration && this.calibration ? await this.calibration.model(c.id, m.date).catch(() => null) : null;
       if (!cm && m.nwsHigh == null) continue;
-      const sigma = cm ? cm.sigma * s.calibrationSafety : s.sigmaBaseF + s.sigmaPerDayF * Math.max(0, hours) / 24, mu = cm ? cm.mu : m.nwsHigh + s.biasF; if (cm) calibrated++;
+      const sigma = cm ? cm.sigma * s.calibrationSafety : s.sigmaBaseF + s.sigmaPerDayF * Math.max(0, hours) / 24, mu = cm ? cm.mu : m.nwsHigh + s.biasF; priced++; if (cm) calibrated++;
       let best = null;
       for (const bk of m.buckets || []) {
         if (bk.yesAsk == null || bk.noAsk == null) continue;
@@ -192,7 +192,7 @@ export class KalshiPaperBots {
       if (b.open.length >= s.maxOpen) { this.decide(b, { event: x.m.eventTicker, label, action: 'SKIP', reason: 'max open bets' }); break; }
       if (await this.enter(b, k, { ticker: x.bk.sourceId, eventTicker: x.m.eventTicker, title: x.m.title, label, side: x.side, pModel: x.pModel, qty: x.qty, closeAt: x.bk.closeAt || x.m.closeAt, feeModel: x.bk.feeModel, marketAsk: x.ask, context: { nwsHigh: x.m.nwsHigh, model: x.cm ? x.cm.source : 'nws + default', forecast: x.cm?.forecast ?? x.m.nwsHigh, lead: x.cm?.lead ?? null, mu: round(x.mu, 2), sigma: round(x.sigma, 2), marketExpected: x.m.expectedHigh } })) entered++;
     }
-    b.lastNote = `${cands.length} events scored (${calibrated} on the calibrated model), ${entered} entered, ${disagreements} buckets skipped (model vs market gap > ${s.maxDisagreement})`;
+    b.lastNote = `${priced} events priced (${calibrated} on the calibrated model), ${cands.length} with a buyable side, ${entered} entered, ${disagreements} buckets skipped (model vs market gap > ${s.maxDisagreement})`;
   }
 
   async runBtc(b, k) {

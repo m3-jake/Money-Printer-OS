@@ -240,6 +240,10 @@
 .g-brand .g-hero-sub { color: #333; white-space: normal; }
 
 .g-rows.g-grow { flex: 1; }
+/* A glance with more than one fixed-height section (Command Center: rows, then pump profit and the crowd) scrolls
+   as one column instead of squeezing the rows to nothing. */
+.g-scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.g-scroll > * { flex: none; }
 
 /* Rolling numbers (js/mpo-roll.js): each changed digit is a 0-9 wheel that rolls to its new value with a
    small overshoot, like a cash-register / slot-machine number wheel. */

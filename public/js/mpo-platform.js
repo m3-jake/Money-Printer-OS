@@ -33,11 +33,11 @@ window.MPOSPlatform = (() => {
     const ps=scoreboard?.paperSummary||{},beat=ps.beating||0,judged=beat+(ps.notBeating||0),rows=(scoreboard?.rows||[]).filter(r=>r.kind!=='lab').slice(0,8);
     const amt=(v,u)=>v==null?'—':u==='SOL'?`${v>0?'+':v<0?'−':''}${Math.abs(v).toFixed(4)} SOL`:`${v>0?'+':v<0?'−':''}$${Math.abs(v).toFixed(2)}`;
     const bots=window.MPOBots?.data,botRows=bots?[['Kalshi weather bot',bots.kalshi.weather],['Kalshi BTC bot',bots.kalshi.btc],['Polymarket copy bot',bots.polycopy]].map(([n,b])=>gRow(n,`paper · ${b.open.length} open · ${(b.stats.settled??b.stats.closed)||0} settled`,`$${b.equityUsd.toFixed(2)}`,b.lastError?'bad':b.settings.enabled?'ok':'warn')).join(''):'';
-    const list=`<div class="g-rows g-grow">${rows.map(r=>gRow(`${r.module} · ${r.book}`,`${r.closes} closes · beats baseline: ${String(r.beatsBaseline).toLowerCase()}`,amt(r.netPnl,r.unit),r.beatsBaseline==='YES'?'ok':r.beatsBaseline==='NO'?'bad':'warn')).join('')}${botRows}</div>`;
+    const list=`<div class="g-rows">${rows.map(r=>gRow(`${r.module} · ${r.book}`,`${r.closes} closes · beats baseline: ${String(r.beatsBaseline).toLowerCase()}`,amt(r.netPnl,r.unit),r.beatsBaseline==='YES'?'ok':r.beatsBaseline==='NO'?'bad':'warn')).join('')}${botRows}</div>`;
     return glance({title:'Command Center',pill:bad?{label:`${bad} data source${bad===1?'':'s'} need attention`,tone:'warn'}:{label:'All data sources ok',tone:'ok'},
       hero:scoreboard?`${beat} / ${judged}`:'—',heroSub:'paper books beating their own baseline (after fees)',heroText:false,
       stats:[{label:'Beating',value:String(beat),tone:beat?'g-pos':''},{label:'Not beating',value:String(ps.notBeating||0),tone:ps.notBeating?'g-neg':''},{label:'Need more data',value:String(ps.notEnoughData||0)}],
-      visual:list+(window.mpoPumpProfitHTML?.(window.__MPO_PROFIT_CAPTURE)||'')+(window.mpoWalletCrowdHTML?.(window.__MPO_WALLET_CROWD)||''),foot:gFoot(['Advanced: market desks, diagnostics, events, risk controls'])});
+      visual:`<div class="g-scroll">${list}${window.mpoPumpProfitHTML?.(window.__MPO_PROFIT_CAPTURE)||''}${window.mpoWalletCrowdHTML?.(window.__MPO_WALLET_CROWD)||''}</div>`,foot:gFoot(['Advanced: market desks, diagnostics, events, risk controls'])});
   }
   // Kalshi Simple view: the weather desk at a glance. Each city's next undecided daily-high market as a
   // bucket distribution (Kalshi mids) with the NWS forecast bucket outlined, plus the forecast − market gap.
