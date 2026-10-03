@@ -23,7 +23,8 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const OUT = path.join(ROOT, 'web-demo', 'fixtures.json');
-const ENGINE_PORT = 18792, PROXY_PORT = 18793;
+// WEB_DEMO_ENGINE_PORT / WEB_DEMO_PROXY_PORT let a second recording run beside another one.
+const ENGINE_PORT = Number(process.env.WEB_DEMO_ENGINE_PORT) || 18792, PROXY_PORT = Number(process.env.WEB_DEMO_PROXY_PORT) || 18793;
 const arg = name => process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : null;
 const minutes = Number(arg('--minutes')) || 30;
 // Everything that shows the session's progress is on the timeline, so balance, trades and scores agree.
