@@ -67,4 +67,3 @@ Source review covered both desktop supervisors, trader navigation policy and loc
 No fresh screenshot, keyboard-accessibility, canvas-rendering, new-profile application or performance experiment was performed. Existing screenshots and native metrics were reviewed as historical evidence and are not represented as fresh visual verification. No full suites or builds were rerun, so the CI finding is a concrete source-path proof rather than a hosted-run log. Browser and desktop interaction belongs to the parent audit. Provider availability, strategy economics, full input trust/execution safety and data durability are outside this sub-audit.
 
 Recommended implementation order: paired CI portability; source-specific UI freshness/schema contracts; trader read Host gate and shared Electron navigation; authoritative compatibility metadata; bounded status/paging and measured performance budgets. Keep paper-only/no-live/no-paid-model boundaries intact throughout.
-

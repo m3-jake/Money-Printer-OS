@@ -71,9 +71,9 @@ test coverage map (167 suites across 37 targets):
 test at tests\doc-drift.test.mjs:68:1
 ✖ the counts the documents of record quote are the counts on disk (3.5499ms)
   AssertionError [ERR_ASSERTION]: the quoted target count is not what test:all reaches
-  
+
   37 !== 36
-  
+
       at TestContext.<anonymous> (file:///W:/money-printer-os/tests/doc-drift.test.mjs:75:10)
       at Test.runInAsyncScope (node:async_hooks:227:14)
       at Test.run (node:internal/test_runner/test:1306:25)
