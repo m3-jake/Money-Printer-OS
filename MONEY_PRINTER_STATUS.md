@@ -64,6 +64,40 @@ Architecture, active work and release evidence live in `.agent-state/PROJECT_STA
 ledger remains `AUDIT.md` and `PROGRESS.md`. Later sections below are historical unless dated
 as the current release. Last updated: 2026-10-03.
 
+## Batch PF-22 (2026-10-03, Claude): the Lab's phase B and C5 (Lab repo, logged here)
+
+- **B1, one pipeline** (Lab `0fd6b3f`): `src/workbenchDaemon.js` now also runs the module research scheduler
+  in-process and publishes the lab-link heartbeat (`src/labHeartbeat.js`, status RETIRED, last champion unchanged).
+  The supervisor starts two processes, `labServer` and the Workbench; `labLoop` and the separate
+  `module-scheduler` process are gone. Both schedulers already took slots from one shared compute lease, so this is
+  one scheduler and one budget. Before: 8 Lab processes at 2.2% of the machine (70.5% of one core, 60 s, 12:05).
+- **B2, furnace archived** (Lab `0fd6b3f`, tag `furnace-final` = `66535ad`): an import walk from the Lab's entry
+  points found 22 unreachable files. 21 moved to `archive/src` (evolution engine, GPU furnace, BEAST, cluster
+  hub/worker/client/store, labLoop, computeThrottle, shadow validation, the 4 dead files and the furnace's analysis
+  helpers) with 14 furnace-only tests and 2 benchmark scripts; `resourcePolicy.js` stays (shared core).
+  `researchBench.js` became a test fixture. Furnace/BEAST controls and `POST /api/profile` removed (nothing read
+  those profiles any more). `tests/src-reachability.test.mjs` keeps `src/` to what runs, exempting shared-core
+  copies. Lab `src/`: 69 files / 616 KB; `archive/`: 37 files / 230 KB.
+- **C5** (Lab `3da066b`): the six same-named files that differed (experimentRegistry, learner, projectJournal,
+  researchControlPlane, researchEvidenceStore, researchLifecycle) each keep their own app's records and have grown
+  apart (registered research modules, NUL-tail repair), so they are app-specific: renamed in the Lab with a `lab`
+  prefix (`labLearner.js` …). The trader's names now mean only the trader's files.
+- **B4, weather model shared** (trader `src/kalshiModel.js` + `src/core/fees.js` in `shared-core.json`, 20 files):
+  normCdf, bucketProbability, weatherMuSigma, probAbove, btcContractProbability, realizedVol and scoreSides are
+  one copy. The Lab's weather replay now prices with them and fills like a farm variant (pick on the quoted book,
+  fill at ask + 1¢, re-check the edge after the fee); a Lab test reproduces one replayed bet by hand.
+- **B5, faster weather replay** (Lab `9593845`): the premise was wrong. The 1,004 s run was the one-time 90-day history
+  download; the replay itself took 883 ms on 12 workers. The download was paced twice (the Workbench's paced fetch,
+  300 ms, plus 220 ms sleeps); it is now paced once, about 40% less waiting, same data and same results.
+- **B3, standing replay queue** (Lab `18b6d83`, `src/standingQueue.js`): between scheduled jobs, when the shared
+  lease has free slots (never waiting for them), the Workbench explores 400 weather or 200 BTC variants at a time
+  from wider, reproducibly sampled spaces, on the **validation window only**. Every variant counts toward its
+  family's trial total (`workbench/standing.json`); the holdout is never read and nothing is proposed, so no gate
+  can pass because of it. The Control room's "variants tried" cells add the idle-core trials. CPU after: measured
+  after the release.
+- **Verified:** Lab `npm run test:all` 329/329 + `test:resources` 49/49 (4 new standing-queue tests, 3 B4/B5
+  tests, reachability, heartbeat). Trader `npm run test:all`: 1,298 tests, 1,278 pass, 0 fail (20 skipped).
+
 ## Batch PF-21 (2026-10-03, Codex + Claude): Lab predictions checked against forward paper (run item A8)
 
 Codex wrote the scorecard before 10:18 and left it uncommitted; after bing asked for the whole run, Claude finished,
