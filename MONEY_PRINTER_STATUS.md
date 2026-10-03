@@ -59,6 +59,38 @@ Architecture, active work and release evidence live in `.agent-state/PROJECT_STA
 ledger remains `AUDIT.md` and `PROGRESS.md`. Later sections below are historical unless dated
 as the current release. Last updated: 2026-10-03.
 
+## Batch PF-8 (2026-10-03, Claude): one shared strategy core, Lab flow graph (alpha.86 / Lab alpha.22)
+
+bing approved the structure audit (`docs/STRUCTURE-AUDIT-2026-10-03.md`) and asked for a visual graph of what the
+Lab is doing.
+
+- **S1, shared core.**
+  - **The trader owns it.** `shared-core.json` lists the 16 files both apps run: the strategy, fill, fee and evidence
+    files, the Robinhood strategy/backtest/evolve/evidence, `core/paperTrading`, `computeLease` and
+    `atomicRename`. Each entry carries the sha256 of its file with line endings normalised.
+  - **One way to change it.** Edit a file in the trader, then run `node scripts/sync-shared-core.mjs`. That copies
+    the files and the manifest into the Lab; `--check` only reports drift.
+  - **Both repos test it.** `tests/shared-core-parity.test.mjs` exists in each. It fails when a file changes
+    without a sync, and it compares against the sibling checkout when one sits next to it.
+  - **Lab now scores the trader's Robinhood fill model.** That means the shared paper core and the 0.1 cost-multiple
+    floor. Before, the Lab used its own simpler fill and a 0.5 floor.
+  - **Merged `robinhoodEvolve`.** The trader gains the Lab's 1/2/3-day hold seeds, the `maxHoldMin` bound up to
+    4320, a 200-candidate cap, per-close returns and the parallel batch scorer. The Lab gains fsync'd ledger
+    writes and the champion's `basis`/`evidence` fields.
+  - The trader's evolve test expectations were updated to match: 7 evaluated (4 mutations + 3 seeds), bound 4320.
+- **Lab flow graph.**
+  - **Where:** the top of the Control room. It is `public/lab-flow.js`, which `labServer` inlines (the CSP allows
+    inline scripts only).
+  - **Layout:** one row per research track, 9 in total (Kalshi weather, Kalshi BTC, Robinhood crypto, Robinhood
+    stocks, Polymarket copy, Polymarket US combos, Kalshi outcomes, copy leaders, Pump.fun). Each row has five
+    stages: recorded data → workers → variants tried → verdict → to the trader.
+  - **Motion:** dots flow while a track's workers are live. They stop at a blocking verdict (✕), and only a passing
+    verdict carries them to the trader. Amber marks the trader's own forward farm.
+  - **Summary and rate:** a summary line, plus a jobs-finished-per-minute sparkline measured this session.
+  - Missing values show as waiting, never as zero. Test: `tests/lab-flow.test.mjs`.
+- **Verified:** Lab `test:all` 394/394. The page was previewed from source against the live Lab API, with no
+  console errors.
+
 ## Batch PF-7 (2026-10-03, Claude): engine stall watchdog, no more reload storm, weather replay verdict (alpha.85)
 
 Found while finishing the audit on WITCHDOCTOR (alpha.84 installed):
@@ -325,7 +357,7 @@ animated graphs, and a rolling cash-register / slot-machine effect when major nu
 - **Evolution Lab** lives in a separate repo, `money-printer-evolution-lab`, and is the shared research brain for every module: Solana (labLoop/BEAST), plus parallel `module-robinhood` and `module-polymarket` workers (`src/moduleResearch.js`). Valid module ids come from its `src/researchModules.js`. It writes `<trader data>/lab-link/modules/<id>.json` and paper-only `<id>-champion.json`. It is NOT the dropped "agent lab" harness.
 - **Web demo (2026-10-02):** `web-demo/` + `scripts/web-demo/` build a static, browser-only copy of the HUD for a website. `demo-shim.js` answers `/api/*` from a recorded PAPER session (sandboxed engine, scrubbed env, no keys or user data), and refuses every write. Each page load is a new session: a 1 SOL book run by the Lab champion copied in from `lab-link/` at recording time, played for ~30 min from its opening frame. Published to Cloudflare Pages (`money-printer`, moneyprinter.bangbowbing.net). See `web-demo/README.md`; covered by `test:web-demo`.
 - **HUD boot and logo (2026-10-02):** the boot overlay is a Win98-style log-on over open sky. OK, Enter or 6 idle seconds pull the camera back to the hill and fire `mpo:logon`, which shows the welcome and the grabbable money shower (`welcomeShower()`). The corner logo (`initLogoStretch()`) stretches on drag, slingshots on release, glides to a stop and fades back home after 3.5 s idle; its shine lives in the same `.logo-skin`.
-- **Tests:** 145 suites in `tests/` across 35 targets, run by `npm run test:all` (`test:wiring` fails first if a suite becomes unreachable). Alpha.84 adds observed-chart history, motion, and data-boundary regressions. The 20 Robinhood real-money order-path tests remain explicitly skipped because this paper-only build refuses that dispatch; active safety tests still pin the live boundary and outbound audit. Full-suite results are recorded separately from suite reachability.
+- **Tests:** 146 suites in `tests/` across 35 targets, run by `npm run test:all` (`test:wiring` fails first if a suite becomes unreachable). Alpha.84 adds observed-chart history, motion, and data-boundary regressions. The 20 Robinhood real-money order-path tests remain explicitly skipped because this paper-only build refuses that dispatch; active safety tests still pin the live boundary and outbound audit. Full-suite results are recorded separately from suite reachability.
 
 ## Confirmed working (2026-09-25)
 

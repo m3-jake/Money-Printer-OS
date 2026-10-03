@@ -24,9 +24,13 @@ const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 // [min, max, integer] — deliberately narrower than robinhoodStrategy PARAM_RANGES so the search stays near the live regime.
 export const EVOLVE_BOUNDS=Object.freeze({
  emaFast:[5,30,true],emaSlow:[20,120,true],lookbackSamples:[30,240,true],costMultiple:[1,3,false],takeMult:[2,8,false],stopMult:[0.5,2,false],
- trailArmMult:[1,4,false],trailMult:[0.5,2,false],maxHoldMin:[30,720,false],maxSpreadBps:[10,80,false],breakoutBufferPct:[0,0.002,false],fadeExit:[false,true,'bool'],
+ trailArmMult:[1,4,false],trailMult:[0.5,2,false],maxHoldMin:[30,4320,false],maxSpreadBps:[10,80,false],breakoutBufferPct:[0,0.002,false],fadeExit:[false,true,'bool'],
 });
 export const EVOLVE_KEYS=Object.keys(EVOLVE_BOUNDS);
+export const MULTI_DAY_HOLDS=Object.freeze([1440,2880,4320]);
+export function multiDayCandidates(base){
+ return MULTI_DAY_HOLDS.map(maxHoldMin=>S.normalizeParams({...base,maxHoldMin,horizonSamples:Math.round(maxHoldMin*60000/S.normalizeParams(base).sampleMs)}));
+}
 
 export function evolveConfig(){
  return {
@@ -123,12 +127,12 @@ export function holdoutSplit(tapes,frac=0.2,window=720){
 // Replay one parameter set on the holdout and apply the absolute gates. lookedThrough is the newest holdout row a
 // previous generation already looked at; the holdout must extend holdoutFreshMs beyond it or the look is refused.
 export function holdoutGate(params,holdout,{feeRatio=0.0095,orderUsd=25,startUsd=1000,cfg=evolveConfig(),lookedThrough=0,context={}}={}){
- const p=S.normalizeParams(params),reasons=[];let closes=0,wins=0,gw=0,gl=0,pnl=0,rows=0,rh=0,through=0;
+ const p=S.normalizeParams(params),reasons=[],returns=[];let closes=0,wins=0,gw=0,gl=0,pnl=0,rows=0,rh=0,through=0;
  for(const [symbol,samples] of Object.entries(holdout||{})){
   if(!samples.length)continue;
   rows+=samples.length;for(const r of samples){if(r.src==='robinhood')rh++;if(r.t>through)through=r.t}
   const cut=samples[0].t,bt=backtestTape([...(context[symbol]||[]),...samples],{params:p,feeRatio,orderUsd,startUsd});
-  for(const c of bt.closes){if(c.openedAt<cut)continue;closes++;pnl+=c.pnlUsd;if(c.pnlUsd>0){wins++;gw+=c.pnlUsd}else gl+=-c.pnlUsd}
+  for(const c of bt.closes){if(c.openedAt<cut)continue;closes++;returns.push(orderUsd>0?c.pnlUsd/orderUsd*100:0);pnl+=c.pnlUsd;if(c.pnlUsd>0){wins++;gw+=c.pnlUsd}else gl+=-c.pnlUsd}
  }
  const profitFactor=gl>0?gw/gl:gw>0?Infinity:0,robinhoodShare=rows?rh/rows:0;
  if(through<num(lookedThrough)+cfg.holdoutFreshMs)reasons.push('holdoutReused');
@@ -136,22 +140,54 @@ export function holdoutGate(params,holdout,{feeRatio=0.0095,orderUsd=25,startUsd
  if(closes<cfg.holdoutMinCloses)reasons.push(`holdout closes ${closes} < ${cfg.holdoutMinCloses}`);
  if(profitFactor<cfg.holdoutMinPF)reasons.push(`holdout PF ${Number.isFinite(profitFactor)?profitFactor.toFixed(2):'inf'} < ${cfg.holdoutMinPF}`);
  if(!(pnl>0))reasons.push('holdout pnl <= 0');
- return {pass:!reasons.length,reasons,closes,wins,hitRate:closes?wins/closes:null,profitFactor:Number.isFinite(profitFactor)?Math.round(profitFactor*1000)/1000:'infinity',pnlUsd:Math.round(pnl*100)/100,robinhoodShare:Math.round(robinhoodShare*1000)/1000,rows,through};
+ return {pass:!reasons.length,reasons,returns,closes,wins,hitRate:closes?wins/closes:null,profitFactor:Number.isFinite(profitFactor)?Math.round(profitFactor*1000)/1000:'infinity',pnlUsd:Math.round(pnl*100)/100,robinhoodShare:Math.round(robinhoodShare*1000)/1000,rows,through};
 }
 const yieldNow=()=>new Promise(r=>setImmediate(r));
 // The search. Evaluates the incumbent first, then up to `candidates` bounded mutations while inside `budgetMs`
 // (checked between candidates, with a macrotask yield so the loop tick stays responsive). Pure of fs/env except `cfg`.
-export async function searchGeneration({tapes,incumbentParams,feeRatio,orderUsd,startUsd,weights={},cfg=evolveConfig(),generation=1,now=Date.now(),clock=Date.now,rng=null,yieldFn=yieldNow}={}){
+export async function searchGeneration({tapes,incumbentParams,feeRatio,orderUsd,startUsd,weights={},cfg=evolveConfig(),generation=1,now=Date.now(),clock=Date.now,rng=null,yieldFn=yieldNow,scoreMany=null,batchSize=1}={}){
+ if(scoreMany)return searchParallel({tapes,incumbentParams,feeRatio,orderUsd,startUsd,weights,cfg,generation,now,clock,rng,yieldFn,scoreMany,batchSize});
  const startedAt=clock(),rand=rng||mulberry32((generation*2654435761+Math.floor(now/1000))>>>0);
  const incumbent=evaluateCandidate(incumbentParams,tapes,{feeRatio,orderUsd,startUsd,weights,cfg});
  const evaluated=[],seen=new Set([incumbent.paramsHash]);let best=null,timedOut=false;
+ // Evaluate declared multi-day seeds first, so a busy tape cannot spend the entire runtime
+ // on random mutations before ever testing the requested 1/2/3-day horizons.
+ const seeds=multiDayCandidates(incumbent.params),seedOffset=((generation-1)%seeds.length+seeds.length)%seeds.length;
+ for(const params of [...seeds.slice(seedOffset),...seeds.slice(0,seedOffset)]){
+  if(evaluated.length>=200||clock()-startedAt>cfg.budgetMs){timedOut=true;break}
+  const hash=S.paramsHash(params);if(seen.has(hash))continue;seen.add(hash);
+  const r=evaluateCandidate(params,tapes,{feeRatio,orderUsd,startUsd,weights,cfg});
+  evaluated.push({paramsHash:r.paramsHash,maxHoldMin:params.maxHoldMin,horizonSamples:params.horizonSamples,score:r.score,closes:r.metrics.closes,pnlUsd:r.metrics.pnlUsd,profitFactor:r.metrics.profitFactor});
+  if(!best||r.score>best.score||(r.score===best.score&&r.paramsHash<best.paramsHash))best=r;
+  await yieldFn();
+ }
  for(let i=0;i<cfg.candidates;i++){
-  if(clock()-startedAt>cfg.budgetMs){timedOut=true;break}
+  if(evaluated.length>=200||clock()-startedAt>cfg.budgetMs){timedOut=true;break}
   let params=null;for(let tries=0;tries<8&&!params;tries++){const c=mutateParams(incumbent.params,rand);const h=S.paramsHash(c);if(!seen.has(h)){seen.add(h);params=c}}
   if(!params)continue;
   const r=evaluateCandidate(params,tapes,{feeRatio,orderUsd,startUsd,weights,cfg});
   evaluated.push({paramsHash:r.paramsHash,score:r.score,closes:r.metrics.closes,pnlUsd:r.metrics.pnlUsd,profitFactor:r.metrics.profitFactor});
   if(!best||r.score>best.score||(r.score===best.score&&r.paramsHash<best.paramsHash))best=r;
+  await yieldFn();
+ }
+ const gain=best&&best.score>0?(best.score-incumbent.score)/Math.max(incumbent.score,1e-9):-1;
+ const beats=!!best&&best.score>0&&(incumbent.score<=0?best.score>0:best.score>=incumbent.score*(1+cfg.minGain));
+ return {generation,at:now,elapsedMs:clock()-startedAt,timedOut,incumbent,best,evaluated,gainPct:Number.isFinite(gain)&&gain>=0?Math.round(gain*1000)/10:null,beats};
+}
+
+async function searchParallel({tapes,incumbentParams,feeRatio,orderUsd,startUsd,weights,cfg,generation,now,clock,rng,yieldFn,scoreMany,batchSize}) {
+ const startedAt=clock(),rand=rng||mulberry32((generation*2654435761+Math.floor(now/1000))>>>0);
+ const incumbent=evaluateCandidate(incumbentParams,tapes,{feeRatio,orderUsd,startUsd,weights,cfg}),seen=new Set([incumbent.paramsHash]),plan=[];
+ const seeds=multiDayCandidates(incumbent.params),offset=((generation-1)%seeds.length+seeds.length)%seeds.length;
+ for(const params of [...seeds.slice(offset),...seeds.slice(0,offset)]){const h=S.paramsHash(params);if(!seen.has(h)){seen.add(h);plan.push({params,seed:true});}}
+ for(let i=0;i<cfg.candidates&&plan.length<200;i++){let params=null;for(let n=0;n<8&&!params;n++){const c=mutateParams(incumbent.params,rand),h=S.paramsHash(c);if(!seen.has(h)){seen.add(h);params=c;}}if(params)plan.push({params,seed:false});}
+ const evaluated=[];let best=null,timedOut=false;
+ const width=Math.max(1,Math.min(32,Math.floor(batchSize)||1));
+ for(let i=0;i<plan.length;i+=width){
+  if(clock()-startedAt>cfg.budgetMs){timedOut=true;break;}
+  const batch=plan.slice(i,i+width),scores=await scoreMany(batch.map(x=>x.params),{tapes,options:{feeRatio,orderUsd,startUsd,weights,cfg}});
+  if(scores.length!==batch.length)throw new Error('incomplete Robinhood candidate batch');
+  scores.forEach((r,j)=>{const extra=batch[j].seed?{maxHoldMin:batch[j].params.maxHoldMin,horizonSamples:batch[j].params.horizonSamples}:{};evaluated.push({paramsHash:r.paramsHash,...extra,score:r.score,closes:r.metrics.closes,pnlUsd:r.metrics.pnlUsd,profitFactor:r.metrics.profitFactor});if(!best||r.score>best.score||(r.score===best.score&&r.paramsHash<best.paramsHash))best=r;});
   await yieldFn();
  }
  const gain=best&&best.score>0?(best.score-incumbent.score)/Math.max(incumbent.score,1e-9):-1;

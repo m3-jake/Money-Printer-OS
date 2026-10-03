@@ -1,0 +1,75 @@
+{
+  "schema": "mpo.shared-core.v1",
+  "owner": "money-printer-os",
+  "note": "Edit these files only in the trader, then run scripts/sync-shared-core.mjs. Parity tests in both repos fail on drift.",
+  "files": {
+    "src/core/paperTrading.js": {
+      "lab": "src/core/paperTrading.js",
+      "sha256": "e8c28ea53800f6dabc0a9dad80d8e46f078b63b82b61323785be75da33758069"
+    },
+    "src/core/computeLease.js": {
+      "lab": "src/computeLease.js",
+      "sha256": "54110db276db0d0d3a0dfea90499445b81045b3c2c41a932000573abe5361884"
+    },
+    "src/atomicRename.js": {
+      "lab": "src/atomicRename.js",
+      "sha256": "53171f60717b90c6d559e1af68800d01e5a7aadd5ca5cd211d4f11da998d63f3"
+    },
+    "src/robinhoodStrategy.js": {
+      "lab": "src/robinhoodStrategy.js",
+      "sha256": "d80064be357363b49d843f5087782151d55b52377d2dd5fc9c2000cb4b8afd07"
+    },
+    "src/robinhoodBacktest.js": {
+      "lab": "src/robinhoodBacktest.js",
+      "sha256": "37d0f7da47c50f1c3c8975b8e7f297dcbc0c2225de87cd9ecaa5d77cb82a6090"
+    },
+    "src/robinhoodEvolve.js": {
+      "lab": "src/robinhoodEvolve.js",
+      "sha256": "6f5e3cdae443301fbddf89b2ea459948154cbf0cabfe747c9e2f2b7f328f424c"
+    },
+    "src/robinhoodEvidence.js": {
+      "lab": "src/robinhoodEvidence.js",
+      "sha256": "2d62b673cd528e69a39e83d97ca0b74fbd2da4b8a486bec45f900a825979af70"
+    },
+    "src/edgeGate.js": {
+      "lab": "src/edgeGate.js",
+      "sha256": "e145f876519ae9ffec74750850f97aa9576a83288e4eb6bddf0573861f2d482b"
+    },
+    "src/evidenceFlags.js": {
+      "lab": "src/evidenceFlags.js",
+      "sha256": "d48bfc2ffb86edd8fa5bd4444d6c2f89165f4debb2d0aa55f268c8e04b24e8ad"
+    },
+    "src/researchEvidenceGate.js": {
+      "lab": "src/researchEvidenceGate.js",
+      "sha256": "aa5ffab5d4d4d6cc66a30cdbf15b1f33cdef9bf58159deb2e2154ba5ea7a3979"
+    },
+    "src/resourcePolicy.js": {
+      "lab": "src/resourcePolicy.js",
+      "sha256": "a0df9d4e704b3e4f9f3f57ad21c82b6a08eb87e628e9f1a431bdf1a237494f41"
+    },
+    "src/predictionExperiment.js": {
+      "lab": "src/predictionExperiment.js",
+      "sha256": "ddec9a5e90382708abcf9f70e32d8392d6c89d72f653adcb616e717a4cdf6f7a"
+    },
+    "src/crowdContract.js": {
+      "lab": "src/crowdContract.js",
+      "sha256": "81d5bd6b5757e7ba1321a2f1dee36c37df4a253dfcbd1edca7559a23a06e508b"
+    },
+    "src/crowdResearch.js": {
+      "lab": "src/crowdResearch.js",
+      "sha256": "e7ab539ce6c7c69c1528adcde068ddaefff1078ad453cd0cc9251a5997ead0da"
+    },
+    "src/pumpProfitPolicy.js": {
+      "lab": "src/pumpProfitPolicy.js",
+      "sha256": "a4a2499810769ff55fa4a141a54b0e72d4746415ef259988a42d11767d1edaec"
+    },
+    "src/pumpProfitExperiments.js": {
+      "lab": "src/pumpProfitExperiments.js",
+      "sha256": "49e4f9bc6feec470b7dc39a855d896fee9a725cd99635ba78ff359be2525f5fd"
+    }
+  },
+  "syncedFrom": {
+    "traderCommit": "91fc38a",
+    "at": "2026-10-03T13:04:04.407Z"
+  }
+}

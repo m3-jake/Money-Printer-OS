@@ -41,7 +41,7 @@ test('mutations stay inside the evolution bounds, keep emaFast < emaSlow, change
  }
  assert.ok(seen.size>100,'mutations explore');
  const a=E.mutateParams(base,E.mulberry32(9)),b=E.mutateParams(base,E.mulberry32(9));assert.deepEqual(a,b);
- assert.deepEqual(E.EVOLVE_BOUNDS.emaFast,[5,30,true]);assert.deepEqual(E.EVOLVE_BOUNDS.maxHoldMin,[30,720,false]);assert.deepEqual(E.EVOLVE_BOUNDS.breakoutBufferPct,[0,0.002,false]);
+ assert.deepEqual(E.EVOLVE_BOUNDS.emaFast,[5,30,true]);assert.deepEqual(E.EVOLVE_BOUNDS.maxHoldMin,[30,4320,false]);assert.deepEqual(E.EVOLVE_BOUNDS.breakoutBufferPct,[0,0.002,false]);
  assert.equal(E.withinEvolveBounds({...base,emaFast:60,emaSlow:50}),false);assert.equal(E.withinEvolveBounds({...base,maxSpreadBps:200}),false);
 });
 test('scoring: PF-weighted test score with penalties for few closes, drawdown, losses and train/test overfit; primary weight applies',()=>{
@@ -59,7 +59,8 @@ test('searchGeneration: walk-forward per symbol, time-boxed with yields, champio
  const incumbentParams=S.normalizeParams({sampleMs:STEP});
  const cfg={...E.evolveConfig(),candidates:4,minGain:0.15,budgetMs:20000};
  let yields=0;const r=await E.searchGeneration({tapes,incumbentParams,feeRatio:0.0085,orderUsd:25,startUsd:1000,weights:{'BTC-USD':1.5},cfg,generation:1,now:1700000000000,rng:E.mulberry32(3),yieldFn:async()=>{yields++}});
- assert.equal(r.evaluated.length,4);assert.equal(yields,4);assert.equal(r.timedOut,false);assert.ok(r.incumbent.bySymbol['BTC-USD'].test.samples===900&&r.incumbent.bySymbol['BTC-USD'].train.samples===2100,'70/30 split');
+ // 4 mutations plus the 1/2/3-day hold seeds the Lab and the trader now share.
+ assert.equal(r.evaluated.length,7);assert.equal(yields,7);assert.deepEqual(r.evaluated.slice(0,3).map(x=>x.maxHoldMin).sort((a,b)=>a-b),[1440,2880,4320]);assert.equal(r.timedOut,false);assert.ok(r.incumbent.bySymbol['BTC-USD'].test.samples===900&&r.incumbent.bySymbol['BTC-USD'].train.samples===2100,'70/30 split');
  assert.ok(r.incumbent.bySymbol['BTC-USD'].cutAt>tape[2000].t);
  const bestScore=r.best.score,incScore=r.incumbent.score;
  assert.equal(r.beats,bestScore>0&&(incScore<=0?bestScore>0:bestScore>=incScore*1.15));
@@ -87,7 +88,7 @@ test('trader: no run without 3 days of primary tape; a run proposes a champion b
  writeTape('BTC-USD',4,{drift:0.0006});RH.setRobinhoodPaperAutopilot({params:{maxSpreadBps:1}});const hashBefore=J.loadPaper().paramsHash;
  let r=null;for(let i=0;i<12&&!(r&&r.beats);i++){mock.state.time+=1000;r=await RH.runRobinhoodEvolveOnce({manual:true})}
  assert.equal(r.ran,true,JSON.stringify(r));assert.equal(r.beats,true,'expected a champion within 12 generations: '+JSON.stringify(r));assert.equal(r.promoted,false);assert.equal(r.proposed,true);
- assert.equal(r.incumbentScore,0);assert.ok(r.bestScore>0);assert.ok(r.evaluated<=6);
+ assert.equal(r.incumbentScore,0);assert.ok(r.bestScore>0);assert.ok(r.evaluated<=9);
  const view=RH.robinhoodEvolveView();assert.equal(view.autopromote,false);assert.ok(view.generation>=1);assert.equal(view.proposed.paramsHash,r.bestHash);assert.equal(view.champion.paramsHash,r.bestHash);assert.ok(view.tapeDays['BTC-USD']>=3.9);assert.equal(view.applied,null);
  assert.equal(J.loadPaper().paramsHash,hashBefore,'paper params untouched without APPLY');assert.equal(mock.writes().length,0,'evolution never posts to Robinhood');
  const ledger=JSON.parse(fs.readFileSync(RH.__testing.evolveFile,'utf8'));assert.equal(ledger.champion.paramsHash,r.bestHash);assert.equal(ledger.history[0].beats,true);assert.equal(ledger.events[0].type,'champion');

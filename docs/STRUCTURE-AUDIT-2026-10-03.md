@@ -53,6 +53,8 @@ Ten files have the same name in both repos but different contents. The two that 
 
 ### S1. One shared strategy core, enforced by a parity test (both apps)
 
+**Done in alpha.86 / Lab alpha.22:** `shared-core.json`, `scripts/sync-shared-core.mjs` and a parity test in each repo. The Kalshi weather model is not shared yet: the Lab's weather replay re-implements it. That is the next file to bring under the manifest.
+
 - **Why first:** this is the only finding that makes the Lab's output *wrong* rather than slow. The Lab exists to
   improve the modules, so it must score the code the trader runs.
 - **Change:**

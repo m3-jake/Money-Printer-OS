@@ -1,6 +1,6 @@
 {
   "name": "money-printer-os",
-  "version": "0.5.0-alpha.85",
+  "version": "0.5.0-alpha.86",
   "description": "Money Printer OS â€” native retro trading workstation with continuous research, monitoring, and desktop supervision.",
   "type": "module",
   "dependencies": {
@@ -47,7 +47,7 @@
     "test:executable-replay": "node --test tests/executable-replay-evaluator.test.mjs",
     "test:research": "node --test tests/hypothesis-miner.test.mjs tests/trade-forensics.test.mjs tests/alpha-validate.test.mjs tests/research-report.test.mjs tests/executable-replay-evaluator.test.mjs tests/quant-research-catalog.test.mjs tests/quant-research-http.test.mjs",
     "test:poly-research-eval": "node --test tests/polymarket-research-eval.test.mjs",
-    "test:evolution": "node --test tests/evolution-paper-policy.test.mjs tests/lab-link.test.mjs",
+    "test:evolution": "node --test tests/evolution-paper-policy.test.mjs tests/lab-link.test.mjs tests/shared-core-parity.test.mjs",
     "test:release-gate": "node --test tests/release-gate.test.cjs tests/paired-release.test.mjs",
     "test:visual": "node --test tests/renderer-alpha52.test.mjs tests/visual-assets.test.mjs tests/visual-contract.test.mjs tests/api-state-split.test.mjs tests/window-state.test.mjs tests/hud-resilience.test.mjs tests/logo-3d.test.mjs tests/home-overview.test.mjs tests/live-overviews.test.mjs",
     "test:all": "npm run test:wiring && npm run test:paired-safety && npm run test:recovery && npm run test:discovery && npm run test:solana && npm run test:turnover && npm run test:updater && npm run test:execution && npm run test:unit-economics && npm run test:settlement && npm run test:polymarket-us && npm run test:combos && npm run test:edge-robustness && npm run test:accounting && npm run test:replay && npm run test:experiments && npm run test:research && npm run test:evidence && npm run test:poly-research-eval && npm run test:evolution && npm run test:lab-link && npm run test:visual && npm run test:release-gate && npm run test:latency && npm run test:robinhood && npm run test:robinhood-equities && npm run test:lane-contracts && npm run test:fitness && npm run test:unattended && npm run test:upgrade && npm run test:pump-profit && npm run test:paper-completion && npm run test:wallet-crowd && npm run test:paper-bots && npm run test:web-demo",
