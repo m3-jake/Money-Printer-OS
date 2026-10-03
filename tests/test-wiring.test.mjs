@@ -59,12 +59,9 @@ test('the coverage map is complete and printed (telemetry, not a guess)', () => 
   assert.equal(reachable.size, onDisk.filter(f => reachable.has(f)).length, 'reachable count matches the disk');
 });
 
-test('the Robinhood panel gate reads a CRLF checkout (the failure that hid five targets)', () => {
-  // The gate itself: it compares the embedded panel with public/assets/robinhood-panel.js and must not
-  // mistake a CRLF working tree for a missing panel.
-  const r = spawnSync(process.execPath, ['scripts/sync-robinhood-panel.mjs', '--check'], { cwd: root, encoding: 'utf8' });
-  assert.equal(r.status, 0, `sync-robinhood-panel --check failed: ${r.stderr || r.stdout}`);
-  assert.match(r.stdout, /panel synchronized/);
-  const script = fs.readFileSync(path.join(root, 'scripts/sync-robinhood-panel.mjs'), 'utf8');
-  assert.match(script, /replace\(\/\\r\\n\/g,'\\n'\)/, 'the check must normalize line endings before matching');
+// The Robinhood panel used to be embedded in dashboard.html and kept in step by a sync gate whose CRLF bug once hid
+// five targets. Since run D2 the HUD loads public/js/mpo-robinhood-panel.js directly, so there is no copy and no gate.
+test('no embedded Robinhood panel copy is left to drift', () => {
+  assert.ok(!fs.existsSync(path.join(root, 'scripts/sync-robinhood-panel.mjs')));
+  assert.doesNotMatch(fs.readFileSync(path.join(root, 'package.json'), 'utf8'), /sync-robinhood-panel/);
 });

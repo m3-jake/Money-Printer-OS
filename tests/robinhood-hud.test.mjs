@@ -12,18 +12,20 @@ const read=p=>fs.readFileSync(path.join(root,p),'utf8');
 // Line endings are normalized at the read boundary: a CRLF checkout (core.autocrlf=true on Windows) is
 // not a difference in the panel, and the marker split below would find nothing (P1.4).
 const lf=s=>s.replace(/\r\n/g,'\n');
-const html=lf(read('public/dashboard.html')),panel=lf(read('public/assets/robinhood-panel.js'));
+const html=lf(read('public/dashboard.html')),panel=lf(read('public/js/mpo-robinhood-panel.js'));
 const rx=s=>new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'));
 // 2026-10-02 (bing): the Robinhood HUD is paper-only; every live/real-money control was removed. The backend lock
 // (tests/robinhood-http.test.mjs, tests/live-gate.test.mjs) still refuses real mutations on its own.
 const PHRASES=['PLACE REAL CRYPTO ORDER','CANCEL REAL CRYPTO ORDER','CANCEL REAL CRYPTO ORDERS','ENABLE REAL CRYPTO AUTOPILOT'];
 const LIVE_IDS=['rhArm','rhRealSymbol','rhRealUsd','rhRealType','rhPreviewBtn','rhPreviewOut','rhConfirm','rhPlace','rhCancelAll','rhReconcile','rhApOrderUsd','rhApMaxOpen','rhApLossCap','rhApSymbols','rhApType','rhAutoConfirm','rhApEnable','rhApDisable','rhApRun'];
 
-test('the synced panel source is embedded byte-for-byte and parses',()=>{
- const embedded=html.split('// BEGIN ROBINHOOD PAPER PANEL\n')[1].split('// END ROBINHOOD PAPER PANEL')[0];
- assert.equal(embedded.trim(),panel.trim(),'run npm run sync:robinhood-panel');
- assert.doesNotThrow(()=>new vm.Script(panel,{filename:'robinhood-panel.js'}));
- const code=html.slice(html.indexOf('<script>')+8,html.lastIndexOf('</script>'));assert.doesNotThrow(()=>new vm.Script(code,{filename:'dashboard-inline.js'}));
+test('the panel loads from its own file at the old position, and every script parses (run D2)',()=>{
+ assert.doesNotMatch(html,/BEGIN ROBINHOOD PAPER PANEL/,'no inline copy to keep in sync any more');
+ const tag='<script src="/js/mpo-robinhood-panel.js"></script>',at=html.indexOf(tag);
+ assert.ok(at>html.indexOf('const fetch=window.MPOHud.fetch;')&&at<html.indexOf('const $=s=>document.querySelector(s)'),'same position in document order as the inline copy had');
+ assert.doesNotThrow(()=>new vm.Script(panel,{filename:'mpo-robinhood-panel.js'}));
+ const inline=[...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m=>m[1]);assert.ok(inline.length>=2);
+ inline.forEach((code,i)=>assert.doesNotThrow(()=>new vm.Script(code,{filename:'dashboard-inline-'+i+'.js'})));
 });
 test('the panel has no live or real-money controls, phrases or numbers',()=>{
  for(const p of PHRASES){assert.doesNotMatch(panel,rx(p));assert.doesNotMatch(html,rx(p))}

@@ -81,18 +81,20 @@ test('invalid JSON and unknown routes fail cleanly; missing Robinhood keys still
  assert.equal((await post('/api/robinhood/does-not-exist')).status,404);
  const r=await post('/api/robinhood/paper-order',{symbol:'BTC-USD',usd:10});assert.equal(r.status,200);const body=await r.json();assert.equal(body.result.position.quoteSource,'coinbase-public-paper');
 });
-test('panel ships inline, preserves desktop layout and has no real-money routes (paper-only HUD, 2026-10-02)',async()=>{
+test('panel ships as /js/mpo-robinhood-panel.js, preserves desktop layout and has no real-money routes (paper-only HUD, 2026-10-02)',async()=>{
  // Line endings are normalized before the marker split: the checkout may be CRLF (core.autocrlf=true),
  // which is not a difference in the panel itself (P1.4).
  const lf=s=>s.replace(/\r\n/g,'\n');
- const html=lf(await (await fetch(base+'/')).text()),panel=lf(fs.readFileSync(new URL('../public/assets/robinhood-panel.js',import.meta.url),'utf8'));
- const embedded=html.split('// BEGIN ROBINHOOD PAPER PANEL\n')[1].split('// END ROBINHOOD PAPER PANEL')[0];assert.equal(embedded.trim(),panel.trim());
+ const html=lf(await (await fetch(base+'/')).text()),panel=lf(fs.readFileSync(new URL('../public/js/mpo-robinhood-panel.js',import.meta.url),'utf8'));
+ // Run D2: the HUD loads the panel file in place of the inline copy it used to carry, and the server serves it as JavaScript.
+ assert.match(html,/<script src="\/js\/mpo-robinhood-panel\.js"><\/script>/);assert.doesNotMatch(html,/BEGIN ROBINHOOD PAPER PANEL/);
+ const served=await fetch(base+'/js/mpo-robinhood-panel.js');assert.equal(served.status,200);assert.match(served.headers.get('content-type')||'',/javascript/);assert.equal(lf(await served.text()).trim(),panel.trim());
  assert.match(html,/\['robinhood','Robinhood','RH','dark'\]/);assert.match(html,/DEFAULT_OPEN=\[\]/);assert.match(html,/LAYOUT_VERSION='2026-09-26-glance'/);
  for(const a of ['config','evolve/run','evolve/apply','paper-order','paper-reset'])assert.ok(panel.includes("rhAction('"+a+"'"),a);for(const a of ['order','cancel','cancel-all','forget','arm','preview','reconcile','autopilot','autopilot/run'])assert.ok(!panel.includes("rhAction('"+a+"'"),a);assert.match(panel,/confirmation==='RESET PAPER'/);
  for(const phrase of ['PLACE REAL CRYPTO ORDER','CANCEL REAL CRYPTO ORDER','CANCEL REAL CRYPTO ORDERS','ENABLE REAL CRYPTO AUTOPILOT'])assert.doesNotMatch(panel,new RegExp('value="'+phrase+'"'),'phrases are never pre-filled');assert.doesNotMatch(panel,/sessionStorage/);assert.deepEqual([...panel.matchAll(/rhSave\('([^']+)'/g)].map(m=>m[1]).sort(),['mpo-rh-chart','mpo-rh-view']);assert.equal((panel.match(/localStorage\.setItem/g)||[]).length,1);assert.match(panel,/rhSave\('mpo-rh-chart',\{range:rhChart.range,symbol:rhChart.symbol\}\)/);assert.match(panel,/rhSave\('mpo-rh-view',rhView\)/);
- const code=html.slice(html.indexOf('<script>')+8,html.lastIndexOf('</script>'));assert.doesNotThrow(()=>new vm.Script(code));assert.doesNotThrow(()=>new vm.Script(panel));
+ for(const m of html.matchAll(/<script>([\s\S]*?)<\/script>/g))assert.doesNotThrow(()=>new vm.Script(m[1]));assert.doesNotThrow(()=>new vm.Script(panel));
 });
 test('automatic panel refresh cannot replace a focused input',()=>{
- const panel=fs.readFileSync(new URL('../public/assets/robinhood-panel.js',import.meta.url),'utf8');let renders=0;
+ const panel=fs.readFileSync(new URL('../public/js/mpo-robinhood-panel.js',import.meta.url),'utf8');let renders=0;
  const context=vm.createContext({document:{getElementById:()=>({}),activeElement:{id:'rhUsd'}},setBody:()=>renders++});vm.runInContext(panel,context);vm.runInContext('renderRobinhood()',context);assert.equal(renders,0);
 });

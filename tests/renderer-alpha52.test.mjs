@@ -8,11 +8,8 @@ import vm from 'node:vm';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const html = fs.readFileSync(path.join(root, 'public', 'dashboard.html'), 'utf8');
 const dashJs = fs.readFileSync(path.join(root, 'src', 'dashboard.js'), 'utf8');
-const script = (() => {
-  const start = html.indexOf('<script>') + '<script>'.length;
-  const end = html.lastIndexOf('</script>');
-  return html.slice(start, end);
-})();
+// Every inline script part, in document order (run D2 split the one inline script around loaded window files).
+const script = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]).join('\n');
 
 function extractFn(name) {
   const start = script.indexOf(`function ${name}(`);

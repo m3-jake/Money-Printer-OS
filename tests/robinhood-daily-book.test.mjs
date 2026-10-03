@@ -201,7 +201,7 @@ test('paper only: the daily book imports no transport, signer or order path', ()
 });
 
 test('HUD: daily tab and the small daily-verdict line', () => {
-  const panel = fs.readFileSync(fileURLToPath(new URL('../public/assets/robinhood-panel.js', import.meta.url)), 'utf8');
+  const panel = fs.readFileSync(fileURLToPath(new URL('../public/js/mpo-robinhood-panel.js', import.meta.url)), 'utf8');
   const ctx = vm.createContext({ document: { getElementById: () => null }, window: { innerWidth: 1200 }, polyEscape: s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])), money: n => '$' + Number(n).toFixed(2), fmt: (n, d) => Number(n).toFixed(d) });
   vm.runInContext(panel, ctx);
   assert.match(vm.runInContext('rhDailyVerdictLine(null)', ctx), /no verdict published yet/);

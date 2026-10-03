@@ -111,8 +111,8 @@ test('HUD contract: Solana card, one-click FAIR/SPRINT switch and SPRINT warning
   }
   assert.match(html, /\['FAIR','CALM','FAST','DEGEN','MAX','SPRINT','RESEARCH'\]/);
   assert.match(html, /s\.positions,s\.solanaBook\],renderTrade/);
-  const start = html.indexOf('<script>') + 8, end = html.lastIndexOf('</script>');
-  assert.doesNotThrow(() => new vm.Script(html.slice(start, end)));
+  // Run D2 split the inline script around loaded window files; every inline part must parse.
+  for (const m of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) assert.doesNotThrow(() => new vm.Script(m[1]));
 });
 
 test('paper auto-demote: SPRINT fails the cost gate at the floor round trip and drops to FAIR, never back', async () => {

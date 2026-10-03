@@ -47,7 +47,7 @@ test('POST requests stay distinct and never retry through the read transport',as
  let calls=0;const transport=createTransport(async()=>{calls++;return response({ok:true})});await Promise.all([transport.fetch('/api/paper',{method:'POST'}),transport.fetch('/api/paper',{method:'POST'})]);assert.equal(calls,2);assert.equal(transport.status().pending,0);transport.dispose();
 });
 test('a superseded chart request cannot reset the chosen pair or range',async()=>{
- const panel=fs.readFileSync(new URL('../public/assets/robinhood-panel.js',import.meta.url),'utf8');let finish;
+ const panel=fs.readFileSync(new URL('../public/js/mpo-robinhood-panel.js',import.meta.url),'utf8');let finish;
  const chart=vm.createContext({document:{getElementById:()=>null},fetch:()=>new Promise(r=>finish=r),windowVisible:()=>false,Date,JSON});vm.runInContext(panel,chart);
  const pending=vm.runInContext("rhChart.symbol='BTC-USD';rhChart.range='1h';rhLoadChart(true)",chart);
  vm.runInContext("rhChart.symbol='ETH-USD';rhChart.range='24h'",chart);finish(response({symbol:'BTC-USD',range:'1h',points:[]}));await pending;

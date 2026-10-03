@@ -18,10 +18,10 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
 
 
 test('embedded dashboard script parses as JavaScript', () => {
-  const start = html.indexOf('<script>') + '<script>'.length;
-  const end = html.lastIndexOf('</script>');
-  assert.ok(start >= '<script>'.length && end > start);
-  assert.doesNotThrow(() => new vm.Script(html.slice(start, end), { filename: 'dashboard-inline.js' }));
+  // Since run D2 the inline script is split around the panel's <script src>; each inline part must parse.
+  const parts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
+  assert.ok(parts.length >= 2);
+  parts.forEach((code, i) => assert.doesNotThrow(() => new vm.Script(code, { filename: 'dashboard-inline-' + i + '.js' })));
 });
 
 test('confirmation phrases remain exact in UI and backends', () => {
@@ -50,7 +50,7 @@ test('confirmation phrases remain exact in UI and backends', () => {
 test('Robinhood confirmation phrases stay exact in the backend; the paper-only HUD shows none of them (2026-10-02)', () => {
   const rh = read('src/robinhoodAutoTrader.js');
   const rhHttp = read('src/robinhoodHttp.js');
-  const panel = read('public/assets/robinhood-panel.js');
+  const panel = read('public/js/mpo-robinhood-panel.js');
   const phrases = ['PLACE REAL CRYPTO ORDER', 'CANCEL REAL CRYPTO ORDER', 'CANCEL REAL CRYPTO ORDERS', 'ENABLE REAL CRYPTO AUTOPILOT'];
   for (const p of phrases) { assert.doesNotMatch(html, rx(p)); assert.doesNotMatch(panel, rx(p)); }
   assert.match(rh, /CONFIRM_PLACE='PLACE REAL CRYPTO ORDER'/);

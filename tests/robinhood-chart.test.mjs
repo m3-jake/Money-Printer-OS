@@ -12,7 +12,7 @@ process.env.ROBINHOOD_AUTOSTART='false';process.env.POLYMARKET_AUTOSTART='false'
 const C=await import('../src/robinhoodChart.js'),S=await import('../src/robinhoodStrategy.js'),T=await import('../src/robinhoodTape.js');
 const RH=await import('../src/robinhoodAutoTrader.js'),J=await import('../src/robinhoodJournal.js');
 const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
-const panel=fs.readFileSync(path.join(repo,'public/assets/robinhood-panel.js'),'utf8'),html=fs.readFileSync(path.join(repo,'public/dashboard.html'),'utf8');
+const panel=fs.readFileSync(path.join(repo,'public/js/mpo-robinhood-panel.js'),'utf8'),html=fs.readFileSync(path.join(repo,'public/dashboard.html'),'utf8');
 test.after(()=>fs.rmSync(root,{recursive:true,force:true}));
 const STEP=15000,END=1_800_000_000_000;
 function walk(n,{end=END,seed=11}={}){let s=seed,mid=60000;return Array.from({length:n},(_,i)=>{s=(Math.imul(s,1664525)+1013904223)>>>0;mid*=1+(s/4294967296-0.5)*0.004;return {t:end-(n-1-i)*STEP,bid:mid*0.9995,ask:mid*1.0005,mid,src:'robinhood'}})}
@@ -75,7 +75,7 @@ test('robinhoodChart: validates input, reads durable + in-memory tape, caps a 24
 
 test('HUD contract: chart section, range toggle, SVG layers, marker shapes per book, fee drag and trade columns',()=>{
  for(const s of ["'/api/robinhood/chart?symbol='",'data-rh-chart-range','data-rh-chart-symbol',"['1h','6h','24h']",'id="rhCharts"','${rhChartSection(rhState)}'])assert.ok(panel.includes(s),s);
- assert.ok(html.includes(panel.trim()),'panel synced into the dashboard');
+ assert.ok(html.includes('<script src="/js/mpo-robinhood-panel.js"></script>'),'the dashboard loads the panel file (run D2)');
  assert.doesNotMatch(panel,/<canvas|<script|cdn\.|jsdelivr|cdnjs/,'inline SVG only, no library');
  const ctx=vm.createContext({window:{innerWidth:1280},document:{getElementById:()=>null},polyEscape:s=>String(s??''),money:n=>'$'+Number(n).toFixed(2),fmt:(n,dd)=>Number(n).toFixed(dd)});vm.runInContext(panel,ctx);
  const rows=walk(1440),at=i=>rows[rows.length-1-i].t;
