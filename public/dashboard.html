@@ -10,18 +10,20 @@
 <link rel="stylesheet" href="/css/mpo-glance.css">
 <link rel="stylesheet" href="/css/mpo-hud-resilience.css">
 <script src="/js/mpo-hud-runtime.js"></script>
+<script src="/js/mpo-ambient.js"></script>
 <script src="/js/mpo-viz.js"></script>
 <script src="/js/mpo-roll.js"></script>
 <script src="/js/mpo-bots.js"></script>
 <script src="/js/mpo-account.js"></script>
 <link rel="stylesheet" href="/css/mpo-platform.css">
+<link rel="stylesheet" href="/css/mpo-design.css">
 <link rel="stylesheet" href="/css/mpo-command-center.css">
 <link rel="stylesheet" href="/css/mpo-mac.css">
 <link rel="stylesheet" href="/css/mpo-glass.css">
 <link rel="stylesheet" href="/css/mpo-overviews.css">
 <script src="/js/wallet-crowd.js"></script>
 <script src="/js/mpo-platform.js"></script>
-<script src="/js/mpo-command-graphs.js"></script>
+<script src="/js/mpo-chart-kit.js"></script><script src="/js/mpo-price-workspace.js"></script><script src="/js/mpo-command-graphs.js"></script>
 <script src="/js/mpo-command-center.js"></script>
 <script src="/js/mpo-polymarket.js"></script>
 <script src="/js/mpo-stocks.js"></script>
@@ -179,9 +181,11 @@ function environmentWindAt(t){
  return {direction:ENV_WIND.direction,pxs,gust,gustRatio:pxs/ENV_WIND.basePxS};
 }
 function paintEnvironmentWind(now=performance.now()){
- const root=document.documentElement,w=environmentWindAt(now/1000),g=Math.max(.55,Math.min(1.55,w.gustRatio));
- root.style.setProperty('--env-cloud-near',ENV_WIND.cloudSec.near+'s');root.style.setProperty('--env-cloud-mid',ENV_WIND.cloudSec.mid+'s');root.style.setProperty('--env-cloud-far',ENV_WIND.cloudSec.far+'s');root.style.setProperty('--env-shadow-duration',ENV_WIND.shadowSec+'s');
- root.style.setProperty('--env-grass-a',(-.42*g).toFixed(2)+'deg');root.style.setProperty('--env-grass-b',(1.05*g).toFixed(2)+'deg');root.style.setProperty('--env-grass-far-a',(-.2*g).toFixed(2)+'deg');root.style.setProperty('--env-grass-far-b',(.52*g).toFixed(2)+'deg');root.style.setProperty('--env-wind-strength',g.toFixed(3));
+ // GPU/CPU pass (2026-10-03): the gust variables live on the grass layer, not :root. A custom property changed on
+ // :root restyles every element on the page (every open window) each time the wind changes.
+ const root=document.documentElement,grass=document.querySelector('.grass-layer')||root,w=environmentWindAt(now/1000),g=Math.max(.55,Math.min(1.55,w.gustRatio));
+ if(!root.dataset.envWind){root.dataset.envWind='1';root.style.setProperty('--env-cloud-near',ENV_WIND.cloudSec.near+'s');root.style.setProperty('--env-cloud-mid',ENV_WIND.cloudSec.mid+'s');root.style.setProperty('--env-cloud-far',ENV_WIND.cloudSec.far+'s');root.style.setProperty('--env-shadow-duration',ENV_WIND.shadowSec+'s')}
+ grass.style.setProperty('--env-grass-a',(-.42*g).toFixed(2)+'deg');grass.style.setProperty('--env-grass-b',(1.05*g).toFixed(2)+'deg');grass.style.setProperty('--env-grass-far-a',(-.2*g).toFixed(2)+'deg');grass.style.setProperty('--env-grass-far-b',(.52*g).toFixed(2)+'deg');grass.style.setProperty('--env-wind-strength',g.toFixed(3));
 }
 function applyMotion(){document.documentElement.classList.toggle('mpo-low-motion',motionReduced());paintEnvironmentWind()}
 applyMotion();matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change',()=>{applyMotion();updateDesktopEffects()});
@@ -208,7 +212,8 @@ function persist(){
 // 1.5s refresh never throws the operator back to the top of a table, log or feed.
 function captureScroll(root){const list=[];if(!root)return list;const cands=[root,...root.querySelectorAll('*')].filter(e=>e.scrollHeight>e.clientHeight+1||e.scrollWidth>e.clientWidth+1);cands.forEach((e,i)=>{if(e.scrollTop||e.scrollLeft)list.push({key:e.dataset?.scroll||null,i,top:e.scrollTop,left:e.scrollLeft,pinned:e.scrollHeight-e.scrollTop-e.clientHeight<24})});return list}
 function restoreScroll(root,list){if(!root||!list||!list.length)return;const cands=[root,...root.querySelectorAll('*')].filter(e=>e.scrollHeight>e.clientHeight+1||e.scrollWidth>e.clientWidth+1);for(const s of list){const el=(s.key&&(root.matches&&root.matches(`[data-scroll="${s.key}"]`)?root:root.querySelector(`[data-scroll="${s.key}"]`)))||cands[s.i];if(!el)continue;if(el.dataset?.pin==='bottom'&&s.pinned)el.scrollTop=el.scrollHeight;else{el.scrollTop=s.top;el.scrollLeft=s.left}}}
-function setBody(id,html){const el=document.getElementById('body-'+id);if(!el)return null;if(el.contains(document.activeElement)&&document.activeElement.matches('input,select,textarea,[contenteditable=true]'))return el;const saved=captureScroll(el);el.innerHTML=html;restoreScroll(el,saved);return el}
+function patchPane(el,html){if(!el)return null;const active=document.activeElement;if(el.contains(active)&&active.matches('input,select,textarea,[contenteditable=true]'))return el;const selection=document.getSelection?.();if(selection&&!selection.isCollapsed&&el.contains(selection.anchorNode))return el;const saved=captureScroll(el),focus=el.contains(active)?[...active.attributes].filter(a=>a.name.startsWith('data-')||a.name==='id'||a.name==='name').map(a=>[a.name,a.value]):[],opened=[...el.querySelectorAll('details')].map((d,i)=>d.open?i:-1).filter(i=>i>=0);el.innerHTML=html;restoreScroll(el,saved);const details=el.querySelectorAll('details');for(const i of opened)if(details[i])details[i].open=true;if(focus.length)el.querySelector(focus.map(([k,v])=>`[${k}="${CSS.escape(v)}"]`).join(''))?.focus({preventScroll:true});return el}
+function setBody(id,html){return patchPane(document.getElementById('body-'+id),html)}
 function iconFallback(img){const s=img?.parentNode;if(!s)return;s.classList.remove('png');if(img.dataset.cls)s.classList.add(img.dataset.cls);s.innerHTML=`<b class="pixel-glyph">${img.dataset.glyph||'?'}</b>`}
 function iconHtml(id,glyph,cls=''){const png=ICON_PNG[id];return png?`<span class="ico png"><img src="/assets/icons/${png}" alt="" draggable="false" data-glyph="${glyph}" data-cls="${cls}" onerror="iconFallback(this)"></span>`:`<span class="ico ${cls}"><b class="pixel-glyph">${glyph}</b></span>`}
 const taskIcon=id=>ICON_PNG[id]?`<img class="tico" src="/assets/icons/${ICON_PNG[id]}" alt="">`:`<b>${appMeta(id)?.[2]||''}</b>`;
@@ -344,43 +349,26 @@ function clampAll(){$$('.window').forEach(clampWin)}
 // Put every non-maximized window back at its intended spot, then clamp visually to the current
 // viewport: a window squeezed by a small viewport returns to its saved place when the viewport grows.
 function reflowAll(){if(tileSnapshot){tileWindows(true);return}$$('.window').forEach(w=>{const I=intended[w.dataset.app];if(I&&!w.classList.contains('max')){w.style.left=I.x+'px';w.style.top=I.y+'px';w.style.width=I.w+'px';w.style.height=I.h+'px'}clampWin(w)})}
-// Fit to window: the visible pane (window body or active tab) is scaled with CSS zoom so its whole
-// content fits the window and shrinks as the window shrinks. The pane carries the zoom itself with
-// an explicit size of box/zoom, so it still fills exactly its box and #body-x>… selectors keep
-// working. Panes are container-query roots, so a smaller zoom (a wider layout) lets modules reflow
-// into columns before they shrink further. Only content that cannot fit at FIT_MIN scrolls.
-const FIT_MIN=.5;let FIT_MAX=textScale();
+// Panes reflow at their actual width. User-selected text size may enlarge text, but window size never
+// shrinks it. Long detail panes scroll vertically while overview charts keep their own bounded space.
+const FIT_MIN=1;let FIT_MAX=textScale();
 let fitOff=(()=>{try{const v=JSON.parse(localStorage.getItem('mpo-fit-off')||'[]');return new Set(Array.isArray(v)?v:[])}catch{return new Set()}})();
 const fitZoom=new Map(),fitQueue=new Set();let fitRaf=0;
 function fitPaneOf(w){return w.classList.contains('glance')?w.querySelector('.glancepane'):(w.querySelector('.body:not(.tabbed)')||w.querySelector('.tabpane.on'))}
-function fitTry(pane,z,W,H){pane.style.zoom=z;pane.style.width=(W/z)+'px';pane.style.height=(H/z)+'px';return pane.scrollHeight<=pane.clientHeight+1&&pane.scrollWidth<=pane.clientWidth+1}
 function fitWindow(w){
  if(!w||w.classList.contains('hidden'))return;
  const pane=fitPaneOf(w);if(!pane)return;
  // Research desks contain long tables and forms. Keep their text readable and scroll the content.
- const scrollDesk=!!pane.querySelector('.core-app,.mpo-overview,.command-brain');
  w.querySelectorAll('.tabpane,.body,.glancepane').forEach(p=>{if(p!==pane)p.style.zoom=p.style.width=p.style.height=p.style.overflow=''});
  pane.style.zoom=pane.style.width=pane.style.height=pane.style.overflow='';
  const brain=pane.querySelector('.command-brain');
  if(brain&&brain.parentElement.classList.contains('g-scroll')){
   const box=brain.parentElement;brain.style.zoom='';brain.style.width='';
   const W=box.clientWidth,H=box.clientHeight;if(W<40||H<40)return;
-  let z=textScale();
-  for(let i=0;i<5;i++){brain.style.zoom=z;brain.style.width=(W/z)+'px';const height=brain.getBoundingClientRect().height;if(fitOff.has(w.dataset.app)||height<=H+1||z<=.85)break;z=Math.max(.85,z*H/height);}
-  fitBadge(w,fitOff.has(w.dataset.app)?null:z);box.style.overflow='auto';return;
+  fitBadge(w,null);box.style.overflow='hidden';return;
  }
  // Fit off: actual size at the chosen text size, scrolling if it does not fit.
- if(fitOff.has(w.dataset.app)||scrollDesk){const z=textScale(),W=pane.offsetWidth,H=pane.offsetHeight;if(z!==1&&W>=40&&H>=40){pane.style.zoom=z;pane.style.width=(W/z)+'px';pane.style.height=(H/z)+'px';pane.style.overflow='auto'}fitZoom.delete(pane.id);fitBadge(w,null);if(scrollDesk){const button=w.querySelector('[data-act=fit]');if(button)button.title='This desk uses readable text and scrolling. Text size is set in Settings.'}if(w.classList.contains('glance')&&w.dataset.app==='trade')drawGlanceChart();return}
- const W=pane.offsetWidth,H=pane.offsetHeight;if(W<40||H<40)return;
- pane.style.overflow='hidden';
- const prev=fitZoom.get(pane.id);let z;
- // Keep the last zoom while it still fits and is not more than ~4% too small: no jitter on refresh.
- if(prev&&fitTry(pane,prev,W,H)&&(prev>=FIT_MAX||!fitTry(pane,Math.min(FIT_MAX,prev*1.04),W,H)))z=prev;
- else if(fitTry(pane,FIT_MAX,W,H))z=FIT_MAX;
- else if(!fitTry(pane,FIT_MIN,W,H))z=FIT_MIN;
- else{let lo=FIT_MIN,hi=FIT_MAX;for(let i=0;i<7;i++){const mid=(lo+hi)/2;if(fitTry(pane,mid,W,H))lo=mid;else hi=mid}z=Math.floor(lo*100)/100}
- const fits=fitTry(pane,z,W,H);pane.style.overflow=fits?'hidden':'auto';
- fitZoom.set(pane.id,z);fitBadge(w,z);
+ pane.style.fontSize=(13*Math.max(1,textScale()/1.1))+'px';pane.style.overflow=pane.querySelector('.command-brain')?'hidden':'auto';fitZoom.delete(pane.id);fitBadge(w,null);const button=w.querySelector('[data-act=fit]');if(button)button.title='Readable layout: resize to reflow, scroll for detail. Text size is set in Settings.';
  if(w.classList.contains('glance')){if(w.dataset.app==='trade')drawGlanceChart();if(w.dataset.app==='system')drawSysGraph()}
 }
 function fitBadge(w,z){
@@ -511,7 +499,7 @@ function fxAdopt(el,host){if(el.dataset.phys||el.tagName!=="IMG"||!el.classList.
  const init=()=>{fxResetBill(b,host,true);FX_PHYS.bills.add(b);if(b.heavy||b.w>=80){el.classList.add("grab");el.addEventListener("pointerdown",e=>fxGrab(b,e));el.addEventListener("pointermove",e=>fxDragMove(b,e));el.addEventListener("pointerup",e=>fxRelease(b,e));el.addEventListener("pointercancel",e=>fxRelease(b,e));el.addEventListener("dragstart",e=>e.preventDefault())}fxStart()};el.complete?init():el.addEventListener("load",init,{once:true})}
 function fxStart(){if(FX_PHYS.raf)return;FX_PHYS.last=performance.now();FX_PHYS.raf=requestAnimationFrame(fxStep)}
 function fxSettle(b,dt,rate){const k=Math.min(1,dt*rate),pr=((b.pitch%360)+540)%360-180;b.pitch=pr+((Math.abs(pr)>90?(pr>0?180:-180):0)-pr)*k;b.yaw-=b.yaw*k;const rr=((b.roll-b.restRot)%360+540)%360-180;b.roll=b.restRot+rr*(1-k)}
-function fxStep(now){const dt=Math.min(.05,(now-FX_PHYS.last)/1000);FX_PHYS.last=now;FX_PHYS.t+=dt;const T=FX_PHYS.t,wind=fxWind(T);
+function fxStep(now){if(document.body.classList.contains("desk-covered")){FX_PHYS.last=now;FX_PHYS.raf=setTimeout(()=>{FX_PHYS.raf=requestAnimationFrame(fxStep)},500);return}const dt=Math.min(.05,(now-FX_PHYS.last)/1000);FX_PHYS.last=now;FX_PHYS.t+=dt;const T=FX_PHYS.t,wind=fxWind(T);
  for(const b of FX_PHYS.bills){const el=b.el;if(!el.isConnected){FX_PHYS.bills.delete(b);continue}
   if(b.delay>0){b.delay-=dt;continue}
   if(b.hitT>0)b.hitT-=dt;
@@ -541,8 +529,11 @@ function fxStep(now){const dt=Math.min(.05,(now-FX_PHYS.last)/1000);FX_PHYS.last
   const face=Math.cos(b.pitch*Math.PI/180)*Math.cos(b.yaw*Math.PI/180),lit=(.72+.38*Math.abs(face)+(face<0?-.08:0)).toFixed(2),lift=b.state==="drag"?14:3+Math.abs(face)*3;
   el.style.opacity=(b.state==="fall"&&b.y<-(b.host.clientHeight||innerHeight||720)-b.h*.2?0:b.alpha).toFixed(2);
   el.style.transform=`translate3d(${b.x.toFixed(1)}px,${b.y.toFixed(1)}px,0) rotateZ(${b.roll.toFixed(1)}deg) rotateY(${b.yaw.toFixed(1)}deg) rotateX(${b.pitch.toFixed(1)}deg)`;
-  el.style.filter=`brightness(${lit}) drop-shadow(0 ${lift.toFixed(1)}px ${b.state==="drag"?8:3}px #0005)`}
- FX_PHYS.raf=FX_PHYS.bills.size?requestAnimationFrame(fxStep):0}
+  const filt=`brightness(${(Math.round(lit*20)/20).toFixed(2)}) drop-shadow(0 ${Math.round(lift)}px ${b.state==="drag"?8:3}px #0005)`;if(b.filt!==filt){b.filt=filt;el.style.filter=filt}}
+ // GPU pass: ambient rain alone (no burst, drag or throw in flight) steps at about 20 fps instead of every vsync;
+ // a maximized window pauses it (above), and a hidden page gets no frames at all.
+ let lively=Date.now()<fxBurstUntil;if(!lively)for(const b of FX_PHYS.bills)if(!b.rain||b.state==="drag"||b.state==="air"||b.thrown){lively=true;break}
+ FX_PHYS.raf=!FX_PHYS.bills.size?0:lively?requestAnimationFrame(fxStep):setTimeout(()=>{FX_PHYS.raf=requestAnimationFrame(fxStep)},40)}
 function fxRainHost(rain){if(rain.dataset.fx)return;rain.dataset.fx="1";const adopt=el=>{if(el.nodeType===1)fxAdopt(el,rain)};
  new MutationObserver(ms=>ms.forEach(m=>m.addedNodes.forEach(adopt))).observe(rain,{childList:true});rain.querySelectorAll("img.bill").forEach(adopt)}
 function makeRainBills(n,intensity){return Array.from({length:n},()=>{const d=12+Math.random()*5;return fxBill({cls:'rain',src:'paper-equity',tiny:intensity<.2,d:d.toFixed(2),delay:(-Math.random()*d).toFixed(2)})}).join('')}
@@ -1096,7 +1087,7 @@ function renderBackgroundSettings(){
 function renderChanged(id,sig,fn){if(!windowVisible(id))return;const key=JSON.stringify(sig);if(renderSig.get(id)===key)return;renderSig.set(id,key);fn()}
 // Glance views: one card per window — hero number, three supporting numbers, one status pill, one
 // visual, a quiet footer. Numbers are formatted here; any feed text goes through polyEscape.
-function setGlance(host,html){if(programActive(host))return;const el=document.getElementById('glance-'+host);if(el)el.innerHTML=html}
+function setGlance(host,html){if(programActive(host))return;patchPane(document.getElementById('glance-'+host),html)}
 const gTone=v=>Number(v)>0?'g-pos':Number(v)<0?'g-neg':'';
 const gSigned=(v,d,unit='')=>{const n=Number(v);return Number.isFinite(n)?`${n>0?'+':n<0?'−':''}${Math.abs(n).toFixed(d)}${unit}`:'—'};
 const gPct=v=>v==null||!Number.isFinite(Number(v))?'—':Math.round(Number(v)*100)+'%';

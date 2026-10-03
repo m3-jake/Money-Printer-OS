@@ -670,8 +670,15 @@ export function startDashboard() {
       if (req.method === 'GET' && u.pathname === '/api/resources') return json(res, resourceSnapshot());
       if (req.method === 'GET' && u.pathname === '/api/scoreboard') { const sb=await import('./scoreboard.js'); return json(res, await sb.readScoreboard()); }
       if (req.method === 'GET' && u.pathname === '/api/command-center') {
-        const sb=await import('./scoreboard.js'),[board,link]=await Promise.all([sb.readScoreboard(),labConnection.state()]);
-        return json(res,commandCenterSnapshot({state:loadStateCached(),bots:{...paperBotsView(),pumpCopy:pumpfunCopyPaper().summary(),pumpCopyExperiments:pumpfunCopyExperiments().map(b=>b.summary())},board,lab:link.lab,labError:link.error,loops:venueLoops.status(),discovery:paperBots?.leaderDiscovery.snapshot(),markets:commandMarketSnapshot({state:loadStateCached(),contracts:readCommandContracts(marketPlatform().store),crypto:robinhoodObservedQuotes(),equities:readBarStore(DATA_DIR),stockQuotes:marketPlatform().stocks.quoteSource.observedQuotes?.()||[],us:observedUSMarkets()})}));
+        // ?view=summary (no per-contract rows; see /api/market-quotes|groups|history) or full (default, compatibility). Built at most every 2 s per view, in-flight shared.
+        const view=u.searchParams.get('view')==='summary'?'summary':'full',cc=await import('./commandCenter.js');
+        return json(res,await cc.commandCenterBuilds.get(view,async()=>{
+          const sb=await import('./scoreboard.js'),[board,link]=await Promise.all([sb.readScoreboard(),labConnection.state()]);
+          const full=commandCenterSnapshot({state:loadStateCached(),bots:{...paperBotsView(),pumpCopy:pumpfunCopyPaper().summary(),pumpCopyExperiments:pumpfunCopyExperiments().map(b=>b.summary())},board,lab:link.lab,labError:link.error,loops:venueLoops.status(),discovery:paperBots?.leaderDiscovery.snapshot(),markets:commandMarketSnapshot({state:loadStateCached(),contracts:view==='full'?readCommandContracts(marketPlatform().store):[],crypto:robinhoodObservedQuotes(),equities:readBarStore(DATA_DIR),stockQuotes:marketPlatform().stocks.quoteSource.observedQuotes?.()||[],us:observedUSMarkets()})});
+          if(view==='full')return full;
+          const mh=await import('./marketHistory.js');let coverage=null;try{coverage=mh.contractCoverage({dataDir:DATA_DIR,live:{marketPlatform}});}catch{}
+          return cc.commandCenterSummary(full,{coverage});
+        }));
       }
       if (req.method === 'GET' && u.pathname === '/api/data-coverage') return json(res, dataCoverage(DATA_DIR, { force: u.searchParams.get('force') === '1' }));
       if (req.method === 'GET' && u.pathname === '/api/desktop-prefs') return json(res, readDesktopPrefs());

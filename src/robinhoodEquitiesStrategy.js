@@ -7,6 +7,7 @@
 // Pure: targetWeights(bars, asOf) reads only rows with d <= asOf.
 import { createHash } from 'node:crypto';
 import { nextSession, inCalendar } from './robinhoodEquitiesCalendar.js';
+import { CHALLENGER_BOUNDS, validateChallenger, equityChallengerTargets } from './strategyChallengers.js';
 
 export const CASH='CASH';
 export const STRATEGIES={
@@ -17,12 +18,15 @@ export const STRATEGIES={
  },
  'buy-hold':{title:'Buy and hold SPY (baseline)',defaults:{symbol:'SPY'},bounds:{}},
  'cash':{title:'Cash, 0% (baseline)',defaults:{},bounds:{}},
+ 'lagged-volatility-scaled-trend':{title:'Lagged volatility scaled trend (unqualified challenger)',defaults:{lookback:20,targetVol:.15},bounds:CHALLENGER_BOUNDS['lagged-volatility-scaled-trend'],challenger:true},
+ 'long-only-mean-reversion':{title:'Long-only mean reversion (unqualified challenger)',defaults:{lookback:20,entryDiscount:.02,maxHold:10},bounds:CHALLENGER_BOUNDS['long-only-mean-reversion'],challenger:true},
 };
 export const DEFAULT_STRATEGY='tactical-a';
 
 export function normalizeParams(id,params={}){
  const s=STRATEGIES[id];if(!s)throw new Error('Unknown strategy '+id);
  const out={...s.defaults};
+ if(s.challenger){const selected={...out,...params},v=validateChallenger(id,selected);if(!v.ok)throw new Error(v.reasons.join('; '));return selected;}
  for(const [k,[lo,hi]] of Object.entries(s.bounds))if(Number.isFinite(Number(params[k])))out[k]=Math.min(hi,Math.max(lo,Number(params[k])));
  if(Number.isFinite(out.topN))out.topN=Math.round(out.topN);
  return out;
@@ -60,6 +64,11 @@ function rotationPicks(bars,asOf,p){
 // Returns {weights:{SYM:w}, ready, reasons[], detail}. Weights sum to 1; CASH is implicit remainder.
 export function targetWeights(id,params,bars,asOf){
  const p=normalizeParams(id,params);
+ if(STRATEGIES[id].challenger){
+  const rows=upTo(bars.SPY,asOf),targets=equityChallengerTargets(rows,{family:id,params:p}),weights=targets.at(-1);
+  const ready=weights!==null&&weights!==undefined;
+  return {weights:ready?weights:{},ready,reasons:ready?[]:['challenger requires 201 complete SPY closed bars'],detail:{adapter:'bounded-challenger-adapters.v1',qualificationEffect:'NONE',admissionRequired:true}};
+ }
  if(id==='cash')return {weights:{},ready:true,reasons:[],detail:{}};
  if(id==='buy-hold'){const ok=upTo(bars[p.symbol],asOf).length>0;return {weights:ok?{[p.symbol]:1}:{},ready:ok,reasons:ok?[]:['no '+p.symbol+' bars'],detail:{}}}
  const reasons=[];const w={};const add=(s,x)=>{if(x>0)w[s]=(w[s]||0)+x};

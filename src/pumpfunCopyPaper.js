@@ -42,9 +42,17 @@ export function qualifiedPumpCopyWallets(card, { asOf = Date.now(), settings = P
     .sort((a, b) => Number(b.shrunkReturnPct || 0) - Number(a.shrunkReturnPct || 0))
     .slice(0, settings.maxLeaders).map(w => ({ ...w, scorecardAsOf: at }));
 }
+export function selectedPumpCopyWallets(card,{asOf=Date.now(),settings=PUMP_COPY_DEFAULTS,experiment=null}={}){
+ if(!experiment)return qualifiedPumpCopyWallets(card,{asOf,settings});
+ const at=Number(card?.asOf);
+ if(!timestamp(at,asOf)||asOf-at>settings.maxScorecardAgeMs)return [];
+ return (card?.wallets||[]).filter(w=>isWalletAddress(w.wallet)&&Number(w.roundTrips)>=settings.minTrips&&Number(w.lastTs)<at&&Number(w.lastTs)>asOf-7*86400e3)
+  .sort((a,b)=>Number(b.shrunkReturnPct||0)-Number(a.shrunkReturnPct||0)).slice(0,settings.maxLeaders)
+  .map(w=>({...w,scorecardAsOf:at,qualificationStage:'EXPLORATORY'}));
+}
 
 export function createPumpfunCopyPaper({ dataDir = process.env.MONEY_PRINTER_DATA_DIR || 'data', adapter = null,
-  now = Date.now, scorecard = () => walletScorecardView({ dir: path.resolve(dataDir), now: now() }), logger = () => {}, settings: overrides = {}, experiment = null } = {}) {
+  now = Date.now, scorecard = () => walletScorecardView({ dir: path.resolve(dataDir), now: now(), full: true }), logger = () => {}, settings: overrides = {}, experiment = null } = {}) {
   const settings = { ...PUMP_COPY_DEFAULTS, ...overrides };
   if (!validSettings(settings)) throw new Error('Invalid Pump copy risk limits');
   if(experiment&&!['emerging','consensus'].includes(experiment.policy))throw new Error('Unsupported Pump exploratory policy');
@@ -55,12 +63,7 @@ export function createPumpfunCopyPaper({ dataDir = process.env.MONEY_PRINTER_DAT
     startSol: null, cashSol: null, fundedAt: null, fundingSolUsd: null, solUsd: null, fxAt: null,
     realizedPnlSol: 0, settings, experiment:experiment?{...experiment,strategyHash:createHash('sha256').update(JSON.stringify({experiment,settings,source:'observed-native-wallet-swap'})).digest('hex'),startedAt:activatedAt,qualificationStage:'EXPLORATORY',qualificationEffect:'NONE',capitalUsd:settings.startUsd}:null, open: [], history: [], seen: [], decisions: [], lastRunAt: null, lastMarkAt: null, lastError: null, ordersSubmitted: 0 });
   function leaders(card,asOf,limits){
-    if(!experiment)return qualifiedPumpCopyWallets(card,{asOf,settings:limits});
-    const at=Number(card?.asOf);
-    if(!timestamp(at,asOf)||asOf-at>limits.maxScorecardAgeMs)return [];
-    return (card?.wallets||[]).filter(w=>isWalletAddress(w.wallet)&&Number(w.roundTrips)>=limits.minTrips&&Number(w.lastTs)<at&&Number(w.lastTs)>asOf-7*86400e3)
-      .sort((a,b)=>Number(b.shrunkReturnPct||0)-Number(a.shrunkReturnPct||0)).slice(0,limits.maxLeaders)
-      .map(w=>({...w,scorecardAsOf:at,qualificationStage:'EXPLORATORY'}));
+    return selectedPumpCopyWallets(card,{asOf,settings:limits,experiment});
   }
   function read() {
     if (!assertPaperPrimaryAvailable(file)) return freshBook();

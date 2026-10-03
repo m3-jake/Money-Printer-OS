@@ -316,9 +316,14 @@ window.MPOSPlatform = (() => {
     if(!paneVisible(id))return;const host=hostOf(id),w=document.querySelector(`.window[data-app="${host}"]`),simple=w.classList.contains('glance');
     const root=document.getElementById(simple?'glance-'+host:'body-'+id);if(!root)return;
     if(root.contains(document.activeElement)&&document.activeElement.matches('input,select,textarea'))return;
-    const top=root.scrollTop;
+    const top=root.scrollTop,active=root.contains(document.activeElement)?document.activeElement:null;
+    const focus=active?[...active.attributes].filter(a=>a.name.startsWith('data-')||a.name==='name'||a.name==='id').map(a=>[a.name,a.value]):[];
+    const openDetails=[...root.querySelectorAll('details')].map((d,i)=>d.open?i:-1).filter(i=>i>=0);
+    const selection=document.getSelection?.();if(selection&&!selection.isCollapsed&&root.contains(selection.anchorNode))return;
     const html=simple?platformGlance(id):`<div class="core-app" data-core-id="${id}">${error?`<p class="core-error" role="alert">${escape(error)}</p>`:''}${busy?'<p role="status">Working…</p>':''}${id==='command'?command():id==='arbitrage'?arbitrage():marketProgram(id)}</div>`;
     if(root._mpoHTML===html)return;root._mpoHTML=html;root.innerHTML=html;root.scrollTop=top;
+    const details=root.querySelectorAll('details');for(const i of openDetails)if(details[i])details[i].open=true;
+    if(focus.length){const selector=focus.map(([k,v])=>`[${k}="${CSS.escape(v)}"]`).join('');root.querySelector(selector)?.focus({preventScroll:true});}
   }
   // Simple view for Arbitrage: candidate Kalshi–Polymarket pairs among the loaded contracts (scanned at most every 10 minutes while shown).
   let arbScanAt=0;

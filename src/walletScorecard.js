@@ -98,15 +98,18 @@ export function scoreWallets(events, { asOf = Date.now(), mintMeta = {}, minTrip
 
 // Dashboard view: read what the collector's indexer wrote. Cached briefly; never throws.
 let viewCache = { at: 0, dir: '', value: null };
-export function walletScorecardView({ dir = path.resolve(process.env.MONEY_PRINTER_DATA_DIR || 'data'), now = Date.now() } = {}) {
-  if (viewCache.value && viewCache.dir === dir && now - viewCache.at < 5000) return viewCache.value;
+export function walletScorecardView({ dir = path.resolve(process.env.MONEY_PRINTER_DATA_DIR || 'data'), now = Date.now(), full = false, offset = 0, limit = 16 } = {}) {
+  const page=value=>{const start=Number.isSafeInteger(offset)&&offset>=0?offset:0,cap=Number.isSafeInteger(limit)&&limit>=1?Math.min(200,limit):16;
+   const wallets=full?value.wallets:value.wallets.slice(start,start+cap),totalScored=value.summary?.wallets??value.wallets.length;
+   return {...value,wallets,coverage:{totalScored,persisted:value.wallets.length,returned:wallets.length,offset:full?0:start,limit:full?null:cap,omittedFromView:value.wallets.length-wallets.length,persistenceOmissions:Math.max(0,totalScored-value.wallets.length)}};};
+  if (viewCache.value && viewCache.dir === dir && now >= viewCache.at && now - viewCache.at < 5000) return page(viewCache.value);
   const read = f => { try { return JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')); } catch { return null; } };
   const card = read('wallet-scorecard.json'), st = read('wallet-indexer-state.json'), led = read('wallet-indexer-budget.json');
   const h = st?.health || null, day = new Date(now).toISOString().slice(0, 10);
   let status = h?.status || 'NOT RUNNING';
   if (h && status !== 'OFF' && now - Number(h.updatedAt || 0) > 10 * 60_000) status = 'STALE';
   const indexer = h ? { ...h, status, credits: led?.day === day ? Number(led.credits || 0) : 0, calls: led?.day === day ? Number(led.calls || 0) : 0 } : { status };
-  const value = { indexer, asOf: card?.asOf || null, summary: card?.summary || null, wallets: (card?.wallets || []).slice(0, 16), minTrips: card?.summary?.minTrips ?? MIN_GRADED_ROUND_TRIPS };
+  const value = { indexer, asOf: card?.asOf || null, summary: card?.summary || null, wallets: Array.isArray(card?.wallets)?card.wallets:[], minTrips: card?.summary?.minTrips ?? MIN_GRADED_ROUND_TRIPS };
   viewCache = { at: now, dir, value };
-  return value;
+  return page(value);
 }

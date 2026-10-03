@@ -1,20 +1,33 @@
 // Local, event-driven evidence triage. No model calls, orders, or strategy promotions.
 import { fingerprint } from './model.js';
+import { Coordinator } from './coordinator.js';
 
 export class Intelligence {
-  constructor(store, bus) {
-    this.store = store; this.bus = bus;
+  constructor(store, bus, { dataDir = null } = {}) {
+    this.store = store; this.bus = bus; this.coordinatorError = null;
     store.db.exec(`CREATE TABLE IF NOT EXISTS intelligence_memory(
       identity TEXT PRIMARY KEY, input_hash TEXT NOT NULL, at INTEGER NOT NULL, result TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS intelligence_runs(
       seq INTEGER PRIMARY KEY AUTOINCREMENT, identity TEXT NOT NULL, at INTEGER NOT NULL, result TEXT NOT NULL);`);
+    // The coordination loop shares these memory/run tables and the bus (rows keyed 'coord:*').
+    this.coordinator = new Coordinator(store, bus, { dataDir });
+    this.wakeTimer = null; this.latestRows = null;
+    this.unsubscribe = ['MARKET_PRICE_UPDATED', 'ORDERBOOK_UPDATED', 'SPORT_EVENT_UPDATED', 'NEWS_RECEIVED', 'SEC_FILING_RECEIVED', 'MACRO_RELEASED', 'WALLET_ACTIVITY', 'ORDER_FILLED']
+      .map(type => bus?.on(type, () => {
+        if (this.wakeTimer || !this.latestRows) return;
+        // Coalesce feed bursts into a bounded changed-evidence pass. The regular paper
+        // observation refreshes book outcomes; notifications never fabricate outcomes.
+        this.wakeTimer = setTimeout(() => { this.wakeTimer = null; this.coordinate(this.latestRows, Date.now()); }, 1000);
+        this.wakeTimer.unref?.();
+      })).filter(Boolean);
   }
   observe(scoreboard) {
     const now = scoreboard.at;
+    this.latestRows = scoreboard.rows || [];
     for (const row of scoreboard.rows || []) {
       // Mirrors and backtests cannot create duplicate claims about paper performance.
       if (row.kind === 'lab' || row.id === 'platform-robinhood-practice') continue;
-      const evidence = { closes: row.closes, net: row.netPnl, withoutBest: row.netWithoutBest,
+      const evidence = { closes: row.closes ?? null, net: row.netPnl ?? null, withoutBest: row.netWithoutBest ?? null,
         freshness: row.freshness?.status || 'NO_DATA', recoveryRequired: row.recoveryRequired === true };
       const hash = fingerprint(evidence), old = this.store.db.prepare('SELECT input_hash FROM intelligence_memory WHERE identity=?').get(row.id);
       if (old?.input_hash === hash) continue;
@@ -37,7 +50,14 @@ export class Intelligence {
       });
       this.bus.publish('RESEARCH_COMPLETED', result);
     }
+    // Bounded, synchronous coordination pass on the same scoreboard (small lab-link reads, indexed queries).
+    this.coordinate(scoreboard.rows || [], now);
   }
+  coordinate(rows, now) {
+    try { this.coordinator.tick({ rows, now }); this.coordinatorError = this.coordinator.lastError; }
+    catch (e) { this.coordinatorError = String(e?.message || e).slice(0, 200); }
+  }
+  close() { if (this.wakeTimer) clearTimeout(this.wakeTimer); this.wakeTimer = null; for (const unsubscribe of this.unsubscribe) unsubscribe(); this.unsubscribe = []; }
   recordComparison(result, now = Date.now()) {
     for (const d of result.directions) {
       const id = fingerprint([result.a.id, result.b.id, d.sideA, d.sideB]).slice(0,32);
@@ -57,8 +77,9 @@ export class Intelligence {
   }
   snapshot(now = Date.now()) {
     return { scope: 'Local paper evidence triage; recommendations do not change strategies',
-      research: this.store.db.prepare('SELECT result FROM intelligence_memory ORDER BY at DESC LIMIT 100').all().map(r=>JSON.parse(r.result)).sort((a,b)=>b.priority-a.priority),
+      research: this.store.db.prepare("SELECT result FROM intelligence_memory WHERE identity NOT LIKE 'coord:%' ORDER BY at DESC LIMIT 100").all().map(r=>JSON.parse(r.result)).sort((a,b)=>b.priority-a.priority),
       opportunities: this.store.list({kind:'Opportunity',provider:'mpos',limit:50}).map(r=>({...r.data,id:r.id,at:r.observedAt,stale:r.data.expiresAt<=now})),
-      recentRuns: this.store.db.prepare('SELECT COUNT(*) n FROM intelligence_runs').get().n, modelCalls:0 };
+      recentRuns: this.store.db.prepare("SELECT COUNT(*) n FROM intelligence_runs WHERE identity NOT LIKE 'coord:%'").get().n, modelCalls:0,
+      coordinator: { at: this.coordinator.lastTickAt, error: this.coordinatorError, endpoint: '/api/coordinator' } };
   }
 }

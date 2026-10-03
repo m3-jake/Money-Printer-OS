@@ -33,6 +33,34 @@ function alpacaFetch(bars,calls){return async(url,init)=>{
 }}
 const KEYS={ALPACA_KEY_ID:'test-id',ALPACA_SECRET_KEY:'test-secret',ROBINHOOD_EQUITIES_DATA:'alpaca'};
 
+test('authentic SIP repair restores early and interior IEX gaps without replacing observed primary bars',async()=>{
+ const bar=(d,c)=>({d,o:c,h:c,l:c,c,v:100});
+ const primary={SPY:[bar('2026-09-23',100),bar('2026-09-24',101),bar('2026-09-25',102)],BIL:[bar('2026-09-24',20)]};
+ const calls=[],fetchImpl=alpacaFetch({BIL:[bar('2026-09-23',19),bar('2026-09-24',999),bar('2026-09-25',21)]},calls);
+ const now=ET('2026-09-25',17),out=await Data.repairSessionGaps(Data.PROVIDERS.alpaca,primary,{fetchImpl,env:KEYS,completedThrough:'2026-09-25',now});
+ assert.equal(calls.length,1);assert.equal(calls[0].url.searchParams.get('feed'),'sip');
+ assert.ok(Date.parse(calls[0].url.searchParams.get('end'))<=now-15*60000);
+ assert.deepEqual(out.bars.BIL.map(b=>b.c),[19,20,21]);assert.equal(out.bars.BIL[0].f,'sip');assert.equal(out.bars.BIL[1].f,undefined);
+ assert.deepEqual(out.record.filled.BIL,['2026-09-23','2026-09-25']);assert.deepEqual(out.record.stillMissing,{});
+});
+
+test('unavailable SIP repair retains IEX observations and reports authentic missing dates',async()=>{
+ const primary={SPY:[{d:'2026-09-24'},{d:'2026-09-25'}],BIL:[{d:'2026-09-25'}]};
+ const out=await Data.repairSessionGaps(Data.PROVIDERS.alpaca,primary,{fetchImpl:async()=>({ok:false,status:403}),env:KEYS,completedThrough:'2026-09-25',now:ET('2026-09-26',12)});
+ assert.equal(out.bars.BIL.length,1);assert.equal(out.record.error.code,'AUTH');assert.deepEqual(out.record.stillMissing.BIL,['2026-09-24']);
+});
+
+test('a symbol with no IEX prints can recover authentic SIP sessions; failed refetch cannot wipe prior bars',async()=>{
+ const bar=d=>({d,o:10,h:11,l:9,c:10,v:1}),primary={SPY:[bar('2026-09-24'),bar('2026-09-25')],BIL:[]};
+ const out=await Data.repairSessionGaps(Data.PROVIDERS.alpaca,primary,{fetchImpl:alpacaFetch({BIL:[bar('2026-09-24'),bar('2026-09-25')]},[]),env:KEYS,completedThrough:'2026-09-25',now:ET('2026-09-26',12)});
+ assert.equal(out.bars.BIL.length,2);assert.ok(out.bars.BIL.every(b=>b.f==='sip'));
+ const dir=tmp();try{
+  Data.writeJsonAtomic(Data.barsFile(dir),{version:1,provider:'alpaca',bars:{SPY:[bar('2026-09-25')]}});
+  const failed=await Data.refreshBars(dir,['SPY'],{now:ET('2026-09-26',12),env:KEYS,force:true,fetchImpl:alpacaFetch({},[])});
+  assert.equal(failed.reason,'ERROR');assert.equal(failed.store.lastError.code,'EMPTY_PROVIDER_SERIES');assert.equal(Data.readBarStore(dir).bars.SPY.length,1);
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
 test('calendar: holidays, early closes, DST and completed-session rules',()=>{
  assert.equal(Cal.isSession('2026-07-03'),false,'Independence Day observed');
  assert.equal(Cal.isSession('2026-09-26'),false,'Saturday');

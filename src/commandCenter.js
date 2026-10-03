@@ -8,7 +8,7 @@ export function readCommandContracts(store){
 export function commandMarketSnapshot({state={},contracts=[],crypto=[],equities={},stockQuotes=[],us={}}={}){
   const assets=crypto.map(q=>({id:'crypto:'+q.symbol,symbol:q.symbol,venue:'Robinhood crypto',bid:finite(q.bid),ask:finite(q.ask),price:finite(q.bid)!=null&&finite(q.ask)!=null?(q.bid+q.ask)/2:null,at:q.at||null,source:q.source||'unknown',kind:'BBO',currency:'USD'}));
   for(const [symbol,bars] of Object.entries(equities.bars||{})){const b=bars.at(-1);assets.push({id:'equity:'+symbol,symbol,venue:'Stocks & ETFs',price:finite(b?.c),bid:null,ask:null,at:null,session:b?.d||null,source:equities.provider||'unknown',kind:'SESSION_CLOSE',currency:'USD'});}
-  for(const q of stockQuotes){const a={id:'stock-bbo:'+q.symbol,symbol:q.symbol,venue:'Stocks & ETFs',price:finite(q.last),bid:finite(q.bid),ask:finite(q.ask),at:q.quoteAt||null,source:q.source,kind:'BBO',currency:'USD'};const i=assets.findIndex(a=>a.id==='equity:'+q.symbol);if(i>=0)assets[i]=a;else assets.push(a);}
+  for(const q of stockQuotes){const a={id:'equity:'+q.symbol,symbol:q.symbol,venue:'Stocks & ETFs',price:finite(q.last),bid:finite(q.bid),ask:finite(q.ask),at:q.quoteAt||null,source:q.source,kind:'BBO',currency:'USD'};const i=assets.findIndex(a=>a.id==='equity:'+q.symbol);if(i>=0)assets[i]=a;else assets.push(a);}
   for(const a of state.watchlist||[])assets.push({id:'pump:'+a.mint,symbol:a.symbol||a.name||a.mint,venue:'Pump.fun',price:finite(a.priceUsd),bid:null,ask:null,at:a.priceObservedAt||a.observedAt||null,source:'captured token listing',kind:'LISTING',currency:'USD'});
   if(!assets.some(a=>a.symbol==='SOL-USD'))assets.push({id:'sol-fx',symbol:'SOL-USD',venue:'SOL conversion',price:finite(state.market?.solUsd),at:state.market?.solUsdObservedAt||null,kind:'REFERENCE',currency:'USD'});
   const predictions=contracts.map(c=>({id:c.id,symbol:c.sourceId,title:c.data.title,venue:c.provider,bid:finite(c.data.yesBid),ask:finite(c.data.yesAsk),noBid:finite(c.data.noBid),noAsk:finite(c.data.noAsk),at:c.observedAt||null,status:c.data.status,source:c.data.quoteSource||'market listing',executable:c.data.quoteExecutable===true,currency:c.data.currency||'USD'}));
@@ -34,3 +34,35 @@ export function createLabConnection({fetchImpl=globalThis.fetch,now=Date.now}={}
     async profile(profile){if(!RESEARCH_PROFILES.includes(profile))throw Error('Unknown research profile');const value=await request('/api/scheduler-profile',{profile});if(value?.ok!==true||value.policy?.profile!==profile)throw Error('Lab did not acknowledge profile');checkedAt=0;return value;},
   };
 }
+
+// view=summary: the opening Command Center payload without per-contract rows (served by /api/market-quotes and
+// /api/market-history) and with the leader-replay research reduced to counts plus the candidates that have
+// follower closes. Nothing is silently dropped: every reduction reports what was omitted and where to read it.
+const coverageFromRows=(rows,now,staleMs=30*60e3)=>{const by={};for(const r of rows){const c=by[r.venue]||(by[r.venue]={total:0,quoted:0,twoSided:0,stale:0,unknown:0,executable:0,withHistory:null});c.total++;if(finite(r.bid)!=null||finite(r.ask)!=null)c.quoted++;else c.unknown++;if(finite(r.bid)!=null&&finite(r.ask)!=null)c.twoSided++;if(!(r.at>=now-staleMs))c.stale++;if(r.executable)c.executable++;}return by;};
+const cents=x=>finite(x)==null?null:Math.round(x*100)/100;
+const tail=(xs,n)=>{const a=rows(xs);return {total:a.length,rows:a.slice(-n),omitted:Math.max(0,a.length-n)};};
+export function summarizeLeaderReplay(lr){
+  if(!lr||typeof lr!=='object')return lr??null;
+  const {candidateResearch:cr,outcomes,leaders,...rest}=lr,cands=rows(cr?.candidates),decisions={};
+  for(const c of cands)for(const p of rows(c.byPolicy))decisions[p.decision||'UNKNOWN']=(decisions[p.decision||'UNKNOWN']||0)+1;
+  const withCloses=cands.map(c=>({proxyWallet:c.proxyWallet,userName:c.userName,qualification:c.qualification,firstObservedAt:c.firstObservedAt,byPolicy:rows(c.byPolicy).filter(p=>p.closes>0)})).filter(c=>c.byPolicy.length);
+  return {...rest,summarized:true,outcomes:tail(outcomes,20),leaders:tail(leaders,40),candidateResearch:cr?{schema:cr.schema,at:cr.at,sourceObservedAt:cr.sourceObservedAt,selectionEffect:cr.selectionEffect,note:cr.note,total:cands.length,policyDecisions:decisions,candidates:withCloses,omitted:{count:cands.length-withCloses.length,reason:'No follower closes under any policy yet'}}:null};
+}
+export function commandCenterSummary(full,{coverage=null,now=full?.at||Date.now()}={}){
+  if(!full||typeof full!=='object')return full;
+  const m=full.markets||{},preds=rows(m.predictions),derived=coverageFromRows(preds,now),venues={...derived,...(coverage?.venues||{})};
+  const wb=full.lab?.workbench,cat=full.copy?.catalogue;
+  const compactCat=cat&&typeof cat==='object'?(({membership,...rest})=>({...rest,membershipCount:membership&&typeof membership==='object'?Object.keys(membership).length:0}))(cat):cat;
+  return {...full,view:'summary',
+    markets:{assets:rows(m.assets).map(a=>String(a.id).startsWith('stock-bbo:')?{...a,id:'equity:'+a.symbol}:a),scope:m.scope||null,version:coverage?.version||null,coverage:venues,coverageRules:coverage?.rules||'Derived from in-process listings; withHistory unknown',staleMs:coverage?.staleMs??30*60e3,
+      predictionsOmitted:{count:Object.values(venues).reduce((n,c)=>n+c.total,0),reason:'Per-contract rows are paged by /api/market-quotes; history by /api/market-history; groups by /api/market-groups'}},
+    lab:full.lab?{...full.lab,workbench:wb?{...wb,leaderReplay:summarizeLeaderReplay(wb.leaderReplay)}:wb}:full.lab,
+    copy:full.copy?{...full.copy,catalogue:compactCat&&typeof compactCat==='object'?{...compactCat,candidates:rows(cat.candidates).map(c=>({proxyWallet:c.proxyWallet,userName:c.userName,pnl:cents(c.pnl),vol:cents(c.vol),firstObservedAt:c.firstObservedAt??null,qualification:c.qualification??null,sources:rows(c.sources).map(s=>({period:s.period,category:s.category,rank:s.rank}))}))}:cat}:full.copy};
+}
+// Short-lived per-view cache with shared in-flight builds, so several windows polling the Command Center trigger one build.
+export function createBuildCache({ttlMs=2000,now=Date.now}={}){
+  const done=new Map(),pending=new Map();
+  return {get(key,build){const d=done.get(key);if(d&&now()-d.at<ttlMs)return Promise.resolve(d.value);if(pending.has(key))return pending.get(key);
+    const p=Promise.resolve().then(build).then(value=>{done.set(key,{at:now(),value});return value;}).finally(()=>pending.delete(key));pending.set(key,p);return p;}};
+}
+export const commandCenterBuilds=createBuildCache();

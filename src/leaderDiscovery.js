@@ -14,17 +14,18 @@ export function discoveredCopyRows(catalogue, {category='ALL',now=Date.now()}={}
   }).sort((a,b)=>(a.rank??Infinity)-(b.rank??Infinity));
 }
 export function candidateLeaders(snapshots, at) {
-  const pool = new Map(); let observed = 0, rejected = 0;
+  const pool = new Map(); let observed = 0, rejected = 0; const rejectionReasons = {};
   for (const {period, category, rows} of snapshots) for (const row of rows) {
     observed++;
     const wallet = String(row.proxyWallet || '').toLowerCase(), pnl = Number(row.pnl), volume = Number(row.vol);
-    if (!/^0x[a-f0-9]{40}$/.test(wallet) || !Number.isFinite(pnl) || !Number.isFinite(volume) || pnl <= 0 || volume <= 0) { rejected++; continue; }
+    const reason = !/^0x[a-f0-9]{40}$/.test(wallet) ? 'invalid-wallet' : !Number.isFinite(pnl) || !Number.isFinite(volume) ? 'missing-provider-results' : pnl <= 0 ? 'nonpositive-leader-profit' : volume <= 0 ? 'nonpositive-volume' : null;
+    if (reason) { rejected++; rejectionReasons[reason] = (rejectionReasons[reason] || 0) + 1; continue; }
     const source = {period, category, rank:Number.isFinite(Number(row.rank))?Number(row.rank):null, pnl, volume, observedAt:at};
     const prior = pool.get(wallet);
     if (prior) prior.sources.push(source);
     else pool.set(wallet,{proxyWallet:wallet,userName:String(row.userName||wallet).slice(0,100),pnl,vol:volume,sources:[source],firstObservedAt:at,qualification:'UNQUALIFIED',note:'Provider leaderboard P/L; follower after-cost results required'});
   }
-  return {observed,rejected,candidates:[...pool.values()]};
+  return {observed,rejected,rejectionReasons,candidates:[...pool.values()]};
 }
 export class LeaderDiscovery {
   constructor({dataDir,fetchImpl=globalThis.fetch,tape,now=Date.now,cache}={}) {
@@ -42,7 +43,9 @@ export class LeaderDiscovery {
         try{const load=async()=>{const r=await this.fetch(url,{signal:AbortSignal.timeout(6500),redirect:'error'});if(!r.ok)throw Error(`HTTP ${r.status}`);const rows=await r.json();if(!Array.isArray(rows))throw Error('leaderboard response is not an array');return rows.slice(0,50);};const rows=this.cache?await this.cache.get(url,load):await load();snapshots.push({period,category,rows});}catch(e){errors.push({period,category,error:String(e.message).slice(0,180)});}
       }
       const at=this.now(),prior=new Map((this.state.candidates||[]).map(x=>[x.proxyWallet,x]));
-      if(snapshots.length){const result=candidateLeaders(snapshots,at);this.state={...this.state,...result,candidates:result.candidates.map(x=>({...x,firstObservedAt:prior.get(x.proxyWallet)?.firstObservedAt||at})),lastSuccessAt:at,sources:snapshots.map(x=>({period:x.period,category:x.category,count:x.rows.length,at}))};this.tape?.append('polycopy-candidates',{at,...result,sources:this.state.sources});}
+      if(snapshots.length){const result=candidateLeaders(snapshots,at),membership=this.state.membership||{};
+        for(const x of result.candidates){const before=membership[x.proxyWallet];membership[x.proxyWallet]={firstObservedAt:before?.firstObservedAt||prior.get(x.proxyWallet)?.firstObservedAt||at,lastObservedAt:at,observations:(before?.observations||0)+1};}
+        this.state={...this.state,...result,membership,candidates:result.candidates.map(x=>({...x,firstObservedAt:membership[x.proxyWallet].firstObservedAt})),lastSuccessAt:at,sources:snapshots.map(x=>({period:x.period,category:x.category,count:x.rows.length,at}))};this.tape?.append('polycopy-candidates',{at,...result,candidates:this.state.candidates,sources:this.state.sources});}
       this.state={...this.state,schema:'mpo.copy-leader-candidates.v1',lastRunAt:at,status:errors.length?(snapshots.length?'PARTIAL':'ERROR'):'OK',errors,everyMs:15*60000};
       writeFileAtomicSync(this.file,JSON.stringify(this.state));return this.snapshot();
     }finally{this.busy=false;}

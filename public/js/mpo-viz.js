@@ -322,7 +322,9 @@
     if (document.hidden) { last = now; return; }
     const canvases=[...document.querySelectorAll('canvas[data-viz]')].filter(visible);
     if(!canvases.length){last=now;return}
-    const moving=!reduce()&&canvases.some(c=>continuousMotion(REG.get(c.dataset.viz)));
+    // Presentation motion (pulses, tickers) runs only in the focused window: a background window's charts still
+    // redraw when their data changes, but do not keep the compositor producing frames for decoration.
+    const moving=!reduce()&&canvases.some(c=>continuousMotion(REG.get(c.dataset.viz))&&!c.closest?.('.window.inactive'));
     const freshCanvas=canvases.some(c=>!DRAWN.has(c)||c.width!==Math.round(c.clientWidth*Math.min(2,window.devicePixelRatio||1))||c.height!==Math.round(c.clientHeight*Math.min(2,window.devicePixelRatio||1)));
     if(dirty)settleUntil=reduce()?now:now+1500;
     const settling=now<settleUntil;

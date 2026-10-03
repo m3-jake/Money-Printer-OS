@@ -426,7 +426,7 @@ test('glance design: every window opens as one calm card, full detail is an opti
   assert.match(html, /<div class="mode-switch" role="group" aria-label="Window mode"><button class="task-tool" id="modeSimple"[^>]*>Simple<\/button><button class="task-tool" id="modeAdvanced"[^>]*>Advanced<\/button><\/div>/, 'taskbar switch flips every window');
   assert.match(html, /\$\('#modeSimple'\)\.onclick=\(\)=>setGlobalMode\(false\);\$\('#modeAdvanced'\)\.onclick=\(\)=>setGlobalMode\(true\);/);
   assert.match(html, /const TEXT_SCALES=\{S:\.9,M:1\.1,L:1\.3\}/);
-  assert.match(html, /const FIT_MIN=\.5;let FIT_MAX=textScale\(\);/, 'text size is the fit-zoom ceiling');
+  assert.match(html, /const FIT_MIN=1;let FIT_MAX=textScale\(\);/, 'window resizing never shrinks readable text');
   assert.match(html, /id="setFullDetail"/);assert.match(html, /id="setRestoreOnLaunch"/);assert.match(html, /data-textsize=/);
   assert.match(html, /if\(!w\|\|w\.classList\.contains\('hidden'\)\|\|w\.classList\.contains\('glance'\)\)return false;/, 'detail renderers skip glance windows');
   for (const id of ['sportsbook', 'journal']) assert.match(html, new RegExp(`windowShown\\('${id}'\\)\\)refresh`), `${id} data keeps flowing for its glance`);

@@ -12,6 +12,7 @@ import path from 'node:path';
 import { writeFileAtomicSync } from './atomicRename.js';
 import { WEATHER_CITIES } from './core/weather.js';
 import { bucketProbability } from './kalshiBots.js';
+import { SharedForecastFetch, KALSHI_WEATHER_STATIONS, horizonHours } from './weatherProvenance.js';
 
 export const CITY_TZ = Object.freeze({ NYC: 'America/New_York', CHI: 'America/Chicago', MIA: 'America/New_York', LAX: 'America/Los_Angeles', AUS: 'America/Chicago', DEN: 'America/Denver', PHL: 'America/New_York', ATL: 'America/New_York', SEA: 'America/Los_Angeles', DAL: 'America/Chicago' });
 const SCHEMA = 'mpo.weather-calibration.v1', MONTHS = { JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6, JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12 };
@@ -55,7 +56,7 @@ export function calibrateCity(rows, { testDays = 30 } = {}) {
 }
 
 export class WeatherCalibrator {
-  constructor({ dataDir, fetchImpl = globalThis.fetch, now = () => Date.now(), days = 150 } = {}) { this.file = path.join(dataDir, 'weather-calibration.json'); this.fetch = fetchImpl; this.now = now; this.days = days; this.forecasts = new Map(); this.state = this.load(); }
+  constructor({ dataDir, fetchImpl = globalThis.fetch, now = () => Date.now(), days = 150, shared = null } = {}) { this.file = path.join(dataDir, 'weather-calibration.json'); this.fetch = fetchImpl; this.now = now; this.days = days; this.forecasts = new Map(); this.shared = shared || new SharedForecastFetch({ now, file: path.join(dataDir, 'weather-forecast-receipts.json') }); this.state = this.load(); }
   load() { try { const s = JSON.parse(fs.readFileSync(this.file, 'utf8')); return s.schema === SCHEMA ? s : null; } catch { return null; } }
   async get(url) { const r = await this.fetch(url, { headers: { accept: 'application/json', 'user-agent': 'MoneyPrinterOS/0.5 (weather calibration)' }, signal: AbortSignal.timeout?.(20000) }); if (!r.ok) throw new Error(`HTTP ${r.status} from ${new URL(url).host}`); return r.json(); }
   async actuals(series) {
@@ -87,11 +88,15 @@ export class WeatherCalibrator {
     return this.state;
   }
   // Live Open-Meteo daily highs (same hourly → daily-max method as the calibration), cached 30 minutes.
+  // Downloads go through the shared forecast lane: concurrent identical requests share one in-flight promise,
+  // results are cached by (provider, model, run, location) for 30 minutes and the provider budget applies.
   async forecast(cityId) {
-    const hit = this.forecasts.get(cityId); if (hit && this.now() - hit.at < 1800e3) return hit.highs;
     const city = WEATHER_CITIES.find(c => c.id === cityId); if (!city) return null;
-    const j = await this.get(`https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}&hourly=temperature_2m&forecast_days=3&temperature_unit=fahrenheit&timezone=${encodeURIComponent(CITY_TZ[cityId])}`);
-    const highs = dailyMax(j.hourly.time, j.hourly.temperature_2m); this.forecasts.set(cityId, { at: this.now(), highs }); return highs;
+    const got = await this.shared.get({ provider: 'open-meteo', model: 'best_match', lat: city.lat, lon: city.lon, tz: CITY_TZ[cityId] }, async () => {
+      const j = await this.get(`https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}&hourly=temperature_2m&forecast_days=3&temperature_unit=fahrenheit&timezone=${encodeURIComponent(CITY_TZ[cityId])}`);
+      return { highs: dailyMax(j.hourly.time, j.hourly.temperature_2m), receivedAt: this.now() };
+    });
+    this.forecasts.set(cityId, { at: got.receivedAt, highs: got.highs }); return got.highs;
   }
   // The Evolution Lab's per-city, per-lead best forecast model (lab-link/workbench.json, its weather-models job):
   // one of gfs_seamless / ecmwf_ifs025 / icon_seamless / gem_seamless, or 'mean' of them, with bias and sd.
@@ -108,14 +113,17 @@ export class WeatherCalibrator {
   // Live daily highs from one Open-Meteo model, or the mean of the Lab's models, cached 30 minutes.
   async forecastModel(cityId, model) {
     if (!(LAB_MODELS.has(model) || model === 'mean')) return null;
-    const key = cityId + ':' + model, hit = this.forecasts.get(key); if (hit && this.now() - hit.at < 1800e3) return hit.highs;
+    const key = cityId + ':' + model;
     const city = WEATHER_CITIES.find(c => c.id === cityId); if (!city) return null;
     const models = model === 'mean' ? this.labCache?.models || [] : [model];
     if (model === 'mean' && models.length < 2 || models.some(m => !LAB_MODELS.has(m))) return null;
+    const got = await this.shared.get({ provider: 'open-meteo', model: models.join('+'), lat: city.lat, lon: city.lon, tz: CITY_TZ[cityId] }, async () => {
     const j = await this.get(`https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}&hourly=temperature_2m&models=${models.join(',')}&forecast_days=3&temperature_unit=fahrenheit&timezone=${encodeURIComponent(CITY_TZ[cityId])}`);
     const per = models.map(m => dailyMax(j.hourly?.time, j.hourly?.[`temperature_2m_${m}`] ?? (models.length === 1 ? j.hourly?.temperature_2m : null)));
     const highs = {}; for (const d of new Set(per.flatMap(h => Object.keys(h)))) { const xs = per.map(h => h[d]).filter(Number.isFinite); if (xs.length === models.length) highs[d] = xs.reduce((s, v) => s + v, 0) / xs.length; }
-    this.forecasts.set(key, { at: this.now(), highs }); return highs;
+    return { highs, receivedAt: this.now() };
+    });
+    this.forecasts.set(key, { at: got.receivedAt, highs: got.highs }); return got.highs;
   }
   // Model for one city/market date, or null (the bot then uses the NWS forecast with its default settings).
   // The Lab's model is used when it beats the default on held-out days and scores better than this calibration.
@@ -128,11 +136,18 @@ export class WeatherCalibrator {
     const lab = this.labBest(cityId, lead);
     if (lab && (!L?.use || lab.heldOut > (L.heldOut?.calibrated ?? -Infinity))) {
       const highs = await this.forecastModel(cityId, lab.model).catch(() => null), f = highs?.[date];
-      if (f != null) return { mu: f + lab.bias, sigma: lab.sd, forecast: round(f, 1), lead, bias: lab.bias, source: `lab ${lab.model} + calibration` };
+      if (f != null) return { mu: f + lab.bias, sigma: lab.sd, forecast: round(f, 1), lead, bias: lab.bias, source: `lab ${lab.model} + calibration`, prov: this.provenance(cityId, lab.model, date, f) };
     }
     if (!L?.use || !safeParams(L.params)) return null;
     const highs = await this.forecast(cityId), f = highs?.[date]; if (f == null) return null;
-    return { mu: f + L.params.bias, sigma: L.params.sd, forecast: f, lead, bias: L.params.bias, n: L.params.n, source: 'open-meteo + calibration' };
+    return { mu: f + L.params.bias, sigma: L.params.sd, forecast: f, lead, bias: L.params.bias, n: L.params.n, source: 'open-meteo + calibration', prov: this.provenance(cityId, 'best_match', date, f) };
+  }
+  // Receipt provenance for one forecast value. Open-Meteo's forecast endpoint does not state the model run, so
+  // run stays null (runObserved false) rather than being inferred from the receipt time.
+  provenance(cityId, model, date, value) {
+    const city = WEATHER_CITIES.find(c => c.id === cityId), tz = CITY_TZ[cityId], at = this.forecasts.get(model === 'best_match' ? cityId : cityId + ':' + model)?.at ?? this.now();
+    const r = this.shared.receipt({ provider: 'open-meteo', model, cityId, target: date, value: round(value, 2), receivedAt: at });
+    return { ...r, endpoint: 'api.open-meteo.com/v1/forecast', variable: 'temperature_2m daily max (local day)', units: 'F', tz, lat: city?.lat ?? null, lon: city?.lon ?? null, station: KALSHI_WEATHER_STATIONS[cityId]?.station || null, horizonH: horizonHours(at, date, tz) };
   }
   snapshot() { return this.state; }
 }

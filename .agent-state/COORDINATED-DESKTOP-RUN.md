@@ -1,4 +1,12 @@
-# Coordinated desktop run — 2026-10-03 (Claude)
+# Coordinated desktop run — 2026-10-03 (Claude, completed by Codex)
+
+## Codex completion checkpoint
+
+The original brief authorizes the final verified local paired installation; earlier per-agent instructions to leave the installed apps alone applied during implementation. Source is now frozen for trader alpha.93 / Lab alpha.28. The completion record is `reports/coordinated-desktop-2026-10-03/README.md`, with UI evidence in its `ui/` subfolder. The Lab checkpoint is `W:/money-printer-evolution-lab/reports/COORDINATED-RESUME-2026-10-03.md`.
+
+Completed source: bounded history/chart workspace and shared responsive styling; coordinator plus real Lab request consumer and immutable provenance/admission trace; full copy funnel/point-in-time membership/scored-wallet pagination; durable budget-bound Pump exit capture with multi-token dedupe; forecast revision availability and complete settlement binding; prospective weather scoring; whole-day BTC splits; authentic equity gap repair/history retention; byte-shared bounded challenger adapters. No live locks or qualification requirements were weakened.
+
+Initial full trader suite: 1,391 passed / 20 intentional live-order skips, no failures. Final Lab suite: 365 passed, no failures or skips, including real CUDA checks. Final trader rerun, paired archive smoke checks, installation, and installed accounting/runtime verification are the remaining release steps. See the completion record for final results when written. Preserve unrelated `.claude/launch.json`, pre-existing user status content, older report outputs, upload ZIP and Lab `.workflow/`.
 
 Brief: `docs/prompts/CLAUDE-COORDINATED-DESKTOP-2026-10-03.md`. This file is the checkpoint: ownership, contracts,
 baseline and progress. Update your own section when you finish a step.
@@ -64,3 +72,32 @@ receipts, last experiment change; plain-language lines.
 
 `GET /api/copy-funnel` — per platform/policy: candidate → rejected/observed → eligible → followed → copied → exited →
 evaluated, with reasons and follower after-cost outcomes vs controls.
+
+## History agent (done)
+
+Files: `src/marketHistory.js` (new), `src/commandCenter.js` (summary + build cache), `/api/command-center` route in
+`src/dashboard.js`, HUD_ROUTES entries, `tests/market-history.test.mjs` (8 tests).
+
+- `GET /api/market-history?ids=&from=&to=&points=` — ids `crypto:BTC-USD`, `equity:SPY`, `contract:kalshi:<ticker>` /
+  `contract:polymarket:<id>`, `pump:<mint>`; ≤ 64 ids, points default 240, max 2,000, ≤ 40,000 points per request
+  (`query.budgetLimited`). Reply `{schema:'mpo.market-history.v1', fields:['t','bid','ask','mid','availableAt','src','lo','hi','n'], series:[...]}`;
+  each series `{id, kind, unit:'USD'|'PROB', sources:[{id,label,quote,raw}], points, gaps:[[from,to,reason]], coverage:{first,last,raw,returned,downsample:'none'|'last-in-bucket'|'ohlc',bucketMs,typicalSpacingMs,gapThresholdMs}, session?, meta?, unavailable?}`.
+  `src` is an index into `sources`; `quote:false` sources (candle closes, session bars, listing metadata, token ticks) must not be drawn as quotes.
+  Candle warm-start rows: only the :45 close is kept, availableAt = minute end. Equity t = 16:00 New York close, bid/ask null.
+  Gap reasons: `no-observation`, `missing-sessions`, `before-first-observation` (only with `from`), `no-recent-observation` (only with `to`).
+  Omit `to` when polling: series are memoized per tape size / newest stored observation.
+- `GET /api/market-groups?venue=&window=1h|6h|24h|7d&by=category|series|event&category=` — `accounting.total == grouped`
+  (every contract placed; unmatched → `other`), per group count/quoted/twoSided/stale/unknown/executable/withHistory,
+  series/events, statuses, medianMid, `change:{median,measured,omitted,omittedReason}`, freshest/oldest. Rule in `rule`.
+- `GET /api/market-quotes?venue=&group=<category>|<venue>/<category>|series:<k>|event:<eventId>&q=&offset=&limit≤500` — paged rows
+  (prediction fields + mid, availableAt, category, series, eventId, eventTitle, closeAt, versions, stale), `total`, weak ETag (304 on If-None-Match).
+- `GET /api/command-center?view=summary` (desktop builds in-process; preview summarizes the running trader's full payload):
+  no `markets.predictions`; `markets.coverage[venue]={total,quoted,twoSided,stale,unknown,executable,withHistory}`,
+  `markets.predictionsOmitted`, `lab.workbench.leaderReplay` reduced (`summarized:true`, outcomes/leaders `{total,rows,omitted}`,
+  candidateResearch keeps only candidates with follower closes + `omitted`), copy catalogue candidates compacted. Default stays full.
+  Both views cached 2 s with shared in-flight builds.
+
+Measured 16:00 ET against the live data dir (preview server, machine busy with other agents): 8 crypto + 10 equities
+(+4 stock-BBO-only symbols → `NO_SESSION_BARS`) + 20 contracts + pump: 549 KB at 240 points (200 KB at points=120);
+warm polling p50 30–67 ms / p95 42–96 ms; uncached rebuild p50 260–460 ms (sqlite reads of ~3 KB payloads dominate).
+market-groups 8.5 KB, p50 1 ms cached / 120–930 ms cold; market-quotes page of 100 51 KB p50 1.4 ms. Summary 146 KB vs 2.38 MB full.

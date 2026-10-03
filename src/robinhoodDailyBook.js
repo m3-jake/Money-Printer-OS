@@ -24,6 +24,7 @@ import { createHash } from 'node:crypto';
 import { fetchPublicCandles } from './robinhoodPaperFeed.js';
 import { writeJsonAtomic } from './robinhoodEquitiesData.js';
 import { championState, championPaperAllowed } from './championState.js';
+import { CHALLENGER_BOUNDS, validateChallenger, atrChallengerSignal, challengerCapabilities } from './strategyChallengers.js';
 
 export const DAILY_BOOK_SCHEMA = 'mpo.robinhood-daily-paper.v1';
 export const DAILY_BOOK_LABELS = Object.freeze({
@@ -44,6 +45,7 @@ export const DAILY_QUALIFICATION = Object.freeze({
 });
 // Parameter bounds for any family the Lab may propose. Integer day counts; the history fetched covers them.
 export const DAILY_PARAM_BOUNDS = Object.freeze({
+  'atr-breakout': Object.freeze(CHALLENGER_BOUNDS['atr-breakout']),
   breakout: Object.freeze({ entryDays: [10, 200, true], exitDays: [5, 100, true] }),
   trend: Object.freeze({ smaDays: [50, 250, true], bandPct: [0, 10, false] }),
   tsmom: Object.freeze({ lookbackDays: [14, 250, true], thresholdPct: [0, 25, false] }),
@@ -63,6 +65,7 @@ export function dailyParamsHash(family, params) {
 // Validates a family + params pair against DAILY_PARAM_BOUNDS and the Lab's structural rules. No clamping:
 // out-of-bounds params are refused, never silently bent into range.
 export function validateDailyParams(family, params) {
+  if (family === 'atr-breakout') return validateChallenger(family, params);
   const bounds = DAILY_PARAM_BOUNDS[family], reasons = [];
   if (!bounds) return { ok: false, reasons: [`unknown daily family ${String(family)}`] };
   if (!params || typeof params !== 'object' || Array.isArray(params)) return { ok: false, reasons: ['params missing'] };
@@ -82,6 +85,7 @@ export function validateDailyParams(family, params) {
 // (true long, false flat, null no change). Reads only bars[0..i].
 export function dailySignal(family, params, bars, i, long) {
   const p = params;
+  if (family === 'atr-breakout') return atrChallengerSignal(params, bars, i, long);
   if (family === 'breakout') {
     if (!long) {
       if (i < p.entryDays) return null;
@@ -108,6 +112,7 @@ export function dailySignal(family, params, bars, i, long) {
 }
 // Bars a family needs before its first signal.
 export function warmupDays(family, params) {
+  if (family === 'atr-breakout') return Math.max(params.entryDays, params.atrDays) + 1;
   if (family === 'breakout') return params.entryDays + 1;
   if (family === 'trend') return params.smaDays;
   if (family === 'tsmom') return params.lookbackDays + 7;
@@ -132,6 +137,7 @@ export function pickDailyStrategy(daily) {
     state = championState(doc).state;
     if (daily.liveActivationAllowed === true || prop.liveActivationAllowed === true || prop.automaticLivePromotionAllowed === true) reasons.push('the record claims live authority; refused');
     if (!championPaperAllowed(doc)) reasons.push(`the proposal is ${state}${doc.paperPromotionAllowed ? '' : ' without the Lab paper-promotion flag'}, not cleared for paper`);
+    if (prop.family === 'atr-breakout') reasons.push('challenger adapter requires a separate frozen exploratory cohort; the incumbent daily book is preserved');
     const v = validateDailyParams(prop.family, prop.params);
     if (!v.ok) reasons.push(...v.reasons.map(r => `proposal params: ${r}`));
   }
@@ -435,7 +441,7 @@ export function dailySnapshot({ dataDir, now = Date.now(), labDaily, includeShad
     return { symbol, long: sl.qty > 0, qty: sl.qty, cashUsd: sl.cashUsd, entry: sl.entry, lastClose: close, valueUsd:exposure===null?null:r2(sl.cashUsd+exposure),unrealizedUsd:sl.qty>0&&exposure!==null?r2(exposure-(sl.entry?.costUsd||0)):null,valuationSource:shadow?'RESEARCH_CANDLE_PROXY':observed?'ROBINHOOD_EXECUTABLE_QUOTES':'AWAITING_EXECUTABLE_QUOTE',markAt:observed?mark.at:null };
   });
   return {
-    at: now, execution: 'paper-only', liveEligible: false, label: (book.source || pick).label, source: book.source || { ...pick, since: null },
+    at: now, execution: 'paper-only', liveEligible: false, challengerAdapters: challengerCapabilities(), label: (book.source || pick).label, source: book.source || { ...pick, since: null },
     nextSource: book.source && book.source.paramsHash !== pick.paramsHash ? { kind: pick.kind, id: pick.id, reasons: pick.reasons } : null,
     lab: labDailyVerdict(lab),
     book: {

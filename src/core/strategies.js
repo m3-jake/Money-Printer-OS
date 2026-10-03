@@ -141,7 +141,28 @@ export class StrategyRegistry {
             && Object.entries(actual).every(([k, v]) => canonicalJson(v) === canonicalJson(evidence[k]));
         } catch { verified = false; }
       }
-      const attached = { ...evidence, verifiedEvaluatorOutput: verified };
+      return this.#storeEvidence(id, s, { ...evidence, verifiedEvaluatorOutput: verified }, reason, now);
+    });
+  }
+  // Evidence transported from Evolution Lab provenance (labSync.verifyLabProvenance). It keeps
+  // verifiedEvaluatorOutput only when the verification is VERIFIED and binds to this exact version:
+  // registry identity, code hash and dataset lineage all match. Anything else is stored unverified, which
+  // suspends paper eligibility like any other new evidence. The common gate is unchanged.
+  attachLabEvidence(id, evidence, verification, reason, now = Date.now()) {
+    requiredText(reason, 'Evidence reason', 500);
+    if (!evidence || typeof evidence !== 'object') throw new Error('Evidence object required');
+    return this.store.transaction(() => {
+      const s = this.get(id); if (!s) throw new Error('Unknown strategy');
+      if (s.state === 'RETIRED') throw new Error('Retired strategies do not take new evidence');
+      const bound = verification?.status === 'VERIFIED' && evidence.verifiedEvaluatorOutput === true && evidence.source === 'lab-provenance.v1'
+        && evidence.strategyIdentity === strategyEvidenceIdentity(s) && evidence.labStrategyIdentity === verification.strategyIdentity
+        && s.identity.codeHash === verification.codeHash && s.identity.dataLineage === verification.datasetHash && evidence.evaluatorVersion === verification.evaluatorVersion
+        && evidence.evaluatorOutputHash === verification.evaluatorOutputHash
+        && Object.entries(verification.evaluatorOutput || {}).every(([k, v]) => v == null ? evidence[k] == null : canonicalJson(v) === canonicalJson(evidence[k]));
+      return this.#storeEvidence(id, s, { ...evidence, verifiedEvaluatorOutput: bound }, reason, now);
+    });
+  }
+  #storeEvidence(id, s, attached, reason, now) {
       const checks = { PAPER: promotionCheck('PAPER', attached, { probabilistic: s.probabilistic }), CANDIDATE: promotionCheck('CANDIDATE', attached, { probabilistic: s.probabilistic }) };
       const nextState = s.state === 'CANDIDATE' && !checks.CANDIDATE.allowed ? (checks.PAPER.allowed ? 'PAPER' : 'BACKTESTING')
         : s.state === 'PAPER' && !checks.PAPER.allowed ? 'BACKTESTING' : s.state;
@@ -149,7 +170,6 @@ export class StrategyRegistry {
       this.store.db.prepare('INSERT INTO strategy_transitions(strategy_id,from_state,to_state,at,reason,evidence) VALUES(?,?,?,?,?,?)').run(id, s.state, nextState, now, nextState === s.state ? reason : `${reason}; eligibility suspended by new evidence`, canonicalJson(attached));
       this.store.record('STRATEGY_EVIDENCE_ATTACHED', { id, reason, priorState: s.state, state: nextState }, now);
       return { ...this.get(id), checks };
-    });
   }
   list() { return this.store.db.prepare('SELECT id FROM strategies ORDER BY updated_at DESC').all().map(r => this.get(r.id)); }
   history(id) { return this.store.db.prepare('SELECT * FROM strategy_transitions WHERE strategy_id=? ORDER BY seq').all(id).map(r => ({ ...r, evidence: JSON.parse(r.evidence) })); }

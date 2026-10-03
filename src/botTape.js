@@ -64,9 +64,18 @@ export class BotTape {
 // Compact rows. Bucket and contract tuples keep the order documented here so a reader needs no schema lookup.
 // weather event: { city, date, event, closeAt, nws, cal: {mu, sigma, lead, forecast} | null,
 //                  buckets: [[lo, hi, yesBid, yesAsk, noBid, noAsk, ticker]] }   (open-ended lo/hi are null)
+// v2 (2026-10-03) adds per event:
+//   prov: { nws: {value, publishedAt, receivedAt, units} | null,
+//           cal: {provider, model, run, runObserved, receivedAt, firstReceivedAt, revision, previousValue, units, tz,
+//                 lat, lon, station, horizonH, endpoint, variable} | null }
+//   binding: {ok, station, expectedStation, ruleDate, unit, kind, source, sourceUrl, rulesTemplateHash, reason}
+// Rows without v are v1 and carry no provenance; prospective evaluators read v2 rows only.
+export const WEATHER_TAPE_VERSION = 2;
 export function weatherTapeRow(frame) {
-  return { events: frame.events.map(({ cityId, m, cm }) => ({ city: cityId, date: m.date, event: m.eventTicker, closeAt: m.closeAt, nws: m.nwsHigh ?? null,
-    cal: cm ? { mu: cm.mu, sigma: cm.sigma, lead: cm.lead, forecast: cm.forecast } : null,
+  return { v: WEATHER_TAPE_VERSION, events: frame.events.map(({ cityId, m, cm }) => ({ city: cityId, date: m.date, event: m.eventTicker, closeAt: m.closeAt, nws: m.nwsHigh ?? null,
+    cal: cm ? { mu: cm.mu, sigma: cm.sigma, lead: cm.lead, forecast: cm.forecast, source: cm.source || null } : null,
+    prov: { nws: m.nwsHigh == null ? null : { value: m.nwsHigh, ...(m.nwsProv || {}) }, cal: cm?.prov || null },
+    binding: m.binding ? (({ ok, station, expectedStation, ruleDate, unit, kind, source, sourceUrl, rulesTemplateHash, reason }) => ({ ok, station: station ?? null, expectedStation, ruleDate: ruleDate ?? null, unit: unit ?? null, kind: kind ?? null, source: source ?? null, sourceUrl: sourceUrl ?? null, rulesTemplateHash: rulesTemplateHash ?? null, reason }))(m.binding) : null,
     buckets: (m.buckets || []).map(b => [Number.isFinite(b.lo) ? b.lo : null, Number.isFinite(b.hi) ? b.hi : null, b.yesBid ?? null, b.yesAsk ?? null, b.noBid ?? null, b.noAsk ?? null, b.sourceId || null]) })) };
 }
 // btc: { spot, volNow, volDay, contracts: [[ticker, event, closeAt, strikeType, floor, cap, yesBid, yesAsk, noBid, noAsk]] }

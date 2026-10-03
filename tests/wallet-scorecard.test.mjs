@@ -233,3 +233,63 @@ test('the research collector runs the lean indexer tick without the alpha worker
   assert.doesNotMatch(src, /alphaWorker/);
   assert.doesNotMatch(fs.readFileSync(new URL('../src/transactionIndexer.js', import.meta.url), 'utf8'), /process\.env\.HELIUS_API_KEY\s*=/);
 });
+
+test('wallet follow-up retains fetched exits when a later request exhausts the credit budget', async () => {
+  const wallet = key(), mint = key(), bt = Math.floor(NOW / 1000) - 600;
+  const dir = tickDir([]), follow = { wallet, mint, tokenAccount: key(), untilSig: 'buy', buyTs: NOW - 600000,
+    boughtQty: 70000, soldQty: 0, priority: 0, createdAt: NOW - 600000, lastAt: 0, attempts: 0,
+    pending: [['exit-kept', bt, 0], ['exit-retry', bt + 60, 0]], gaps: 0, sellsFound: 0, status: 'OPEN' };
+  fs.writeFileSync(path.join(dir, 'wallet-indexer-state.json'), JSON.stringify({ mints: {}, health: {}, followups: { [`${wallet}:${mint}`]: follow } }));
+  const rpc = fakeRpc({ getTransaction: () => wsolSell({ wallet, mint, blockTime: bt }) });
+  const result = await ti.walletIndexerTick({ dir, env: { ...ENV, INDEXER_DAILY_CREDITS: '1', INDEXER_SCORE_MIN: '100000' }, now: nowAt(NOW), fetcher: rpc.fetcher, wait: noWait });
+  assert.equal(result.status, 'BUDGET'); assert.equal(result.yieldToday.followupTx, 1); assert.equal(result.yieldToday.followupEvents, 1);
+  assert.ok(alphaDb().prepare('SELECT 1 FROM tx_events WHERE signature=?').get('exit-kept'));
+  const saved = JSON.parse(fs.readFileSync(path.join(dir, 'wallet-indexer-state.json'))).followups[`${wallet}:${mint}`];
+  assert.equal(saved.untilSig, 'exit-kept'); assert.deepEqual(saved.pending.map(x => x[0]), ['exit-retry']);
+});
+
+test('duplicate index paths do not add an event twice to wallet token positions', async () => {
+  const { upsertTxEvent } = await import('../src/alphaDb.js'), wallet = key(), mint = key();
+  const e = { signature: 'duplicate-paths', eventIndex: 0, ts: NOW, wallet, mint, side: 'BUY', tokenDelta: 10, solDelta: -1 };
+  upsertTxEvent(e); upsertTxEvent(e);
+  assert.equal(alphaDb().prepare('SELECT net_tokens FROM wallet_token_positions WHERE wallet=? AND mint=?').get(wallet, mint).net_tokens, 10);
+});
+
+test('multi-mint transaction aggregates coexist without repeating legacy position quantities',async()=>{
+ const {upsertTxEvent}=await import('../src/alphaDb.js'),wallet=key(),a=key(),b=key(),signature='multi-mint-collision';
+ const e={signature,eventIndex:0,ts:NOW,wallet,mint:a,side:'BUY',tokenDelta:10,solDelta:-1};
+ assert.equal(upsertTxEvent(e),true);assert.equal(upsertTxEvent({...e,mint:b,tokenDelta:20}),true);
+ assert.equal(upsertTxEvent(e),false);assert.equal(upsertTxEvent({...e,mint:b,tokenDelta:20}),false);
+ assert.equal(alphaDb().prepare('SELECT COUNT(*) n FROM tx_events WHERE signature=?').get(signature).n,2);
+ assert.equal(alphaDb().prepare('SELECT net_tokens FROM wallet_token_positions WHERE wallet=? AND mint=?').get(wallet,b).net_tokens,20);
+ upsertTxEvent({...e,signature:'earlier-receipt',ts:NOW-1000,side:'SELL',tokenDelta:-2});
+ assert.equal(alphaDb().prepare('SELECT last_ts FROM wallet_token_positions WHERE wallet=? AND mint=?').get(wallet,a).last_ts,NOW);
+});
+
+test('wallet follow-up does not skip its sell when another mint from that signature was indexed',async()=>{
+ const {upsertTxEvent}=await import('../src/alphaDb.js'),wallet=key(),mint=key(),dir=tickDir([]),bt=Math.floor(NOW/1000)-600;
+ upsertTxEvent({signature:'multi-mint-followup',eventIndex:0,ts:NOW-1000,wallet,mint:key(),side:'BUY',tokenDelta:10,solDelta:-1});
+ const follow={wallet,mint,tokenAccount:key(),untilSig:'buy',buyTs:NOW-600000,boughtQty:70000,soldQty:0,priority:0,createdAt:NOW-600000,lastAt:0,attempts:0,pending:[['multi-mint-followup',bt,0]],gaps:0,sellsFound:0,status:'OPEN'};
+ fs.writeFileSync(path.join(dir,'wallet-indexer-state.json'),JSON.stringify({mints:{},health:{},followups:{[`${wallet}:${mint}`]:follow}}));
+ const rpc=fakeRpc({getTransaction:()=>wsolSell({wallet,mint,blockTime:bt})});
+ await ti.walletIndexerTick({dir,env:{...ENV,INDEXER_SCORE_MIN:'100000'},now:nowAt(NOW),fetcher:rpc.fetcher,wait:noWait});
+ assert.ok(alphaDb().prepare('SELECT 1 FROM tx_events WHERE signature=? AND wallet=? AND mint=?').get('multi-mint-followup',wallet,mint));
+});
+
+test('full scored wallet policy input remains available behind the public sixteen-row view',async()=>{
+ const dir=tickDir([]),wallets=Array.from({length:80},(_,i)=>({wallet:key(),roundTrips:10,realizedPnlSol:i===79?2:-1,pnlWithoutBestSol:i===79?1:-2,lastTs:NOW-1,shrunkReturnPct:100-i}));
+ fs.writeFileSync(path.join(dir,'wallet-scorecard.json'),JSON.stringify({asOf:NOW,summary:{wallets:80},wallets}));
+ const view=walletScorecardView({dir,now:NOW});assert.equal(view.wallets.length,16);assert.equal(view.coverage.omittedFromView,64);
+ const card=walletScorecardView({dir,now:NOW,full:true});assert.equal(card.wallets.length,80);assert.equal(card.coverage.persistenceOmissions,0);
+ const {qualifiedPumpCopyWallets}=await import('../src/pumpfunCopyPaper.js');
+ assert.equal(qualifiedPumpCopyWallets(view,{asOf:NOW}).length,0);
+ assert.equal(qualifiedPumpCopyWallets(card,{asOf:NOW}).length,1,'a robust wallet behind rejected high-return rows still reaches strict qualification');
+ const page=walletScorecardView({dir,now:NOW,offset:75,limit:10});assert.equal(page.wallets.length,5);assert.equal(page.wallets[4].wallet,wallets[79].wallet);
+});
+
+test('a newly observed buy can reopen a completed wallet follow-up slot without resetting its evidence counters',()=>{
+ const wallet=key(),mint=key(),state={followups:{[`${wallet}:${mint}`]:{wallet,mint,buyTs:NOW-1000,status:'CLOSED',closedAt:NOW-500}},followupStats:{created:1,closed:1,expired:0,dropped:0,sellsFound:1}};
+ ti.noteFollowupEvents(state,[{wallet,mint,side:'BUY',signature:'fresh-reentry',ts:NOW,tokenDelta:20,raw:{tokenAccount:key()}}],{followupQueue:128},{now:NOW});
+ assert.equal(state.followups[`${wallet}:${mint}`].status,'OPEN');assert.equal(state.followups[`${wallet}:${mint}`].untilSig,'fresh-reentry');
+ assert.equal(state.followupStats.closed,1);assert.equal(state.followupStats.created,2);
+});

@@ -737,7 +737,9 @@ img.sky-cloud,
   font: 12px var(--mpo-font-chrome);
   transition: opacity var(--mpo-dur) var(--mpo-ease);
 }
-.boot.hide { opacity: 0; pointer-events: none; }
+/* Once faded, the log-on overlay stops rendering: its glass box keeps a backdrop blur that would otherwise be
+   recomposited over the animated sky on every frame for the rest of the session. */
+.boot.hide { opacity: 0; pointer-events: none; visibility: hidden; transition: opacity var(--mpo-dur) var(--mpo-ease), visibility 0s linear 1s; }
 .bootbox {
   width: 420px;
   background: var(--mpo-chrome);

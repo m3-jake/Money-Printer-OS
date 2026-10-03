@@ -84,9 +84,11 @@ export function walkAsks(book, side, qty, limitPrice) {
 // Price every weather event in a frame under one bot's settings and return the best side per event.
 // Pure, so the live bot and every farm variant score the same snapshot the same way.
 export function pickWeather(frame, s, held, now) {
-  const cands = []; let priced = 0, calibrated = 0, disagreements = 0;
+  const cands = []; let priced = 0, calibrated = 0, disagreements = 0, bindingRejected = 0;
   for (const { city, m, cm: calModel } of frame.events) {
     if (held.has(m.eventTicker)) continue;
+    // A contract whose own rules name a different station/date/unit than the forecast city is not priced.
+    if (m.binding?.ok === false) { bindingRejected++; continue; }
     const hours = (m.closeAt - now) / 3600e3; if (!(hours >= s.minHoursToClose)) continue;
     // Calibrated Open-Meteo model when this city/lead beat the default on held-out days (weatherCalibration.js);
     // otherwise the NWS forecast with the default bias and sigma.
@@ -103,7 +105,7 @@ export function pickWeather(frame, s, held, now) {
     if (best) cands.push({ ...best, city, m, mu, sigma, cm, eventTicker: m.eventTicker, ticker: best.bk.sourceId, closeAt: best.bk.closeAt || m.closeAt, feeModel: best.bk.feeModel,
       label: `${city} ${m.date} ${best.bk.lo === -Infinity ? '≤' + best.bk.hi : best.bk.hi === Infinity ? best.bk.lo + '+' : best.bk.lo + '–' + best.bk.hi}°F` });
   }
-  return { cands: cands.sort((a, b) => b.edge - a.edge), priced, calibrated, disagreements };
+  return { cands: cands.sort((a, b) => b.edge - a.edge), priced, calibrated, disagreements, bindingRejected };
 }
 // Same for the BTC range and above/below contracts in a frame.
 export function pickBtc(frame, s, held, now) {

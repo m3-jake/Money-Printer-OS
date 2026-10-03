@@ -38,6 +38,7 @@ import { BUILD_PROVENANCE } from '../buildInfo.js';
 import { evaluatePredictionEpisodes, PREDICTION_EXPERIMENT_SCHEMA } from '../predictionExperiment.js';
 import { writeFileAtomicSync } from '../atomicRename.js';
 import { WEATHER_CITIES,WeatherSource,bucketLadder,weatherLinks } from './weather.js';
+import { bindWeatherSettlement } from '../weatherProvenance.js';
 import { buildSportsEvents,mlbLive,nhlLive,attachLive } from './sports.js';
 import { buildEventPages,EVENT_TEMPLATES,sportsPages,weatherPages,corporatePages } from './correlation.js';
 import { tokenGraph,whaleFlow,walletView,authorityOf } from './whales.js';
@@ -69,7 +70,7 @@ export class MarketPlatform {
     this.providers=providers||new ProviderRegistry();if(!providers){this.providers.register(new KalshiProvider());this.providers.register(new PolymarketProvider());console.info('[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED');}
     this.journalError=null;
     this.researchBudget=new ResearchBudget(this.store);this.researchCache=new ResearchCache(this.store);this.summaryRequests=new Map();
-    this.intelligence=new Intelligence(this.store,this.bus);
+    this.intelligence=new Intelligence(this.store,this.bus,{dataDir});
     if(dataDir)this.bus.on('RISK_STATE_CHANGED',event=>{
       try{appendProjectJournal(path.join(dataDir,'project-journal.ndjson'),{kind:'risk',title:`Risk Governor: ${event.data.state}`,detail:event.data.reason||'Paper execution resumed',at:event.at});}
       catch(e){this.journalError='Could not append risk milestone';throw e;}
@@ -478,8 +479,15 @@ export class MarketPlatform {
   }
   // Weather desk: NWS forecast highs next to Kalshi's daily-high bucket markets, severe alerts and NHC
   // storms. Alerts are stored as WeatherAlert entities available at their NWS "sent" time.
-  async weatherSnapshot({force=false}={}){
-    if(!force&&this.weatherCache&&Date.now()-this.weatherCache.at<600000)return this.weatherCache.data;
+  // Concurrent callers (HUD route, overview, Kalshi bots) share one in-flight build instead of each issuing the
+  // same ~30 sequential city/event downloads.
+  weatherSnapshot({force=false}={}){
+    if(!force&&this.weatherCache&&Date.now()-this.weatherCache.at<600000)return Promise.resolve(this.weatherCache.data);
+    if(this.weatherInFlight)return this.weatherInFlight;
+    this.weatherInFlight=this.buildWeatherSnapshot().finally(()=>{this.weatherInFlight=null;});
+    return this.weatherInFlight;
+  }
+  async buildWeatherSnapshot(){
     const kalshi=this.providers.providers.get('kalshi')||null,now=Date.now(),sleep=ms=>new Promise(r=>setTimeout(r,ms));
     const call=async fn=>{for(let i=0;;i++){try{const out=await fn();await sleep(this.macroPaceMs??150);return out;}catch(e){if(e.code!=='RATE_LIMITED'||i>=2)throw e;await sleep(Math.min(15000,Math.max(1000,(kalshi.health?.backoffUntil||0)-Date.now())));}}};
     const contracts=this.store.list({kind:'Contract',limit:1000});
@@ -496,7 +504,9 @@ export class MarketPlatform {
           const m=String(e.event_ticker).match(/-(\d{2})([A-Z]{3})(\d{2})$/),months={JAN:1,FEB:2,MAR:3,APR:4,MAY:5,JUN:6,JUL:7,AUG:8,SEP:9,OCT:10,NOV:11,DEC:12};
           const date=m?`20${m[1]}-${String(months[m[2]]).padStart(2,'0')}-${m[3]}`:null;const {markets}=await call(()=>kalshi.markets({eventTicker:e.event_ticker}));for(const x of markets)this.store.put(x);
           const ladder=bucketLadder(markets),nws=date?row.forecast?.highs?.[date]?.high??null:null;
-          row.markets.push({eventTicker:e.event_ticker,date,title:e.title,...ladder,nwsHigh:nws,gap:nws!==null&&ladder.expectedHigh!==null?Math.round((nws-ladder.expectedHigh)*10)/10:null,settlement:e.settlement_sources?.[0]?.name||null});
+          // Exact settlement criteria from the contracts' own rules; an explicit station/date/unit mismatch is rejected downstream.
+          const binding=bindWeatherSettlement({cityId:city.id,date,eventTicker:e.event_ticker,markets});
+          row.markets.push({eventTicker:e.event_ticker,date,title:e.title,...ladder,nwsHigh:nws,nwsProv:nws===null?null:{provider:'nws',publishedAt:row.forecast?.updated??null,receivedAt:row.forecast?.receivedAt??null,units:'F'},binding,gap:nws!==null&&ladder.expectedHigh!==null?Math.round((nws-ladder.expectedHigh)*10)/10:null,settlement:e.settlement_sources?.[0]?.name||null});
         }
       }catch(e){row.marketError=e.message;}
       else row.marketError='Kalshi provider unavailable';
@@ -677,7 +687,7 @@ export class MarketPlatform {
   async edgarForm4(url){return {status:this.edgar.status(),facts:await this.edgar.form4(url),kind:'FORM_4_FACTS'};}
   // Market Lab compute: worker threads when enabled (the app), inline otherwise (tests, scripts).
   labCompute(task){return this.labPool?this.labPool.run(task):Promise.resolve().then(()=>computeTask(task));}
-  close(){this.labPool?.close().catch(()=>{});this.store.close();}
+  close(){this.intelligence?.close();this.labPool?.close().catch(()=>{});this.store.close();}
 }
 let platform;
 export function marketPlatform(){activateExecutionBoundary();if(!platform){const dataDir=path.resolve(process.env.MONEY_PRINTER_DATA_DIR||'data');platform=new MarketPlatform({file:path.join(dataDir,'mpos-core.sqlite'),dataDir,labWorkers:true});}return platform;}

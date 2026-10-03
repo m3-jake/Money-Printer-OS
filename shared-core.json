@@ -82,10 +82,14 @@
     "src/pumpProfitExperiments.js": {
       "lab": "src/pumpProfitExperiments.js",
       "sha256": "49e4f9bc6feec470b7dc39a855d896fee9a725cd99635ba78ff359be2525f5fd"
+    },
+    "src/strategyChallengers.js": {
+      "lab": "src/strategyChallengers.js",
+      "sha256": "75b3e38c555080438fe637320644a0a282de8ed8afcb72bb678d71fb92422458"
     }
   },
   "syncedFrom": {
-    "traderCommit": "66bcfe5",
-    "at": "2026-10-03T15:39:09.895Z"
+    "traderCommit": "a9e8d63",
+    "at": "2026-10-03T20:10:52.247Z"
   }
 }

@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { summarizeLatencyRows } from './latencyStats.js';
 
@@ -84,12 +85,22 @@ export function insertObservation(o){
 
 export function upsertTxEvent(e){
  const d=alphaDb();
- stmt(`INSERT OR IGNORE INTO tx_events(signature,event_index,ts,slot,mint,wallet,side,token_delta,sol_delta,source,raw_json) VALUES(?,?,?,?,?,?,?,?,?,?,?)`).run(e.signature,e.eventIndex,e.ts||0,e.slot||0,e.mint||'',e.wallet||'',e.side||'UNKNOWN',e.tokenDelta||0,e.solDelta||0,e.source||'',JSON.stringify(e.raw||{}));
- if(e.wallet&&e.mint&&e.tokenDelta){
+ // Mint-specific parsers emit one aggregate per wallet/mint. Legacy event indexes
+ // start at zero for each mint, so two assets in one signature may otherwise collide.
+ // First bind existing legacy rows to preserve their original identity and quantities.
+ if(stmt('SELECT 1 FROM tx_events WHERE signature=? AND mint=? AND wallet=? LIMIT 1').get(e.signature,e.mint||'',e.wallet||''))return false;
+ let eventIndex=e.eventIndex;
+ if(stmt('SELECT 1 FROM tx_events WHERE signature=? AND event_index=? LIMIT 1').get(e.signature,eventIndex)){
+  eventIndex=Number.parseInt(createHash('sha256').update(JSON.stringify([e.mint||'',e.wallet||''])).digest('hex').slice(0,12),16);
+ }
+ // Positions aggregate only newly inserted events, so re-reading one transaction (mint scan and wallet follow-up) cannot double count.
+ const inserted=stmt(`INSERT OR IGNORE INTO tx_events(signature,event_index,ts,slot,mint,wallet,side,token_delta,sol_delta,source,raw_json) VALUES(?,?,?,?,?,?,?,?,?,?,?)`).run(e.signature,eventIndex,e.ts||0,e.slot||0,e.mint||'',e.wallet||'',e.side||'UNKNOWN',e.tokenDelta||0,e.solDelta||0,e.source||'',JSON.stringify(e.raw||{}));
+ if(inserted.changes&&e.wallet&&e.mint&&e.tokenDelta){
    const prev=stmt(`SELECT * FROM wallet_token_positions WHERE wallet=? AND mint=?`).get(e.wallet,e.mint)||{};
    const firstBuy=!prev.first_buy_ts&&e.tokenDelta>0, initial=Number(prev.initial_bought||0)+(e.tokenDelta>0?e.tokenDelta:0), net=Number(prev.net_tokens||0)+e.tokenDelta,firstAmount=Number(prev.first_buy_amount||0)||(firstBuy?Number(e.tokenDelta):0);
-   stmt(`INSERT INTO wallet_token_positions(wallet,mint,first_buy_ts,first_buy_amount,initial_bought,net_tokens,last_ts) VALUES(?,?,?,?,?,?,?) ON CONFLICT(wallet,mint) DO UPDATE SET first_buy_ts=COALESCE(wallet_token_positions.first_buy_ts,excluded.first_buy_ts),first_buy_amount=CASE WHEN wallet_token_positions.first_buy_amount>0 THEN wallet_token_positions.first_buy_amount ELSE excluded.first_buy_amount END,initial_bought=excluded.initial_bought,net_tokens=excluded.net_tokens,last_ts=excluded.last_ts`).run(e.wallet,e.mint,prev.first_buy_ts||(firstBuy?e.ts:null),firstAmount,initial,net,e.ts||Date.now());
+   stmt(`INSERT INTO wallet_token_positions(wallet,mint,first_buy_ts,first_buy_amount,initial_bought,net_tokens,last_ts) VALUES(?,?,?,?,?,?,?) ON CONFLICT(wallet,mint) DO UPDATE SET first_buy_ts=COALESCE(wallet_token_positions.first_buy_ts,excluded.first_buy_ts),first_buy_amount=CASE WHEN wallet_token_positions.first_buy_amount>0 THEN wallet_token_positions.first_buy_amount ELSE excluded.first_buy_amount END,initial_bought=excluded.initial_bought,net_tokens=excluded.net_tokens,last_ts=MAX(COALESCE(wallet_token_positions.last_ts,0),excluded.last_ts)`).run(e.wallet,e.mint,prev.first_buy_ts||(firstBuy?e.ts:null),firstAmount,initial,net,e.ts||0);
  }
+ return inserted.changes > 0;
 }
 
 export function upsertFunding(funder,wallet,ts,sol){if(!funder||!wallet||funder===wallet)return;alphaDb().prepare(`INSERT INTO wallet_funding(funder,wallet,first_ts,last_ts,transfers,sol) VALUES(?,?,?,?,1,?) ON CONFLICT(funder,wallet) DO UPDATE SET last_ts=excluded.last_ts,transfers=wallet_funding.transfers+1,sol=wallet_funding.sol+excluded.sol`).run(funder,wallet,ts,ts,Math.max(0,Number(sol||0)))}

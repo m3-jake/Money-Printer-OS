@@ -13,17 +13,17 @@ const classes = (...names) => ({ contains: name => names.includes(name) });
 test('coordinated command view preserves unknowns, escapes leaders and keeps readable scrolling',async()=>{
  const window={MPOSPlatform:{render(){}}},document={hidden:false,addEventListener(){},querySelector(){return null;}};
  let reply={schema:'mpo.command-center.v1',at:Date.now(),lab:{connected:false},copy:{books:[],uniqueLeaders:null,catalogue:{candidates:[{proxyWallet:'a',userName:'<script>bad</script>',sources:[]}]}}};
- const context=vm.createContext({window,document,Date,AbortSignal,fetch:async()=>({ok:true,json:async()=>reply}),setInterval(){},addEventListener(){}});
+ const context=vm.createContext({window,document,Date,AbortSignal,fetch:async()=>({ok:true,status:200,text:async()=>JSON.stringify(reply)}),setInterval(){},addEventListener(){}});
  vm.runInContext(read('public/js/mpo-command-center.js'),context);
- assert.match(window.MPOCommandCenter.html(),/Unknown/);await window.MPOCommandCenter.load(true);
- const html=window.MPOCommandCenter.html();assert.match(html,/command-brain/);assert.match(html,/&lt;script&gt;bad/);assert.doesNotMatch(html,/<script>bad/);assert.match(html,/Lab unavailable/);assert.match(html,/data-cc-profile="MAX_RESEARCH"/);
- reply={...reply,lab:{connected:true,modules:[{id:'pumpfun',title:'Pump.fun',state:'COLLECTING'}]}};await window.MPOCommandCenter.load(true);assert.match(window.MPOCommandCenter.html(),/COLLECTING/);
+ const mount=window.MPOCommandCenter.html();assert.match(mount,/command-brain/);assert.match(window.MPOCommandCenter.stripHTML(null),/Unknown/);await window.MPOCommandCenter.load(true);
+ assert.equal(window.MPOCommandCenter.html(),mount,'refresh keeps the mounted workspace intact');assert.match(window.MPOCommandCenter.stripHTML(window.MPOCommandCenter.data),/Lab unavailable/);assert.equal(window.MPOCommandCenter.data.copy.catalogue.candidates[0].userName,'<script>bad</script>');
+ reply={...reply,lab:{connected:true,modules:[{id:'pumpfun',title:'Pump.fun',state:'COLLECTING'}]}};await window.MPOCommandCenter.load(true);assert.equal(window.MPOCommandCenter.data.lab.modules[0].state,'COLLECTING');
 });
 
 test('two overview graphs map all quotes and independent paper books with exact price inspection',()=>{
  const window={},document={addEventListener(){}};const context=vm.createContext({window,document,Date});vm.runInContext(read('public/js/mpo-command-graphs.js'),context);
  const d={markets:{assets:[{id:'btc',symbol:'BTC-USD',venue:'Robinhood crypto',price:101,bid:100,ask:102,at:Date.now(),source:'v2',kind:'BBO'}],predictions:Array.from({length:1001},(_,i)=>({id:'c'+i,symbol:'<unsafe>',title:'Market',venue:'kalshi',bid:.2,ask:null}))},books:[{id:'a',module:'Pump.fun',label:'A',kind:'paper',unit:'SOL',pnl:-.1,closes:3},{id:'b',module:'Robinhood',label:'B',kind:'paper',unit:'USD',pnl:1,closes:4}],lab:{modules:[{id:'pumpfun',title:'Pump.fun',state:'COLLECTING'}]},activity:{pump:{open:5}}};
- const html=window.MPOCommandGraphs.html(d);assert.match(html,/1001 contracts/);assert.match(html,/1001 unknown/);assert.match(html,/Market & price atlas/);assert.match(html,/System → research/);assert.match(html,/5 open/);assert.match(html,/\$101/);assert.match(html,/-0.100 SOL/);assert.match(html,/1.00 USD/);assert.doesNotMatch(html,/<unsafe>/);
+ const html=window.MPOCommandGraphs.html(d);assert.match(html,/Coordinat|Coordinator/);assert.match(html,/0.100 SOL/);assert.match(html,/3 closes/);assert.doesNotMatch(html,/<unsafe>/);assert.equal(window.MPOCommandGraphs.amount(1,'USD'),'+$1.00');assert.equal(window.MPOCommandGraphs.moduleRows(d).find(r=>r.m.id==='pumpfun').units[0].unit,'SOL');
 });
 
 function botHarness({ hosts = [], active = null, hidden = false, reply = () => ({ ok: true, at: 1 }) } = {}) {

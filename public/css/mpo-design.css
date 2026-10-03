@@ -1,0 +1,118 @@
+/* Money Printer design tokens (2026-10-03). Shared by the trader HUD and the Evolution Lab.
+   Sits on the clear-glass tokens in mpo-glass.css (which stays loaded last); this file only defines variables and
+   a handful of opt-in utility classes prefixed `mpd-`, so loading it changes nothing until a view uses them.
+
+   Type      --mpd-text-xs 11px (chart labels, footnotes — the minimum anywhere), --mpd-text-sm 12px (secondary),
+             --mpd-text-md 13px (body), --mpd-text-lg 14px (emphasis / section titles), --mpd-text-xl 18px (key values).
+             Numbers use tabular figures (`font-variant-numeric: tabular-nums`) via --mpd-font-num.
+   Space     --mpd-space-1..6 = 2, 4, 8, 12, 16, 24 px.  Radii --mpd-radius-sm 6px, -md 10px, -lg 13px (inner glass).
+   Surfaces  --mpd-surface (tinted glass panel on a glass window), --mpd-surface-strong (chart plot area),
+             --mpd-line (hairline), --mpd-ink / --mpd-ink-dim / --mpd-ink-faint (text).
+   Semantics --mpd-up / --mpd-down / --mpd-neutral / --mpd-stale / --mpd-unknown (+ -bg tints for chips).
+             Up/down are for observed changes and paper results only; a qualification or gate state is never green
+             just because a number is positive.
+   Charts    --mpd-grid, --mpd-axis, --mpd-crosshair; series hues by unit so scales are never confused:
+             --mpd-series-usd (blue), --mpd-series-prob (violet), --mpd-series-sol (teal), --mpd-series-index (slate,
+             only for charts labelled "indexed to 100"); --mpd-band is the bid/ask band fill.
+   Encoding  --mpd-enc-market (observed market price), --mpd-enc-prediction (research prediction),
+             --mpd-enc-quote (executable quote), --mpd-enc-paper (paper result). Views draw prices as solid lines,
+             predictions as dashed lines/diamonds, executable quotes as hollow markers and paper results as bars,
+             so the four are distinguishable without colour as well.
+   Dark      `.mpd-dark` (or any ancestor with it) swaps to light-on-dark values for dark glass panels. */
+:root {
+  --mpd-font: "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  --mpd-font-num: "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+  --mpd-font-mono: "Cascadia Mono", Consolas, "SFMono-Regular", Menlo, monospace;
+  --mpd-text-xs: 11px;
+  --mpd-text-sm: 12px;
+  --mpd-text-md: 13px;
+  --mpd-text-lg: 14px;
+  --mpd-text-xl: 18px;
+  --mpd-leading: 1.4;
+
+  --mpd-space-1: 2px;
+  --mpd-space-2: 4px;
+  --mpd-space-3: 8px;
+  --mpd-space-4: 12px;
+  --mpd-space-5: 16px;
+  --mpd-space-6: 24px;
+  --mpd-radius-sm: 6px;
+  --mpd-radius-md: 10px;
+  --mpd-radius-lg: var(--glass-radius-inner, 13px);
+
+  --mpd-ink: var(--glass-ink, #121722);
+  --mpd-ink-dim: var(--glass-ink-dim, #3b4456);
+  --mpd-ink-faint: #5d6678;
+  --mpd-surface: rgba(255, 255, 255, 0.50);
+  --mpd-surface-strong: rgba(255, 255, 255, 0.72);
+  --mpd-surface-hover: rgba(255, 255, 255, 0.84);
+  --mpd-line: rgba(18, 23, 34, 0.12);
+  --mpd-line-strong: rgba(18, 23, 34, 0.22);
+  --mpd-focus: #2563c9;
+
+  --mpd-up: #17804a;
+  --mpd-up-bg: rgba(23, 128, 74, 0.12);
+  --mpd-down: #c2352b;
+  --mpd-down-bg: rgba(194, 53, 43, 0.11);
+  --mpd-neutral: #4c5566;
+  --mpd-neutral-bg: rgba(76, 85, 102, 0.10);
+  --mpd-warn: #9a6200;
+  --mpd-warn-bg: rgba(214, 150, 20, 0.16);
+  --mpd-stale: #8a7a52;
+  --mpd-stale-bg: rgba(138, 122, 82, 0.14);
+  --mpd-unknown: #7d8494;
+  --mpd-unknown-bg: rgba(125, 132, 148, 0.13);
+
+  --mpd-grid: rgba(18, 23, 34, 0.08);
+  --mpd-axis: #4f586a;
+  --mpd-crosshair: rgba(18, 23, 34, 0.45);
+  --mpd-series-usd: #2563c9;
+  --mpd-series-prob: #7a4fc4;
+  --mpd-series-sol: #0f8a83;
+  --mpd-series-index: #56627a;
+  --mpd-band: rgba(37, 99, 201, 0.16);
+  --mpd-gap: rgba(125, 132, 148, 0.22);
+
+  --mpd-enc-market: #2563c9;
+  --mpd-enc-prediction: #7a4fc4;
+  --mpd-enc-quote: #0f8a83;
+  --mpd-enc-paper: #b4651c;
+
+  --mpd-heat-low: #e9eef8;
+  --mpd-heat-high: #3c63b8;
+}
+.mpd-dark {
+  --mpd-ink: #eef3fb;
+  --mpd-ink-dim: #c3cbda;
+  --mpd-ink-faint: #9aa4b8;
+  --mpd-surface: rgba(10, 16, 28, 0.46);
+  --mpd-surface-strong: rgba(10, 16, 28, 0.62);
+  --mpd-surface-hover: rgba(10, 16, 28, 0.74);
+  --mpd-line: rgba(255, 255, 255, 0.14);
+  --mpd-line-strong: rgba(255, 255, 255, 0.26);
+  --mpd-up: #4fd08a;
+  --mpd-down: #ff7a6e;
+  --mpd-neutral: #b8c1d2;
+  --mpd-grid: rgba(255, 255, 255, 0.09);
+  --mpd-axis: #b8c1d2;
+  --mpd-crosshair: rgba(255, 255, 255, 0.55);
+  --mpd-series-usd: #7fb0ff;
+  --mpd-series-prob: #c2a3ff;
+  --mpd-series-sol: #4fd6c9;
+  --mpd-band: rgba(127, 176, 255, 0.20);
+}
+
+/* ---- Opt-in utilities ---------------------------------------------------------------------------- */
+.mpd-panel { background: var(--mpd-surface); border: 1px solid var(--mpd-line); border-radius: var(--mpd-radius-lg); }
+.mpd-num { font-family: var(--mpd-font-num); font-variant-numeric: tabular-nums; }
+.mpd-chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border-radius: 999px; font-size: var(--mpd-text-xs); line-height: 18px; background: var(--mpd-neutral-bg); color: var(--mpd-neutral); white-space: nowrap; }
+.mpd-chip.up { background: var(--mpd-up-bg); color: var(--mpd-up); }
+.mpd-chip.down { background: var(--mpd-down-bg); color: var(--mpd-down); }
+.mpd-chip.warn { background: var(--mpd-warn-bg); color: var(--mpd-warn); }
+.mpd-chip.stale { background: var(--mpd-stale-bg); color: var(--mpd-stale); }
+.mpd-chip.unknown { background: var(--mpd-unknown-bg); color: var(--mpd-unknown); }
+.mpd-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; background: var(--mpd-unknown); }
+.mpd-dot.up { background: var(--mpd-up); } .mpd-dot.down { background: var(--mpd-down); } .mpd-dot.warn { background: var(--mpd-warn); } .mpd-dot.stale { background: var(--mpd-stale); }
+.mpd-up { color: var(--mpd-up); } .mpd-down { color: var(--mpd-down); } .mpd-dim { color: var(--mpd-ink-dim); } .mpd-unknown { color: var(--mpd-unknown); }
+.mpd-visually-hidden { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) { .mpd-panel, .mpd-chip { transition: none !important; } }

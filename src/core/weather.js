@@ -75,18 +75,23 @@ export function weatherLinks(text, contracts = []) {
 }
 
 export class WeatherSource {
-  constructor({ fetchImpl = globalThis.fetch, env = process.env } = {}) { this.fetch = fetchImpl; this.env = env; this.cache = new Map(); this.health = { status: 'IDLE', lastSuccess: null, lastError: null }; }
+  constructor({ fetchImpl = globalThis.fetch, env = process.env } = {}) { this.fetch = fetchImpl; this.env = env; this.cache = new Map(); this.inflight = new Map(); this.health = { status: 'IDLE', lastSuccess: null, lastError: null }; }
   ua() { return String(this.env.NWS_USER_AGENT || 'MoneyPrinterOS/0.5 (weather desk)'); }
   status() { return { id: 'nws', ...this.health }; }
-  async get(url, ttlMs) {
-    const hit = this.cache.get(url); if (hit && Date.now() - hit.at < ttlMs) return hit.data;
+  // Identical concurrent reads share one request.
+  get(url, ttlMs) {
+    const hit = this.cache.get(url); if (hit && Date.now() - hit.at < ttlMs) return Promise.resolve(hit.data);
+    if (this.inflight.has(url)) return this.inflight.get(url);
+    const p = this.fetchOnce(url).finally(() => this.inflight.delete(url)); this.inflight.set(url, p); return p;
+  }
+  async fetchOnce(url) {
     try {
       const r = await this.fetch(url, { headers: { 'User-Agent': this.ua(), accept: 'application/geo+json, application/json' }, signal: AbortSignal.timeout?.(15000) });
       if (!r.ok) throw Object.assign(new Error(`HTTP ${r.status} from ${new URL(url).host}`), { code: r.status === 429 ? 'RATE_LIMITED' : 'HTTP_ERROR' });
-      const data = await r.json(); this.cache.set(url, { at: Date.now(), data }); this.health = { status: 'CONNECTED', lastSuccess: Date.now(), lastError: null }; return data;
+      const data = await r.json(); this.cache.set(url, { at: Date.now(), data, receivedAt: Date.now() }); this.health = { status: 'CONNECTED', lastSuccess: Date.now(), lastError: null }; return data;
     } catch (e) { this.health = { ...this.health, status: e.code === 'RATE_LIMITED' ? 'DEGRADED' : 'DISCONNECTED', lastError: e.code || 'NETWORK_ERROR' }; throw e; }
   }
   async alerts() { return parseAlerts(await this.get('https://api.weather.gov/alerts/active?severity=Severe,Extreme', 120000)); }
   async storms() { return parseStorms(await this.get('https://www.nhc.noaa.gov/CurrentStorms.json', 600000)); }
-  async highs(city) { const pt = await this.get(`https://api.weather.gov/points/${city.lat},${city.lon}`, 86400000); const f = await this.get(pt.properties.forecast, 1800000); return { highs: dailyHighs(f.properties?.periods), updated: Date.parse(f.properties?.updateTime || f.properties?.updated || '') || null }; }
+  async highs(city) { const pt = await this.get(`https://api.weather.gov/points/${city.lat},${city.lon}`, 86400000); const f = await this.get(pt.properties.forecast, 1800000); return { highs: dailyHighs(f.properties?.periods), updated: Date.parse(f.properties?.updateTime || f.properties?.updated || '') || null, generatedAt: Date.parse(f.properties?.generatedAt || '') || null, receivedAt: this.cache.get(pt.properties.forecast)?.receivedAt ?? null }; }
 }

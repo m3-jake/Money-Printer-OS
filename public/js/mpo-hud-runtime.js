@@ -60,7 +60,12 @@
   const samples=new Map();let longTasks=0,longTaskMs=0,lastFrame=0,raf=0;
   api.measure=(key,ms)=>{if(!Number.isFinite(ms)||ms<0)return;const values=samples.get(key)||[];values.push(ms);if(values.length>360)values.shift();samples.set(key,values)};
   api.metrics=()=>({longTasks,longTaskMs,...Object.fromEntries([...samples].map(([key,values])=>{const s=values.slice().sort((a,b)=>a-b);return[key,{n:s.length,p50:s[Math.floor((s.length-1)*.5)],p95:s[Math.floor((s.length-1)*.95)],max:s.at(-1)}]}))});
-  const frame=t=>{raf=0;if(root.document.hidden){lastFrame=0;return}if(lastFrame)api.measure('frame',t-lastFrame);lastFrame=t;raf=root.requestAnimationFrame(frame)};
+  // Frame pacing is sampled in short bursts (60 frames every 15 s), not by a permanent requestAnimationFrame
+  // loop: a loop that never stops wakes the renderer on every vsync even when nothing on screen changes.
+  const FRAME_BURST=60,FRAME_GAP_MS=15000;let burstLeft=FRAME_BURST,burstTimer=0;
+  const frame=t=>{raf=0;if(root.document.hidden){lastFrame=0;return}if(lastFrame)api.measure('frame',t-lastFrame);lastFrame=t;
+   if(--burstLeft>0){raf=root.requestAnimationFrame(frame);return}
+   lastFrame=0;clearTimeout(burstTimer);burstTimer=setTimeout(()=>{burstLeft=FRAME_BURST;if(!raf&&!root.document.hidden)raf=root.requestAnimationFrame(frame)},FRAME_GAP_MS)};
   raf=root.requestAnimationFrame(frame);
   root.document.addEventListener('click',()=>{const at=performance.now();root.requestAnimationFrame(()=>api.measure('feedback',performance.now()-at))},true);
   let observer;try{observer=new PerformanceObserver(list=>{for(const e of list.getEntries()){longTasks++;longTaskMs+=e.duration}});observer.observe({entryTypes:['longtask']})}catch{}

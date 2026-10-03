@@ -28,7 +28,12 @@ export const PROVIDERS={
   termsNote:'Official documented API; free key required (ALPACA_KEY_ID + ALPACA_SECRET_KEY). IEX-only volume; closes are IEX prints, not consolidated tape.',
   docs:'https://docs.alpaca.markets/us/docs/historical-stock-data-1',
   configured:env=>!!alpacaKeys(env),
-  async fetchDailyBars(symbols,{start,end,fetchImpl=globalThis.fetch,env=process.env}={}){
+  // feed 'iex' is the primary series. 'sip' (consolidated tape) is used only to repair sessions IEX did not print:
+  // the free Basic plan may query historical SIP when the request end is at least 15 minutes old
+  // (docs.alpaca.markets market-data FAQ, verified 2026-10-03).
+  feeds:Object.freeze(['iex','sip']),
+  async fetchDailyBars(symbols,{start,end,fetchImpl=globalThis.fetch,env=process.env,feed='iex'}={}){
+   if(!this.feeds.includes(feed))throw Object.assign(new Error('unsupported Alpaca feed '+feed),{code:'FEED'});
    const k=alpacaKeys(env);if(!k)throw Object.assign(new Error('Alpaca key not configured'),{code:'NO_KEY'});
    const out={};for(const s of symbols)out[s]=[];
    let token=null,pages=0;const seenTokens=new Set();
@@ -36,7 +41,7 @@ export const PROVIDERS={
     const u=new URL('https://data.alpaca.markets/v2/stocks/bars');
     u.searchParams.set('symbols',symbols.join(','));u.searchParams.set('timeframe','1Day');
     u.searchParams.set('start',start);if(end)u.searchParams.set('end',end);
-    u.searchParams.set('adjustment','all');u.searchParams.set('feed','iex');u.searchParams.set('limit','10000');
+    u.searchParams.set('adjustment','all');u.searchParams.set('feed',feed);u.searchParams.set('limit','10000');
     if(token)u.searchParams.set('page_token',token);
     const r=await fetchImpl(u.toString(),{method:'GET',headers:{'APCA-API-KEY-ID':k.id,'APCA-API-SECRET-KEY':k.secret,accept:'application/json'},signal:AbortSignal.timeout?.(20000)});
     if(!r.ok)throw Object.assign(new Error('Alpaca HTTP '+r.status),{code:r.status===401||r.status===403?'AUTH':'HTTP_'+r.status});
@@ -73,12 +78,44 @@ export function cleanBars(rows,{completedThrough}={}){
  return [...byDate.values()].sort((a,b)=>a.d<b.d?-1:1);
 }
 
+// Sessions a symbol lacks although another symbol in the same fetch printed a bar that day (a real session).
+// Dates before a symbol's first IEX bar are reported separately; authentic SIP may cover them.
+export function sessionGaps(bars){
+ const all=new Set();for(const rows of Object.values(bars||{}))for(const b of rows||[])all.add(b.d);
+ const sessions=[...all].sort(),out={};
+ for(const [s,rows] of Object.entries(bars||{})){
+  const have=new Set((rows||[]).map(b=>b.d)),first=rows?.[0]?.d||null;
+  const interior=sessions.filter(d=>first&&d>first&&!have.has(d)),beforeFirst=first?sessions.filter(d=>d<first):sessions;
+  if(interior.length||beforeFirst.length)out[s]={interior,beforeFirst};
+ }
+ return out;
+}
+// Fill early and interior gaps of the primary (IEX) series with consolidated-tape (SIP) bars of the same provider, only for the
+// missing dates, each marked f:'sip'. Nothing is interpolated or carried forward; dates SIP also lacks stay missing.
+export async function repairSessionGaps(p,bars,{fetchImpl,env,completedThrough,now=Date.now()}={}){
+ const gaps=sessionGaps(bars),need=Object.entries(gaps).map(([s,g])=>[s,{...g,missing:[...g.beforeFirst,...g.interior]}]).filter(([,g])=>g.missing.length);
+ const record={at:new Date(now).toISOString(),provider:p?.id||null,primaryFeed:'iex',repairFeed:'sip',requested:Object.fromEntries(need.map(([s,g])=>[s,g.missing])),filled:{},stillMissing:{},beforeFirstBar:Object.fromEntries(Object.entries(gaps).filter(([,g])=>g.beforeFirst.length).map(([s,g])=>[s,g.beforeFirst.length])),requests:0,error:null};
+ if(!need.length||!p?.feeds?.includes('sip'))return {bars,record};
+ const dates=need.flatMap(([,g])=>g.missing).sort(),end=new Date(Math.min(Date.parse(dates.at(-1)+'T00:00:00Z')+86400000,now-16*60000)).toISOString();
+ try{
+  record.requests=1;
+  const raw=await p.fetchDailyBars(need.map(([s])=>s),{start:dates[0],end,fetchImpl,env,feed:'sip'});
+  for(const [s,g] of need){
+   const sip=new Map(cleanBars(raw[s],{completedThrough}).map(b=>[b.d,b])),want=new Set(g.missing),add=[];
+   for(const d of want)if(sip.has(d))add.push({...sip.get(d),f:'sip'});
+   if(add.length){bars[s]=[...bars[s],...add].sort((a,b)=>a.d<b.d?-1:1);record.filled[s]=add.map(b=>b.d).sort()}
+   const left=g.missing.filter(d=>!sip.has(d));if(left.length)record.stillMissing[s]=left;
+  }
+ }catch(e){record.error={code:e?.code||'FETCH',message:String(e?.message||e).slice(0,200)};record.stillMissing=record.requested}
+ return {bars,record};
+}
+
 export function barsFile(dataDir){return path.join(dataDir,'robinhood-equities','bars.json')}
 // Hand-off copy for the Evolution Lab's robinhood-equities lane (it reads this before the trader's own store).
 export function labBarsFile(dataDir){return path.join(dataDir,'lab-link','robinhood-equities-bars.json')}
 export function writeLabBars(dataDir,store,{incumbent=null,executionAssumptions=null}={}){
  if(!store?.bars||!Object.keys(store.bars).length)return false;
- writeJsonAtomic(labBarsFile(dataDir),{version:1,schema:'mpo.trader-equities-bars.v1',provider:store.provider,fetchedAt:store.fetchedAt,lastSession:store.lastSession,lookbackDays:store.lookbackDays||null,firstSession:store.bars.SPY?.[0]?.d||null,adjusted:'splits and dividends',robinhoodQuotes:false,incumbent,executionAssumptions,bars:store.bars});
+ writeJsonAtomic(labBarsFile(dataDir),{version:1,schema:'mpo.trader-equities-bars.v1',provider:store.provider,feeds:{primary:'iex',gapRepair:'sip',barField:'f'},gapRepair:store.gapRepair||null,fetchedAt:store.fetchedAt,lastSession:store.lastSession,lookbackDays:store.lookbackDays||null,firstSession:store.bars.SPY?.[0]?.d||null,adjusted:'splits and dividends',robinhoodQuotes:false,incumbent,executionAssumptions,bars:store.bars});
  return true;
 }
 export function readBarStore(dataDir){
@@ -110,15 +147,21 @@ export async function refreshBars(dataDir,symbols,{now=Date.now(),env=process.en
  if(!p||!p.configured(env))return {store,fetched:false,reason:'NO_DATA'};
  const last=lastCompletedSession(now);if(!last)return {store,fetched:false,reason:'CALENDAR'};
  // A store fetched with a shorter history window than asked is refetched once (the next attempt inside the budget).
- const upToDate=symbols.every(s=>store.bars?.[s]?.at(-1)?.d>=last)&&store.provider===p.id&&(store.lookbackDays||0)>=lookbackDays;
+ const upToDate=symbols.every(s=>store.bars?.[s]?.at(-1)?.d>=last)&&store.provider===p.id&&(store.lookbackDays||0)>=lookbackDays&&!!store.gapRepair;
  if(!force&&upToDate){try{if(!fs.existsSync(labBarsFile(dataDir)))writeLabBars(dataDir,store)}catch{}return {store,fetched:false,reason:'FRESH'}}
  if(!force&&store.lastAttemptAt&&now-Date.parse(store.lastAttemptAt)<retryMs)return {store,fetched:false,reason:'BUDGET'};
  const startMs=now-lookbackDays*86400000;
  store.lastAttemptAt=new Date(now).toISOString();
  try{
   const raw=await p.fetchDailyBars(symbols.filter(validSymbol),{start:new Date(startMs).toISOString().slice(0,10),fetchImpl,env});
-  const bars={};for(const s of symbols)bars[s]=cleanBars(raw[s],{completedThrough:last});
-  Object.assign(store,{provider:p.id,fetchedAt:new Date(now).toISOString(),lastSession:last,lookbackDays,bars,lastError:null});
+  let bars={};for(const s of symbols)bars[s]=cleanBars(raw[s],{completedThrough:last});
+  // One extra request at most per refresh, and only when IEX skipped sessions another symbol printed.
+  const repaired=await repairSessionGaps(p,bars,{fetchImpl,env,completedThrough:last,now});bars=repaired.bars;
+  // A partial provider response must not wipe authentic history already retained here.
+  // Re-fetches remain atomic (adjusted histories cannot safely be spliced across vintages).
+  const unavailable=symbols.filter(s=>!bars[s]?.length);
+  if(unavailable.length)throw Object.assign(new Error('Provider returned no authentic bars for '+unavailable.join(', ')),{code:'EMPTY_PROVIDER_SERIES'});
+  Object.assign(store,{provider:p.id,fetchedAt:new Date(now).toISOString(),lastSession:last,lookbackDays,bars,gapRepair:repaired.record,lastError:null});
   writeJsonAtomic(barsFile(dataDir),store);
   try{writeLabBars(dataDir,store)}catch{}
   return {store,fetched:true,reason:'OK'};
