@@ -17,17 +17,22 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { writeFileAtomicSync } from './atomicRename.js';
 import { takerFee } from './core/fees.js';
+import { weatherTapeRow, btcTapeRow } from './botTape.js';
 
 // weather-nws is the control arm of a forward A/B test: same rules as weather, but never uses the calibration.
 export const KALSHI_BOT_IDS = Object.freeze(['weather', 'weather-nws', 'btc']);
 const SCHEMA = 'mpo.kalshi-paper-bots.v1';
-const DEFAULTS = Object.freeze({
-  weather: { enabled: true, useCalibration: true, calibrationSafety: 1.1, startUsd: 500, stakeUsd: 10, maxOpen: 10, minEdge: 0.07, maxDisagreement: 0.2, minPrice: 0.05, maxPrice: 0.92, biasF: 0, sigmaBaseF: 1.6, sigmaPerDayF: 1.0, minHoursToClose: 1 },
-  'weather-nws': { enabled: true, useCalibration: false, calibrationSafety: 1.1, startUsd: 500, stakeUsd: 10, maxOpen: 10, minEdge: 0.07, maxDisagreement: 0.2, minPrice: 0.05, maxPrice: 0.92, biasF: 0, sigmaBaseF: 1.6, sigmaPerDayF: 1.0, minHoursToClose: 1 },
-  btc: { enabled: true, startUsd: 500, stakeUsd: 10, maxOpen: 4, minEdge: 0.06, maxDisagreement: 0.2, minPrice: 0.05, maxPrice: 0.92, volMultiple: 1.25, minHoursToClose: 0.5, maxHoursToClose: 30 },
+// The Kalshi paper wallet is $25 (bing, 2026-10-03): $12.50 weather + $12.50 BTC, $1 bets.
+export const KALSHI_DEFAULTS = Object.freeze({
+  weather: { enabled: true, useCalibration: true, calibrationSafety: 1.1, startUsd: 12.5, stakeUsd: 1, maxOpen: 10, minEdge: 0.07, maxDisagreement: 0.2, minPrice: 0.05, maxPrice: 0.92, biasF: 0, sigmaBaseF: 1.6, sigmaPerDayF: 1.0, minHoursToClose: 1 },
+  'weather-nws': { enabled: true, useCalibration: false, calibrationSafety: 1.1, startUsd: 12.5, stakeUsd: 1, maxOpen: 10, minEdge: 0.07, maxDisagreement: 0.2, minPrice: 0.05, maxPrice: 0.92, biasF: 0, sigmaBaseF: 1.6, sigmaPerDayF: 1.0, minHoursToClose: 1 },
+  btc: { enabled: true, startUsd: 12.5, stakeUsd: 1, maxOpen: 4, minEdge: 0.06, maxDisagreement: 0.2, minPrice: 0.05, maxPrice: 0.92, volMultiple: 1.25, minHoursToClose: 0.5, maxHoursToClose: 30 },
 });
-const LIMITS = { calibrationSafety: [1, 3], maxDisagreement: [0.02, 1], stakeUsd: [1, 250], maxOpen: [1, 50], minEdge: [0.01, 0.5], minPrice: [0.01, 0.5], maxPrice: [0.5, 0.99], biasF: [-10, 10], sigmaBaseF: [0.5, 8], sigmaPerDayF: [0, 5], volMultiple: [0.5, 4], startUsd: [10, 100000], minHoursToClose: [0, 48], maxHoursToClose: [1, 240] };
+const LIMITS = { calibrationSafety: [1, 3], maxDisagreement: [0.02, 1], stakeUsd: [1, 250], maxOpen: [1, 50], minEdge: [0.01, 0.5], minPrice: [0.01, 0.5], maxPrice: [0.5, 0.99], biasF: [-10, 10], sigmaBaseF: [0.5, 8], sigmaPerDayF: [0, 5], volMultiple: [0.5, 4], startUsd: [1, 100000], minHoursToClose: [0, 48], maxHoursToClose: [1, 240] };
 const BTC_SERIES = ['KXBTCD', 'KXBTC'];
+// One market snapshot (a frame) is shared by every bot and farm variant priced within its lifetime, and is
+// written to the tape once. Weather bots run 70 s apart; the BTC farm runs 20 s after the BTC bot.
+const FRAME_TTL_MS = { weather: 240_000, btc: 60_000 };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 // Kalshi rate-limits bursts; every bot call is paced and a RATE_LIMITED answer is retried twice with backoff.
 export async function paced(fn, { tries = 3, paceMs = 150, backoffMs = 4000 } = {}) {
@@ -90,11 +95,59 @@ export function walkAsks(book, side, qty, limitPrice) {
   return fills;
 }
 
-function emptyBot(id, startUsd) { return { id, startUsd, cashUsd: startUsd, open: [], history: [], decisions: [], settings: { ...DEFAULTS[id], startUsd }, lastRunAt: null, lastError: null, lastNote: null, epoch: 1 }; }
+// Price every weather event in a frame under one bot's settings and return the best side per event.
+// Pure, so the live bot and every farm variant score the same snapshot the same way.
+export function pickWeather(frame, s, held, now) {
+  const cands = []; let priced = 0, calibrated = 0, disagreements = 0;
+  for (const { city, m, cm: calModel } of frame.events) {
+    if (held.has(m.eventTicker)) continue;
+    const hours = (m.closeAt - now) / 3600e3; if (!(hours >= s.minHoursToClose)) continue;
+    // Calibrated Open-Meteo model when this city/lead beat the default on held-out days (weatherCalibration.js);
+    // otherwise the NWS forecast with the default bias and sigma.
+    const cm = s.useCalibration ? calModel : null;
+    if (!cm && m.nwsHigh == null) continue;
+    const sigma = cm ? cm.sigma * s.calibrationSafety : s.sigmaBaseF + s.sigmaPerDayF * Math.max(0, hours) / 24, mu = cm ? cm.mu : m.nwsHigh + s.biasF; priced++; if (cm) calibrated++;
+    let best = null;
+    for (const bk of m.buckets || []) {
+      if (bk.yesAsk == null || bk.noAsk == null) continue;
+      const sc = scoreSides({ pYes: bucketProbability(bk.lo, bk.hi, mu, sigma), yesAsk: bk.yesAsk, noAsk: bk.noAsk, yesBid: bk.yesBid, feeModel: bk.feeModel, stakeUsd: s.stakeUsd, minPrice: s.minPrice, maxPrice: s.maxPrice, maxDisagreement: s.maxDisagreement });
+      if (sc?.disagree) { disagreements++; continue; }
+      if (sc && (!best || sc.edge > best.edge)) best = { ...sc, bk };
+    }
+    if (best) cands.push({ ...best, city, m, mu, sigma, cm, eventTicker: m.eventTicker, ticker: best.bk.sourceId, closeAt: best.bk.closeAt || m.closeAt, feeModel: best.bk.feeModel,
+      label: `${city} ${m.date} ${best.bk.lo === -Infinity ? '≤' + best.bk.hi : best.bk.hi === Infinity ? best.bk.lo + '+' : best.bk.lo + '–' + best.bk.hi}°F` });
+  }
+  return { cands: cands.sort((a, b) => b.edge - a.edge), priced, calibrated, disagreements };
+}
+// Same for the BTC range and above/below contracts in a frame.
+export function pickBtc(frame, s, held, now) {
+  const cands = []; let disagreements = 0;
+  const sigmaFor = hours => (hours <= 6 ? frame.volNow : frame.volDay) * s.volMultiple;
+  for (const { e, markets } of frame.events) {
+    if (held.has(e.event_ticker)) continue;
+    let best = null;
+    for (const m of markets) {
+      const d = m.data, hours = (d.closeAt - now) / 3600e3;
+      if (!(hours >= s.minHoursToClose && hours <= s.maxHoursToClose) || d.status !== 'ACTIVE' && d.status !== 'OPEN') continue;
+      const p = btcContractProbability(d, frame.spot, (d.closeAt - now) / 1000, sigmaFor(hours)); if (p === null || d.yesAsk == null || d.noAsk == null) continue;
+      const sc = scoreSides({ pYes: p, yesAsk: d.yesAsk, noAsk: d.noAsk, yesBid: d.yesBid, feeModel: d.feeModel, stakeUsd: s.stakeUsd, minPrice: s.minPrice, maxPrice: s.maxPrice, maxDisagreement: s.maxDisagreement });
+      if (sc?.disagree) { disagreements++; continue; }
+      if (sc && (!best || sc.edge > best.edge)) best = { ...sc, m, e };
+    }
+    if (best) {
+      const d = best.m.data;
+      cands.push({ ...best, eventTicker: best.e.event_ticker, ticker: best.m.sourceId, closeAt: d.closeAt, feeModel: d.feeModel, volPerHour: round(sigmaFor((d.closeAt - now) / 3600e3) * 60, 5),
+        label: `${d.strikeType === 'between' ? `$${d.floorStrike}–${d.capStrike}` : d.strikeType === 'greater' ? `above $${d.floorStrike}` : `below $${d.capStrike}`} · ${new Date(d.closeAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric' })}` });
+    }
+  }
+  return { cands: cands.sort((a, c) => c.edge - a.edge), disagreements, sigmaNow: frame.volNow * s.volMultiple, sigmaDay: frame.volDay * s.volMultiple };
+}
+
+function emptyBot(id, startUsd) { return { id, startUsd, cashUsd: startUsd, open: [], history: [], decisions: [], settings: { ...KALSHI_DEFAULTS[id], startUsd }, lastRunAt: null, lastError: null, lastNote: null, epoch: 1 }; }
 function sanitize(id, patch = {}) {
   const out = {};
   for (const [k, v] of Object.entries(patch)) {
-    if (!(k in DEFAULTS[id])) continue;
+    if (!(k in KALSHI_DEFAULTS[id])) continue;
     if (k === 'enabled' || k === 'useCalibration') { out[k] = v === true || v === 'true' || v === 1 || v === '1'; continue; }
     const n = Number(v); if (!Number.isFinite(n)) throw new Error(`${k} must be a number`);
     const [a, b] = LIMITS[k] || [-Infinity, Infinity]; if (n < a || n > b) throw new Error(`${k} must be between ${a} and ${b}`);
@@ -104,21 +157,27 @@ function sanitize(id, patch = {}) {
 }
 
 export class KalshiPaperBots {
-  constructor({ dataDir, kalshi = () => null, weather = async () => null, calibration = null, fetchImpl = globalThis.fetch, now = () => Date.now() } = {}) {
-    this.file = path.join(dataDir, 'kalshi-paper-bots.json'); this.kalshi = kalshi; this.weather = weather; this.calibration = calibration; this.fetch = fetchImpl; this.now = now; this.busy = new Set();
+  constructor({ dataDir, kalshi = () => null, weather = async () => null, calibration = null, tape = null, fetchImpl = globalThis.fetch, now = () => Date.now() } = {}) {
+    this.file = path.join(dataDir, 'kalshi-paper-bots.json'); this.kalshi = kalshi; this.weather = weather; this.calibration = calibration; this.tape = tape; this.fetch = fetchImpl; this.now = now; this.busy = new Set();
+    this.frames = {}; this.framing = {}; this.settledTape = new Set();
     this.recoveryError = null; this.state = this.load();
   }
   load() {
     try {
-      if (!fs.existsSync(this.file)) return { schema: SCHEMA, bots: Object.fromEntries(KALSHI_BOT_IDS.map(id => [id, emptyBot(id, DEFAULTS[id].startUsd)])) };
+      if (!fs.existsSync(this.file)) return { schema: SCHEMA, wallet25: true, bots: Object.fromEntries(KALSHI_BOT_IDS.map(id => [id, emptyBot(id, KALSHI_DEFAULTS[id].startUsd)])) };
       const s = JSON.parse(fs.readFileSync(this.file, 'utf8'));
       if (s.schema !== SCHEMA || !s.bots) throw new Error('unknown schema');
-      for (const id of KALSHI_BOT_IDS) { s.bots[id] ||= emptyBot(id, DEFAULTS[id].startUsd); s.bots[id].settings = { ...DEFAULTS[id], ...s.bots[id].settings }; }
+      if (!s.wallet25 && KALSHI_BOT_IDS.some(id => s.bots[id]?.startUsd === 500 && s.bots[id]?.settings?.stakeUsd === 10)) {
+        fs.copyFileSync(this.file, this.file.replace(/\.json$/, `.pre-25usd-${Date.now()}.json`));
+        for (const id of KALSHI_BOT_IDS) if (s.bots[id]?.startUsd === 500 && s.bots[id]?.settings?.stakeUsd === 10) { const fresh = emptyBot(id, KALSHI_DEFAULTS[id].startUsd); fresh.epoch = (s.bots[id].epoch || 1) + 1; fresh.settings.enabled = s.bots[id].settings.enabled !== false; s.bots[id] = fresh; }
+      }
+      s.wallet25 = true;
+      for (const id of KALSHI_BOT_IDS) { s.bots[id] ||= emptyBot(id, KALSHI_DEFAULTS[id].startUsd); s.bots[id].settings = { ...KALSHI_DEFAULTS[id], ...s.bots[id].settings }; }
       return s;
     } catch (e) {
       // Never overwrite a book we cannot read: trading stops until a reset, and the file is left in place.
       this.recoveryError = `Kalshi paper book unreadable (${e.message}); the file was kept. Reset a bot to start a new book.`;
-      return { schema: SCHEMA, bots: Object.fromEntries(KALSHI_BOT_IDS.map(id => [id, emptyBot(id, DEFAULTS[id].startUsd)])) };
+      return { schema: SCHEMA, bots: Object.fromEntries(KALSHI_BOT_IDS.map(id => [id, emptyBot(id, KALSHI_DEFAULTS[id].startUsd)])) };
     }
   }
   save() { if (this.recoveryError) return; fs.mkdirSync(path.dirname(this.file), { recursive: true }); writeFileAtomicSync(this.file, JSON.stringify(this.state)); }
@@ -162,73 +221,69 @@ export class KalshiPaperBots {
     return true;
   }
 
-  async runWeather(b, k) {
-    const s = b.settings, wx = await this.weather(); if (!wx) throw new Error('weather desk unavailable');
-    const now = this.now(), held = new Set(b.open.map(p => p.eventTicker));
-    const cands = []; let disagreements = 0;
-    let priced = 0, calibrated = 0;
-    for (const c of wx.cities || []) for (const m of c.markets || []) {
-      if (held.has(m.eventTicker)) continue;
-      const hours = (m.closeAt - now) / 3600e3; if (!(hours >= s.minHoursToClose)) continue;
-      // Calibrated Open-Meteo model when this city/lead beat the default on held-out days (weatherCalibration.js);
-      // otherwise the NWS forecast with the default bias and sigma.
-      const cm = s.useCalibration && this.calibration ? await this.calibration.model(c.id, m.date).catch(() => null) : null;
-      if (!cm && m.nwsHigh == null) continue;
-      const sigma = cm ? cm.sigma * s.calibrationSafety : s.sigmaBaseF + s.sigmaPerDayF * Math.max(0, hours) / 24, mu = cm ? cm.mu : m.nwsHigh + s.biasF; priced++; if (cm) calibrated++;
-      let best = null;
-      for (const bk of m.buckets || []) {
-        if (bk.yesAsk == null || bk.noAsk == null) continue;
-        const sc = scoreSides({ pYes: bucketProbability(bk.lo, bk.hi, mu, sigma), yesAsk: bk.yesAsk, noAsk: bk.noAsk, yesBid: bk.yesBid, feeModel: bk.feeModel, stakeUsd: s.stakeUsd, minPrice: s.minPrice, maxPrice: s.maxPrice, maxDisagreement: s.maxDisagreement });
-        if (sc?.disagree) { disagreements++; continue; }
-        if (sc && (!best || sc.edge > best.edge)) best = { ...sc, bk };
+  // The current weather frame: every city's open daily-high markets with bid/ask, the NWS forecast and the
+  // calibrated model (whether or not a given bot uses it). Fetched once per FRAME_TTL_MS and taped once.
+  weatherFrame() {
+    return this.frame('weather', async () => {
+      const wx = await this.weather(); if (!wx) throw new Error('weather desk unavailable');
+      const events = [];
+      for (const c of wx.cities || []) for (const m of c.markets || []) {
+        const cm = this.calibration ? await this.calibration.model(c.id, m.date).catch(() => null) : null;
+        events.push({ cityId: c.id, city: c.label, m, cm });
       }
-      if (best) cands.push({ ...best, city: c.label, m, mu, sigma, cm });
-    }
-    cands.sort((a, b2) => b2.edge - a.edge);
+      return { events };
+    }, weatherTapeRow, 'kalshi-weather');
+  }
+  // The current BTC frame: Coinbase spot, 1-minute and 5-minute realized vol, and every open KXBTCD/KXBTC event's markets.
+  btcFrame(k) {
+    return this.frame('btc', async () => {
+      const get = async u => { const r = await this.fetch(u, { headers: { accept: 'application/json', 'user-agent': 'MoneyPrinterOS/0.5' }, signal: AbortSignal.timeout?.(15000) }); if (!r.ok) throw new Error(`HTTP ${r.status} from ${new URL(u).host}`); return r.json(); };
+      const [ticker, c5, c1] = await Promise.all([get('https://api.exchange.coinbase.com/products/BTC-USD/ticker'), get('https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=300'), get('https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=60')]);
+      // Bets closing within 6 h use the last ~5 h of 1-minute vol (current regime); longer ones use ~25 h of 5-minute vol.
+      const spot = Number(ticker.price), volDay = realizedVol(c5, 300), volNow = realizedVol(c1, 60) ?? volDay;
+      if (!(spot > 0) || !volDay) throw new Error('BTC spot or volatility unavailable');
+      const events = [];
+      for (const series of BTC_SERIES) for (const e of await paced(() => k.events({ series, limit: 6 }))) {
+        const { markets } = await paced(() => k.markets({ eventTicker: e.event_ticker, limit: 200 }));
+        events.push({ e: { event_ticker: e.event_ticker, title: e.title }, markets });
+      }
+      return { spot, volNow, volDay, events };
+    }, btcTapeRow, 'kalshi-btc');
+  }
+  async frame(kind, build, toRow, stream) {
+    const hit = this.frames[kind]; if (hit && this.now() - hit.at < FRAME_TTL_MS[kind]) return hit;
+    if (!this.framing[kind]) this.framing[kind] = (async () => { const f = { at: this.now(), ...(await build()) }; this.frames[kind] = f; this.tape?.append(stream, toRow(f)); return f; })().finally(() => { this.framing[kind] = null; });
+    return this.framing[kind];
+  }
+
+  async runWeather(b, k) {
+    const s = b.settings, frame = await this.weatherFrame(), now = this.now();
+    const { cands, priced, calibrated, disagreements } = pickWeather(frame, s, new Set(b.open.map(p => p.eventTicker)), now);
     let entered = 0;
     for (const x of cands) {
-      const label = `${x.city} ${x.m.date} ${x.bk.lo === -Infinity ? '≤' + x.bk.hi : x.bk.hi === Infinity ? x.bk.lo + '+' : x.bk.lo + '–' + x.bk.hi}°F`;
-      if (x.edge < s.minEdge) { this.decide(b, { event: x.m.eventTicker, label, side: x.side, action: 'SKIP', pModel: round(x.pModel, 3), price: x.ask, edge: round(x.edge, 3), reason: `best edge ${round(x.edge, 3)} < ${s.minEdge}` }); continue; }
-      if (b.open.length >= s.maxOpen) { this.decide(b, { event: x.m.eventTicker, label, action: 'SKIP', reason: 'max open bets' }); break; }
-      if (await this.enter(b, k, { ticker: x.bk.sourceId, eventTicker: x.m.eventTicker, title: x.m.title, label, side: x.side, pModel: x.pModel, qty: x.qty, closeAt: x.bk.closeAt || x.m.closeAt, feeModel: x.bk.feeModel, marketAsk: x.ask, context: { nwsHigh: x.m.nwsHigh, model: x.cm ? x.cm.source : 'nws + default', forecast: x.cm?.forecast ?? x.m.nwsHigh, lead: x.cm?.lead ?? null, mu: round(x.mu, 2), sigma: round(x.sigma, 2), marketExpected: x.m.expectedHigh } })) entered++;
+      if (x.edge < s.minEdge) { this.decide(b, { event: x.eventTicker, label: x.label, side: x.side, action: 'SKIP', pModel: round(x.pModel, 3), price: x.ask, edge: round(x.edge, 3), reason: `best edge ${round(x.edge, 3)} < ${s.minEdge}` }); continue; }
+      if (b.open.length >= s.maxOpen) { this.decide(b, { event: x.eventTicker, label: x.label, action: 'SKIP', reason: 'max open bets' }); break; }
+      if (await this.enter(b, k, { ticker: x.ticker, eventTicker: x.eventTicker, title: x.m.title, label: x.label, side: x.side, pModel: x.pModel, qty: x.qty, closeAt: x.closeAt, feeModel: x.feeModel, marketAsk: x.ask, context: { nwsHigh: x.m.nwsHigh, model: x.cm ? x.cm.source : 'nws + default', forecast: x.cm?.forecast ?? x.m.nwsHigh, lead: x.cm?.lead ?? null, mu: round(x.mu, 2), sigma: round(x.sigma, 2), marketExpected: x.m.expectedHigh } })) entered++;
     }
     b.lastNote = `${priced} events priced (${calibrated} on the calibrated model), ${cands.length} with a buyable side, ${entered} entered, ${disagreements} buckets skipped (model vs market gap > ${s.maxDisagreement})`;
   }
 
   async runBtc(b, k) {
-    const s = b.settings, now = this.now();
-    const get = async u => { const r = await this.fetch(u, { headers: { accept: 'application/json', 'user-agent': 'MoneyPrinterOS/0.5' }, signal: AbortSignal.timeout?.(15000) }); if (!r.ok) throw new Error(`HTTP ${r.status} from ${new URL(u).host}`); return r.json(); };
-    const [ticker, c5, c1] = await Promise.all([get('https://api.exchange.coinbase.com/products/BTC-USD/ticker'), get('https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=300'), get('https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=60')]);
-    // Bets closing within 6 h use the last ~5 h of 1-minute vol (current regime); longer ones use ~25 h of 5-minute vol.
-    const spot = Number(ticker.price), volDay = realizedVol(c5, 300), volNow = realizedVol(c1, 60) ?? volDay;
-    if (!(spot > 0) || !volDay) throw new Error('BTC spot or volatility unavailable');
-    const sigmaFor = hours => (hours <= 6 ? volNow : volDay) * s.volMultiple, sigma = volDay * s.volMultiple, held = new Set(b.open.map(p => p.eventTicker)), cands = []; let disagreements = 0;
-    for (const series of BTC_SERIES) {
-      const events = await paced(() => k.events({ series, limit: 6 }));
-      for (const e of events) {
-        if (held.has(e.event_ticker)) continue;
-        const { markets } = await paced(() => k.markets({ eventTicker: e.event_ticker, limit: 200 }));
-        let best = null;
-        for (const m of markets) {
-          const d = m.data, hours = (d.closeAt - now) / 3600e3;
-          if (!(hours >= s.minHoursToClose && hours <= s.maxHoursToClose) || d.status !== 'ACTIVE' && d.status !== 'OPEN') continue;
-          const p = btcContractProbability(d, spot, (d.closeAt - now) / 1000, sigmaFor(hours)); if (p === null || d.yesAsk == null || d.noAsk == null) continue;
-          const sc = scoreSides({ pYes: p, yesAsk: d.yesAsk, noAsk: d.noAsk, yesBid: d.yesBid, feeModel: d.feeModel, stakeUsd: s.stakeUsd, minPrice: s.minPrice, maxPrice: s.maxPrice, maxDisagreement: s.maxDisagreement });
-          if (sc?.disagree) { disagreements++; continue; }
-          if (sc && (!best || sc.edge > best.edge)) best = { ...sc, m, e };
-        }
-        if (best) cands.push(best);
-      }
-    }
-    cands.sort((a, c) => c.edge - a.edge);
+    const s = b.settings, frame = await this.btcFrame(k), now = this.now();
+    const { cands, disagreements, sigmaNow, sigmaDay } = pickBtc(frame, s, new Set(b.open.map(p => p.eventTicker)), now);
     let entered = 0;
     for (const x of cands) {
-      const d = x.m.data, label = `${d.strikeType === 'between' ? `$${d.floorStrike}–${d.capStrike}` : d.strikeType === 'greater' ? `above $${d.floorStrike}` : `below $${d.capStrike}`} · ${new Date(d.closeAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric' })}`;
-      if (x.edge < s.minEdge) { this.decide(b, { event: x.e.event_ticker, label, side: x.side, action: 'SKIP', pModel: round(x.pModel, 3), price: x.ask, edge: round(x.edge, 3), reason: `best edge ${round(x.edge, 3)} < ${s.minEdge}` }); continue; }
-      if (b.open.length >= s.maxOpen) { this.decide(b, { event: x.e.event_ticker, label, action: 'SKIP', reason: 'max open bets' }); break; }
-      if (await this.enter(b, k, { ticker: x.m.sourceId, eventTicker: x.e.event_ticker, title: x.e.title, label, side: x.side, pModel: x.pModel, qty: x.qty, closeAt: d.closeAt, feeModel: d.feeModel, marketAsk: x.ask, context: { spot: round(spot, 2), volPerHour: round(sigmaFor((d.closeAt - now) / 3600e3) * 60, 5) } })) entered++;
+      if (x.edge < s.minEdge) { this.decide(b, { event: x.eventTicker, label: x.label, side: x.side, action: 'SKIP', pModel: round(x.pModel, 3), price: x.ask, edge: round(x.edge, 3), reason: `best edge ${round(x.edge, 3)} < ${s.minEdge}` }); continue; }
+      if (b.open.length >= s.maxOpen) { this.decide(b, { event: x.eventTicker, label: x.label, action: 'SKIP', reason: 'max open bets' }); break; }
+      if (await this.enter(b, k, { ticker: x.ticker, eventTicker: x.eventTicker, title: x.e.title, label: x.label, side: x.side, pModel: x.pModel, qty: x.qty, closeAt: x.closeAt, feeModel: x.feeModel, marketAsk: x.ask, context: { spot: round(frame.spot, 2), volPerHour: x.volPerHour } })) entered++;
     }
-    b.lastNote = `BTC $${round(spot, 0)} · hourly vol ${(volNow * s.volMultiple * 60 * 100).toFixed(2)}% now / ${(sigma * 60 * 100).toFixed(2)}% 24h · ${cands.length} events scored, ${entered} entered, ${disagreements} contracts skipped (model vs market gap > ${s.maxDisagreement})`;
+    b.lastNote = `BTC ${round(frame.spot, 0)} · hourly vol ${(sigmaNow * 60 * 100).toFixed(2)}% now / ${(sigmaDay * 60 * 100).toFixed(2)}% 24h · ${cands.length} events scored, ${entered} entered, ${disagreements} contracts skipped (model vs market gap > ${s.maxDisagreement})`;
+  }
+
+  // A market's result, taped once per ticker (the farm calls this too).
+  tapeSettlement(ticker, eventTicker, d) {
+    if (!this.tape || this.settledTape.has(ticker)) return; this.settledTape.add(ticker);
+    this.tape.append('kalshi-settle', { ticker, event: eventTicker, outcome: d.settlementOutcome, status: d.status || null });
   }
 
   // Settle closed bets from the market's own result; mark open bets at the side's bid.
@@ -238,6 +293,7 @@ export class KalshiPaperBots {
       let m = null; try { m = await paced(() => k.market(p.ticker)); } catch { keep.push(p); continue; }
       const d = m.data, outcome = d.settlementOutcome;
       if (outcome === 'YES' || outcome === 'NO') {
+        this.tapeSettlement(p.ticker, p.eventTicker, d);
         const won = outcome === p.side, payout = won ? p.qty : 0, pnl = payout - p.costUsd - p.feeUsd;
         b.cashUsd = round(b.cashUsd + payout, 6);
         b.history.unshift({ ...p, status: 'SETTLED', outcome, won, payoutUsd: payout, pnlUsd: round(pnl, 4), settledAt: now, brierModel: round((p.pModel - (won ? 1 : 0)) ** 2, 4), brierMarket: round((p.marketPrice - (won ? 1 : 0)) ** 2, 4) });

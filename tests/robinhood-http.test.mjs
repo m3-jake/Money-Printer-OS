@@ -27,7 +27,7 @@ const base='http://127.0.0.1:'+server.address().port;
 const post=(route,value={},headers={})=>fetch(base+route,{method:'POST',headers:{'content-type':'application/json',...headers},body:JSON.stringify(value)});
 test.after(async()=>{await new Promise(resolve=>server.close(resolve));globalThis.fetch=nativeFetch;fs.rmSync(root,{recursive:true,force:true})});
 test('snapshot and readiness endpoints work without keys and boot disarmed',async()=>{
- const r=await fetch(base+'/api/robinhood');assert.equal(r.status,200);const s=await r.json();assert.equal(s.readiness.execution,'paper-only');assert.equal(s.readiness.paperOnlyBuild,true);assert.equal(s.readiness.realEnabled,false);assert.deepEqual(s.strategy.primary,{symbol:'BTC-USD',weight:1.5,orderMult:1});assert.equal(s.readiness.sessionArmed,false);assert.equal(s.paper.cashUsd,1000);
+ const r=await fetch(base+'/api/robinhood');assert.equal(r.status,200);const s=await r.json();assert.equal(s.readiness.execution,'paper-only');assert.equal(s.readiness.paperOnlyBuild,true);assert.equal(s.readiness.realEnabled,false);assert.deepEqual(s.strategy.primary,{symbol:'BTC-USD',weight:1.5,orderMult:1});assert.equal(s.readiness.sessionArmed,false);assert.equal(s.paper.cashUsd,25);
  assert.deepEqual(Object.keys(s),['at','readiness','outbound','account','pairs','quotes','tape','paper','practice','daily','journal','limits','qualificationThresholds','strategy','loop','equities','evolve','explore','gauges','lastError']);
  const readiness=await (await fetch(base+'/api/robinhood/readiness')).json();assert.equal(readiness.credentialsReady,false);
 });
@@ -35,7 +35,7 @@ test('daily-bar book routes: read-only snapshot, reset needs the typed phrase, p
  const r=await fetch(base+'/api/robinhood/daily');assert.equal(r.status,200);const d=await r.json();
  assert.equal(d.execution,'paper-only');assert.equal(d.liveEligible,false);assert.equal(d.source.kind,'lab-default');assert.match(d.label,/NOT A QUALIFIED STRATEGY/);
  let p=await post('/api/robinhood/daily/reset',{confirmation:'reset'});assert.equal(p.status,400);assert.equal((await p.json()).code,'confirmation');
- p=await post('/api/robinhood/daily/reset',{confirmation:'RESET DAILY'});assert.equal(p.status,200);assert.equal((await p.json()).result.book.equityUsd,1000);
+ p=await post('/api/robinhood/daily/reset',{confirmation:'RESET DAILY'});assert.equal(p.status,200);assert.equal((await p.json()).result.book.equityUsd,25);
  const s=await (await fetch(base+'/api/robinhood')).json();assert.equal(s.daily.execution,'paper-only');
 });
 test('real routes stay hard-locked while credential configuration remains paper-safe',async()=>{

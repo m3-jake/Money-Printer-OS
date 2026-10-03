@@ -47,6 +47,11 @@ window.MPOSPlatform = (() => {
     if(kalshiWxBusy||Date.now()-kalshiWxAt<(kalshiWx?600000:60000))return;kalshiWxBusy=true;kalshiWxAt=Date.now();
     request('/weather').then(v=>{kalshiWx=v;kalshiWxError='';}).catch(e=>{kalshiWxError=e.message;}).finally(()=>{kalshiWxBusy=false;draw('kalshi');});
   }
+  // One row for the forward-test farm (src/botFarm.js): how many variants, how many bets settled, who leads.
+  function farmRow(farm,money){
+    if(!farm?.variants?.length)return '';const settled=farm.variants.reduce((a,v)=>a+v.settled,0),best=farm.variants.slice().sort((a,b)=>b.pnlUsd-a.pnlUsd)[0];
+    return gRow('Variant farm',`${farm.variants.length} paper variants · ${settled} settled · ${settled?'leader: '+best.label:'no results yet'}`,settled?money(best.pnlUsd):'—',settled?'ok':'warn');
+  }
   function kalshiGlance(){
     loadKalshiWx();
     const deg=v=>v==null?'—':Math.round(Number(v)*10)/10+'°';
@@ -67,7 +72,7 @@ window.MPOSPlatform = (() => {
       hero:eq!=null?money(eq):'—',
       heroSub:eq!=null?`<span class="${eq>=start?'g-pos':'g-neg'}">${eq>=start?'+':'−'}${Math.abs((eq-start)/start*100).toFixed(2)}%</span> · weather + BTC paper bots (simulated)`:'Weather + BTC paper bots',
       stats:[{label:'Open bets',value:open==null?'—':String(open)},{label:'Settled · won',value:bots?`${settled} · ${wins}`:'—'},{label:'Gaps ≥ 2°F',value:kalshiWx?String(gaps.filter(r=>Math.abs(r.m.gap)>=2).length):'—'}],
-      visual:`${bots?`<div class="g-rows">${botRow('Weather bot',w)}${botRow('BTC range bot',b)}</div>`:''}${list}`,foot:gFoot([top&&`biggest gap ${top.c.label} ${top.m.gap>0?'+':''}${top.m.gap}°F`,'bars = Kalshi prices per °F bucket','outlined = NWS forecast',next&&`next close ${new Date(next).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}`])});
+      visual:`${bots?`<div class="g-rows">${botRow('Weather bot',w)}${botRow('BTC range bot',b)}${farmRow(window.MPOBots?.data?.farm,money)}</div>`:''}${list}`,foot:gFoot([top&&`biggest gap ${top.c.label} ${top.m.gap>0?'+':''}${top.m.gap}°F`,'bars = Kalshi prices per °F bucket','outlined = NWS forecast',next&&`next close ${new Date(next).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}`])});
   }
   const button=(action,label,extra='')=>`<button class="btn" data-core-action="${action}" ${extra} ${busy&&action!=='halt'?'disabled':''}>${label}</button>`;
   async function request(route,data){

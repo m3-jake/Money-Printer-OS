@@ -42,14 +42,14 @@ test('paper-only build hard-locks real execution even if the environment request
 });
 test('current official v2 fields map correctly; snapshot masks account and excludes private credentials',async()=>{
  reset();const s=await RH.robinhoodSnapshot();assert.equal(s.account.feeRatio,0.0085);assert.equal(s.account.accountNumber,'****1234');assert.equal(s.quotes[0].bid,100);assert.equal(s.quotes[0].ask,100.1);
- const text=JSON.stringify(s);assert.ok(!text.includes(process.env.ROBINHOOD_API_KEY));assert.ok(!text.includes(process.env.ROBINHOOD_PRIVATE_KEY));assert.equal(s.paper.equityUsd,1000);
+ const text=JSON.stringify(s);assert.ok(!text.includes(process.env.ROBINHOOD_API_KEY));assert.ok(!text.includes(process.env.ROBINHOOD_PRIVATE_KEY));assert.equal(s.paper.equityUsd,25);
 });
 test('manual paper lifecycle includes both fees, refuses duplicates, and cannot forge qualification provenance',async()=>{
  reset();const {position}=await RH.placeRobinhoodPaperOrder({symbol:'BTC-USD',usd:10,placedBy:'paper-autopilot'});
  assert.equal(position.placedBy,'manual');assert.ok(position.feeUsd>0);assert.ok(position.stopPct>0);assert.ok(position.costUsd<=10);assert.ok(J.loadPaper().cashUsd<1000);
  await assert.rejects(RH.placeRobinhoodPaperOrder({symbol:'BTC-USD',usd:10}),e=>e.code==='duplicate');
  const result=await RH.closeRobinhoodPaperPosition({id:position.id,reason:'take',closedBy:'strategy'});assert.equal(result.position.closedBy,'manual');assert.ok(result.position.pnlUsd<0);assert.equal(J.loadPaper().positions.length,0);assert.equal(J.loadPaper().qualification.closes,0);
- assert.ok(Math.abs(J.loadPaper().cashUsd-(1000+result.position.pnlUsd))<1e-8);assert.ok(calls.every(r=>r.method==='GET'));assert.equal(fs.existsSync(J.JOURNAL_FILE),false);
+ assert.ok(Math.abs(J.loadPaper().cashUsd-(25+result.position.pnlUsd))<1e-8);assert.ok(calls.every(r=>r.method==='GET'));assert.equal(fs.existsSync(J.JOURNAL_FILE),false);
 });
 test('simultaneous paper buys serialize; reset is refused while a buy is pending',async()=>{
  reset();const first=RH.placeRobinhoodPaperOrder({symbol:'BTC-USD',usd:10});assert.throws(()=>RH.resetRobinhoodPaper(),e=>e.code==='busy');await assert.rejects(RH.placeRobinhoodPaperOrder({symbol:'ETH-USD',usd:10}),e=>e.code==='busy');await first;assert.equal(J.loadPaper().positions.length,1);
@@ -92,7 +92,7 @@ test('malformed but valid JSON fails closed and reset preserves the real journal
 });
 test('disk write failure cannot acknowledge a paper fill or leave an optimistic cached balance',async()=>{
  reset();RH.resetRobinhoodPaper();const original=fs.renameSync;try{fs.renameSync=()=>{throw Error('test disk failure')};await assert.rejects(RH.placeRobinhoodPaperOrder({symbol:'BTC-USD',usd:10}))}finally{fs.renameSync=original}
- assert.equal(J.loadPaper().cashUsd,1000);assert.equal(J.loadPaper().positions.length,0);
+ assert.equal(J.loadPaper().cashUsd,25);assert.equal(J.loadPaper().positions.length,0);
 });
 test('future-dated closes do not qualify a strategy',()=>{reset();const p=J.defaultPaper();p.paramsHash='test-hash';p.history=Array.from({length:25},()=>({status:'CLOSED',placedBy:'paper-autopilot',closedBy:'strategy',paramsHash:'test-hash',pnlUsd:1,closedAt:time+10000,feeUsd:0.1,exit:{feeUsd:0.1},costPct:0.01,stopPct:0.01,takePct:0.04}));assert.equal(J.evaluateQualification(p,time).closes,0)});
 test('a 6 bps cross is outside the uncross tolerance: it stays crossed, fresh() rejects it and nothing is taped as robinhood',async()=>{

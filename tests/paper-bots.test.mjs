@@ -46,7 +46,7 @@ test('weather bot enters at the live book, settles from the market result and sc
   let s = await bots.run('weather');
   assert.equal(s.lastError, null); assert.equal(s.open.length, 1);
   const pos = s.open[0]; assert.equal(pos.ticker, 'KXHIGHNY-X-B70.5'); assert.equal(pos.side, 'YES'); assert.equal(pos.avgPrice, 0.3);
-  assert.ok(s.cashUsd < 500 && s.cashUsd > 489);
+  assert.equal(s.startUsd, 12.5, 'half of the $25 Kalshi paper wallet'); assert.ok(s.cashUsd < 12.5 && s.cashUsd > 11.4, 'one $1 bet plus its fee');
   s = await bots.run('weather'); assert.equal(s.open.length, 1, 'one bet per event');
   result.value = 'YES'; now += 11 * 3600e3; s = await bots.run('weather');
   assert.equal(s.open.length, 0); assert.equal(s.stats.settled, 1); assert.equal(s.history[0].won, true);
@@ -118,6 +118,64 @@ test('the weather-nws control arm never uses the calibration, so the A/B compare
   const bots = new KalshiPaperBots({ dataDir: dir, calibration, kalshi: () => fakeKalshi({ value: null }), weather: async () => desk, now: () => now });
   bots.configure('weather-nws', { maxDisagreement: 0.6, minEdge: 0.03 });
   const s = await bots.run('weather-nws');
-  assert.equal(asked, 0); assert.equal(s.label.includes('control'), true);
+  // The shared frame carries the calibrated model (the calibrated bot and the farm use it); the control ignores it.
+  assert.equal(asked, 1); assert.match(s.lastNote, /\(0 on the calibrated model\)/); assert.equal(s.label.includes('control'), true);
   for (const p of s.open) assert.equal(p.context.model, 'nws + default');
+});
+
+test('the bot tape appends one JSON line per row, gzips finished days and drops days past keepDays', async () => {
+  const { BotTape } = await import('../src/botTape.js');
+  const dir = tmp(); let now = Date.UTC(2026, 9, 1, 12);
+  const tape = new BotTape({ dataDir: dir, now: () => now, keepDays: 1 });
+  tape.append('kalshi-settle', { ticker: 'A' }); tape.append('kalshi-settle', { ticker: 'B' });
+  assert.deepEqual(tape.read('kalshi-settle', '2026-10-01').map(r => r.ticker), ['A', 'B']);
+  now += 86400e3; tape.append('kalshi-settle', { ticker: 'C' });
+  const files = () => fs.readdirSync(path.join(dir, 'bot-tape', 'kalshi-settle')).sort();
+  assert.deepEqual(files(), ['2026-10-01.jsonl.gz', '2026-10-02.jsonl'], 'the finished day is gzipped');
+  assert.deepEqual(tape.read('kalshi-settle', '2026-10-01').map(r => r.ticker), ['A', 'B'], 'and still readable');
+  now += 2 * 86400e3; const fresh = new BotTape({ dataDir: dir, now: () => now, keepDays: 1 }); fresh.append('kalshi-settle', { ticker: 'D' });
+  assert.deepEqual(files(), ['2026-10-04.jsonl'], 'days past keepDays are deleted');
+  assert.throws(() => tape.append('nope', {}), /Unknown tape stream/);
+  assert.equal(fresh.stats().streams['kalshi-settle'].days, 1);
+});
+
+test('the variant farm prices the live bots\' frame, fills at ask + slippage, settles once per ticker and tapes it', async () => {
+  const { BotTape } = await import('../src/botTape.js'); const { BotFarm, verdict, MIN_SETTLED } = await import('../src/botFarm.js');
+  const dir = tmp(), result = { value: null }; let now = Date.UTC(2026, 9, 3, 12); const closeAt = now + 10 * 3600e3, desk = weatherDesk(closeAt); desk.cities[0].id = 'NYC';
+  let deskCalls = 0, marketCalls = 0;
+  const calibration = { model: async () => ({ mu: 71, sigma: 1.6, forecast: 71, lead: 1, source: 'open-meteo + calibration' }) };
+  const k = { ...fakeKalshi(result), market: async () => { marketCalls++; return { data: { settlementOutcome: result.value, yesBid: 0.35, noBid: 0.64 } }; } };
+  const tape = new BotTape({ dataDir: dir, now: () => now });
+  const bots = new KalshiPaperBots({ dataDir: dir, calibration, tape, kalshi: () => k, weather: async () => { deskCalls++; return desk; }, now: () => now });
+  const farm = new BotFarm({ dataDir: dir, bots, now: () => now });
+  await bots.run('weather'); let f = await farm.run('weather');
+  assert.equal(deskCalls, 1, 'bot and farm share one frame'); assert.equal(f.last.weather.error, null);
+  const v = id => f.variants.find(x => x.id === id);
+  assert.equal(v('wx-cal-e04').open, 1); assert.equal(v('wx-cal-e07').open, 1); assert.equal(v('wx-cal-e10').open, 0, 'edge after slippage < 10¢');
+  assert.equal(v('wx-cal-tight').open, 0, 'model–market gap > 10¢ is refused'); assert.equal(v('btc-v150').open, 0, 'BTC variants wait for a BTC frame');
+  const book = JSON.parse(fs.readFileSync(path.join(dir, 'bot-farm.json'), 'utf8')).books['wx-cal-e04'];
+  assert.equal(book.open[0].price, 0.31, 'quoted ask 0.30 + 1¢ slippage');
+  assert.equal(tape.read('kalshi-weather', '2026-10-03').length, 1, 'the frame is taped once');
+  result.value = 'YES'; now += 11 * 3600e3; marketCalls = 0;
+  f = await farm.run('weather');
+  assert.equal(marketCalls, 1, 'one settlement lookup for the ticker every variant holds');
+  assert.equal(v('wx-cal-e04').settled, 1); assert.ok(v('wx-cal-e04').pnlUsd > 0); assert.match(v('wx-cal-e04').verdict.text, /too early \(1\/20/);
+  await bots.run('weather');
+  assert.deepEqual(tape.read('kalshi-settle', '2026-10-03').concat(tape.read('kalshi-settle', '2026-10-04')).map(r => r.ticker), ['KXHIGHNY-X-B70.5'], 'a settlement is taped once');
+  assert.equal(new BotFarm({ dataDir: dir, bots }).snapshot().variants.find(x => x.id === 'wx-cal-e04').settled, 1, 'the farm book persists');
+  assert.equal(verdict(Array(MIN_SETTLED).fill(1)).text, 'making money (t ∞)');
+  assert.match(verdict(Array.from({ length: 40 }, (_, i) => i % 2 ? 1 : -1.2)).text, /no clear edge yet/);
+});
+
+test('Kalshi books on the old $500 defaults move once to the $25 wallet ($12.50 per bot); the old file is kept', () => {
+  const dir = tmp(), file = path.join(dir, 'kalshi-paper-bots.json');
+  const old = id => ({ id, startUsd: 500, cashUsd: 480, open: [], history: [{ pnlUsd: 3 }], decisions: [], settings: { enabled: id !== 'btc', startUsd: 500, stakeUsd: 10 }, epoch: 1 });
+  fs.writeFileSync(file, JSON.stringify({ schema: 'mpo.kalshi-paper-bots.v1', bots: { weather: old('weather'), 'weather-nws': old('weather-nws'), btc: old('btc') } }));
+  const bots = new KalshiPaperBots({ dataDir: dir });
+  const w = bots.snapshot('weather'), b = bots.snapshot('btc');
+  assert.equal(w.startUsd, 12.5); assert.equal(w.cashUsd, 12.5); assert.equal(w.epoch, 2); assert.equal(w.stats.settled, 0); assert.equal(w.settings.stakeUsd, 1);
+  assert.equal(b.settings.enabled, false, 'a paused bot stays paused');
+  assert.equal(fs.readdirSync(dir).filter(n => n.startsWith('kalshi-paper-bots.pre-25usd-')).length, 1);
+  bots.reset('weather', { confirmation: 'RESET BOT', startUsd: 500 }); 
+  assert.equal(new KalshiPaperBots({ dataDir: dir }).snapshot('weather').startUsd, 500, 'a $500 book chosen after the move is left alone');
 });

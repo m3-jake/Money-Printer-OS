@@ -34,7 +34,7 @@ export const DAILY_BOOK_LABELS = Object.freeze({
 // its rule (lookback >= 100 days), and is the book that runs whenever no proposal is cleared for paper.
 export const LAB_DEFAULT_DAILY = Object.freeze({ family: 'trend', params: Object.freeze({ smaDays: 200, bandPct: 2 }) });
 export const DAILY_DEFAULTS = Object.freeze({
-  startUsd: 1000, feeFloor: 0.0095, slipBps: 5, symbols: Object.freeze(['BTC-USD', 'ETH-USD', 'SOL-USD']),
+  startUsd: 25, feeFloor: 0.0095, slipBps: 5, symbols: Object.freeze(['BTC-USD', 'ETH-USD', 'SOL-USD']),
   quoteWindowMin: 30, retryMs: 15 * 60_000, barsKeep: 500, historyDays: 299,
 });
 // Qualification suited to a book that trades one or two times a month. Paper evidence only: passing it never

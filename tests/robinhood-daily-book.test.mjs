@@ -93,7 +93,7 @@ test('controller: one decision per closed bar, next-open fill on a Robinhood quo
   assert.ok(r.events.some(e => e.startsWith('FILLED buy BTC-USD 2026-09-21 @ robinhood-quote:v2')), r.events.join());
   assert.equal(r.book.source.kind, 'lab-default'); assert.equal(r.book.lastDecidedDay, D0);
   assert.equal(r.book.feeRatio, 0.0095, 'fee never below 0.95% per side');
-  const alloc = 333.33, sl = r.book.sleeves['BTC-USD'];
+  const alloc = 8.33, sl = r.book.sleeves['BTC-USD'];
   assert.ok(Math.abs(sl.qty - alloc * (1 - 0.0095) / (107 * 1.0005)) < 1e-9, 'ask + 5 bps slippage, 0.95% fee');
   assert.equal(sl.entry.late, false); assert.equal(r.book.lastDecision.bySymbol['ETH-USD'].action, 'HOLD');
   const fills = r.book.fills.length, nCalls = calls.length;
@@ -174,7 +174,7 @@ test('book: corrupt file forces recovery and is never overwritten; reset needs t
   assert.deepEqual(r.events, ['RECOVERY']); assert.equal(fs.readFileSync(D.bookFile(dir), 'utf8'), '{nope');
   assert.throws(() => D.resetDailyBook({ dataDir: dir, confirmation: 'reset' }), /RESET DAILY/);
   const snap = D.resetDailyBook({ dataDir: dir, confirmation: 'RESET DAILY' });
-  assert.equal(snap.book.recoveryRequired, false); assert.equal(snap.book.equityUsd, 1000);
+  assert.equal(snap.book.recoveryRequired, false); assert.equal(snap.book.equityUsd, 25);
 });
 
 test('paper only: the daily book imports no transport, signer or order path', () => {

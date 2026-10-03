@@ -7,6 +7,8 @@ import os from 'node:os';
 import path from 'node:path';
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mpo-rh-trial-'));
 process.env.MONEY_PRINTER_DATA_DIR = path.join(root, 'data');
+// Trial gates (drawdown is a share of the bank) are written in dollars for a $1000 paper bank, not the $25 default.
+process.env.ROBINHOOD_PAPER_START_USD = '1000';
 Object.assign(process.env, { ROBINHOOD_AUTOSTART: 'false', POLYMARKET_AUTOSTART: 'false', ROBINHOOD_API: 'https://rh.test', ROBINHOOD_SYMBOLS: 'BTC-USD', ROBINHOOD_API_KEY: '', ROBINHOOD_PRIVATE_KEY: '' });
 const nativeFetch = globalThis.fetch;
 globalThis.fetch = async url => { throw new Error('unexpected network call ' + url); };

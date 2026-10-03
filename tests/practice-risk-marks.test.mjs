@@ -7,7 +7,7 @@ import { fetchPublicPaperQuote } from '../src/robinhoodPaperFeed.js';
 const now=Date.UTC(2026,8,28,8,40);
 const quote={symbol:'ETH-USD',bid:1980,ask:1981,bidSize:10,askSize:20,at:now-1000,venueAt:now-1000,receivedAt:now,timeQuality:'VENUE_TIME',depthQuality:'OBSERVED_L1',auctionMode:false,source:'coinbase-public-paper'};
 function fixture(){
-  const p=new MarketPlatform(),book=newPracticeBook({now:now-10000});
+  const p=new MarketPlatform(),book=newPracticeBook({now:now-10000,settings:{budgetUsd:500,orderUsd:25,dailyLossCapUsd:25}}); // a $500 book: the marks, not the $25 default, are under test
   book.positions=[{id:'eth-position',symbol:'ETH-USD',status:'OPEN',qty:.05,costUsd:100,entryPrice:2000,openedAt:now-5000,placedBy:'practice-autopilot'}];
   book.cashUsd=400;book.telemetry.lastQuotes={'ETH-USD':{...quote}};
   p.setLegacyReaders({robinhoodPracticeBook:()=>book});p.syncLegacyLedger();

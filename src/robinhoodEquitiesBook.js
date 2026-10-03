@@ -13,7 +13,7 @@ export const FEES={
  tafPerShare:0.000195, tafWaivedAtOrBelowShares:50, tafCapUsd:9.79, // FINRA TAF on sells
  source:'https://robinhood.com/us/en/support/articles/trading-fees-on-robinhood',effective:'SEC 2026-04-04; TAF 2026-01-01',checkedAt:'2026-09-26',
 };
-export const DEFAULTS={startUsd:1000,slippageBps:2,minOrderUsd:1,minTradeUsd:5,driftPct:2};
+export const DEFAULTS={startUsd:25,slippageBps:2,minOrderUsd:1,minTradeUsd:1,driftPct:2};
 const QTY_STEP=1e-6;
 const r2=v=>Math.round(v*100)/100;
 const floorQty=q=>Math.floor(q/QTY_STEP+1e-9)*QTY_STEP;

@@ -90,7 +90,7 @@ test('exploration book trades on its own bank and never touches the strict book 
  let e=J.loadExplore();assert.equal(e.positions.length,1,JSON.stringify(e.autopilot.skipped));
  const pos=e.positions[0];assert.equal(pos.placedBy,'explore-autopilot');assert.ok(e.cashUsd<1000);
  assert.equal(e.params.costMultiple,0.5);assert.equal(e.params.lookbackSamples,40);assert.equal(e.params.maxHoldMin,120);
- let strict=J.loadPaper();assert.equal(strict.positions.length,0);assert.equal(strict.cashUsd,1000);assert.equal(strict.autopilot.enabled,false);
+ let strict=J.loadPaper();assert.equal(strict.positions.length,0);assert.equal(strict.cashUsd,25);assert.equal(strict.autopilot.enabled,false);
  assert.notEqual(e.paramsHash,strict.paramsHash);assert.ok(fs.existsSync(RH.__testing.exploreFile));
  time+=TICK;bid=pos.fillPrice*(1-pos.stopPct)*0.99;ask=bid*1.0002;await RH.__testing.tick();
  e=J.loadExplore();assert.equal(e.positions.length,0);assert.equal(e.history.length,1);assert.equal(e.history[0].exit.reason,'stop');assert.ok(e.history[0].pnlUsd<0);

@@ -1,5 +1,5 @@
 // Paper bots (2026-10-02): Kalshi weather + BTC range bots (Kalshi → Paper bots tab) and the Polymarket copy bot
-// (Polymarket → Copy trading tab). Reads GET /api/bots; actions POST /api/bots/{config,run,reset,unfollow}.
+// (Polymarket → Copy trading tab), plus the forward-test farm of bot variants. Reads GET /api/bots; actions POST /api/bots/{config,run,reset,unfollow}.
 // Everything here is PAPER: the engine has no order code for these bots.
 (() => {
   const escape = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -34,7 +34,7 @@
   function controls(id, b) {
     const s = b.settings, f = SETTINGS[id];
     return `<details><summary>Settings and reset</summary><form class="core-toolbar" data-bot-form="config" data-bot="${id}">${f.map(([k, l]) => `<label>${l}<input name="${k}" type="number" step="any" value="${escape(s[k])}" style="width:80px"></label>`).join('')}<button class="btn" type="submit">Save</button></form>
-      <form class="core-toolbar" data-bot-form="reset" data-bot="${id}"><label>Start USD<input name="startUsd" type="number" min="10" value="${escape(b.startUsd)}" style="width:90px"></label><label>Type RESET BOT<input name="confirmation" autocomplete="off" style="width:110px"></label><button class="btn" type="submit">Reset this paper book</button></form></details>`;
+      <form class="core-toolbar" data-bot-form="reset" data-bot="${id}"><label>Start USD<input name="startUsd" type="number" min="1" step="any" value="${escape(b.startUsd)}" style="width:90px"></label><label>Type RESET BOT<input name="confirmation" autocomplete="off" style="width:110px"></label><button class="btn" type="submit">Reset this paper book</button></form></details>`;
   }
   const toolbar = (id, b) => `<div class="core-toolbar"><button class="btn" data-bot-act="toggle" data-bot="${id}" ${busy ? 'disabled' : ''}>${b.settings.enabled ? 'Pause bot' : 'Start bot'}</button><button class="btn" data-bot-act="run" data-bot="${id}" ${busy ? 'disabled' : ''}>Run now</button></div>`;
   const table = (head, rows, empty) => `<div class="core-table-wrap"><table class="table"><thead><tr>${head.map(h => `<th>${escape(h)}</th>`).join('')}</tr></thead><tbody>${rows || `<tr><td colspan="${head.length}">${escape(empty)}</td></tr>`}</tbody></table></div>`;
@@ -56,10 +56,24 @@
     const row = (name, x) => `<tr><td>${name}</td><td>${usd(x.equityUsd)} (${pct(x.returnPct)})</td><td>${x.stats.settled}</td><td>${x.stats.hitRate == null ? '—' : Math.round(x.stats.hitRate * 100) + '%'}</td><td>${x.stats.brierModel ?? '—'}</td></tr>`;
     return `<h3>A/B: calibrated vs NWS-only control</h3>${table(['Bot', 'Paper equity', 'Settled', 'Hit rate', 'Brier (lower = better)'], row('Calibrated', a) + row('Control', b), '')}<p class="core-muted">Same markets, stake and edge rules; only the forecast model differs. A real difference needs dozens of settled bets.</p>`;
   }
+  // Forward-test farm (src/botFarm.js): paper variants of the weather and BTC bots on the same markets, plus the tape.
+  function farmView(f, tape) {
+    if (!f) return '';
+    const money = v => `<span class="${v > 0 ? 'pm-up' : v < 0 ? 'pm-down' : ''}">${usd(v)}</span>`;
+    const rows = f.variants.slice().sort((a, b) => b.pnlUsd - a.pnlUsd || b.equityUsd - a.equityUsd).map(v => `<tr><td>${escape(v.label)}</td><td>${v.open}</td><td>${v.settled}</td><td>${v.hitRate == null ? '—' : Math.round(v.hitRate * 100) + '%'}</td><td>${money(v.today)}</td><td>${money(v.week)}</td><td>${money(v.pnlUsd)}</td><td>${v.brierModel == null ? '—' : v.brierModel + ' / ' + v.brierMarket}</td><td>${escape(v.verdict.text)}</td></tr>`).join('');
+    const last = k => f.last?.[k] ? `${k} ${ago(f.last[k].at)}${f.last[k].error ? ' (error: ' + escape(f.last[k].error) + ')' : ''}` : `${k} not run yet`;
+    const days = tape ? Math.max(0, ...Object.values(tape.streams).map(s => s.days)) : 0;
+    const tapeLine = tape ? `Tape (what the bots saw, for replay): ${days} day${days === 1 ? '' : 's'} · ${(tape.bytes / 1e6).toFixed(1)} MB · kept ${tape.keepDays} days${tape.errors ? ` · ${tape.errors} write errors (${escape(tape.lastError)})` : ''}` : '';
+    return `<h3>Forward-test farm (${f.variants.length} paper variants)</h3>
+      <p class="core-muted">Each variant has its own $${f.startUsd} paper book and prices the same market snapshot as the live bots, so it costs no extra API calls. Variants fill at the quoted ask + ${Math.round(f.slippage * 100)}¢ instead of walking the book; "live settings" uses the weather bot's own settings, so the gap between the two shows what that shortcut costs. A verdict needs ${f.minSettled} settled bets. Last runs: ${last('weather')} · ${last('btc')}.</p>
+      ${f.error ? `<p class="core-error">${escape(f.error)}</p>` : ''}${table(['Variant', 'Open', 'Settled', 'Hit', 'Today', '7 days', 'All time', 'Brier model / market', 'Verdict'], rows, 'No variants.')}
+      <p class="core-muted">${tapeLine}</p>
+      <details><summary>Reset the farm</summary><form class="core-toolbar" data-bot-form="reset" data-bot="farm"><label>Type RESET BOT<input name="confirmation" autocomplete="off" style="width:110px"></label><button class="btn" type="submit">Reset every variant</button></form></details>`;
+  }
   function kalshiView() {
     if (!data) return `<p>${escape(error || 'Loading paper bots…')}</p>`;
     const k = data.kalshi;
-    return `<p class="core-notice">Paper only. The weather bot turns the National Weather Service forecast into odds for each temperature bucket; the BTC bot prices Kalshi's Bitcoin range and above/below markets from Coinbase spot and recent volatility. Both buy only when their odds beat the ask after Kalshi's fee, fill against the live order book, and settle on Kalshi's own result. The Brier scores say whether the model is actually better than the market (lower is better).</p>${msg ? `<p role="status">${escape(msg)}</p>` : ''}${kalshiBot('weather', k.weather)}${calibrationView(data.calibration)}${k['weather-nws'] ? abView(k.weather, k['weather-nws']) + kalshiBot('weather-nws', k['weather-nws']) : ''}${kalshiBot('btc', k.btc)}`;
+    return `<p class="core-notice">Paper only. The weather bot turns the National Weather Service forecast into odds for each temperature bucket; the BTC bot prices Kalshi's Bitcoin range and above/below markets from Coinbase spot and recent volatility. Both buy only when their odds beat the ask after Kalshi's fee, fill against the live order book, and settle on Kalshi's own result. The Brier scores say whether the model is actually better than the market (lower is better).</p>${msg ? `<p role="status">${escape(msg)}</p>` : ''}${kalshiBot('weather', k.weather)}${calibrationView(data.calibration)}${k['weather-nws'] ? abView(k.weather, k['weather-nws']) + kalshiBot('weather-nws', k['weather-nws']) : ''}${kalshiBot('btc', k.btc)}${farmView(data.farm, data.tape)}`;
   }
   function copyView() {
     if (!data) return `<p>${escape(error || 'Loading copy bot…')}</p>`;

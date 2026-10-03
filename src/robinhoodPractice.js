@@ -17,8 +17,8 @@ export const PRACTICE_SCHEMA = 'mpo.robinhood-paper-practice.v1';
 export const PRACTICE_MODES = Object.freeze(['STRICT', 'PRACTICE', 'BUY_AND_HOLD', 'OBSERVE_ONLY']);
 export const PRACTICE_STRATEGIES = Object.freeze(['MOMENTUM', 'MEAN_REVERSION', 'BUY_AND_HOLD']);
 export const PRACTICE_DEFAULTS = Object.freeze({
-  mode: 'PRACTICE', strategyMode: 'MOMENTUM', budgetUsd: 500, orderUsd: 25,
-  symbols: ['BTC-USD', 'ETH-USD'], maxOpenPositions: 3, dailyLossCapUsd: 25,
+  mode: 'PRACTICE', strategyMode: 'MOMENTUM', budgetUsd: 25, orderUsd: 5,
+  symbols: ['BTC-USD', 'ETH-USD'], maxOpenPositions: 3, dailyLossCapUsd: 5,
   holdMinutes: 240, stopPct: 0.02, takePct: 0.04, slippageBps: 8, feeBps: 95,
   quoteMaxAgeMs: 30_000, entryMovePct: 0.0005, autopilot: false,
 });

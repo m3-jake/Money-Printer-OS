@@ -515,7 +515,7 @@ export function setRobinhoodPaperAutopilot(patch={}){
  if(p.paramsHash!==priorHash){const j=J.loadJournal();if(!j.recoveryRequired&&j.autopilot.enabled)disableAutopilot('paramsChanged',`paper params ${priorHash} -> ${p.paramsHash}`)}
  return {...clone(p.autopilot),paramsHash:p.paramsHash};
 }
-export function resetRobinhoodPaper({amountUsd=1000}={}){
+export function resetRobinhoodPaper({amountUsd=25}={}){
  if(paperBusy)fail('busy','A paper operation is in progress');const amount=Number(amountUsd);
  if(!Number.isFinite(amount)||amount<1||amount>100000)fail('validation','Paper bank must be between 1 and 100000 USD');
  const old=paper();if(old.recoveryRequired&&fs.existsSync(J.PAPER_FILE))fs.copyFileSync(J.PAPER_FILE,J.PAPER_FILE+'.corrupt-'+Date.now()+'.bak');

@@ -32,13 +32,13 @@ test('manual order and close pay spread, slippage and fees, and write only the p
   try {
     const now = Date.UTC(2026, 8, 26, 12);
     const pos = await RP.placePracticeOrder({ dataDir: dir, symbol: 'btc-usd', now, fetchMarket });
-    assert.equal(pos.symbol, 'BTC-USD'); assert.equal(pos.placedBy, 'manual'); assert.ok(pos.costUsd > 25 && pos.costUsd < 25.3, 'orderUsd is notional; the 95 bps fee is on top');
+    assert.equal(pos.symbol, 'BTC-USD'); assert.equal(pos.placedBy, 'manual'); assert.ok(Math.abs(pos.costUsd - 5) < 0.15 && pos.feeUsd > 0, 'about the $5 orderUsd (BTC qty rounds down to 1e-6), with the 95 bps fee on top');
     await assert.rejects(RP.placePracticeOrder({ dataDir: dir, symbol: 'BTC-USD', now: now + 1000, fetchMarket }), /already open/);
     const closed = await RP.closePracticeOrder({ dataDir: dir, id: pos.id, now: now + 2000, fetchMarket });
     assert.equal(closed.status, 'CLOSED'); assert.ok(closed.pnlUsd < 0, 'a flat round trip loses the costs');
     const snap = RP.practiceSnapshot({ dataDir: dir, now: now + 3000 });
     assert.equal(snap.positions.length, 0); assert.equal(snap.history.length, 1); assert.equal(snap.realizedPnlUsd, closed.pnlUsd);
-    assert.equal(snap.cashUsd, Math.round((500 + closed.pnlUsd) * 100) / 100);
+    assert.equal(snap.cashUsd, Math.round((25 + closed.pnlUsd) * 100) / 100);
     assert.deepEqual(fs.readdirSync(dir).filter(f => !f.endsWith('.tmp')), ['robinhood-paper-practice.json']);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

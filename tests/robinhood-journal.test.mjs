@@ -55,8 +55,8 @@ test('ENOENT -> defaults with autopilot off; default shapes pin the spec keys',(
  assert.deepEqual(j.stats,{placed:0,closed:0,won:0,lost:0,pnlUsd:0,feesUsd:0,hitRate:null,profitFactor:null,unverified:0});
  const p=J.loadPaper();
  assert.equal(p.recoveryRequired,undefined);
- assert.equal(p.cashUsd,1000);assert.equal(p.startUsd,1000);assert.equal(p.feeRatio,0.0095);
- assert.deepEqual(p.autopilot,{enabled:false,orderUsd:25,maxOpen:3,symbols:['BTC-USD','ETH-USD'],lastRunAt:0,lastAction:null,skipped:[]});
+ assert.equal(p.cashUsd,25);assert.equal(p.startUsd,25);assert.equal(p.feeRatio,0.0095);
+ assert.deepEqual(p.autopilot,{enabled:false,orderUsd:5,maxOpen:3,symbols:['BTC-USD','ETH-USD'],lastRunAt:0,lastAction:null,skipped:[]});
  assert.deepEqual(Object.keys(p.qualification),['qualified','paramsHash','closes','hitRate','profitFactor','pnlUsd','grossPnlUsd','feesUsd','feeDragPct','maxDrawdownUsd','requiredHitRate','lastCloseAt','windowDays','reasons','at']);
  assert.deepEqual(p.qualification.reasons,['closes 0 < 20']);
  assert.equal(fs.existsSync(J.JOURNAL_FILE),false,'load never writes');
@@ -95,7 +95,7 @@ test('corrupt journal -> recoveryRequired, autopilot forced off, paper untouched
  assert.match(j.recoveryError,/^STATE RECOVERY REQUIRED: /);
  assert.equal(j.autopilot.enabled,false);
  assert.equal(J.loadPaper().recoveryRequired,undefined);
- assert.equal(J.loadPaper().cashUsd,1000);
+ assert.equal(J.loadPaper().cashUsd,25);
 });
 
 test('corrupt journal keeps autopilot off even when the file said enabled (normalizer path)',()=>{

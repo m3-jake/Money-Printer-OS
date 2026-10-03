@@ -156,11 +156,12 @@ export function setCooldown(j,symbol,untilMs){if(!isObj(j.cooldowns))j.cooldowns
 export function inCooldown(j,symbol,now=Date.now()){return num(j.cooldowns?.[String(symbol).toUpperCase()])>now}
 
 // ---------------------------------------------------------------- paper store
-export function defaultPaperAutopilot(){return {enabled:false,orderUsd:25,maxOpen:3,symbols:DEFAULT_SYMBOLS.slice(),lastRunAt:0,lastAction:null,skipped:[]}}
+export function defaultPaperAutopilot(){return {enabled:false,orderUsd:5,maxOpen:3,symbols:DEFAULT_SYMBOLS.slice(),lastRunAt:0,lastAction:null,skipped:[]}}
 function defaultPaperStats(){return {closes:0,won:0,lost:0,pnlUsd:0,grossWinUsd:0,grossLossUsd:0,feesUsd:0,hitRate:null,profitFactor:null,maxDrawdownUsd:0}}
 function defaultQualification(paramsHash=null,windowDays=qualificationThresholds().windowDays){return {qualified:false,paramsHash,closes:0,hitRate:null,profitFactor:null,pnlUsd:0,grossPnlUsd:0,feesUsd:0,feeDragPct:null,maxDrawdownUsd:0,requiredHitRate:null,lastCloseAt:null,windowDays,reasons:[`closes 0 < ${qualificationThresholds().minCloses}`],at:0}}
 export function defaultPaper(){
- const start=envNum('ROBINHOOD_PAPER_START_USD',1000);
+ // Paper wallets start at $25 (bing, 2026-10-03), with $5 orders.
+ const start=envNum('ROBINHOOD_PAPER_START_USD',25);
  return {version:1,mode:'PAPER',pnlMode:'PAPER',createdAt:Date.now(),cashUsd:start,startUsd:start,feeRatio:envNum('ROBINHOOD_FEE_RATIO_FALLBACK',0.0095),
   positions:[],history:[],autopilot:defaultPaperAutopilot(),params:{},paramsHash:null,cooldowns:{},tape:{},tapeAt:0,
   stats:defaultPaperStats(),qualification:defaultQualification()};

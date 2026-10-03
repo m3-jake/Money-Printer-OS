@@ -40,8 +40,8 @@ export function walkSell(bids, qty) {
 const sortBook = b => ({ asks: (b?.asks || []).slice().sort((x, y) => x.price - y.price), bids: (b?.bids || []).slice().sort((x, y) => y.price - x.price) });
 
 export class PolymarketCopyPaper {
-  constructor({ dataDir, fetchImpl = globalThis.fetch, now = () => Date.now() } = {}) {
-    this.file = path.join(dataDir, 'polymarket-copy-paper.json'); this.fetch = fetchImpl; this.now = now; this.busy = false; this.recoveryError = null; this.state = this.load();
+  constructor({ dataDir, tape = null, fetchImpl = globalThis.fetch, now = () => Date.now() } = {}) {
+    this.file = path.join(dataDir, 'polymarket-copy-paper.json'); this.tape = tape; this.fetch = fetchImpl; this.now = now; this.busy = false; this.recoveryError = null; this.state = this.load();
   }
   fresh(start = COPY_DEFAULTS.startUsd, settings = COPY_DEFAULTS, epoch = 1) { return { schema: SCHEMA, epoch, startUsd: start, cashUsd: start, settings: { ...settings, startUsd: start }, follows: [], open: [], history: [], decisions: [], seen: [], lastRunAt: null, lastError: null, lastNote: null }; }
   load() {
@@ -81,16 +81,20 @@ export class PolymarketCopyPaper {
           const rows = await this.get(`${DATA}/v1/leaderboard?timePeriod=WEEK&orderBy=PNL&limit=50`);
           s.follows.push(...pickLeaders(rows, { ...st, follows: st.follows - s.follows.length }, new Set(s.follows.map(f => f.wallet)), this.now()));
         }
-        let copied = 0;
+        // Every leader trade seen for the first time goes to the tape (botTape.js, stream polycopy-trades), copied or not:
+        // [wallet, tradeTime, asset, side, price, size, outcome, title], so leader selection can be studied later.
+        let copied = 0; const taped = [];
         for (const f of s.follows) {
           let trades = []; try { trades = await this.get(`${DATA}/trades?user=${f.wallet}&limit=25`); } catch (e) { this.decide({ leader: f.name, action: 'SKIP', reason: 'trades unavailable: ' + e.message }); continue; }
           for (const t of trades.slice().reverse()) {
             const key = `${t.transactionHash}:${t.asset}:${t.side}`; if (s.seen.includes(key)) continue;
             s.seen.push(key); if (s.seen.length > 3000) s.seen.splice(0, s.seen.length - 3000);
+            taped.push([f.wallet, Number(t.timestamp) * 1000, t.asset, t.side, Number(t.price), Number(t.size), t.outcome ?? null, String(t.title || t.slug || '').slice(0, 80)]);
             if (Number(t.timestamp) * 1000 <= f.followedAt) continue; // only trades made after we started following
             if (await this.copy(f, t)) copied++;
           }
         }
+        if (taped.length) this.tape?.append('polycopy-trades', { trades: taped });
         s.lastNote = `${s.follows.length} leaders followed · ${copied} copies this run`;
       }
       s.lastError = null;
