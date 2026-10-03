@@ -61,6 +61,93 @@ built, signed or installed in this pass. Version `0.5.0-alpha.71`.
   existing data collection and coverage for weather/BTC/copy bot inputs and settlements; then
   compare a small set of paper strategies using forward results and a clear daily progress view.
 
+## Batch PF-4 (2026-10-03, Claude): $25 wallets, bot tape + variant farm, Lab Research Workbench, glass UI, accounts, alpha.81
+
+bing asked:
+- "continue all the work that was unfinished";
+- "call sheet and Robinhood should both start at 25 dollars";
+- "have the login screen use the same kind of account system that my website is";
+- "Make the UI like iOS Glass";
+- "make sure the windows don't start behind the hill";
+- "make sure you're getting the Evolution Lab rebuild in".
+
+### Paper wallets
+- **$25 paper wallets.**
+  - **Kalshi:** one $25 wallet, split $12.50 for the weather bot and $12.50 for the BTC bot, with $1 bets. The
+    NWS-only control arm and the farm variants mirror that. Books on the old $500 defaults move once to a new epoch,
+    and the old file is kept as `kalshi-paper-bots.pre-25usd-*.json`.
+  - **Robinhood:** the strategy, exploration, practice, stocks/ETFs and daily books start at $25, with $5 orders.
+  - Robinhood tests that exercise logic with a bigger bank now say so explicitly.
+
+### Research Workbench (trader side)
+- **Bot tape** (`src/botTape.js`): a point-in-time record of what the bots saw.
+  - Streams: Kalshi weather buckets with bid/ask, the NWS and calibrated forecasts, BTC spot/vol and the tradable
+    contracts, settlements, and Polymarket leader trades.
+  - Daily JSONL files, gzipped once the day is over, kept 180 days.
+  - The Kalshi bots now price from one shared frame per snapshot (`pickWeather` and `pickBtc` are pure), so the tape
+    costs no extra API calls.
+- **Variant farm** (`src/botFarm.js`):
+  - 11 paper variants: 7 weather and 4 BTC.
+  - Fills at the ask + 1¢, and settles once per ticker.
+  - Verdicts come from a t-statistic after 20 settled bets.
+  - Shown in Kalshi → Paper bots and as a row in the Kalshi Simple view.
+  - It also runs up to 4 variants proposed by the Lab (`lab-link/farm-proposals.json`), validated and bounded. A
+    proposal the Lab withdraws keeps its book.
+
+### Evolution Lab rebuild (Lab repo, branch `workbench`, 0.1.0-alpha.18)
+- The furnace is retired: `labLoop` publishes `RETIRED` and keeps the champion connected. `MPO_LAB_FURNACE=1` brings
+  the search back.
+- The new `workbench` process runs these jobs:
+
+  | Job | Every | What it does |
+  | --- | --- | --- |
+  | tape-audit | 10 min | coverage of the trader's bot tape |
+  | farm-review | 30 min | bootstrap CIs, Bonferroni-corrected; needs ≥ 30 bets; at most 2 promotions a month |
+  | btc-vol | 6 h | vol multiple vs Kalshi settlements, held-out |
+  | weather-models | daily | GFS/ECMWF/ICON/GEM and their mean, per city and lead, held-out |
+  | leaderboards | daily | Polymarket snapshots for later copy-leader replay |
+
+- Results go to `lab-link/workbench.json`; the trader shows them in the Evolution Lab tab and in Kalshi → Paper bots.
+- The Lab window opens on a new Workbench view.
+- Lab `npm run test:all`: 308/308.
+
+### Interface
+- **Glass UI** (`public/css/mpo-glass.css`, loaded last).
+  - Clear glass windows, dock, menu bar and dialogs: one backdrop blur per surface, with a bright rim and a sheen.
+  - Readouts are dark tinted glass; lists are frosted glass.
+  - Advanced surfaces drop their own nested blur.
+  - Low motion means less blur.
+- **Windows above the hill.** `#windows` is now its own layer (z-index 10). While it faded in at log-on, it used to
+  stack below the hill, grass, logo and icons.
+- **Accounts on the web demo** (`public/js/mpo-account.js`).
+  - The log-on uses the bangbowbing channel hub (the bangbowbing-live repo), the same accounts as the website:
+    - sign in or create an account;
+    - the session resumes;
+    - the desktop is saved to the account;
+    - sign out from the menu bar.
+  - It follows the website's own switch (`BBB_CONFIG.hub` in `bangbowbing.net/config/site-config.js`, currently off,
+    so the log-on says accounts are coming soon).
+  - `scripts/web-demo/mock-hub.mjs` mirrors the hub API for tests and development.
+  - The desktop app's log-on is unchanged.
+
+### Other
+- **Command Center Simple view:** the rows scroll instead of being squeezed to 4px. The weather note counts now agree.
+- **Merged origin/main** (Codex 247f0bd..90f1d2c):
+  - the Mac-style web demo;
+  - the Cloudflare Pages action, which deploys on pushes to `main` that touch `public/`, `web-demo/` or `scripts/web-demo/`;
+  - an empty desktop at launch.
+- **Web demo coverage.**
+  - `web-demo/catalog.json` keeps every endpoint any recording has seen.
+  - It started from a full browse of every window and tab, in Advanced and Simple.
+  - The recording grew from 11 to 44 responses.
+- **Main checkout:** `W:\money-printer-os` is on `main`. Codex's uncommitted copies of its UI edits are in `git stash`.
+
+### Next
+- Simple cards for every program; the framework and 8 Command Center cards are on `claude/accounts-views`.
+- Copy-leader walk-forward replay, once 14 days of leaderboard snapshots exist.
+- The trader using the Lab's weather-model fits.
+- Deploying the bangbowbing hub (VPS) to switch accounts on.
+
 ## Batch PF-3 (2026-10-02, Claude): weather calibrator (Lab rebuild phase 1), web demo merged, alpha.80
 
 bing: "make all those changes, push them all to live, catch up the browser version ... fire on all cylinders".
@@ -169,7 +256,7 @@ animated graphs, and a rolling cash-register / slot-machine effect when major nu
 - **Evolution Lab** lives in a separate repo, `money-printer-evolution-lab`, and is the shared research brain for every module: Solana (labLoop/BEAST), plus parallel `module-robinhood` and `module-polymarket` workers (`src/moduleResearch.js`). Valid module ids come from its `src/researchModules.js`. It writes `<trader data>/lab-link/modules/<id>.json` and paper-only `<id>-champion.json`. It is NOT the dropped "agent lab" harness.
 - **Web demo (2026-10-02):** `web-demo/` + `scripts/web-demo/` build a static, browser-only copy of the HUD for a website. `demo-shim.js` answers `/api/*` from a recorded PAPER session (sandboxed engine, scrubbed env, no keys or user data), and refuses every write. Each page load is a new session: a 1 SOL book run by the Lab champion copied in from `lab-link/` at recording time, played for ~30 min from its opening frame. Published to Cloudflare Pages (`money-printer`, moneyprinter.bangbowbing.net). See `web-demo/README.md`; covered by `test:web-demo`.
 - **HUD boot and logo (2026-10-02):** the boot overlay is a Win98-style log-on over open sky. OK, Enter or 6 idle seconds pull the camera back to the hill and fire `mpo:logon`, which shows the welcome and the grabbable money shower (`welcomeShower()`). The corner logo (`initLogoStretch()`) stretches on drag, slingshots on release, glides to a stop and fades back home after 3.5 s idle; its shine lives in the same `.logo-skin`.
-- **Tests:** 140 suites in `tests/` across 35 targets, run by `npm run test:all` (`test:wiring` fails first if a suite becomes unreachable). **Green as of 2026-10-02 (alpha.80):** the 20 Robinhood real-money order-path tests are skipped with a stated reason (this paper-only build refuses that dispatch by design; re-enable them for the live phase), and the two safety tests (live-gate boundary, outbound audit) now pin the stricter lock. Everything is mocked and uses temp dirs.
+- **Tests:** 140 suites in `tests/` across 35 targets, run by `npm run test:all` (`test:wiring` fails first if a suite becomes unreachable). **Green as of 2026-10-03 (alpha.81):** the 20 Robinhood real-money order-path tests are skipped with a stated reason (this paper-only build refuses that dispatch by design; re-enable them for the live phase), and the two safety tests (live-gate boundary, outbound audit) now pin the stricter lock. Everything is mocked and uses temp dirs.
 
 ## Confirmed working (2026-09-25)
 
