@@ -1,8 +1,10 @@
 # Money Printer OS: status ledger
 
-## Current entry point — 2026-10-03 alpha.86 / Lab alpha.22 (installed); improvement run in progress
+## Current entry point — 2026-10-03 alpha.87 / Lab alpha.23 (installed); improvement run in progress
 
-The installed pair is Money Printer OS `0.5.0-alpha.86` @ `33326e9` and Evolution Lab `0.1.0-alpha.22` @ `0903233`.
+The installed pair is Money Printer OS `0.5.0-alpha.87` @ `1524483` and Evolution Lab `0.1.0-alpha.23` @ `b81b655`
+(release R-87 below). Open from the run: A8 (Codex, uncommitted in both repos at release time), C5, all of phase B,
+D1, D2.
 The improvement run briefed in `docs/prompts/NEXT-RUN-2026-10-03.md` is under way; its batches are PF-9 onward
 below, newest first. Source past the installed commit is not installed until the next paired release.
 The paragraphs below describe the alpha.84 audit pair and stay true unless a later batch says otherwise.
@@ -61,6 +63,27 @@ Architecture, active work and release evidence live in `.agent-state/PROJECT_STA
 `.agent-state/CURRENT_TASKS.md` and `.agent-state/RELEASE_STATUS.md`. The earlier remediation
 ledger remains `AUDIT.md` and `PROGRESS.md`. Later sections below are historical unless dated
 as the current release. Last updated: 2026-10-03.
+
+## Release R-87 (2026-10-03, Claude): alpha.87 / Lab alpha.23 installed
+
+- **Pair:** MPOS `0.5.0-alpha.87` @ `1524483` + Lab `0.1.0-alpha.23` @ `b81b655`, installed 11:08 with
+  `scripts/update-local-install.ps1` (backups `app.asar.backup-20261003-110803`, restore both as a pair). Both
+  health endpoints verified; shared core in parity.
+- **Contents:** run items A1–A7 (PF-9 to PF-15), C1–C4 (PF-16 to PF-18), D3 (PF-19). bing chose to release before
+  A8: Codex's uncommitted A8 files (forward scorecard) were stashed for the install and restored afterwards in
+  both repos, unchanged.
+- **Tests:** trader `test:all` 1,290 tests, 1,270 pass, 0 fail (20 skipped); Lab `test:all` 396/396.
+- **Measured after install vs before (same method, live app):**
+  - `riskMs` 2,122 → 4; `cycleMs` 3,240 → 1,987 (FAIR profile).
+  - `/api/health` over 30 probes: p50 325 → 65 ms, p95 1,354 → 355 ms, max 1,797 → 709 ms.
+  - CPU over 60 s, % of one core: collector 31.9 → 20.8; engine/HUD/bots process 40.1 → 24.0.
+  - Venue loops: kalshi-weather, weather-nws, btc, farm weather, farm btc, mirror OK; copy running; calibration
+    waiting for its daily slot; none stalled.
+  - Scoreboard: 32 rows, all unique (30 paper books + 2 research rows); 0 beating, 5 not, 25 not enough data. The
+    Kalshi BTC bot is observe-only (model Brier worse than the market). The Polymarket copy bot is at −$126.31 over
+    62 closes (−$85.33 at 09:20).
+- **Still to verify:** a desktop toast actually appearing (PF-19); Pump.fun paper entries with fail-closed risk
+  (PF-16) over the next hours.
 
 ## Batch PF-19 (2026-10-03, Claude): local desktop alerts (run item D3)
 
