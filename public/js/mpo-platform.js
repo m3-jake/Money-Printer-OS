@@ -38,14 +38,16 @@ window.MPOSPlatform = (() => {
   const overviewCard=(title,body,nav='')=>`<section class="overview-card"><div class="overview-head"><h3>${escape(title)}</h3></div>${body}${nav?`<div class="overview-nav">${nav}</div>`:''}</section>`;
   const overviewLine=(title,note,value='')=>`<li><div><b>${escape(title)}</b><small>${escape(note)}</small></div>${value?`<span>${escape(value)}</span>`:''}</li>`;
   function overviewModules(){
-    const modules=[['trade','Pump.fun',/^Pump|Solana/i,['solana']],['robinhood','Robinhood',/^Robinhood/i,['robinhood','robinhood-equities']],['predictionmarkets','Polymarket',/^Polymarket/i,['polymarket','polymarket-us']],['kalshi','Kalshi',/^Kalshi/i,['kalshi']],['evolution','Research & Lab',/^Evolution Lab|Market Lab/i,['market-lab','arbitrage']]];
+    const modules=[['trade','Pump.fun',/^Pump|Solana/i,['solana']],['robinhood','Robinhood',/^Robinhood/i,['robinhood','robinhood-equities']],['sportsbook','Polymarket',/^Polymarket/i,['polymarket','polymarket-us']],['kalshi','Kalshi',/^Kalshi/i,['kalshi']],['evolution','Research & Lab',/^Evolution Lab|Market Lab/i,['market-lab','arbitrage']]];
     const capabilities=overviewArray(snapshot?.capabilities?.rows||snapshot?.capabilities);
     return modules.map(([id,label,match,keys])=>{
       const rows=overviewArray(scoreboard?.rows).filter(r=>match.test(String(r.module||''))),caps=capabilities.filter(c=>keys.includes(c.id));
       const stale=rows.filter(r=>['STALE','UNREADABLE','ERROR'].includes(r.freshness?.status)).length;
-      const note=rows.length?`${rows.length} reported ${id==='evolution'?'research lanes':'books'} · ${rows.filter(r=>r.beatsBaseline==='YES').length} beating baseline${stale?` · ${stale} stale`:''}`:'Results not reported';
+      const note=rows.length?`${rows.length} reported ${id==='evolution'?'research lanes':'books'} · ${rows.filter(r=>r.beatsBaseline==='YES').length} beating baseline${stale?` · ${stale} stale`:''}`:id==='kalshi'?'Baseline results not reported':'Results not reported';
       const decisions=[...new Set(caps.map(c=>typeof c.decision==='string'?c.decision:c.decision?.state).filter(Boolean))];
-      const body=`<p class="overview-note">${escape(note)}</p><ul class="overview-list">${rows.slice(0,2).map(r=>overviewLine(r.book||r.module,`${r.kind==='lab'?'RESEARCH':r.mode||'UNKNOWN MODE'} · ${overviewCount(r.closes)} closes · ${r.freshness?.status||'freshness unknown'}`,overviewNumber(r.netPnl)==null?'Unknown':sbAmount(overviewNumber(r.netPnl),r.unit))).join('')}${!rows.length?overviewLine('Evidence',decisions.join(' · ')||'Open the desk to inspect data and paper readiness.'):''}</ul>`;
+      const data=window.MPOBots?.data,bots=Object.values(data?.kalshi||{}).filter(Boolean),mirror=data?.mirror;
+      const botStatus=id==='kalshi'?overviewLine('Paper models',data?.kalshi?`${bots.length} reported · ${bots.filter(b=>b.settings?.enabled===true).length} enabled${bots.some(b=>b.settings?.enabled==null)?' · some states unknown':''}`:'Status not reported')+overviewLine('Copy mirror',mirror?mirror.lastError|| (mirror.settings?.enabled===true?'PAPER · enabled':mirror.settings?.enabled===false?'PAPER · paused':'PAPER · state unknown'):'Status not reported'):'';
+      const body=`<p class="overview-note">${escape(note)}</p><ul class="overview-list">${botStatus}${rows.slice(0,2).map(r=>overviewLine(r.book||r.module,`${r.kind==='lab'?'RESEARCH':r.mode||'UNKNOWN MODE'} · ${overviewCount(r.closes)} closes · ${r.freshness?.status||'freshness unknown'}`,overviewNumber(r.netPnl)==null?'Unknown':sbAmount(overviewNumber(r.netPnl),r.unit))).join('')}${!rows.length?overviewLine('Evidence',decisions.join(' · ')||'Open the desk to inspect data and paper readiness.'):''}</ul>`;
       return overviewCard(label,body,overviewNav(id,'Open '+label));
     }).join('');
   }
@@ -67,7 +69,7 @@ window.MPOSPlatform = (() => {
     for(const a of overviewArray(snapshot?.portfolio?.accounts).filter(a=>!String(a.account||'').startsWith('legacy-'))){books.push({label:`${a.venue||'Core'} / ${a.account||'paper account'}`,note:`PAPER · ${Array.isArray(a.positions)?a.positions.length:'Unknown'} open · ${a.currency||'unit unknown'}`,value:overviewMoney(a.cash,a.currency||'UNKNOWN UNIT')+' cash'});}
     const data=window.MPOBots?.data;
     for(const [label,b] of [['Kalshi weather',data?.kalshi?.weather],['Kalshi NWS control',data?.kalshi?.['weather-nws']],['Kalshi BTC',data?.kalshi?.btc],['Polymarket copy',data?.polycopy],['Kalshi copy mirror',data?.mirror]])if(b)books.push({label,note:`PAPER · ${Array.isArray(b.open)?b.open.length:'Unknown'} open · ${b.settings?.enabled===true?'enabled':b.settings?.enabled===false?'paused':'state unknown'}`,value:overviewMoney(b.equityUsd)+' modeled equity'});
-    return overviewCard('Independent paper books',books.length?`<ul class="overview-list">${books.map(b=>overviewLine(b.label,b.note,b.value)).join('')}</ul><p class="overview-note">Original units and source books stay separate. Cash and modeled equity are different measures.</p>`:'<p class="overview-note">Paper balances have not been reported yet.</p>',overviewNav('money','Paper accounts'));
+    return overviewCard('Independent paper books',books.length?`<ul class="overview-list">${books.map(b=>overviewLine(b.label,b.note,b.value)).join('')}</ul><p class="overview-note">Original units and source books stay separate. Cash and modeled equity are different measures.</p>`:'<p class="overview-note">Paper balances have not been reported yet.</p>',overviewNav('money','About paper books'));
   }
   function commandOverview(){
     const proposals=overviewArray(snapshot?.proposals).filter(p=>!['FILLED','REJECTED','CANCELED','CANCELLED','EXPIRED'].includes(p.status)),caps=overviewArray(snapshot?.capabilities?.rows||snapshot?.capabilities);
@@ -79,10 +81,10 @@ window.MPOSPlatform = (() => {
     return `<div class="mpo-overview"><p class="overview-note">See what each trading module is observing, how its paper books are doing and which research or data issues need attention. Open a desk to investigate or use its controls.</p><div class="overview-grid">${overviewModules()}${overviewAttention()}${overviewBooks()}${overviewCard('Open activity',activity,overviewNav('journal','Journal'))}${overviewCard('Research & qualification',evidence,overviewNav('evolution','Evolution Lab')+overviewNav('marketlab','Market Lab'))}${overviewCard('Data health',`<ul class="overview-list">${overviewLine('Sources',diag?`${known.length} connected or idle / ${sources.length} reported`:'Not reported')}${overviewLine('Latest platform snapshot',when(snapshot?.at))}${overviewLine('Market coverage',snapshot?`${contracts.length} loaded listings across venues · partial snapshot`:'Not reported')}${overviewLine('Live core',snapshot?.executionModes?.liveCore||'Status not reported')}</ul>`,overviewNav('wire','Wire')+overviewNav('macro','Macro'))}</div></div>`;
   }
   function commandGlance(bad){
-    const ps=scoreboard?.paperSummary,beat=overviewNumber(ps?.beating),notBeat=overviewNumber(ps?.notBeating),judged=beat==null||notBeat==null?null:beat+notBeat;
+    const ps=scoreboard?.paperSummary,need=overviewNumber(ps?.notEnoughData);
     return glance({title:'Command Center',pill:bad?{label:`${bad} sources need attention`,tone:'warn'}:diag?{label:'Paper · research',tone:''}:{label:'Health not reported',tone:'warn'},
-      hero:judged==null?'—':`${beat} / ${judged}`,heroSub:'paper books beating their own baseline · suite overview',heroText:false,
-      stats:[{label:'Beating',value:overviewCount(beat),tone:beat>0?'g-pos':''},{label:'Not beating',value:overviewCount(notBeat),tone:notBeat>0?'g-neg':''},{label:'Need more data',value:overviewCount(ps?.notEnoughData)}],
+      hero:null,
+      stats:[{label:'Trading suites',value:'5'},{label:'Paper books',value:overviewCount(ps?.books)},{label:'Paper evidence',value:need==null?'Unknown':`${need} need more data`}],
       visual:`<div class="g-scroll">${commandOverview()}</div>`,foot:gFoot(['Open a desk to inspect its data, paper book and controls','Balances remain in their original currencies'])});
   }
   // Weather is one preview in the wider Kalshi overview; the existing Weather desk retains its detail.
@@ -95,8 +97,8 @@ window.MPOSPlatform = (() => {
   function kalshiOverview(){
     const loaded=[...new Map([...overviewArray(contracts).filter(c=>c.provider==='kalshi'),...states.kalshi.rows].map(c=>[c.id||c.sourceId,c])).values()];
     const categories=new Map();for(const c of loaded){const name=c.data?.category||'Uncategorized';categories.set(name,(categories.get(name)||0)+1);}
-    const cats=[...categories].sort((a,b)=>b[1]-a[1]);
-    const coverage=overviewCard('Market universe',`<ul class="overview-list">${overviewLine('Loaded Kalshi listings',snapshot?`${loaded.length} cached listings · ${cats.length} observed categories`:'Coverage not reported')}${cats.slice(0,4).map(([name,n])=>overviewLine(name,'Among loaded listings',String(n))).join('')}</ul><p class="overview-note">This is a partial public-data snapshot. Load or search active markets in Advanced to explore the venue.</p>`,overviewNav('kalshi','Market desk',true)+overviewNav('macro','Macro events'));
+    const cats=[...categories].sort((a,b)=>b[1]-a[1]),knownCategories=cats.filter(([name])=>name!=='Uncategorized').length;
+    const coverage=overviewCard('Market universe',`<ul class="overview-list">${overviewLine('Loaded Kalshi listings',snapshot?`${loaded.length} cached listings · ${knownCategories?`${knownCategories} observed categories`:'categories not reported'}`:'Coverage not reported')}${cats.slice(0,4).map(([name,n])=>overviewLine(name,'Among loaded listings',String(n))).join('')}</ul><p class="overview-note">This is a partial public-data snapshot. Load or search active markets in Advanced to explore the venue.</p>`,overviewNav('kalshi','Market desk',true)+overviewNav('macro','Macro events'));
     const data=window.MPOBots?.data;
     const books=[['Weather model',data?.kalshi?.weather],['NWS forecast control',data?.kalshi?.['weather-nws']],['Bitcoin range model',data?.kalshi?.btc],['Copy mirror',data?.mirror]];
     const bookLines=books.map(([label,b])=>overviewLine(label,b?`PAPER · ${b.settings?.enabled===true?'enabled':b.settings?.enabled===false?'paused':'state unknown'} · ${Array.isArray(b.open)?b.open.length:'Unknown'} open · ${overviewCount(b.stats?.settled??b.stats?.closed)} settled${b.lastError?' · '+b.lastError:''}`:'Paper book not reported',b?overviewMoney(b.equityUsd)+' modeled equity':'Unknown')).join('');
@@ -117,9 +119,9 @@ window.MPOSPlatform = (() => {
     loadKalshiWx();
     const loaded=overviewArray(contracts).filter(c=>c.provider==='kalshi'),categories=new Set(loaded.map(c=>c.data?.category).filter(Boolean)),bots=window.MPOBots?.data?.kalshi;
     const source=overviewArray(snapshot?.providers).find(p=>p.id==='kalshi');
-    return glance({title:'Kalshi overview',pill:{label:source?.status||'Health not reported',tone:source&&source.status==='CONNECTED'?'ok':'warn'},hero:snapshot?String(loaded.length):'—',heroSub:'loaded public listings · partial market coverage',
-      stats:[{label:'Categories',value:snapshot?String(categories.size):'Unknown'},{label:'Paper model books',value:bots?String(Object.keys(bots).length):'Unknown'},{label:'Core mode',value:snapshot?.executionModes?.kalshi||'Unknown'}],
-      visual:`<div class="g-scroll">${kalshiOverview()}</div>`,foot:gFoot(['Markets · paper bots · copy mirror · research','Original books remain separate · Advanced opens depth and controls'])});
+    return glance({title:'Kalshi overview',pill:{label:source?.status||'Health not reported',tone:source&&source.status==='CONNECTED'?'ok':'warn'},hero:null,
+      stats:[{label:'Loaded listings',value:snapshot?String(loaded.length):'Unknown'},{label:'Categories',value:snapshot&&categories.size?String(categories.size):'Unknown'},{label:'Paper model books',value:bots?String(Object.keys(bots).length):'Unknown'}],
+      visual:`<div class="g-scroll">${kalshiOverview()}</div>`,foot:gFoot(['Markets · paper bots · copy mirror · research',`Core mode ${snapshot?.executionModes?.kalshi||'unknown'} · books remain separate · Advanced opens depth and controls`])});
   }
   const button=(action,label,extra='')=>`<button class="btn" data-core-action="${action}" ${extra} ${busy&&action!=='halt'?'disabled':''}>${label}</button>`;
   async function request(route,data){
@@ -322,7 +324,7 @@ window.MPOSPlatform = (() => {
       <div class="core-toolbar">${['ALL','MACRO','SPORTS','WEATHER','CORPORATE'].map(k=>`<button class="btn ${eventKind===k?'on':''}" type="button" data-core-action="event-kind" data-kind="${k}">${k}${k!=='ALL'&&events.counts?` <small>${events.counts[k]??0}</small>`:''}</button>`).join('')}</div><div class="event-list">${(events.pages||[]).filter(p=>eventKind==='ALL'||p.kind===eventKind).map(card).join('')||'<p class="core-muted">No upcoming events with Kalshi ladders.</p>'}</div>${(events.errors||[]).length?`<p class="core-muted">${events.errors.map(escape).join(' · ')}</p>`:''}`;
   }
   let refreshing=null;
-  function refresh(){if(refreshing)return refreshing;refreshing=(async()=>{const [s,e,d,i]=await Promise.all([request('/status'),request('/entities?kind=Contract'),request('/diagnostics').catch(()=>null),request('/intelligence').catch(e=>({lastError:e.message})),refreshScoreboard()]);intelligence=i;snapshot=s;contracts=overviewArray(e.entities);diag=d;error='';loadEvents();render();if(typeof CustomEvent==='function')globalThis.dispatchEvent?.(new CustomEvent('mpo:overview-data'));})().finally(()=>{refreshing=null});return refreshing;}
+  function refresh(){if(refreshing)return refreshing;refreshing=(async()=>{const [s,k,p,d,i]=await Promise.all([request('/status'),request('/entities?kind=Contract&provider=kalshi'),request('/entities?kind=Contract&provider=polymarket'),request('/diagnostics').catch(()=>null),request('/intelligence').catch(e=>({lastError:e.message})),refreshScoreboard()]);intelligence=i;snapshot=s;contracts=[...overviewArray(k.entities),...overviewArray(p.entities)];diag=d;error='';loadEvents();render();if(typeof CustomEvent==='function')globalThis.dispatchEvent?.(new CustomEvent('mpo:overview-data'));})().finally(()=>{refreshing=null});return refreshing;}
   async function action(fn){if(busy)return;busy=true;error='';render();try{await fn();await refresh();}catch(e){error=e.message;}finally{busy=false;render();}}
   function install(api){
     hostApi=api;
