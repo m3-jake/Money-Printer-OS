@@ -15,6 +15,9 @@
   --mpo-border-inset: 1px solid #85818b;
 }
 
+/* The concealed dock extends offscreen; it must not make the desktop scroll when focused. */
+.desktop { overflow: clip; }
+
 .mac-menubar {
   position: absolute;
   inset: 0 0 auto;

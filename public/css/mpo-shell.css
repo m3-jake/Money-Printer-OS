@@ -133,7 +133,7 @@ img.sky-cloud,
 
 .market-fx {
   position: absolute;
-  inset: 0 0 var(--task);
+  inset: 0;
   overflow: hidden;
   pointer-events: none;
 }
@@ -275,17 +275,17 @@ img.sky-cloud,
 .money-event-feed {
   position: absolute;
   right: 18px;
-  bottom: calc(var(--task) + 10px);
+  bottom: max(8px, env(safe-area-inset-bottom));
   z-index: 7;
-  width: min(620px, calc(100vw - 128px));
-  max-height: 300px;
+  width: min(460px, calc(100vw - 128px));
+  max-height: 220px;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  gap: 3px;
+  gap: 2px;
   overflow: hidden;
   pointer-events: none;
-  font: 700 13px/1.4 Consolas, "Courier New", monospace;
+  font: 700 11px/1.3 Consolas, "Courier New", monospace;
   color: #e8ffe0;
   text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 0 0 4px #000;
 }
@@ -937,7 +937,7 @@ img.bill.phys.grabbing { cursor: grabbing; z-index: 5; }
 
 .cloud-shadows {
   position: absolute;
-  inset: 0 0 var(--task);
+  inset: 0;
   z-index: 2;
   overflow: hidden;
   pointer-events: none;
@@ -967,7 +967,7 @@ img.bill.phys.grabbing { cursor: grabbing; z-index: 5; }
   position: absolute;
   left: 0;
   right: 0;
-  bottom: var(--task);
+  bottom: 0;
   height: 27%;
   z-index: 2;
   overflow: hidden;

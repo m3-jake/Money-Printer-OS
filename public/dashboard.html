@@ -493,30 +493,28 @@ robinhood:{x:200,y:90,w:880,h:720},stocks:{x:170,y:60,w:900,h:680},marketlab:{x:
 trade:{x:120,y:70,w:790,h:690},sportsbook:{x:250,y:140,w:880,h:600},
 system:{x:660,y:80,w:520,h:470},journal:{x:90,y:56,w:740,h:540},money:{x:320,y:120,w:620,h:520}
 };
-const DEFAULT_OPEN=['trade'];
+const DEFAULT_OPEN=[];
 const LAYOUT_VERSION='2026-09-26-glance';
 const readPref=(k,d)=>window.MPOHud.preferences.read(k,d);
 const writePref=(k,v)=>window.MPOHud.preferences.write(k,v);
 const removePref=k=>window.MPOHud.preferences.remove(k);
 let saved=window.MPOHud.sanitizeLayout(readPref('mpo-layout',{}),HOSTS,id=>defaultLayout[id]||{x:40,y:40,w:640,h:500});
 const compactHome=!!window.__MPO_DEMO__&&matchMedia('(max-width: 600px)').matches;
-let openSet=compactHome?new Set():new Set(readPref('mpo-open',DEFAULT_OPEN));
+let openSet=new Set();
 // Layout changes must migrate, never wipe: a version bump only records the new version and keeps the
 // saved spots and open windows. #setResetLayout is the only thing allowed to clear mpo-layout.
 if(readPref('mpo-layout-version','')!==LAYOUT_VERSION)writePref('mpo-layout-version',LAYOUT_VERSION);
 // Windows only exist for hosts now; drop anything left over from a pre-consolidation layout.
 saved=Object.fromEntries(Object.entries(saved||{}).filter(([k])=>HOSTS.includes(k)));
-openSet=new Set([...openSet].filter(id=>HOSTS.includes(id)));
-if(!openSet.size&&!compactHome)openSet=new Set(DEFAULT_OPEN);
 let activeTab=readPref('mpo-tabs',{});
 for(const h of HOSTS)if(!tabsOf(h).includes(activeTab[h]))activeTab[h]=h;
 // Display: text size is the fit-zoom ceiling; windows open in Simple mode (the glance) unless the taskbar
-// Simple | Advanced switch or a window's own button says Advanced; only the last-used window opens at launch.
+// Simple | Advanced switch or a window's own button says Advanced. Launch starts with an empty desktop.
 const TEXT_SCALES={S:.9,M:1.1,L:1.3};
-let displayPrefs={textSize:'M',fullDetail:false,restoreAll:true,...readPref('mpo-display',{})};
-displayPrefs={textSize:Object.hasOwn(TEXT_SCALES,displayPrefs.textSize)?displayPrefs.textSize:'M',fullDetail:displayPrefs.fullDetail===true,restoreAll:displayPrefs.restoreAll!==false,lowMotion:displayPrefs.lowMotion===true};
-// Older builds saved restoreAll:false inside mpo-display; flip it once so every open window reopens.
-if(!readPref('mpo-restore-migrated',false)){displayPrefs.restoreAll=true;writePref('mpo-display',displayPrefs);writePref('mpo-restore-migrated',true)}
+let displayPrefs={textSize:'M',fullDetail:false,restoreOnLaunch:false,...readPref('mpo-display',{})};
+displayPrefs={textSize:Object.hasOwn(TEXT_SCALES,displayPrefs.textSize)?displayPrefs.textSize:'M',fullDetail:displayPrefs.fullDetail===true,restoreOnLaunch:displayPrefs.restoreOnLaunch===true,lowMotion:displayPrefs.lowMotion===true};
+// Old restoreAll preferences keep their saved geometry, but do not opt into opening apps at launch.
+if(displayPrefs.restoreOnLaunch&&!compactHome)openSet=new Set(readPref('mpo-open',DEFAULT_OPEN).filter(id=>HOSTS.includes(id)));
 // One-time 12% shrink of saved window sizes (Simple mode got smaller); positions are kept.
 if(!readPref('mpo-size-migrated-0927',false)){for(const L of Object.values(saved)){if(!L||typeof L!=='object')continue;if(Number.isFinite(L.w))L.w=Math.max(260,Math.round(L.w*.88));if(Number.isFinite(L.h))L.h=Math.max(150,Math.round(L.h*.88))}writePref('mpo-layout',saved);writePref('mpo-size-migrated-0927',true)}
 // The user's intended spot for each window. Clamping to a small viewport is visual only and never
@@ -540,7 +538,7 @@ function paintEnvironmentWind(now=performance.now()){
 function applyMotion(){document.documentElement.classList.toggle('mpo-low-motion',motionReduced());paintEnvironmentWind()}
 applyMotion();matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change',()=>{applyMotion();updateDesktopEffects()});
 setInterval(()=>{if(!document.hidden&&!motionReduced())paintEnvironmentWind()},1800);
-const bootFocus=(()=>{if(compactHome)return null;const f=readPref('mpo-last-focus','trade');const id=openSet.has(f)?f:[...openSet][0]||'trade';openSet.add(id);return id})();
+const bootFocus=(()=>{const f=readPref('mpo-last-focus',null);return openSet.has(f)?f:[...openSet][0]||null})();
 // A window without a saved spot opens centred and large: one clear thing on the desktop.
 const HERO_MAX_H={money:500,journal:600};
 function heroLayout(id){const W=window.innerWidth||1280,H=(window.innerHeight||800)-76,w=Math.round(Math.min(880,Math.max(520,W*.7))),h=Math.round(Math.min(HERO_MAX_H[id]||700,Math.max(420,H*.9)));return{x:Math.max(0,Math.round((W-w)/2)),y:Math.max(38,Math.round((H-h)/2)+34),w,h}}
@@ -632,8 +630,8 @@ function initLogoStretch(){
 function appShell(id,title){
  const L=saved[id]||heroLayout(id);
  intended[id]||={x:L.x,y:L.y,w:L.w,h:L.h};
- // Launch shows only the last-used window; the rest wait in the taskbar (Settings can reopen all).
- const shown=openSet.has(id)&&(displayPrefs.restoreAll?!L.min:id===bootFocus);
+ // Apps stay hidden until opened, unless the user explicitly enabled restoring their session.
+ const shown=openSet.has(id)&&!L.min;
  const tabs=tabsOf(id),tabbed=tabs.length>1,act=activeTab[id]||id,detail=isDetail(id);
  const strip=tabbed?`<div class="tabs win-tabs" data-host="${id}">${tabs.map(t=>`<button class="tab98 ${t===act?'on':''}" data-host="${id}" data-tab="${t}">${TAB_LABEL[t]||appMeta(t)?.[1]||t}</button>`).join('')}</div>`:'';
  const body=tabbed?`<div class="body tabbed">${tabs.map(t=>`<div class="tabpane ${t===act?'on':''}" id="body-${t}" data-scroll="pane-${t}"></div>`).join('')}</div>`:`<div class="body" id="body-${id}" data-scroll="body-${id}"></div>`;
@@ -1563,13 +1561,13 @@ function renderSimple(id){
  }
  if(id==='settings'){
   const mode=String(s.mode||'paper').toUpperCase(),health=s.system?.health||'Starting';
-  setBody('settings',`<div class="mpo-surface-light" style="padding:12px;color:#111;min-height:100%"><div class="mpo-status"><b>SETTINGS</b><b class="mpo-badge ${mode==='LIVE'?'mpo-badge--armed':'mpo-badge--paper'}">${polyEscape(mode)}</b><b class="mpo-badge ${health==='DEGRADED'?'mpo-badge--degraded':'mpo-badge--live'}">${polyEscape(health)}</b></div><fieldset class="mpo-fieldset"><legend>Machine</legend><p>CPU / RAM / disk limits live in System → Monitor.</p><button class="btn" id="setGoMonitor">Open Monitor</button></fieldset><fieldset class="mpo-fieldset"><legend>Trading runtime</legend><p>Profile, aggression and paper testing live in Pump.fun → Controls.</p><button class="btn" id="setGoControls">Open Controls</button></fieldset><fieldset class="mpo-fieldset"><legend>Display</legend><div class="toolbar"><span>Text size:</span>${Object.entries({S:'Small',M:'Medium',L:'Large'}).map(([k,v])=>`<button class="btn ${displayPrefs.textSize===k?'on':''}" data-textsize="${k}">${v}</button>`).join('')}</div><label><input type="checkbox" id="setFullDetail" ${displayPrefs.fullDetail?'checked':''}> Advanced mode in every window (same as the taskbar Simple | Advanced switch; each window's own button still flips just that window)</label><br><label><input type="checkbox" id="setRestoreAll" ${displayPrefs.restoreAll?'checked':''}> Reopen every window at launch (otherwise only the last one you used)</label><br><label><input type="checkbox" id="setLowMotion" ${displayPrefs.lowMotion?'checked':''}> Reduce animation and visual effects</label></fieldset><fieldset class="mpo-fieldset"><legend>Desktop</legend><button class="btn" id="setResetLayout">Reset window layout</button><p class="muted" title="Reset restores the default desktop layout and tabs, then reloads the interface.">Restores default layout, then reloads.</p></fieldset></div>`);
+  setBody('settings',`<div class="mpo-surface-light" style="padding:12px;color:#111;min-height:100%"><div class="mpo-status"><b>SETTINGS</b><b class="mpo-badge ${mode==='LIVE'?'mpo-badge--armed':'mpo-badge--paper'}">${polyEscape(mode)}</b><b class="mpo-badge ${health==='DEGRADED'?'mpo-badge--degraded':'mpo-badge--live'}">${polyEscape(health)}</b></div><fieldset class="mpo-fieldset"><legend>Machine</legend><p>CPU / RAM / disk limits live in System → Monitor.</p><button class="btn" id="setGoMonitor">Open Monitor</button></fieldset><fieldset class="mpo-fieldset"><legend>Trading runtime</legend><p>Profile, aggression and paper testing live in Pump.fun → Controls.</p><button class="btn" id="setGoControls">Open Controls</button></fieldset><fieldset class="mpo-fieldset"><legend>Display</legend><div class="toolbar"><span>Text size:</span>${Object.entries({S:'Small',M:'Medium',L:'Large'}).map(([k,v])=>`<button class="btn ${displayPrefs.textSize===k?'on':''}" data-textsize="${k}">${v}</button>`).join('')}</div><label><input type="checkbox" id="setFullDetail" ${displayPrefs.fullDetail?'checked':''}> Advanced mode in every window (same as the taskbar Simple | Advanced switch; each window's own button still flips just that window)</label><br><label><input type="checkbox" id="setRestoreOnLaunch" ${displayPrefs.restoreOnLaunch?'checked':''}> Reopen previous apps at launch</label><br><label><input type="checkbox" id="setLowMotion" ${displayPrefs.lowMotion?'checked':''}> Reduce animation and visual effects</label></fieldset><fieldset class="mpo-fieldset"><legend>Desktop</legend><button class="btn" id="setResetLayout">Reset window layout</button><p class="muted" title="Reset restores the default desktop layout and tabs, then reloads the interface.">Restores default layout, then reloads.</p></fieldset></div>`);
   $('#setGoMonitor')?.addEventListener('click',()=>{openApp('system');setTab('system','system')});
   $('#setGoControls')?.addEventListener('click',()=>openApp('control'));
   const saveDisplay=()=>{writePref('mpo-display',displayPrefs);FIT_MAX=textScale();$$('.window').forEach(applyMode);renderSig.clear();renderAll();fitAll()};
   $$('[data-textsize]').forEach(b=>b.onclick=()=>{displayPrefs.textSize=b.dataset.textsize;saveDisplay()});
   $('#setFullDetail')?.addEventListener('change',e=>setGlobalMode(e.target.checked));
-  $('#setRestoreAll')?.addEventListener('change',e=>{displayPrefs.restoreAll=e.target.checked;saveDisplay()});
+  $('#setRestoreOnLaunch')?.addEventListener('change',e=>{displayPrefs.restoreOnLaunch=e.target.checked;saveDisplay()});
   $('#setLowMotion')?.addEventListener('change',e=>{displayPrefs.lowMotion=e.target.checked;writePref('mpo-display',displayPrefs);applyMotion();updateDesktopEffects()});
   $('#setResetLayout')?.addEventListener('click',()=>{layoutResetting=true;removePref('mpo-layout');removePref('mpo-last-focus');removePref('mpo-tabs');writePref('mpo-open',DEFAULT_OPEN);location.reload()});
   renderBackgroundSettings();
@@ -1984,7 +1982,7 @@ function boot(){
  const ok=$('#bootOk'),bar=$('#bootBar'),status=$('#bootText');
  const stage=(label,width)=>{status.textContent=label;bar.style.width=width};
  stage('Waking up your workspace…','12%');
- setTimeout(()=>stage('Arranging research windows…','62%'),motionReduced()?0:360);
+ setTimeout(()=>stage('Preparing your desktop…','62%'),motionReduced()?0:360);
  setTimeout(()=>{stage('Desktop ready. Enter when you like.','100%');if(!ok)return logOn();ok.disabled=false;ok.onclick=logOn;ok.focus({preventScroll:true});
   const wait=()=>{clearTimeout(logonTimer);logonTimer=setTimeout(logOn,LOGON_AUTO_MS)};wait();
   $('#boot').addEventListener('pointermove',wait);document.addEventListener('keydown',e=>{if(!loggedOn&&e.key==='Enter'){e.preventDefault();logOn()}})},motionReduced()?0:900);
