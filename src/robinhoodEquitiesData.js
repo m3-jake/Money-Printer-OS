@@ -31,7 +31,7 @@ export const PROVIDERS={
   async fetchDailyBars(symbols,{start,end,fetchImpl=globalThis.fetch,env=process.env}={}){
    const k=alpacaKeys(env);if(!k)throw Object.assign(new Error('Alpaca key not configured'),{code:'NO_KEY'});
    const out={};for(const s of symbols)out[s]=[];
-   let token=null,pages=0;
+   let token=null,pages=0;const seenTokens=new Set();
    do{
     const u=new URL('https://data.alpaca.markets/v2/stocks/bars');
     u.searchParams.set('symbols',symbols.join(','));u.searchParams.set('timeframe','1Day');
@@ -43,7 +43,9 @@ export const PROVIDERS={
     const j=await r.json();
     for(const [sym,rows] of Object.entries(j?.bars||{})){if(!out[sym])continue;for(const b of rows||[]){const t=Date.parse(b.t);if(!Number.isFinite(t))continue;out[sym].push({d:etDate(t),o:+b.o,h:+b.h,l:+b.l,c:+b.c,v:+b.v||0})}}
     token=j?.next_page_token||null;pages++;
+    if(token){if(seenTokens.has(token))throw Object.assign(new Error('Alpaca repeated pagination token; incomplete bars were refused'),{code:'PAGINATION_LOOP'});seenTokens.add(token)}
    }while(token&&pages<20);
+   if(token)throw Object.assign(new Error('Alpaca bars exceeded 20-page budget; incomplete history was refused'),{code:'PAGINATION_TRUNCATED'});
    return out;
   },
  },
@@ -65,6 +67,7 @@ export function cleanBars(rows,{completedThrough}={}){
   if(!b||typeof b.d!=='string'||!(isSession(b.d)||preCalendarWeekday(b.d)))continue;
   if(completedThrough&&b.d>completedThrough)continue;
   if(![b.o,b.h,b.l,b.c].every(x=>Number.isFinite(x)&&x>0))continue;
+  if(b.h<Math.max(b.o,b.c,b.l)||b.l>Math.min(b.o,b.c,b.h)||Number.isFinite(b.v)&&b.v<0)continue;
   byDate.set(b.d,{d:b.d,o:b.o,h:b.h,l:b.l,c:b.c,v:Number.isFinite(b.v)?b.v:0});
  }
  return [...byDate.values()].sort((a,b)=>a.d<b.d?-1:1);

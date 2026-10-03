@@ -407,7 +407,8 @@ export function standaloneBookRow(id, b = {}, { now = Date.now(), unit = 'USD', 
   const markedExposure = complete ? marks.reduce((sum, v) => sum + v, 0) : null;
   const cash = finite(unit === 'SOL' ? b.cashSol : b.cashUsd), start = finite(unit === 'SOL' ? b.startSol : b.startUsd);
   const flows = Array.isArray(b.funding) ? b.funding : [], capital = flows.length ? flows.reduce((sum, f) => sum + (finite(unit === 'SOL' ? f.amountSol : f.amountUsd) ?? 0), 0) : start;
-  const equity = cash !== null && markedExposure !== null ? cash + markedExposure : null;
+  const receivables=(b.dividendReceivables||[]).filter(x=>!x.paidAt).reduce((sum,x)=>sum+(finite(x.amountUsd)??0),0);
+  const equity = cash !== null && markedExposure !== null ? cash + markedExposure+receivables : null;
   const netEconomic = equity !== null && capital !== null ? equity - capital : null;
   const capitalAt = toMs(b.fundedAt ?? b.createdAt ?? b.startedAt);
   const capitalDays = flows.length ? flows.reduce((sum, f) => sum + (finite(unit === 'SOL' ? f.amountSol : f.amountUsd) ?? 0) * Math.max(0, now - (toMs(f.at) ?? now)) / 86400000, 0) : start !== null && capitalAt ? start * Math.max(0, now - capitalAt) / 86400000 : null;
@@ -415,7 +416,7 @@ export function standaloneBookRow(id, b = {}, { now = Date.now(), unit = 'USD', 
   const row = scoreRow({ id, module, book: label, unit, stats, baseline: { kind: 'cash', label: `Cash (0 ${unit})`, netPnl: 0 },
     fresh: freshness(b.lastRunAt ?? b.lastSettlementAt ?? stats.lastCloseAt, { now, source: 'standalone paper journal' }),
     extra: { open: open.length, cash, contributedCapital: capital, capitalDays: round(capitalDays), netPerCapitalDay: capitalDays > 0 && netEconomic !== null ? round(netEconomic / capitalDays) : null,
-      exposureCost: round(exposureCost), markedExposure: round(markedExposure), markCoverage: { observed: marks.filter(v => v !== null).length, total: open.length },
+      exposureCost: round(exposureCost), markedExposure: round(markedExposure), dividendReceivableUsd:unit==='USD'?round(receivables):null,buyingPower:cash===null?null:round(cash-(b.unsettledProceeds||[]).reduce((sum,x)=>sum+(finite(x.amountUsd)??0),0)),markCoverage: { observed: marks.filter(v => v !== null).length, total: open.length },
       economicNetPnl: round(netEconomic), independentOutcomes: independent,
       turnover: round([...open, ...history].reduce((sum, p) => sum + (cost(p) ?? 0), 0)),
       costs: round([...open, ...history].reduce((sum, p) => sum + (finite(unit === 'SOL' ? p.entryNetworkFeeSol ?? p.feeSol : p.feeUsd) ?? 0) + (finite(unit === 'SOL' ? p.exitNetworkFeeSol ?? p.exitFeeSol : p.exitFeeUsd) ?? 0), 0)),
@@ -496,6 +497,7 @@ export async function readScoreboard({ now = Date.now(), maxAgeMs = 5000 } = {})
     ['pumpfun-copy-emerging-paper.json','pumpfun-copy-emerging','Pump.fun','Emerging leaders · UNQUALIFIED','SOL'],
     ['pumpfun-copy-consensus-paper.json','pumpfun-copy-consensus','Pump.fun','Independent consensus · UNQUALIFIED','SOL'],
     ['disclosure-paper.json','equity-disclosure-paper','Stocks','Form 4 disclosure exploration','USD']
+    ,...['direct','liquidity-scaled','random-eligible','no-trade'].map(policy=>[`experiments/polycopy-${policy}-v1/polymarket-copy-paper.json`,`polymarket-copy-${policy}`,'Polymarket copy',`${policy} · UNQUALIFIED $25 cohort`,'USD'])
   ]) {
     const full = path.join(dataDir, file);
     if (!fs.existsSync(full)) continue;

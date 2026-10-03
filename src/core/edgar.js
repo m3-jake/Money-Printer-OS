@@ -8,7 +8,9 @@
 //   analysis  MPOS's rule-based reading (catalyst labels, related contracts). Always labelled, never
 //             merged into facts; no language model is involved.
 
-export const FORMS = Object.freeze(['8-K', '10-Q', '10-K', '4', 'SC 13D', 'SC 13G', 'SCHEDULE 13D', 'SCHEDULE 13G']);
+import { form13FSnapshot } from './form13F.js';
+export { parse13FCover, parse13FInformationTable, form13FSnapshot, holdings13FAsOf, holdings13FChanges } from './form13F.js';
+export const FORMS = Object.freeze(['8-K', '10-Q', '10-K', '4', '4/A', '13F-HR', '13F-HR/A', '13F-NT', 'SC 13D', 'SC 13G', 'SCHEDULE 13D', 'SCHEDULE 13G']);
 // Official Form 8-K item list (sec.gov/fast-answers/answersform8khtm).
 export const ITEMS_8K = Object.freeze({
   '1.01': 'Entry into a material definitive agreement', '1.02': 'Termination of a material definitive agreement', '1.03': 'Bankruptcy or receivership', '1.04': 'Mine safety',
@@ -37,7 +39,7 @@ export function filingsFromSubmissions(sub, { forms = FORMS, limit = 50 } = {}) 
     out.push({ facts: { form, company: sub.name || null, cik, ticker, accession: acc, filedOn: r.filingDate?.[i] || null, acceptedAt: Number.isFinite(accepted) ? accepted : null,
       items: items.map(code => ({ code, name: ITEMS_8K[code] || 'Unlisted item' })), primaryDocument: r.primaryDocument?.[i] || null,
       // Form 4 primary documents point at an XSL rendering; the raw XML sits one folder up.
-      rawXmlUrl: form === '4' && /\.xml$/i.test(r.primaryDocument?.[i] || '') ? `https://www.sec.gov/Archives/edgar/data/${cik}/${acc.replace(/-/g, '')}/${String(r.primaryDocument[i]).replace(/^xsl[^/]+\//, '')}` : null,
+      rawXmlUrl: /^(4|13F-HR)(\/A)?$/.test(form) && /\.xml$/i.test(r.primaryDocument?.[i] || '') ? `https://www.sec.gov/Archives/edgar/data/${cik}/${acc.replace(/-/g, '')}/${String(r.primaryDocument[i]).replace(/^xsl[^/]+\//, '')}` : null,
       url: `https://www.sec.gov/Archives/edgar/data/${cik}/${acc.replace(/-/g, '')}/${r.primaryDocument?.[i] || ''}`, indexUrl: `https://www.sec.gov/Archives/edgar/data/${cik}/${acc.replace(/-/g, '')}/${acc}-index.htm` } });
   }
   return out;
@@ -108,4 +110,22 @@ export class EdgarSource {
   async latest(form = '8-K') { if (!FORMS.includes(form)) throw new Error('Unsupported form'); return filingsFromAtom(await this.#get(`https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=${encodeURIComponent(form)}&count=40&output=atom`, { ttlMs: 120000, as: 'text' })); }
   async document(url) { if (!/^https:\/\/www\.sec\.gov\/Archives\/edgar\/data\//.test(String(url))) throw new Error('SEC Archives URL required'); return this.#get(url, { ttlMs: 86400000, as: 'text' }); }
   async form4(url) { if (!/^https:\/\/www\.sec\.gov\/Archives\/edgar\/data\//.test(url) || !/\.xml$/i.test(url)) throw new Error('Form 4 XML URL required'); return parseForm4(await this.#get(url, { ttlMs: 86400000, as: 'text' })); }
+  async form13F(filing, { firstObservedAt = Date.now() } = {}) {
+    const facts = filing?.facts || filing;
+    if (!/^13F-HR(?:\/A)?$/.test(facts?.form || '') || !/^\d+$/.test(String(facts.cik)) || !/^\d{10}-\d{2}-\d{6}$/.test(String(facts.accession))) throw new Error('13F-HR filing identity required');
+    const base = `https://www.sec.gov/Archives/edgar/data/${String(facts.cik).replace(/^0+/, '')}/${facts.accession.replace(/-/g, '')}/`;
+    const listing = await this.#get(base + 'index.json', { ttlMs: 86400000 });
+    const names = (listing?.directory?.item || []).map(x => x.name).filter(n => /^[\w.-]+\.xml$/i.test(String(n)));
+    if (names.length > 20) throw Object.assign(new Error('13F XML discovery exceeds bounded document budget'), { code: 'DOCUMENT_BUDGET' });
+    const primary = String(facts.primaryDocument || '').replace(/^xsl[^/]+\//, '');
+    const ordered = [...new Set([...(names.includes(primary) ? [primary] : []), ...names])];
+    let coverXml = null; const tableXml = [];
+    for (const name of ordered) {
+      const xml = await this.document(base + name);
+      if (/<(?:[\w.-]+:)?informationTable[\s>]/i.test(xml)) tableXml.push(xml);
+      else if (/<(?:[\w.-]+:)?reportCalendarOrQuarter[\s>]/i.test(xml)) coverXml = xml;
+    }
+    if (!coverXml || !tableXml.length) throw Object.assign(new Error('13F cover or information table unavailable; notice-only filings are not holdings'), { code: 'NO_COMPLETE_13F_TABLE' });
+    return form13FSnapshot({ facts, coverXml, tableXml, firstObservedAt });
+  }
 }
