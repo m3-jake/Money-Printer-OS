@@ -90,3 +90,24 @@ test('Jupiter sampler: positions first, quote-only GETs, round trip from the exa
   const capped = await sampleJupiterQuotes({ state, limit: 3, fetchImpl, callsLeft: 3 });
   assert.equal(capped.rows.length, 1, 'daily call budget respected');
 });
+
+test('retention dry run reports what a policy would remove and deletes nothing; streams can keep fewer days', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mpo-retention-dry-'));
+  try {
+    const dayOf = d => new Date(NOW - d * 864e5).toISOString().slice(0, 10);
+    for (const [name, d] of [['solana-path', 10], ['solana-path', 3], ['polymarket-depth', 10], ['polymarket-us-legs', 40]]) fs.writeFileSync(path.join(dir, `${name}-${dayOf(d)}.ndjson`), 'x'.repeat(100));
+    const before = fs.readdirSync(dir).sort();
+    const r = pruneRawTapes({ dir, now: NOW, keepDays: 30, budgetBytes: 1e9, prefixKeepDays: { 'solana-path': 7 }, exemptPrefixes: ['polymarket-us-'], dryRun: true });
+    assert.equal(r.dryRun, true);
+    assert.deepEqual(r.removed.map(x => x.name), [`solana-path-${dayOf(10)}.ndjson`], 'only the 10-day-old Solana file passes its 7-day limit');
+    assert.deepEqual(fs.readdirSync(dir).sort(), before, 'a dry run deletes nothing');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('Pump.fun is parked: the paper engine scans at most every 20 s and Solana ticks are taped every 30 s', async () => {
+  const { cfg } = await import('../src/config.js');
+  assert.equal(cfg.pumpfunParked, true); assert.equal(cfg.parkedScanIntervalSec, 20);
+  const engine = fs.readFileSync(new URL('../src/index.js', import.meta.url), 'utf8'), collector = fs.readFileSync(new URL('../src/researchCollector.js', import.meta.url), 'utf8');
+  assert.match(engine, /const parkedSec = cfg\.mode === 'paper' && cfg\.pumpfunParked \? cfg\.parkedScanIntervalSec : 0;/);
+  assert.match(collector, /MPO_SOLANA_CAPTURE_MS\|\|30000/); assert.match(collector, /await sleep\(Math\.max\(50,LOOP_MS-/);
+});

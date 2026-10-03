@@ -969,7 +969,9 @@ async function main() {
     let sprintIntervalSec = Math.min(cfg.scanIntervalSec, 2);
     if (systemCpu >= 90) sprintIntervalSec = Math.max(sprintIntervalSec, 4);
     else if (systemCpu >= 75) sprintIntervalSec = Math.max(sprintIntervalSec, 3);
-    const targetMs = Math.max(1, sprintPaperLoop ? sprintIntervalSec : cfg.scanIntervalSec) * 1000;
+    // A parked Pump.fun paper engine (run C3) scans at most every parkedScanIntervalSec; live mode is never slowed.
+    const parkedSec = cfg.mode === 'paper' && cfg.pumpfunParked ? cfg.parkedScanIntervalSec : 0;
+    const targetMs = Math.max(1, sprintPaperLoop ? sprintIntervalSec : cfg.scanIntervalSec, parkedSec) * 1000;
     const elapsed = Date.now() - loopStarted;
     await sleep(Math.max(250, targetMs - elapsed));
   } while (true);

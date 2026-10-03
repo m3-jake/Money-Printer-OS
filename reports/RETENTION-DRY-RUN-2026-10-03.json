@@ -1,0 +1,155 @@
+{
+  "schema": "mpo.retention-dry-run.v1",
+  "at": "2026-10-03T14:54:53.448Z",
+  "dir": "C:\\Users\\jakem\\AppData\\Roaming\\Money Printer OS\\data\\research-evidence\\raw",
+  "dryRun": true,
+  "deleted": 0,
+  "totalNowGB": 7.67,
+  "currentPolicy": {
+    "keepDays": 30,
+    "budgetGB": 8,
+    "wouldRemoveGB": 0,
+    "files": 0
+  },
+  "proposedPolicy": {
+    "keepDays": 30,
+    "budgetGB": 4,
+    "prefixKeepDays": {
+      "solana-path": 7
+    },
+    "wouldRemoveGB": 4.12,
+    "afterGB": 3.55,
+    "files": 22,
+    "byStream": {
+      "solana-path": {
+        "files": 7,
+        "gb": 1.63
+      },
+      "polymarket-depth": {
+        "files": 7,
+        "gb": 2.48
+      },
+      "jupiter-quotes": {
+        "files": 4,
+        "gb": 0
+      },
+      "polymarket-cross-venue": {
+        "files": 4,
+        "gb": 0.01
+      }
+    },
+    "removed": [
+      {
+        "name": "solana-path-2026-09-21.ndjson",
+        "bytes": 272202685,
+        "reason": "age"
+      },
+      {
+        "name": "solana-path-2026-09-22.ndjson",
+        "bytes": 1244721,
+        "reason": "age"
+      },
+      {
+        "name": "solana-path-2026-09-24.ndjson",
+        "bytes": 438432,
+        "reason": "age"
+      },
+      {
+        "name": "solana-path-2026-09-25.ndjson",
+        "bytes": 233255891,
+        "reason": "age"
+      },
+      {
+        "name": "polymarket-depth-2026-09-22.ndjson",
+        "bytes": 2853729,
+        "reason": "budget"
+      },
+      {
+        "name": "polymarket-depth-2026-09-24.ndjson",
+        "bytes": 375410,
+        "reason": "budget"
+      },
+      {
+        "name": "polymarket-depth-2026-09-25.ndjson",
+        "bytes": 432005147,
+        "reason": "budget"
+      },
+      {
+        "name": "jupiter-quotes-2026-09-26.ndjson",
+        "bytes": 255207,
+        "reason": "budget"
+      },
+      {
+        "name": "polymarket-cross-venue-2026-09-26.ndjson",
+        "bytes": 3010549,
+        "reason": "budget"
+      },
+      {
+        "name": "polymarket-depth-2026-09-26.ndjson",
+        "bytes": 396502744,
+        "reason": "budget"
+      },
+      {
+        "name": "solana-path-2026-09-26.ndjson",
+        "bytes": 457885051,
+        "reason": "budget"
+      },
+      {
+        "name": "jupiter-quotes-2026-09-27.ndjson",
+        "bytes": 1597615,
+        "reason": "budget"
+      },
+      {
+        "name": "polymarket-cross-venue-2026-09-27.ndjson",
+        "bytes": 5700798,
+        "reason": "budget"
+      },
+      {
+        "name": "polymarket-depth-2026-09-27.ndjson",
+        "bytes": 586640198,
+        "reason": "budget"
+      },
+      {
+        "name": "solana-path-2026-09-27.ndjson",
+        "bytes": 401864154,
+        "reason": "budget"
+      },
+      {
+        "name": "jupiter-quotes-2026-09-28.ndjson",
+        "bytes": 1362817,
+        "reason": "budget"
+      },
+      {
+        "name": "polymarket-cross-venue-2026-09-28.ndjson",
+        "bytes": 1976342,
+        "reason": "budget"
+      },
+      {
+        "name": "polymarket-depth-2026-09-28.ndjson",
+        "bytes": 628800141,
+        "reason": "budget"
+      },
+      {
+        "name": "solana-path-2026-09-28.ndjson",
+        "bytes": 383932257,
+        "reason": "budget"
+      },
+      {
+        "name": "jupiter-quotes-2026-09-29.ndjson",
+        "bytes": 615955,
+        "reason": "budget"
+      },
+      {
+        "name": "polymarket-cross-venue-2026-09-29.ndjson",
+        "bytes": 1692171,
+        "reason": "budget"
+      },
+      {
+        "name": "polymarket-depth-2026-09-29.ndjson",
+        "bytes": 610719092,
+        "reason": "budget"
+      }
+    ]
+  },
+  "note": "Dry run only. Nothing was deleted. Applying the proposal needs bing's approval."
+}

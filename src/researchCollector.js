@@ -13,7 +13,10 @@ const LOCK_FILE=path.join(DATA_DIR,'research-evidence','collector.lock');
 const LOCK_STALE_MS=Math.max(10_000,Number(process.env.MPO_COLLECTOR_LOCK_STALE_MS||60_000));
 // Defaults lowered 2026-10-03 (audit P4): the furnace that used 1 s Solana evidence is retired, and 5 s / 10-level
 // Polymarket depth was ~600 MB of JSON a day. The env settings restore the old rates.
-const SOLANA_MS=Math.max(500,Number(process.env.MPO_SOLANA_CAPTURE_MS||5000));
+// Solana path ticks: since the furnace retired (2026-10-02) nothing replays them; only data coverage counts the
+// files. Captured every 30 s (run C3) instead of 5 s; the collector loop itself still ticks every LOOP_MS.
+const SOLANA_MS=Math.max(500,Number(process.env.MPO_SOLANA_CAPTURE_MS||30000));
+const LOOP_MS=Math.max(500,Number(process.env.MPO_COLLECTOR_LOOP_MS||5000));
 const POLY_MS=Math.max(2000,Number(process.env.MPO_POLY_CAPTURE_MS||15000));
 const POLY_HEARTBEAT_MS=Math.max(POLY_MS,Number(process.env.MPO_POLY_HEARTBEAT_MS||30000));
 const MARKET_LIMIT=Math.max(5,Math.min(30,Number(process.env.MPO_POLY_CAPTURE_MARKETS||20)));
@@ -56,16 +59,18 @@ export function appendNdjson(name,rows,{dir=RAW_DIR,now=Date.now()}={}){
 // budget. Today's and yesterday's files are never touched, nor anything matching exemptPrefixes (the Polymarket US
 // evidence stays until its shadow record is complete). A removed day file takes its .sha256 sidecar with it.
 const DATED_RAW=/^(.+)-(\d{4}-\d{2}-\d{2})\.ndjson$/;
-export function pruneRawTapes({dir=RAW_DIR,now=Date.now(),keepDays=RAW_KEEP_DAYS,budgetBytes=RAW_BUDGET_BYTES,exemptPrefixes=[]}={}){
+// dryRun: report what the policy would remove and delete nothing. prefixKeepDays: a shorter age limit per stream.
+export function pruneRawTapes({dir=RAW_DIR,now=Date.now(),keepDays=RAW_KEEP_DAYS,budgetBytes=RAW_BUDGET_BYTES,exemptPrefixes=[],prefixKeepDays={},dryRun=false}={}){
  const yesterday=day(now-864e5),cutoff=day(now-keepDays*864e5),removed=[];
+ const cutoffFor=x=>{const p=Object.keys(prefixKeepDays).find(k=>x.name.startsWith(k));return p?day(now-prefixKeepDays[p]*864e5):cutoff};
  let names=[];try{names=fs.readdirSync(dir)}catch{return {at:now,files:0,totalBytes:0,removed,removedBytes:0,budgetBytes,keepDays,overBudget:false}}
  const files=names.map(name=>{const m=DATED_RAW.exec(name);if(!m)return null;try{return {name,date:m[2],size:fs.statSync(path.join(dir,name)).size}}catch{return null}}).filter(Boolean);
  let total=files.reduce((a,x)=>a+x.size,0);
  const locked=x=>x.date>=yesterday||exemptPrefixes.some(p=>x.name.startsWith(p));
- const drop=(x,reason)=>{try{fs.rmSync(path.join(dir,x.name));try{fs.rmSync(path.join(dir,x.name+'.sha256'),{force:true})}catch{}removed.push({name:x.name,bytes:x.size,reason});total-=x.size;x.gone=true}catch{}};
- for(const x of files)if(!locked(x)&&x.date<cutoff)drop(x,'age');
+ const drop=(x,reason)=>{if(dryRun){removed.push({name:x.name,bytes:x.size,reason});total-=x.size;x.gone=true;return}try{fs.rmSync(path.join(dir,x.name));try{fs.rmSync(path.join(dir,x.name+'.sha256'),{force:true})}catch{}removed.push({name:x.name,bytes:x.size,reason});total-=x.size;x.gone=true}catch{}};
+ for(const x of files)if(!locked(x)&&x.date<cutoffFor(x))drop(x,'age');
  for(const x of files.filter(x=>!x.gone&&!locked(x)).sort((a,b)=>a.date.localeCompare(b.date)||a.name.localeCompare(b.name))){if(total<=budgetBytes)break;drop(x,'budget')}
- return {at:now,files:files.filter(x=>!x.gone).length,totalBytes:total,removed,removedBytes:removed.reduce((a,x)=>a+x.bytes,0),budgetBytes,keepDays,overBudget:total>budgetBytes};
+ return {at:now,dryRun,files:files.filter(x=>!x.gone).length,totalBytes:total,removed,removedBytes:removed.reduce((a,x)=>a+x.bytes,0),budgetBytes,keepDays,prefixKeepDays,overBudget:total>budgetBytes};
 }
 // One collector per data dir. The trader spawns one as a child and a standalone runner may run another;
 // without this they would both append the same day file. A lock is stale when its pid is gone or it has
@@ -122,12 +127,13 @@ async function run(){
  if(!lock.ok){console.log(`research collector: another collector (pid ${lock.heldBy??'unknown'}) owns ${DATA_DIR}; exiting`);return}
  const release=()=>releaseCollectorLock(LOCK_FILE);process.on('exit',release);
  for(const sig of ['SIGINT','SIGTERM'])process.on(sig,()=>{release();process.exit(0)});
- let cursor=readJson(CURSOR_FILE,{solana:{},books:{},stats:{solanaRows:0,polyRows:0,bytes:0}}),lastPoly=0,polyApi=null,lastPolyUS=0,usEvidence=null,lastPrune=0,lastJup=0,jupBackoffUntil=0,jupApi=null,walletIdx=null,walletBusy=false,lastWallet=0;
+ let cursor=readJson(CURSOR_FILE,{solana:{},books:{},stats:{solanaRows:0,polyRows:0,bytes:0}}),lastSolana=0,lastPoly=0,polyApi=null,lastPolyUS=0,usEvidence=null,lastPrune=0,lastJup=0,jupBackoffUntil=0,jupApi=null,walletIdx=null,walletBusy=false,lastWallet=0;
  process.env.POLYMARKET_AUTOSTART='false';
  const status={schema:'mpo.research-capture-status.v1',startedAt:Date.now(),pid:process.pid,liveOrderAccess:false};
  while(true){
   const loopAt=Date.now();
-  try{
+  if(Date.now()-lastSolana>=SOLANA_MS)try{
+   lastSolana=Date.now();
    const state=readJson(path.join(DATA_DIR,'state.json'),{}),c=collectSolanaTicks(state,cursor.solana||{});
    cursor.solana=c.cursor;const bytes=appendNdjson('solana-path',c.rows);cursor.stats.solanaRows=Number(cursor.stats.solanaRows||0)+c.rows.length;cursor.stats.bytes=Number(cursor.stats.bytes||0)+bytes;
    status.solana={lastAt:Date.now(),rowsTotal:cursor.stats.solanaRows,lastBatch:c.rows.length,coverage:{bidAsk:false,depth:false,costs:false,executionLatency:false}};
@@ -194,7 +200,7 @@ async function run(){
   const owner=readJson(LOCK_FILE,null);
   if(owner&&Number(owner.pid)!==process.pid){console.log('research collector: lock taken over; exiting');return}
   try{const t=new Date();fs.utimesSync(LOCK_FILE,t,t)}catch{}
-  await sleep(Math.max(50,SOLANA_MS-(Date.now()-loopAt)));
+  await sleep(Math.max(50,LOOP_MS-(Date.now()-loopAt)));
  }
 }
 

@@ -62,6 +62,29 @@ Architecture, active work and release evidence live in `.agent-state/PROJECT_STA
 ledger remains `AUDIT.md` and `PROGRESS.md`. Later sections below are historical unless dated
 as the current release. Last updated: 2026-10-03.
 
+## Batch PF-17 (2026-10-03, Claude): Pump.fun scaled to its PARK verdict (run item C3)
+
+- **Engine cadence** (`src/config.js`, `src/index.js`): `PUMPFUN_PARKED` (default on) makes the paper engine scan
+  at most every `PUMPFUN_PARKED_SCAN_SEC` (20 s; was 8 s, or 2 s under SPRINT). Live mode is never slowed. The FAIR
+  paper book and the scored-wallet copy book keep running. `PUMPFUN_PARKED=false` restores the old cadence.
+- **Collector** (`src/researchCollector.js`): which raw streams still have a reader?
+  - `solana-path` (2.7 GB): no replay reader since the furnace retired; only the data-coverage panel counts its
+    files. Captured every 30 s instead of 5 s. Before, its 5 s capture also set the whole collector loop period
+    and parsed the 4 MB `state.json` each time; the loop now ticks on its own `LOOP_MS` (5 s) so the other streams
+    keep their rates.
+  - Kept as they were: `polymarket-depth` (4.1 GB, the Lab's CLOB researcher reads completed days),
+    `polymarket-us-legs` / `-outcomes` (combo evidence), `jupiter-quotes` (Pump.fun cost evidence),
+    `polymarket-cross-venue` (lane registry).
+- **Retention: nothing was deleted.** `pruneRawTapes` gains `dryRun` and a per-stream `prefixKeepDays`; the live
+  budget stays 8 GB / 30 days. `scripts/retention-dry-run.mjs` wrote `reports/RETENTION-DRY-RUN-2026-10-03.json`:
+  raw evidence is 7.67 GB now; the proposal (Solana ticks 7 days, 4 GB total, Polymarket US exempt) would remove
+  22 files, 4.12 GB (Solana 1.63 GB, oldest Polymarket depth 2.48 GB), leaving 3.55 GB. A Solana-only variant
+  frees 1.63 GB without touching what the Lab reads. Listed under Needs bing.
+- **CPU before** (installed alpha.86, 60 s sample at 10:53): collector 31.9% of one core; engine/HUD/bots process
+  40.1% of one core. **After:** to be measured after the release.
+- **Verified:** `tests/unattended-storage.test.mjs` (2 new). Trader `npm run test:all`: 1,284 tests, 1,264 pass,
+  0 fail (20 skipped).
+
 ## Batch PF-16 (2026-10-03, Claude): risk lookups off the cycle, one watchdog per paper venue (run items C1, C2)
 
 Done in parallel with Codex's uncommitted A8 work (forward scorecard); no file overlaps with it.
