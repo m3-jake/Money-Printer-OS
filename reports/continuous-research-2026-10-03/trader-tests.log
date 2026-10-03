@@ -1,0 +1,1925 @@
+
+> money-printer-os@0.5.0-alpha.91 test:all
+> npm run test:wiring && npm run test:paired-safety && npm run test:recovery && npm run test:discovery && npm run test:solana && npm run test:turnover && npm run test:updater && npm run test:execution && npm run test:unit-economics && npm run test:settlement && npm run test:polymarket-us && npm run test:combos && npm run test:edge-robustness && npm run test:accounting && npm run test:replay && npm run test:experiments && npm run test:research && npm run test:evidence && npm run test:poly-research-eval && npm run test:evolution && npm run test:lab-link && npm run test:visual && npm run test:release-gate && npm run test:latency && npm run test:robinhood && npm run test:robinhood-equities && npm run test:lane-contracts && npm run test:fitness && npm run test:unattended && npm run test:upgrade && npm run test:pump-profit && npm run test:paper-completion && npm run test:wallet-crowd && npm run test:paper-bots && npm run test:web-demo && npm run test:paper-potential
+
+
+> money-printer-os@0.5.0-alpha.91 test:wiring
+> node --test tests/test-wiring.test.mjs tests/doc-drift.test.mjs tests/src-reachability.test.mjs
+
+✔ the engine line states the export surface and the guard src/index.js actually has (3.4869ms)
+✔ the counts the documents of record quote are the counts on disk (1.4131ms)
+✔ the enter() open item is closed and the suite that closed it is reached by test:all (2.4813ms)
+✔ the disproven import premise survives only as a labelled correction (154.404ms)
+✔ the agent-state entry points are not older than the record they describe (4.9119ms)
+✔ the open list routes its install item to the release status record (0.9339ms)
+✔ every file in src/ is reachable from a runtime entry point (385.4358ms)
+✔ the reachability walk sees every import form the app uses (0.8363ms)
+✔ runtime code never imports from tools/ (375.5643ms)
+test coverage map (158 suites across 37 targets):
+  test:accounting: 1 file
+  test:combos: 2 files
+  test:discovery: 1 file
+  test:edge-robustness: 1 file
+  test:evidence: 7 files
+  test:evolution: 3 files
+  test:executable-replay: 1 file
+  test:execution: 2 files
+  test:experiments: 1 file
+  test:fitness: 3 files
+  test:lab-link: 5 files
+  test:lane-contracts: 16 files
+  test:latency: 2 files
+  test:paired-safety: 4 files
+  test:paper-bots: 5 files
+  test:paper-completion: 20 files
+  test:paper-potential: 7 files
+  test:poly-research-eval: 1 file
+  test:polymarket-us: 2 files
+  test:pump-profit: 3 files
+  test:recovery: 7 files
+  test:release-gate: 2 files
+  test:replay: 1 file
+  test:research: 7 files
+  test:robinhood: 17 files
+  test:robinhood-equities: 2 files
+  test:settlement: 1 file
+  test:solana: 4 files
+  test:turnover: 2 files
+  test:unattended: 5 files
+  test:unit-economics: 2 files
+  test:updater: 4 files
+  test:upgrade: 6 files
+  test:visual: 9 files
+  test:wallet-crowd: 2 files
+  test:web-demo: 1 file
+  test:wiring: 3 files
+✔ every suite on disk is reachable from npm run test:all (3.9041ms)
+✔ every test path a script names exists, and no file is named twice in one target (37.7572ms)
+✔ the coverage map is complete and printed (telemetry, not a guess) (2.9659ms)
+✔ no embedded Robinhood panel copy is left to drift (0.8167ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 925.8858
+
+> money-printer-os@0.5.0-alpha.91 test:paired-safety
+> node --test tests/paired-coverage-20260930.test.mjs tests/paired-transport-20260930.test.mjs tests/manual-quote-clock-20260930.test.mjs tests/transport-redirect-20260930.test.mjs
+
+✔ manual practice/run leaves clock sampling to the post-fetch implementation (10.2488ms)
+✔ manual practice/order leaves clock sampling to the post-fetch implementation (6.2714ms)
+✔ manual practice/close leaves clock sampling to the post-fetch implementation (3.1425ms)
+✔ practice implementation retains the dynamic clock after awaited quote acquisition (1.6638ms)
+✔ zero books and zero verified books never grant promotion (5.4654ms)
+✔ complete scoped evidence is required, and mixed missing coverage is partial (7.2029ms)
+✔ unknown fee, realized or position basis is not a reconciliation (2.6222ms)
+✔ cash verdict from an older snapshot cannot certify newer balances (0.7656ms)
+✔ duplicate scopes cannot manufacture independent coverage (1.2756ms)
+✔ recovery state and incorrect account identity refuse promotion (0.9365ms)
+✔ unrecognized mirror status and fabricated RECONCILED flags are not proof (0.7276ms)
+✔ diagnostic retention is bounded and contains no raw secrets, queries or payloads (10.4848ms)
+✔ existing read wrappers are allowlisted, including order supervision and pagination (2.0199ms)
+✔ non-read methods, action aliases, encoded actions, override queries and GET bodies are denied (0.6109ms)
+✔ real dispatch barrier rejects mutations before signing on every configured destination (8.1477ms)
+✔ transport refuses 301 redirects without following or retaining signatures (12.3129ms)
+✔ transport refuses 302 redirects without following or retaining signatures (3.2273ms)
+✔ transport refuses 303 redirects without following or retaining signatures (2.9196ms)
+✔ transport refuses 307 redirects without following or retaining signatures (3.4064ms)
+✔ transport refuses 308 redirects without following or retaining signatures (2.9246ms)
+✔ transport refuses already-followed redirects without following or retaining signatures (3.4067ms)
+ℹ tests 21
+ℹ suites 0
+ℹ pass 21
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 392.6789
+
+> money-printer-os@0.5.0-alpha.91 test:recovery
+> node --test tests/store-recovery.test.mjs tests/cycle-recovery.test.mjs tests/cycle-budget.test.mjs tests/risk-prefetch.test.mjs tests/venue-loop.test.mjs tests/journal-append-contract.test.mjs tests/trade-path.test.mjs
+
+✔ a fast cycle never trips its budget (4.426ms)
+✔ past the deadline the next phase boundary abandons the cycle (0.8578ms)
+✔ an explicit abort cancels work without throwing at the abort site (0.6612ms)
+✔ a zero budget disables the deadline instead of expiring instantly (0.4019ms)
+✔ the market requester cancels an in-flight read when the cycle signal aborts (5.6981ms)
+✔ an already-aborted signal rejects before the fetch is made (0.5639ms)
+✔ without a signal the requester behaves exactly as before (47.8655ms)
+✔ the engine installs the budget signal for every market read and asserts per phase (2.4881ms)
+✔ a stalled cycle is abandoned: it records its last stage, aborts in-flight work and never saves (1.5114ms)
+✔ the engine loop races each cycle against a stall timer, skips a late save, and health reports STALLED (2.5399ms)
+✔ the desktop supervisor needs three missed health probes (5 s each) before it swaps the dashboard for recovery (1.144ms)
+✔ a refused recovery save still leaves evidence in the journal and in memory (428.2267ms)
+✔ a successful recovery save persists the counter and clears the flag (56.85ms)
+✔ an unreadable state file is journaled instead of replacing the cycle failure (20.851ms)
+✔ a process killed mid-write still reports the error on the next boot (769.1627ms)
+✔ a streak of cycle errors degrades health until a clean cycle clears it (85.4453ms)
+✔ a clean cycle with no streak writes nothing (14.2306ms)
+✔ clearing the streak does not clear an unrelated degraded flag (32.7742ms)
+✔ the degradation threshold is configurable per call (49.8967ms)
+✔ an abandoned cycle is counted apart from errors, and a streak of them degrades (84.9105ms)
+✔ diagnostics are per-cycle state, not a log: they cannot grow with uptime (183.2955ms)
+✔ every per-cycle diagnostics push in index.js stays condition-guarded (3.2901ms)
+journal append cost, 1000 rows (~390 KB): one batch 5.21 ms, per-row 1641.17 ms (314.9x, 1.641 ms per row)
+✔ the cycle volume is one append for 30 rows; everything else is one append per event (406.6049ms)
+✔ a batch writes exactly the bytes a run of single appends writes (batching stays format-preserving) (39.0827ms)
+✔ ts is stamped per row and a caller-supplied ts is never rewritten (17.607ms)
+✔ journal activity cannot change state.json: its bytes are the state's, never the journal's (47.0465ms)
+✔ per-row appends cost an order of magnitude more than the batch the engine uses (1670.1969ms)
+✔ the engine batches the cycle volume and appends one row per event, never per row (2.0763ms)
+✔ request never blocks: risk is unknown until the background lookup answers (7.3673ms)
+✔ a failed or empty lookup stays unknown; answers expire after the TTL (1.8051ms)
+✔ circuit breaker: three failures in a row pause lookups; nothing is guessed while it is open (1.614ms)
+✔ the queue is bounded and concurrency is respected (42.5387ms)
+✔ the engine cycle no longer awaits mintRisk and fails closed on unknown risk (1.9283ms)
+✔ first launch initializes, while zero cash survives reload (394.0014ms)
+✔ truncated primary recovers exact balance and pauses entries (13.6735ms)
+✔ unrecoverable files are preserved instead of minting a new bankroll (72.4022ms)
+✔ missing primary recovers backup with a visible pause (15.8185ms)
+✔ saving recovered state cannot destroy the good backup (36.1621ms)
+✔ invalid balances and shapes never replace valid primary or backup (109.4048ms)
+✔ valid saves retain the preceding account as recoverable backup (23.3464ms)
+✔ transient Windows EPERM during primary publication is retried (74.5655ms)
+✔ failed primary publication leaves the old account readable (23.189ms)
+✔ failed backup publication keeps prior recovery bytes (27.6504ms)
+✔ F1 legacy state without a ledger reconstructs lifetime pnl through loadState (10.4208ms)
+✔ F3 uncapped strategy totals beat the 1500-row history ring, and the cut is stamped (20.5556ms)
+✔ F4 a stale accounting alert is cleared once the books are clean (12.1452ms)
+✔ F2 a small hole on a 1 SOL bankroll now raises PAPER_IDENTITY (11.1304ms)
+✔ F6 saveState refuses realized cash with no basis sold, and publishes nothing (38.3911ms)
+✔ F6 realized cash above what the position could possibly be worth is refused (18.1928ms)
+✔ F6 a position appearing with positive realized cash is refused (19.7137ms)
+✔ F6 ordinary opens and closes are unaffected (52.6068ms)
+✔ save caps the research blob: learner outcomes, universe and postmortems (64.9636ms)
+✔ heavy research lives in research-state.json; state.json keeps the account and small research fields (28.3579ms)
+✔ an old state.json with inline research migrates on the next save (35.5991ms)
+✔ a missing or torn research file never blocks the account (20.1357ms)
+✔ research-state.json is rewritten at most every RESEARCH_SAVE_MS; state.json saves are not held back (40.7799ms)
+✔ P2.1 the validated section map and the backup bound cannot drift from the account side (7.6553ms)
+✔ P2.1 a torn research file is reported, and rebuilt-empty sections never replace it (34.7721ms)
+✔ P2.1 a damaged file that still parses is damaged too (JSON.parse alone would have emptied the dataset) (28.4202ms)
+✔ P2.1 a torn research file with a valid backup recovers the sections and repairs itself (41.2898ms)
+✔ P2.1 sections that would not read back are refused instead of published (14.9639ms)
+✔ P2.1 the preceding research file becomes a recoverable backup, and an unreadable one never does (72.7834ms)
+✔ P2.1 repairing the file resumes publication without hiding what happened (51.3018ms)
+✔ P2.1 an empty-but-valid section never turns into an account recovery (14.3986ms)
+✔ P3.2 state written by a newer build survives this one, counter or no counter (48.2621ms)
+bigint: Failed to load bindings, pure JS will be used (try npm run rebuild?)
+ALERT: EXIT TP -1.4% · stale-purge
+ALERT: EXIT TP -50.8% · stop-loss
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+MONEY PRINTER ENGINE 12.6 // PAPER // COLD 0 // 0 TRACKED // 0 HELD // 113ms
+trade-path: mpo-trade-path-xvjxIi left under C:\Users\jakem\AppData\Local\Temp — EPERM (a handle outside the platform's close seam survived)
+✔ exec #5: the trade path is reachable from a test — cycle, enter and updatePositions are exported (2.2649ms)
+✔ a paper entry driven in-process debits cash by basis + fee and books the entry fee as realized loss (22.945ms)
+✔ a duplicate entry for the same mint is refused by the brain, not only by the caller (6.8735ms)
+✔ the exit ladder reaches stale-purge through the real close path: position gone, cash up, cooldown set (30.8419ms)
+✔ a stop-loss fires when the mark collapses but the tick did not jump, and the loss is booked (13.0722ms)
+✔ one full cycle runs in-process against the stubbed market and persists its counters (186.7064ms)
+✔ the trade path reaches only the hosts this stub knows about (coupling is measured, not assumed) (2.1299ms)
+✔ a hung venue is reported STALLED, is not run on top of itself, and the other venues keep their cadence (12.3154ms)
+✔ errors are per venue and stop() clears every timer (2.4517ms)
+✔ the dashboard runs the paper bots through venue loops and health reads cached state (1.9066ms)
+ℹ tests 75
+ℹ suites 0
+ℹ pass 75
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3116.5091
+
+> money-printer-os@0.5.0-alpha.91 test:discovery
+> node --test tests/discovery-budget.test.mjs
+
+✔ the fan-out is sized from the configured budget and interval (4.5197ms)
+✔ a wider budget or a slower cycle widens the fan-out (0.8359ms)
+✔ the fan-out never exceeds what is left of the window (0.5216ms)
+✔ an unlimited budget leaves the fan-out alone (0.3313ms)
+✔ the address limit is always at least one batch (0.3098ms)
+✔ a budget-sized fan-out is never refused, while the old 960-address fan-out is (131.0504ms)
+✔ discoverCandidates sizes its slice from the budget, not from a fixed oversample (1.3791ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 604.0979
+
+> money-printer-os@0.5.0-alpha.91 test:solana
+> node --test tests/solana-fair.test.mjs tests/holder-rpc.test.mjs tests/wallet-scorecard.test.mjs tests/live-gate.test.mjs
+
+[holder-rpc] RATE_LIMITED via 127.0.0.1:51395: 429 Too Many Requests: {"jsonrpc":"2.0","id":"3e6c8745-0953-4d2d-a5b2-ba59aee74627","error":{"code":429,"message":"Too many requests for a specific RPC call"}}
+✔ a 429 from the holder RPC is counted and reported, not swallowed (752.5675ms)
+[holder-rpc] OK via 127.0.0.1:55461
+✔ with a working holder RPC, holders and their owners come back and are counted (935.778ms)
+[holder-rpc] OK via 127.0.0.1:55466
+[holder-rpc] BUDGET via 127.0.0.1:55466
+✔ the daily cap stops holder calls before they are sent (1618.1398ms)
+[holder-rpc] OK via 127.0.0.1:55484
+✔ without HOLDER_RPC_URL, holder lookups stay on the main RPC (old behaviour) (929.2845ms)
+✔ the verdict refuses what cannot run and keeps every default bootable (8.2865ms)
+✔ every armable order path consults the shared execution boundary, and no env flag bypasses it (5.3302ms)
+✔ a booted runtime refuses the dispatch the finding said three env vars would reach (1441.4789ms)
+✔ the engine refuses an unexecutable live config at startup, before any provider work (6027.1739ms)
+✔ doctor exits non-zero on the refused verdict and zero on the shipped default (2947.4399ms)
+✔ preset math: FAIR breaks even below 60%, SPRINT needs about 83% (7.7894ms)
+✔ new installs default to FAIR; SPRINT stays selectable (1.6425ms)
+✔ cost gate: SPRINT is refused, FAIR passes on a deep pool and fails on a thin one (4.5052ms)
+✔ fresh Jupiter friction can only tighten the PAPER cost gate (1.409ms)
+✔ cost gate is wired into the Solana entry path and records costGate skips (1.545ms)
+✔ book stats and view: hit rate, profit factor, net after costs, costGate skips (1.7852ms)
+✔ HUD contract: Solana card, one-click FAIR/SPRINT switch and SPRINT warning (15.9801ms)
+✔ paper auto-demote: SPRINT fails the cost gate at the floor round trip and drops to FAIR, never back (2.9843ms)
+✔ FAIR expectancy: only FAIR-tagged closes, Wilson 95 % interval, measured cost, PARK only after 100 closes (3.4315ms)
+✔ bonding-curve buy: SOL spent excludes rent and fee, the curve PDA is dropped (143.1433ms)
+✔ PumpSwap sell paid in WSOL: SOL received counts the WSOL leg, pool rows are dropped (8.9008ms)
+✔ router swap where the owner signs but a relayer pays the fee (8.914ms)
+✔ temporary WSOL wrapped and closed inside the tx, non-signer recipients and failed txs (9.0975ms)
+✔ Helius enhanced path records SOL from accountData instead of a hard-coded 0, fee payer only (6.4923ms)
+✔ FIFO realized PnL with partial sells, fees charged, hold time, one round trip (6.9152ms)
+✔ no lookahead: events at or after asOf never change the score, an open trip is not a win (8.9455ms)
+✔ PDAs, non-signers and legs without SOL are excluded; unmatched sells are not free profit (7.432ms)
+✔ earliness only on mints with complete history; grading needs 10 round trips with shrinkage (13.2704ms)
+✔ Wallet Intel ingestion keeps only on-curve owners and prunes legacy pool/program profiles (7.7706ms)
+✔ indexer tick: oldest-first pull, signer swaps with SOL stored, scorecard and health written (89.1255ms)
+✔ hard daily cap: no call beyond it, progress kept, status BUDGET; the cap survives a restart (56.4427ms)
+✔ spend is paced over the UTC day, the kill flag stops all calls, and keys never reach health (64.4159ms)
+✔ default cap fits the Helius free plan next to the holder cap; enhanced calls cost 100 from the same ledger (90.5147ms)
+✔ the research collector runs the lean indexer tick without the alpha worker (2.5426ms)
+ℹ tests 33
+ℹ suites 0
+ℹ pass 33
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 10687.8082
+
+> money-printer-os@0.5.0-alpha.91 test:turnover
+> node --test tests/sports-turnover.test.mjs tests/update-auth.test.cjs
+
+✔ early baseball never matches overtime or a late generic clock (4.2752ms)
+✔ late clock is specific to the sport and market (5.025ms)
+✔ closing tennis and table tennis outrank long or unknown matches (2.6215ms)
+✔ combo slots depend on settled profits and current bankroll, not deposits or stale wins (1.1937ms)
+✔ autopilot requires calibrated positive EV before filling earned combo slots (319.2881ms)
+✔ public releases use Ed25519 even when a LAN token exists (7.8049ms)
+✔ LAN releases still require the matching HMAC and peer token (1.7358ms)
+✔ an unauthenticated LAN source is refused, not accepted by default (1.0163ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 579.0325
+
+> money-printer-os@0.5.0-alpha.91 test:updater
+> node --test tests/update-channel.test.cjs tests/update-fetch.test.cjs tests/sign-manifest.test.mjs tests/release-tools.test.mjs
+
+✔ release-cut: version bump and file rewrite (74.7959ms)
+✔ release-cut: the real repo carries a bumpable APP_VERSION (1.9773ms)
+✔ release-publish: args and draft selection (36.8084ms)
+✔ release-publish: full flow signs, replaces manifest, publishes; token never leaves GitHub (14.5084ms)
+✔ release-publish: dry run and failures publish nothing (17.8537ms)
+✔ readAsarFile reads a packed file by path and rejects non-asar input (33.9942ms)
+✔ stage writes an unsigned manifest the updater will reject, versioned from the packed package.json (567.2196ms)
+✔ sign needs an explicit key, refuses inside an agent session, and refuses a key the app would not trust (620.027ms)
+✔ sign then verify round-trips through desktop/update-auth.cjs exactly as the app checks it (1088.8232ms)
+✔ default channel is the GitHub Releases feed of this repository (5.3688ms)
+✔ GitHub channel URL forms all resolve to the Releases API (1.4124ms)
+✔ a plain directory URL keeps the manifest.json + app.asar layout (0.9889ms)
+✔ MONEY_PRINTER_UPDATE_URL overrides the default; blank means default (0.9183ms)
+✔ a broken channel URL never throws: the default is used and the problem is reported (4.967ms)
+✔ the channel token is optional and trimmed (0.6635ms)
+✔ httpBuffer follows a same-origin redirect and keeps the bearer token (91.6477ms)
+✔ httpBuffer drops the bearer token on a cross-origin redirect but keeps the other headers (24.1029ms)
+✔ httpBuffer resolves relative Location headers and honours 301/307/308 (16.9461ms)
+✔ httpBuffer stops a redirect loop and reports non-200 with the status (23.5342ms)
+✔ httpBuffer refuses a body larger than maxBytes, declared or streamed, without leaking an error (129.9632ms)
+✔ GitHub channel: release JSON -> assets -> cross-origin blob download, token only on the API origin (21.6268ms)
+✔ GitHub channel: a 404 explains the private-repo token, and a rejected token says so (14.7462ms)
+✔ GitHub channel: a release without the signed manifest asset is refused before any download (14.2217ms)
+✔ static channel: manifest.json + app.asar next to each other, never with a token (16.1584ms)
+ℹ tests 24
+ℹ suites 0
+ℹ pass 24
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2566.1038
+
+> money-printer-os@0.5.0-alpha.91 test:execution
+> node --test tests/execution-turnover.test.mjs tests/pump-paper-shared.test.mjs
+
+✔ concurrent reads share transport and cache preserves original observation time (354.7305ms)
+✔ 429 backs off the whole host, respects Retry-After and resumes after the window (4.1519ms)
+✔ timeout cancels the underlying request instead of leaving it running (16.3429ms)
+✔ request budget bounds fresh URL churn (41.4688ms)
+✔ paper crash correction needs distinct exact-pool observations across 15 seconds (0.8531ms)
+✔ missing pools, stale prices, huge windfalls and live jumps stay quarantined (0.4078ms)
+✔ P1.5 the funnel counts what the price review rejected, band included (5.5354ms)
+✔ exit net return includes entry fee, exit slippage and fee on sale proceeds (0.8278ms)
+✔ exit impact grows with sale value and never creates negative proceeds on a crash (2.5706ms)
+✔ buy quote spends the stated budget across depth levels (0.6481ms)
+✔ cash-out walks bid depth, charges fees and refuses insufficient depth (0.5973ms)
+✔ 16 held positions use one request and exact base/pool matching (2.1375ms)
+✔ P5.2 the band is one-sided on purpose, and a sub-crash downward print is acted on in both modes (0.856ms)
+✔ Pump PAPER entry uses shared depth/friction engine and never idealized mid (6.3186ms)
+✔ Pump PAPER rejects stale quotes and uneconomical tiny buys (1.1315ms)
+✔ Pump PAPER partial fills are tunable and deterministic (2.4749ms)
+✔ Pump PAPER exit maps partial execution back to cost basis (1.0176ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 677.4376
+
+> money-printer-os@0.5.0-alpha.91 test:unit-economics
+> node --test tests/api-unit-economics.test.mjs tests/transaction-indexer-economics.test.mjs
+
+✔ counts provider requests, cache hits, coalescing, and configured request cost without guessing unpriced cost (60.493ms)
+✔ purpose tags attribute spend to scan vs research vs index without inventing unpriced cost (25.6544ms)
+✔ configurable request cap rejects before transport and is measurable (6.922ms)
+✔ zero request cap means unlimited so historical Helius behavior is preserved by default (48.8655ms)
+✔ persisted role snapshots merge across trader and worker without fabricating costs (9.1962ms)
+✔ unpriced cache hits do not invent avoided cost (1.2557ms)
+✔ daily USD spend cap rejects priced requests and leaves unpriced and default-unlimited behavior intact (4.2348ms)
+✔ ROI guard is inactive without explicit cost and value and only blocks priced spend when both exist (2.1281ms)
+✔ scan-cycle attribution and net strategy P&L after data costs leave gross trading P&L untouched (0.9753ms)
+✔ scan outcome costs use scan-purpose spend only while strategy net P&L stays on total priced data cost (0.944ms)
+✔ unit-economics snapshot keeps v1 keys and extends with purposeSpend (0.4336ms)
+✔ persisted role snapshots merge purpose spend without mixing scan outcome cost (6.2485ms)
+✔ daily spend cap rolls over at UTC day boundary (0.7075ms)
+✔ Helius indexing uses the configured cap and explicit request cost accounting (57.1811ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 698.5321
+
+> money-printer-os@0.5.0-alpha.91 test:settlement
+> node --test tests/polymarket-settlement.test.mjs
+
+✔ gamma loser books LOST and does not return stake (84.3576ms)
+✔ near-binary prices are not confirmed settlement outcomes (22.8579ms)
+✔ only explicitly cancelled markets void and return stake (33.2211ms)
+✔ stale still-open games retain exposure without refunds (25.7606ms)
+✔ missing markets and failed lookups never refund unresolved exposure (46.1524ms)
+✔ empty bid book does not invent a crushed loss (11.5033ms)
+✔ mark-to-bid records crushed losers instead of leaving them OPEN (16.9442ms)
+✔ profitable early-exit still books WON from executable bids (16.9128ms)
+✔ throttled refresh dedupes in-flight and within the fake-clock window (15.5799ms)
+✔ combo with one lost leg is LOST even if the other is still pending or missing (28.5905ms)
+✔ combo with one lost leg is LOST even if the other would win (13.1936ms)
+✔ censoring-aware metrics drop a 42-0 early-exit book with stale opens (7.6153ms)
+✔ closed Gamma list recovers resolved markets the live list hides (16.5651ms)
+✔ GET /markets/{id} recovers a closed market both list queries hide (14.9382ms)
+✔ 2026-09-16 paper journal is 42 early-exit wins; closed Gamma books four lost singles and the combo win (24.6475ms)
+✔ real-money gate stays locked and settlement never uses API-key auth (2.3891ms)
+✔ malformed resolution data never manufactures a loss (56.7612ms)
+✔ thin bid liquidity cannot fabricate a total realized loss (11.8141ms)
+ℹ tests 18
+ℹ suites 0
+ℹ pass 18
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 734.0236
+
+> money-printer-os@0.5.0-alpha.91 test:polymarket-us
+> node --test tests/polymarket-us-safety.test.mjs tests/polymarket-us-evidence.test.mjs
+
+✔ price buckets (2.2775ms)
+✔ longSettlement trusts only RESOLVED markets priced exactly 0 or 1 (0.5657ms)
+✔ legs tape: every window verdict per leg, deduped until something changes or the heartbeat (9.8761ms)
+✔ settlement tracker resolves off-board legs into the calibration table; unresolved stays, void is UNKNOWN (19.2994ms)
+✔ settlement tracker backs off on 429 without losing legs (1.4262ms)
+✔ markup: conservative until enough real RFQ quotes, then the median (0.3591ms)
+✔ shadow auto: places with the auto logic at ask-product + markup, settles on real outcomes, voids on UNKNOWN (2.7954ms)
+✔ evidenceTick appends the legs tape (newline-safe after a NUL tail) and persists state (22.1562ms)
+✔ Lab proposal: read-only, rejects live claims, and applies only through the trader settings bounds (12.2371ms)
+✔ polymarketFitness: per-window settled/open, hit rate, P/L, calibration; search blocked until 20 settled everywhere (1.3912ms)
+✔ shadow settlement uses the durable outcome map, not the 300-row resolvedRecent window (5.9811ms)
+✔ singles: every eligible market is tracked; the combo-shaped calibration keeps best-per-event only (1.2121ms)
+✔ cross-venue gap log: conservative match, unmatched recorded, kill flag, no network (6.5976ms)
+✔ real execution starts disarmed even when credentials exist (2.4888ms)
+✔ real order refuses while session is disarmed (1.3807ms)
+✔ armed session still requires exact explicit confirmation (1.0454ms)
+✔ account: key is NOT VERIFIED until a signed call succeeds, then VERIFIED with SDK balance shape (3.5688ms)
+✔ account: 401 marks the key REJECTED and exposes no balance (0.8664ms)
+ℹ tests 18
+ℹ suites 0
+ℹ pass 18
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 708.3712
+
+> money-printer-os@0.5.0-alpha.91 test:combos
+> node --test tests/polymarket-us-combos.test.mjs tests/polymarket-us-paper.test.mjs
+
+✔ US period/score adapter maps into lateGameEstimate input shapes (9.5858ms)
+✔ adapter output drives lateGameEstimate to the expected verdicts (4.6145ms)
+✔ candidate filter keeps only tradable late-game combo legs, one per event (11.1789ms)
+✔ combo math: product price, tick rounding, quantity floor, fee and payout (6.8351ms)
+✔ combo fee switches to the published combo curve at the effective date (1.4538ms)
+✔ fee-inclusive quantity fits every configured budget including the fee change (1.4688ms)
+✔ BBO enrichment runs at bounded concurrency and does not reuse failed quotes (59.9909ms)
+✔ missing remaining quantity never fabricates a verified full fill (97.2308ms)
+✔ cached candidates expire even when the stored freshness counter is zero (2.3557ms)
+✔ combo selection moves past open games and cooldowns to use available capacity (1.4888ms)
+✔ RFQ whose notional fits but fees exceed the budget is never accepted (36.1165ms)
+✔ safety gates reject before any network call is made (4.9742ms)
+✔ RFQ flow creates the combo, polls quotes, accepts and confirms (753.9148ms)
+✔ a quote above est. price + tolerance is refused and never accepted (5.1747ms)
+✔ open cap and duplicate-event gates hold before any order is sent (19.0161ms)
+✔ auth failures are classified and surfaced in readiness (15.3435ms)
+✔ auto combo is OFF by default and after every restart; old journals load with safe, capped config (13.4707ms)
+✔ enabling needs the exact phrase, an armed session, a verified key, beta not denied and the shadow gate (20.1467ms)
+✔ auto settings can never exceed the manual caps (5.2825ms)
+✔ bankroll sizing: min($2, 20% of balance), never above buying power, the cap or the balance; floor stops (1.3976ms)
+✔ a guarded pass places one combo through the real place path, journals it and never reuses an event (51.9854ms)
+✔ no signed call is ever made while the session is not armed (16.1552ms)
+✔ self-disable: 401 key rejected (24.8427ms)
+✔ self-disable: 403 combos beta not enabled (26.6656ms)
+✔ self-disable: daily realized loss cap (19.4017ms)
+✔ self-disable: balance below the floor (15.1358ms)
+✔ self-disable: three consecutive no-quote RFQs (2216.5692ms)
+✔ self-disable: quote above tolerance is refused and never accepted (58.8322ms)
+✔ self-disable: an unverified auto fill stops everything (30.7626ms)
+✔ self-disable: the shadow gate stops being met (26.0257ms)
+✔ settlement marks WON/LOST and records the post-settlement cooldown (50.4065ms)
+✔ settlement accepts the observed {slug,settlement} shape only once the market is RESOLVED; void is UNKNOWN (166.0707ms)
+✔ snapshot matches the UI contract and never throws on a dead feed (11.1057ms)
+✔ quoting needs an armed session and enforces the stake cap before any signed call (3.7634ms)
+✔ an accepted quote is bound to the selected legs and to the requested stake (41.1385ms)
+✔ concurrent placements are serialized so count-based gates cannot be raced (124.9468ms)
+✔ reconciliation cancels unfilled orders and verifies filled quantity before settlement (76.0906ms)
+✔ an auth error mid-reconcile never drops journal entries (83.9105ms)
+✔ settlement refuses to book P/L for orders whose fill was never verified (63.1468ms)
+✔ forget drops a stuck entry from the local book without P/L, cooldown or exchange calls (56.467ms)
+✔ an accepted quote that later disappears is kept open and unverified, never written off (46.9537ms)
+✔ settlement cadence stays baseline before the slowest leg ETA, then tightens after ETA (41.8405ms)
+✔ pending settlement cache is 60s before ETA and 15s after ETA (58.131ms)
+✔ settlement reads are bounded-parallel and a three-leg combo can close in one pass (27.059ms)
+✔ settlement responsiveness leaves the real-money safety limits and confirmations unchanged (1.6308ms)
+✔ settings default to floor 0.80, 15 minutes, 3 legs and persist in journal.settings (11.9485ms)
+✔ settings reject anything outside the fixed bounds and never widen them (6.2605ms)
+✔ a 0.65 leg passes at floor 0.60 and fails at 0.80, in the feed filter and in build (11.0135ms)
+✔ the minutes-left setting gates the feed (1.5302ms)
+✔ a fourth leg is rejected at maxLegs 3, and a third at maxLegs 2 (7.1432ms)
+✔ settings refuse to overwrite a corrupt journal (7.0551ms)
+✔ the journal entry is on disk, SUBMITTED and unverified, before the accept call (41.9708ms)
+✔ a definite accept rejection (4xx) removes the pre-written entry and counts nothing (35.3221ms)
+✔ an ambiguous accept failure (network or 5xx) keeps the entry for reconcile (74.5167ms)
+✔ a confirm failure after a good accept keeps the entry unverified (35.1309ms)
+✔ feed pages /v1/events by offset until a short page and reports real totals (23.0166ms)
+✔ feed paging stops at the hard cap (11.0902ms)
+✔ board lists every live combo game with its exact rejection reason; window rejects are manually addable (1.7891ms)
+✔ an outside-window leg can be added by hand and the combo is tagged (1.0364ms)
+✔ sport labels: league comes from tags, not a blanket MLB/NBA/NHL (0.9199ms)
+✔ strategy windows: per-sport rules for NEAR_END, LATE and ANY_LIVE (3.3336ms)
+✔ window setting changes which games qualify and is stored with each entry (2.093ms)
+✔ rank: default weights reproduce the original formula; weights are tunable and bounded (9.8481ms)
+✔ stats are recorded per window; outside-window manual combos count as MANUAL (0.3179ms)
+✔ paper bounds support single stakes and expanded open/leg limits (4.9229ms)
+✔ paper price is the leg ask product plus markup, and cost comes out of paper cash (22.8864ms)
+✔ a game with an open paper combo cannot be used again, and stake bounds hold (16.93ms)
+✔ settlement: binary outcomes pay or lose; nonbinary and missing outcomes keep capital reserved (40.0916ms)
+✔ paper autopilot places from eligible in-window legs only and respects max open and off (33.1316ms)
+✔ a lone eligible leg is rejected as an incomplete combo, not displayed as a paper selection (21.6778ms)
+✔ reset refills the bankroll and keeps autopilot settings; the book never touches the real journal (34.7737ms)
+✔ corrupt paper state blocks entry and reset archives the original bytes (23.6801ms)
+✔ an eligible Lab proposal changes only paper policy and a losing trial rolls back (34.2062ms)
+✔ running paper loop selects, persists, settles and displays a virtual combo without transport (63.9641ms)
+ℹ tests 74
+ℹ suites 0
+ℹ pass 74
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5306.2517
+
+> money-printer-os@0.5.0-alpha.91 test:edge-robustness
+> node --test tests/edge-robustness.test.mjs
+
+✔ winsorized cluster mean ignores a single pathological jump (3.1337ms)
+✔ outlier contamination cannot produce positive hypothesis or proof evidence (101.5496ms)
+✔ broad moderate positive signal still passes proof, mining, and leaderboard (119.249ms)
+✔ delayed-entry leaderboard does not pick a jump-contaminated delay (46.2445ms)
+✔ computeEdgeProof does not quarantine outcomes out of the production-learning population (1.2773ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 483.4667
+
+> money-printer-os@0.5.0-alpha.91 test:accounting
+> node --test tests/accounting-integrity.test.mjs
+
+✔ compact pnl ledger survives detailed-history pruning past 1500 closes (276.0991ms)
+✔ portfolio initializes from current marked equity, never a truncated-history reconstruction (5.3623ms)
+✔ corrupt real combo journal blocks signed placement before any network action (9.2889ms)
+✔ corrupt sports paper file reports zero equity instead of a replacement bankroll (10.0399ms)
+✔ engine imports every extracted accounting helper it still calls (2.2913ms)
+✔ paper identity holds after closes and survives history prune (252.6387ms)
+✔ missing lifetime pnl is reconstructed and absurd equity is flagged (1.1579ms)
+✔ F2 paperIdentity.ok asserts the exact identity, including open realized cash (0.5017ms)
+✔ F7 a staircase of sub-20x ticks cannot walk the mark past the tick median (1.0435ms)
+✔ F7 the tick band lifts on a stale history and never blocks a quiet position (0.6339ms)
+✔ F7 a paper entry without a pool binding is refused (0.6141ms)
+✔ F8 a 100x phantom mark cannot enlarge the next paper fill (0.9399ms)
+✔ P1.3 the sizing readout names the dial that actually binds, measured not assumed (5.0089ms)
+✔ saveState refuses a single-save equity teleport (2.4673ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1217.2573
+
+> money-printer-os@0.5.0-alpha.91 test:replay
+> node --test tests/replay-lab.test.mjs
+
+✔ quarantine blocks impossible 100x jump and duplicate (28.4757ms)
+✔ stale resume is marked but remains observable (4.705ms)
+✔ replay clock rejects look-ahead (0.7936ms)
+✔ same event stream is deterministic (6.333ms)
+✔ profitable synthetic trend produces finite metrics (0.9005ms)
+✔ static import fence keeps replay lab away from live/authenticated modules (0.8063ms)
+✔ metric helper handles hand computed pnl (0.292ms)
+✔ main-module detection accepts platform path of this module only (0.2668ms)
+✔ out-of-order extra sources cannot use a future price as quarantine baseline (14.2158ms)
+✔ stale-resume detection follows chronology across source boundaries (6.6448ms)
+✔ CLI reports are byte-identical for repeated runs with the same dataset and options (1129.3145ms)
+✔ data discovery prefers installed app history and explicit paths never silently fall back (10.643ms)
+✔ held-position equity is sampled so an unrealized peak-to-trough drawdown is visible (1.1596ms)
+✔ stale and split-end marks stay censored and do not become realized wins (0.6458ms)
+✔ thin-liquidity exit failure remains open and is censored instead of inventing a fill (0.9559ms)
+✔ metric helper excludes censored marks from headline realized pnl (0.2159ms)
+✔ causal regime tagging never looks ahead of the event timestamp (0.2452ms)
+✔ scan-summary rows tag events without changing the dataset hash (18.3713ms)
+✔ COLD_ONLY challenger ignores non-COLD test events (2.8956ms)
+✔ train-derived liquidity quartile cut is applied only on the test window (1.8151ms)
+✔ SPRINT_HOLD60 keeps a flat name past the 25-minute SPRINT purge (1.3547ms)
+✔ challenger configs cannot self-promote even with a winning metric sheet (0.3516ms)
+✔ static import fence keeps challenger presets off live modules (0.197ms)
+✔ replay quartiles exclude sentinel and sub-economic liquidity (0.592ms)
+ℹ tests 24
+ℹ suites 0
+ℹ pass 24
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1389.4918
+
+> money-printer-os@0.5.0-alpha.91 test:experiments
+> node --test tests/experiment-lane.test.mjs
+
+✔ stable config hash is deterministic and stable snapshot is immutable (2.61ms)
+✔ challenger can never be created in live mode (1.283ms)
+✔ promotion produces shadow candidate, never live promotion (2.2794ms)
+✔ weak/small challenger is rejected (0.4941ms)
+✔ Windows becomes compute workhorse and leaves four threads free (0.515ms)
+✔ walk-forward inconsistency blocks promotion (0.5797ms)
+✔ top-trade concentration blocks a fragile winner (0.5605ms)
+✔ stable config remains immutable while stable metrics can be recorded (0.5593ms)
+✔ promotable:false challenger cannot become a shadow candidate or live (0.5615ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 223.6501
+
+> money-printer-os@0.5.0-alpha.91 test:research
+> node --test tests/hypothesis-miner.test.mjs tests/trade-forensics.test.mjs tests/alpha-validate.test.mjs tests/research-report.test.mjs tests/executable-replay-evaluator.test.mjs tests/quant-research-catalog.test.mjs tests/quant-research-http.test.mjs
+
+✔ featureValueOf prefers entry-time liquidity over first-observation shadow (3.2485ms)
+✔ COLD liquidity top-quartile vs rest passes on a clean train-derived split (55.7841ms)
+✔ impossible raw returns are quarantined and do not create a pass (2.2175ms)
+✔ train cut uses only the train window and ignores sentinel $1 liquidity (1.7569ms)
+✔ count-based walk-forward keeps folds filled across a multi-day COLD gap (36.337ms)
+✔ sentinel and sub-economic liquidity are excluded from the COLD universe (29.7572ms)
+✔ import fence keeps alphaValidate off live modules (4.9838ms)
+✔ less negative than the rest is not a profitable COLD lead (33.998ms)
+✔ documented contract is frozen research-only and does not point at live (4.8186ms)
+✔ import fence keeps executable replay off live/authenticated modules (2.6431ms)
+✔ first-hit prefers stop over target over time-exit; gap fills at the bid (0.6711ms)
+✔ equal endpoints with different paths produce different first-hit results (13.9922ms)
+✔ short-hold reward exploit: 5m endpoint is not credited at an earlier maxHold (2.7749ms)
+✔ gap-through-stop fills worse than the stop, not clamped to the stop (1.494ms)
+✔ overlapping positions share cash and cannot sequentially compound the bankroll (40.6636ms)
+✔ shared-capital two fills stay inside startSol when both fit residual cash (2.0064ms)
+✔ stale quotes censor at the last good mark and do not invent a fill (1.8281ms)
+✔ absent quotes after a signal are a missing fill, not an invented tick (1.6222ms)
+✔ lone 5-minute return is proxy-only and ineligible for promotion (1.2596ms)
+✔ failed and missing fills do not become winning exits (4.9756ms)
+✔ entry latency waits for a captured quote and does not invent one (5.7916ms)
+✔ time exit uses the actual quote timestamp, not the 5m label (2.3727ms)
+✔ replayLab collector events attach as real paths with no invented timestamps (68.9224ms)
+✔ tickHistory and token_observations collectors normalize without inventing ticks (1.6899ms)
+✔ same inputs are deterministic (3.725ms)
+✔ adapter promotion stays off live and rejects proxy-only 5m labels (1.1767ms)
+✔ coverage diagnostics report quote kinds and never count invented ticks (0.7158ms)
+✔ modelScore matches the evolution feature list (0.4654ms)
+✔ installed-app captured paths reuse collector timestamps when present (14768.9201ms)
+✔ featureValueOf uses entry liquidity, not first-obs zero (3.5542ms)
+✔ impossible outcome filter and adjusted clamp (0.7438ms)
+✔ mining uses entry-time liquidity and overwrites a stale POSITIVE degenerate row (128.3772ms)
+✔ impossible raw returns are quarantined from mining counts (61.9191ms)
+✔ PROPOSAL stage records wait_ms from READY and diagnosis uses medians (21.861ms)
+✔ alphaDb wait_ms migration is additive (0.8009ms)
+✔ observation funding-cluster identity is retained when x.cluster_id is present (1.1093ms)
+✔ pinned inventory covers both entire source catalogs (196.3367ms)
+✔ search filters compose and pagination is bounded (7.2938ms)
+✔ shortlist points to known lanes and actual source files without granting admission (125.5907ms)
+bigint: Failed to load bindings, pure JS will be used (try npm run rebuild?)
+[MPOS][MODE] Polymarket US=LIVE_CAPABLE_UNARMED | realEnabled=true | armed=false | credentials=false
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+[journal] +2 from git
+[MPOS][MODE] Robinhood=PAPER | P&L=PAPER | live code enabled=false | real-host POSTs code-locked
+Dashboard: http://127.0.0.1:0
+✔ dashboard serves the research library and bounded read-only catalog (3499.7786ms)
+✔ integrity can pass while the COLD lead fails, and challengers cannot self-promote (13.0062ms)
+✔ winning metrics cannot mark a challenger promotable in the assembled report (1.3257ms)
+✔ CLI refuses app-data writes and import fence holds (288.7145ms)
+✔ the stale-purge gate follows the champion maxHold, not a hardcoded 25 (1.661ms)
+✔ negative-median 1500-close diagnosis and stale-purge timer cause (70.4269ms)
+✔ friction flip is detected when gross median is non-negative and net is negative (2.4078ms)
+✔ stale-purge helper is deterministic (3.5458ms)
+✔ CLI refuses to write into the app data directory and import fence holds (285.665ms)
+✔ stale-purge is judged against the maxHold actually in force (1.144ms)
+✔ effectiveMaxHold prefers the applied champion, then the preset, then the default (0.798ms)
+ℹ tests 50
+ℹ suites 0
+ℹ pass 50
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 15254.191
+
+> money-printer-os@0.5.0-alpha.91 test:evidence
+> node --test tests/research-evidence-gate.test.mjs tests/research-evidence-store.test.mjs tests/research-collector.test.mjs tests/research-supervision.test.cjs tests/research-control-plane.test.mjs tests/research-lifecycle.test.mjs tests/project-journal.test.mjs
+
+✔ project journal is append-only and deduplicated (12.2634ms)
+✔ bulk append skips ids already present and writes the rest in one go (11.463ms)
+✔ a packaged build catches the journal up from its shipped history, once per release (219.8503ms)
+✔ seeding ignores malformed shipped rows, uses git from a checkout, and never throws (176.4462ms)
+✔ Solana evidence collector appends only unseen observed ticks (2.3511ms)
+✔ Polymarket collector records observed depth, explicit fee coverage and heartbeat dedupe (1.4394ms)
+✔ Polymarket collector never invents fee coverage (0.4626ms)
+✔ append after a torn or NUL-extended tail starts a fresh line and never merges records (21.8272ms)
+✔ atomicJson replaces the file whole and leaves no temp file behind (9.0782ms)
+✔ collector lock admits one owner, yields to a live holder and takes over stale or dead locks (16.5377ms)
+✔ collector entry check survives symlinked install paths and trusts the desktop supervisor (12.505ms)
+✔ shared control plane persists lifecycle and milestones (42.6178ms)
+✔ paper mode exposes furnace, champion, leaderboard, and paper-canary fields (17.0592ms)
+✔ live mode never auto-applies a champion and stays safety-gated (0.7968ms)
+✔ a disconnected Lab never appears as an active paper canary (3.9921ms)
+✔ furnace activity falls back to profile files when the loop is idle (12.516ms)
+✔ leaderboard rows keep activation visibility off live (0.8449ms)
+✔ research monitor contract attaches control-plane fields without dropping replay P/L (4.033ms)
+✔ dashboard snapshot and monitor surfaces keep the control-plane contract (2.6342ms)
+✔ complete evidence is review-ready but cannot enable live orders (3.6094ms)
+✔ legacy score, null, arrays and absent input fail closed (0.6431ms)
+✔ valid sealed evidence starts paper comparison, not live (0.5473ms)
+✔ proxy endpoint evaluation (0.5571ms)
+✔ synthetic data (0.535ms)
+✔ holdout used to choose winner (0.5049ms)
+✔ repeat holdout audit (0.458ms)
+✔ unretired audit window (0.482ms)
+✔ future evidence (0.5493ms)
+✔ unfrozen candidate (0.8392ms)
+✔ different candidate (0.7023ms)
+✔ correlated count insufficient (0.4541ms)
+✔ null costs result (0.5355ms)
+✔ missing executable depth (0.3807ms)
+✔ gross profit only (0.3043ms)
+✔ missing concurrent capital model (0.3504ms)
+✔ selection pressure unaccounted (0.4067ms)
+✔ interval includes no improvement (0.4213ms)
+✔ invalid interval order (0.3612ms)
+✔ stress loss (0.3625ms)
+✔ incumbent wins (0.3522ms)
+✔ ranking after freeze (0.291ms)
+✔ forward data reuse blocks review (0.2985ms)
+✔ candidate change during forward comparison blocks review (0.2293ms)
+✔ gate does not mutate evidence (1.8819ms)
+✔ canonical evidence hash ignores object key order (4.5157ms)
+✔ freeze manifest is immutable and idempotent on disk (12.4435ms)
+✔ trial ledger is append-only and complete hash covers every recorded trial (23.5269ms)
+✔ sealed registry survives restart and permits exactly one audit (15.6734ms)
+✔ sealed registry is atomic under competing processes (249.6558ms)
+✔ grouped interval preserves within-event dependence and widens for more search trials (1.5568ms)
+✔ paired stage derives actual independent groups and trial-adjusted interval (1.0632ms)
+✔ incomplete real-data packet remains RESEARCH_ONLY with concrete blockers (1.2828ms)
+✔ monitor projection exposes stage, interval, groups, coverage, trials and blocked reasons (6.2128ms)
+✔ evidence advances research to paper/review but never auto-live (3.1921ms)
+✔ canary and live require explicit human approvals and hard risk caps (2.7541ms)
+✔ collector defaults on; audit and BEAST never run in the trader (alpha.53: moved to the Evolution Lab) (4.743ms)
+✔ a leftover research-beast.json or MPO_RESEARCH_BEAST flag is reported, not honoured (7.5702ms)
+✔ the collector can still be switched off explicitly (2.7361ms)
+✔ desktop supervisor starts the collector and nothing research-heavy (3.9043ms)
+✔ local Lab starts only when installed and absent, with cooldown and an hourly retry cap (3.3401ms)
+ℹ tests 60
+ℹ suites 0
+ℹ pass 60
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 715.2667
+
+> money-printer-os@0.5.0-alpha.91 test:poly-research-eval
+> node --test tests/polymarket-research-eval.test.mjs
+
+✔ as-of clock rejects lookahead and backward jumps (2.2578ms)
+✔ synthetic tapes without testOnly are rejected so depth/fees cannot be invented (0.5482ms)
+✔ fee formula matches sports_fees_v3 and refuses to invent a schedule (0.4856ms)
+✔ profitable-looking favorite strategy fails after executable costs and does not promote on win rate (13.9784ms)
+✔ correlated legs on one event count as one independent observation (25.8115ms)
+✔ delayed resolution locks settlement capital so a later stake cannot reuse it (2.208ms)
+✔ stale executable quote is rejected and not filled from a later book (0.8071ms)
+✔ missing captured fees fail closed and never invent the live 5% default (0.8264ms)
+✔ future signal is lookahead and cannot be used at decision time (0.6243ms)
+✔ thin books partial-fill captured depth and do not invent size (0.6255ms)
+✔ related-event exposure cap blocks a second correlated stake (0.8099ms)
+✔ static import fence keeps the evaluator away from live execution and wallets (0.5478ms)
+✔ promotion stays fail-closed even when the comparison looks clean (0.3842ms)
+✔ CLI reports are byte-identical for the same test-only tape (308.4674ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 539.4096
+
+> money-printer-os@0.5.0-alpha.91 test:evolution
+> node --test tests/evolution-paper-policy.test.mjs tests/lab-link.test.mjs tests/shared-core-parity.test.mjs
+
+✔ qualified shadow champion becomes a bounded paper policy (3.7519ms)
+✔ weak or untrusted champion cannot become a paper policy (0.6735ms)
+✔ manual Control Bay mode pauses Lab champion until auto-follow is re-enabled (0.3506ms)
+✔ engine applies evolution champion only behind paper-mode guards (1.3793ms)
+✔ paper bankroll reset preserves the evolution loop and research corpus (1.2274ms)
+✔ no lab files means not connected, and the trader keeps its BASE policy (4.425ms)
+✔ a local lab champion is applied through the existing gates and the loop view is compact (20.2678ms)
+✔ stale local status hands over to a fresher signed bridge; bad signatures are ignored (21.5647ms)
+✔ stale or forged publications cannot retain a policy or smuggle one through status (16.4532ms)
+✔ a future local heartbeat cannot mask a fresh authenticated bridge (7.7393ms)
+✔ research-only and legacy champions remain visible but never replace the paper incumbent (7.8515ms)
+✔ the trader publishes only usable 5m rows, throttled, plus a signed bridge copy (41.5798ms)
+✔ trader status still refreshes when the bulky local dataset write fails (427.0815ms)
+✔ engine wiring: the lab link runs every cycle, the feed is published, and no scorer ships (2.0943ms)
+✔ champion gate pins: PAPER_CANARY without promotion, a missing field, a foreign labNodeId and a stale bridge all give no policy (23.6763ms)
+✔ every shared-core file matches its stamped hash (edit, then run scripts/sync-shared-core.mjs) (10.1231ms)
+✔ the sibling Evolution Lab checkout runs the same shared core (6.149ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 855.6106
+
+> money-printer-os@0.5.0-alpha.91 test:lab-link
+> node --test tests/lab-link.test.mjs tests/kill-switches.test.mjs tests/lab-health.test.mjs tests/action-queue-rails.test.mjs tests/alpha-queue-rails.test.mjs
+
+✔ retired evolution-sync cannot enter the queue and historical queued snapshots cannot become policies (13.0628ms)
+✔ small actions round-trip; an action above the byte rail is refused before touching disk (11.9669ms)
+✔ legacy rejection journal failure never loses a legitimate queued action (11.5037ms)
+✔ an oversized queue file is quarantined instead of being read into memory (8.3809ms)
+✔ orphaned drain files older than the grace period are swept, fresh ones are kept (5.1459ms)
+✔ a failure writing the remainder back leaves the .drain file on disk instead of deleting it (8.4588ms)
+✔ MPO_JOURNAL_SCAN_CANDIDATES=false drops only scan-candidate rows (25.2165ms)
+✔ small events round-trip; an event above the byte rail is dropped before touching disk (16.0159ms)
+✔ an oversized queue file is quarantined instead of being read into memory (5.9646ms)
+✔ orphaned drain files older than the grace period are swept, fresh ones are kept (5.4297ms)
+✔ candidate dedupe (one row per mint per 30s) is unaffected by the byte rail (7.3794ms)
+✔ a failure writing the remainder back leaves the .drain file on disk instead of deleting it (10.7754ms)
+✔ kill switches: defaults, readiness wins over env, live authority is always off (4.0833ms)
+✔ /api/health serves the switches read-only (2.3126ms)
+✔ a paused recovered checkpoint is healthy only when freshly read back at the expected generation (2.0913ms)
+✔ tape collector health goes RED on a stale heartbeat and WARN on capture or write problems (0.7591ms)
+✔ a RUNNING lab whose generation stops advancing goes RED after 30 minutes (3.0882ms)
+✔ disk, order POSTs, live flags and raw retention (1.5132ms)
+✔ no lab files means not connected, and the trader keeps its BASE policy (3.5145ms)
+✔ a local lab champion is applied through the existing gates and the loop view is compact (24.5263ms)
+✔ stale local status hands over to a fresher signed bridge; bad signatures are ignored (32.9634ms)
+✔ stale or forged publications cannot retain a policy or smuggle one through status (25.6417ms)
+✔ a future local heartbeat cannot mask a fresh authenticated bridge (11.6768ms)
+✔ research-only and legacy champions remain visible but never replace the paper incumbent (11.4329ms)
+✔ the trader publishes only usable 5m rows, throttled, plus a signed bridge copy (52.2945ms)
+✔ trader status still refreshes when the bulky local dataset write fails (439.6721ms)
+✔ engine wiring: the lab link runs every cycle, the feed is published, and no scorer ships (2.9637ms)
+✔ champion gate pins: PAPER_CANARY without promotion, a missing field, a foreign labNodeId and a stale bridge all give no policy (29.7797ms)
+ℹ tests 28
+ℹ suites 0
+ℹ pass 28
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 953.5065
+
+> money-printer-os@0.5.0-alpha.91 test:visual
+> node --test tests/renderer-alpha52.test.mjs tests/visual-assets.test.mjs tests/visual-contract.test.mjs tests/api-state-split.test.mjs tests/window-state.test.mjs tests/hud-resilience.test.mjs tests/logo-3d.test.mjs tests/home-overview.test.mjs tests/live-overviews.test.mjs
+
+bigint: Failed to load bindings, pure JS will be used (try npm run rebuild?)
+[MPOS][MODE] Polymarket US=LIVE_CAPABLE_UNARMED | realEnabled=true | armed=false | credentials=false
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+[journal] +460 from git
+[MPOS][MODE] Robinhood=PAPER | P&L=PAPER | live code enabled=false | real-host POSTs code-locked
+Dashboard: http://127.0.0.1:0
+✔ the state endpoint carries persisted state only, with an exact ETag and no live samples (96.2957ms)
+✔ a matching If-None-Match is a real 304, and the tag covers every file the snapshot reads (67.2413ms)
+✔ the telemetry endpoint carries the live readings, uncached and untagged (35.5049ms)
+✔ the operator health endpoint keeps the live sample it always reported (16.0344ms)
+✔ the HUD merges telemetry into the state it may have received as a 304 (5.4612ms)
+✔ coordinated command view preserves unknowns, escapes leaders and keeps readable scrolling (84.7307ms)
+✔ two overview graphs map all quotes and independent paper books with exact price inspection (13.6532ms)
+✔ overview consumers load bot data without opening either bot detail pane (21.2046ms)
+✔ closed desktops and background tabs do not fetch bots; visible Lab does (11.5732ms)
+✔ slow bot refreshes and forced refreshes share one in-flight request (6.0552ms)
+✔ a failed refresh preserves the last real snapshot and releases the request lock (4.4667ms)
+✔ an action followed by refresh cannot reuse a snapshot started before the action (29.9197ms)
+✔ Command Center starts with unknown balances and evidence, not zero or healthy claims (15.7118ms)
+✔ Command Center uses separate real source books, original units and unreadable diagnostics (44.7068ms)
+✔ Money Printer OS overview covers the suites, operating tools and evidence workflow (13.3887ms)
+✔ native module overviews preserve unavailable balances and provide valid drill-downs (11.7698ms)
+✔ Polymarket shows verified real cash separately and hides unverified balance values (14.3048ms)
+✔ Robinhood retains every independent book and keeps real account cash off the paper overview (5.4609ms)
+✔ Kalshi opens a whole-suite overview with missing balances and coverage left unknown (6.3211ms)
+✔ Kalshi renders supported farm evidence, partial venue coverage and independent paper balances (7.9494ms)
+✔ Pump.fun labels the scanner mode and the separate copy paper book without adding their equity (4.8673ms)
+✔ overview navigation opens child programs in Advanced and keeps host homes in Simple (80.326ms)
+✔ Robinhood overview links select and persist the intended section with only necessary GET loaders (34.0947ms)
+✔ overview navigation ignores invalid destinations and never treats inherited names as Robinhood sections (18.8516ms)
+✔ same-host detail buttons emit the explicit dataset instead of linking back to the overview (6.365ms)
+✔ Money alone keeps platform and scoreboard snapshots flowing without a detail window (24.4034ms)
+✔ Command Center reads paper book counts from the real scoreboard contract and excludes research lanes (11.6206ms)
+✔ Command Center reports existing Kalshi models and copy state before baseline results exist (3.6647ms)
+✔ Kalshi upcoming activity uses trading close time, labels expiration fallback and excludes closed markets (3.7742ms)
+✔ damaged JSON, wrong shapes and blocked storage recover without losing valid preferences (9.6566ms)
+✔ layout preserves good fields while repairing invalid geometry and unsupported ids (1.1984ms)
+✔ single flight shares a complete body with separate readable responses (34.8653ms)
+✔ read admission is bounded and all queued and running callers settle on cancellation (9.3516ms)
+✔ deadline includes body download and failure retains last successful timestamp (39.9959ms)
+✔ malformed/HTTP error data never marks stale values fresh, retries back off, and recovery clears errors (8.0759ms)
+✔ late completion after cancel cannot overwrite a newer successful snapshot (9.3353ms)
+✔ POST requests stay distinct and never retry through the read transport (2.9382ms)
+✔ a superseded chart request cannot reset the chosen pair or range (10.1496ms)
+✔ Command Center renders unknown marked equity and exclusions without invented totals (88.9541ms)
+✔ arbitrage explains failed legs from each direction and never labels conditional outcomes locked (11.239ms)
+✔ observation histories retain actual timestamps, replace duplicate observations and reject future or stale samples (16.4767ms)
+✔ history retention is bounded, reset epochs do not join accounts, and differing units never share a chart (40.2585ms)
+✔ time charts break missing observations and space their x-axis by observed time (107.1794ms)
+✔ unchanged chart payloads do not animate again and reduced motion draws only observed changes (4.8215ms)
+✔ normal-motion charts ease new observations then stop instead of manufacturing idle price motion (9.8659ms)
+✔ a live history animates only its marker while source values stay identical (9.3394ms)
+✔ known tickers continue scrolling and reduced motion freezes their presentation (11.1958ms)
+✔ offscreen and background canvases pause, then paint their actual data when visible (5.5003ms)
+✔ unknown gauges and cost meters show unavailable states instead of fabricated zeros (6.2684ms)
+✔ Command graphs keep paper USD and SOL apart and never include live or research returns (41.8727ms)
+✔ Command Simple view lists every paper book once, with unknown kept unknown (6.6466ms)
+✔ Kalshi graphs use actual settled timestamps, preserve recovery unknowns and price distributions (11.7955ms)
+✔ event beats accept only increasing actual source timestamps and never invent idle events (3.5516ms)
+✔ GLB decodes embedded indexed attributes and preserves bounds and material (17.5029ms)
+✔ the shipped extruded mesh decodes and stays inside the camera throughout a full turn (166.6197ms)
+✔ malformed geometry, accessors, external buffers and unsupported nodes fail before GPU upload (18.4411ms)
+✔ bounded download uses only local same-origin fetch and refuses redirects, HTTP failure and excess data (104.4546ms)
+✔ renderer replaces fallback only after a valid first draw, throttles draws and caps DPR (37.1092ms)
+✔ hidden, preferred reduced motion and local low-motion stop animation and render a static front (29.248ms)
+✔ WebGL, download, first-draw and context loss failures retain the image and release resources (93.0697ms)
+✔ pagehide or timeout during download cannot reveal a late logo or leak observers (30.4925ms)
+✔ dashboard inline script still parses after alpha52 UI reconciliation (23.3497ms)
+✔ money rain requires known positive paper equity and never defaults start SOL (5.5676ms)
+✔ realized and combo bursts still require actual positive P&L (0.9639ms)
+✔ fire/blaze is absent from normal terminal renderer (2.872ms)
+✔ Experiment Monitor renderer binds policy, champion, promotion, and live leaderboard columns (1.4011ms)
+✔ Journal is a desktop host using project-journal data, not a Trade tab (1.3932ms)
+✔ required visual assets ship with usable geometry (30.0948ms)
+✔ the 1.29 MB logo master stays off the desktop, which draws a sized derivative (16.4285ms)
+✔ desktop icons are shaded artwork, not 10-color placeholders (3007.173ms)
+✔ every desktop item has a 96px RGBA icon (11.9948ms)
+✔ wallpaper corner is grass, not a stock-site plate (460.0764ms)
+✔ desktop chrome uses cohesive assets and has no fire leftover (10.7972ms)
+✔ embedded dashboard script parses as JavaScript (25.2865ms)
+✔ confirmation phrases remain exact in UI and backends (3.5844ms)
+✔ Robinhood confirmation phrases stay exact in the backend; the paper-only HUD shows none of them (2026-10-02) (5.1984ms)
+✔ GET /css/ handler exists next to /assets/ (0.6812ms)
+✔ benchmark poly classes and frozen 4-col grid remain (2.8778ms)
+✔ PR0 tokens are current computed values (0.6534ms)
+✔ identity: no Inter / Google Fonts (1.0216ms)
+✔ dashboard.html still hosts behavior (no login screen) (1.1858ms)
+✔ GET /css/ serves stylesheets and rejects traversal (167.4619ms)
+✔ shared workstation recipes ship on laggard panes (2.512ms)
+✔ chrome stays opaque and the simplified alpha56 shell contract is pinned (1.4593ms)
+✔ laggard panes opt into surfaces; sportsbook host does not (6.3902ms)
+✔ integrated FX is profit-only money rain/pile with no fire (1.6291ms)
+✔ desktop keeps only platform-scale launchers; Command Center owns the supporting desks (1.2114ms)
+✔ desktop event feed is compact, importance-aware, and money shares the environment breeze (0.7373ms)
+✔ Journal is a first-class desktop surface (0.9877ms)
+✔ Experiment Monitor leaderboard exposes live research fields (1.3983ms)
+✔ shared visual token/component consolidation (VISUAL-AUDIT §5/§6) is adopted, not regressed (8.0734ms)
+✔ glance telemetry recipes land on laggard panes without restyling Suite (12.9002ms)
+✔ Polymarket key shows CONNECTED only after a verified signed call, and the balance is served read-only (1.1576ms)
+✔ Polymarket panel lists the whole live board grouped by sport, renders the suggested combo, and always offers key replacement (1.1117ms)
+✔ Polymarket panel exposes the strategy window, 2-4 legs, and per-window record (0.8328ms)
+✔ Polymarket panel shows shadow record, calibration and a one-click Lab apply that the server validates (0.7326ms)
+✔ live visuals: one animation engine, served read-only from /js, used by Polymarket, Robinhood and Pump.fun (8.8805ms)
+✔ layout persistence: saved spots are authoritative and launch restoration is opt-in (1.4776ms)
+✔ startup stays empty for fresh and existing preferences; explicit restoration preserves saved apps (11.4403ms)
+✔ desktop window state: bounds restored, shown late, storage flushed on quit (1.3659ms)
+✔ glance design: every window opens as one calm card, full detail is an option, text size sets the fit ceiling (5.3206ms)
+✔ paper-focus batch (2026-10-02): rolling numbers, Kalshi weather glance and a lighter state payload (10.341ms)
+✔ a rect on the second monitor at x=-1800 is kept (6.8124ms)
+✔ x=5000 centres on primary (4.4933ms)
+✔ second monitor unplugged centres on primary and keeps maximized (1.1234ms)
+✔ oversize rect is clamped to the work area and min size is enforced (1.3811ms)
+✔ the minimized -32000 rect is rejected (0.6312ms)
+✔ corrupt JSON loads as null, which validates to the default (0.8797ms)
+✔ captureState uses getNormalBounds (0.8656ms)
+✔ debounced saver coalesces and flush runs immediately (1.0433ms)
+✔ saveState writes a tmp file then renames it (1.1634ms)
+ℹ tests 111
+ℹ suites 0
+ℹ pass 111
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3894.3177
+
+> money-printer-os@0.5.0-alpha.91 test:release-gate
+> node --test tests/release-gate.test.cjs tests/paired-release.test.mjs
+
+✔ Lab smoke contract accepts matching future versions instead of pinning an obsolete release (2.0533ms)
+✔ Lab smoke fails on wrong bytes, provenance, service, dirty source and live authority (0.9804ms)
+✔ paired updater checks both archives and zero-credit state before accepting a release (1.3117ms)
+✔ Lab process wrapper rejects zero exit without evidence, stale receipts and failed children (773.8182ms)
+✔ update allowed when no real combo exposure exists (9.1929ms)
+✔ real Combo Engine exposure blocks updater restart (5.653ms)
+✔ unverified/open US order or RFQ blocks updater restart (4.7891ms)
+✔ corrupt trading state fails closed instead of allowing restart (3.2945ms)
+✔ recovery-required trading state blocks updater (4.9021ms)
+✔ release must progress main -> candidate -> tested -> stable with signed evidence (7.0203ms)
+✔ Robinhood journal exposure and malformed state block updates without touching balances (25.9795ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 933.9733
+
+> money-printer-os@0.5.0-alpha.91 test:latency
+> node --test tests/latency-diagnosis.test.mjs tests/latency-db.test.mjs
+
+✔ database records stage wait separately and duplicate events retain first measurement (17.5067ms)
+✔ ready after proposal remains unmeasured rather than fabricating a wait (0.9619ms)
+✔ proposal mean around 500s is not the bottleneck when medians say the feed is slower than wait (4.6204ms)
+✔ wait_ms falls back to proposal_ts - ready_ts (0.2717ms)
+✔ insufficient samples leave the bottleneck unset (0.3487ms)
+✔ null proposal_ms is missing data, not a zero-latency fill (0.647ms)
+✔ legacy null wait_ms uses timestamp difference rather than false zero (0.4796ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 175.2831
+
+> money-printer-os@0.5.0-alpha.91 test:robinhood
+> node --test tests/robinhood-paper-feed.test.mjs tests/robinhood-signer.test.mjs tests/robinhood-journal.test.mjs tests/robinhood-strategy.test.mjs tests/robinhood-safety.test.mjs tests/robinhood-auto-trader.test.mjs tests/robinhood-auto.test.mjs tests/robinhood-tape.test.mjs tests/rh-tape-stats.test.mjs tests/robinhood-backtest.test.mjs tests/robinhood-evidence.test.mjs tests/robinhood-evolve.test.mjs tests/robinhood-hud.test.mjs tests/robinhood-http.test.mjs tests/robinhood-explore.test.mjs tests/robinhood-chart.test.mjs tests/robinhood-daily-book.test.mjs
+
+✔ stats: spread quantiles, source counts, and a calm tape never opens the volatility gate (402.7248ms)
+✔ stats: a volatile tape opens the gate (292.7367ms)
+✔ stats: empty tape and short tape are safe (1.0696ms)
+✔ CLI prints one line per symbol from a data dir and never writes to it (389.5326ms)
+✔ stats: warm-start candle rows count as a source but never drag the spread quantiles to zero (260.9251ms)
+[MPOS][MODE] Robinhood=PAPER | P&L=PAPER | live code enabled=false | real-host POSTs code-locked
+[MPOS][MODE] Robinhood=PAPER | P&L=PAPER | live code enabled=false | real-host POSTs code-locked
+﹣ place -> reconcile (mark) -> sell -> CLOSED books fee-aware P/L, cooldown and keeps open+history count (4.4908ms) # needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.
+﹣ limit buy rests as SUBMITTED, is cancelled by reconcile after ENTRY_TTL and moves to CANCELLED only once verified (0.4512ms) # needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.
+﹣ never-received rows survive lagging listings and fail only after 3 successful listings over 10 minutes; auth errors never transition (0.3614ms) # needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.
+﹣ cancel works without arm and changes status only via reconcile; cancel-all reports per entry (0.3534ms) # needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.
+﹣ cancelled or failed sell returns the entry to OPEN with no P/L (0.4719ms) # needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.
+﹣ real autopilot round trip: breakout entry placedBy autopilot, take-profit exit, cooldown; snapshot signal is LONG while open (0.3777ms) # needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.
+✔ primary symbol weighting in pickCandidates is backwards compatible and ranks BTC first on equal raw scores (3.968ms)
+✔ primary order multiplier is capped by maxOrderUsd and by 2.0; default universe is BTC,ETH,SOL with BTC first (23.5903ms)
+✔ snapshot: pinned key list, signal enum values, never throws on a dead feed, masks the account (175.6038ms)
+✔ paper loop records source, cost and rejection across restart when there is no trade (83.2484ms)
+✔ configure validates the key, writes USER_ROOT/.env with mode 0600 and disarms (194.819ms)
+✔ startRobinhoodLoops returns the unref timer when autostart is on and null when off; paper practice never writes a real order (41.1406ms)
+✔ import makes no venue requests; the idle tick is quiet only when always-on collection is off (167.8874ms)
+✔ paper-only build hard-locks real execution even if the environment requests live mode (25.1819ms)
+✔ current official v2 fields map correctly; snapshot masks account and excludes private credentials (49.373ms)
+✔ manual paper lifecycle includes both fees, refuses duplicates, and cannot forge qualification provenance (41.937ms)
+✔ simultaneous paper buys serialize; reset is refused while a buy is pending (26.6933ms)
+✔ malformed, crossed and future quotes cannot create paper positions (32.3877ms)
+✔ live v2 quirks (a ~1 bp cross, timestamps ~1.1 s ahead) are accepted and taped as robinhood (186.3958ms)
+✔ Robinhood quotes that fail validation fall back to the public paper book instead of halting (130.7464ms)
+✔ invalid size and non-crypto symbols are rejected (28.6321ms)
+✔ a deterministic breakout enters automatically and a take-profit produces eligible paper evidence (138.5017ms)
+✔ parameter changes alter the evidence hash without rewriting the history (41.2815ms)
+✔ malformed but valid JSON fails closed and reset preserves the real journal (35.347ms)
+✔ disk write failure cannot acknowledge a paper fill or leave an optimistic cached balance (27.1029ms)
+✔ future-dated closes do not qualify a strategy (8.2238ms)
+✔ a 6 bps cross is outside the uncross tolerance: it stays crossed, fresh() rejects it and nothing is taped as robinhood (10.1892ms)
+✔ outbound audit: paper ticks and paper orders make zero Robinhood POSTs; POST is refused off the order endpoints (147.4202ms)
+✔ a trending noisy tape produces strategy closes with fee-aware P/L and hold/exposure accounting (304.1361ms)
+✔ replay is deterministic and a flat tape never enters (637.8149ms)
+✔ fees reduce net P/L on the same tape; fee-free replay has zero fees (315.0456ms)
+✔ a quote-only crash marks open risk even when the next-quote exit recovers (156.4249ms)
+✔ replay only looks back the live window and never at the future (87.8151ms)
+✔ walkForwardSplit keeps time order: train is older, test is the newest 30% (0.8501ms)
+✔ downsample: at most maxPoints, keeps the last sample and the bid/ask envelope of every bucket (28.3467ms)
+✔ indicators match what the strategy sees at the last sample (7.0278ms)
+✔ buildChart: markers per book and kind, stop/take lines, equity with fee drag, trades gross = net + fees, caps (40.0947ms)
+✔ loadTapeSince reads only the file tail and returns the same rows as a full load (522.7509ms)
+✔ robinhoodChart: validates input, reads durable + in-memory tape, caps a 24 h range at 800 points, writes nothing (72.0498ms)
+✔ HUD contract: chart section, range toggle, SVG layers, marker shapes per book, fee drag and trade columns (102.6745ms)
+✔ walk-forward shadow has a separate bank, shares bars and never qualifies or repeats a daily decision (272.0353ms)
+✔ Lab signal parity: the executor rule reproduces the Lab replay trades for every family (37.8832ms)
+✔ strategy source: the Lab proposal only when championState clears it for paper and its params are in bounds (3.6118ms)
+✔ controller: prospective Robinhood quotes fill multi-day holds at any hour without historical late fills (257.2568ms)
+✔ controller: decision is durable and missing quote waits until a supported executable quote arrives (88.35ms)
+✔ forward daily rejects historical opens, stale or missing-depth quotes and floors actual lots (84.379ms)
+✔ observed 2% quote fees constrain forward entries, exits and holding baseline above the fixed floor (60.1427ms)
+✔ controller: switches to a cleared Lab proposal and labels it (39.4147ms)
+✔ qualification: minimum trades and days over a long window, beats cash and buy-and-hold, drawdown and profit factor (6.9588ms)
+✔ book: corrupt file forces recovery and is never overwritten; reset needs the typed phrase (35.5369ms)
+✔ paper only: the daily book imports no transport, signer or order path (2.4837ms)
+✔ HUD: daily tab and the small daily-verdict line (11.7722ms)
+✔ vol gate: only Robinhood rows in the window count; ratio = p95 expected / (costMultiple x C) (39.1975ms)
+✔ synthetic rows: tagged non-Robinhood rows are re-costed, untagged legacy rows and venue rows are untouched (6.2746ms)
+✔ syntheticSpreadPct: trailing venue median when there is one, the spread gate when there is none, never below the row itself (0.727ms)
+✔ the same mid path tagged coinbase-candles is never assigned a cheaper spread than venue evidence (858.2324ms)
+✔ wiring: the evolve run re-costs its tape and /api/robinhood serves evolve.volGate (4.3505ms)
+✔ config defaults: disabled, 360 min, 24 candidates, 15% min gain, autopromote off; env overrides re-read every call (14.4238ms)
+✔ mutations stay inside the evolution bounds, keep emaFast < emaSlow, change only search keys and are reproducible (84.2109ms)
+✔ scoring: PF-weighted test score with penalties for few closes, drawdown, losses and train/test overfit; primary weight applies (2.5656ms)
+✔ searchGeneration: walk-forward per symbol, time-boxed with yields, champion only beats the incumbent by the min gain (1904.009ms)
+✔ ledger: ENOENT default, atomic save, normalization drops junk, history and events are capped (7.9622ms)
+✔ trader: no run without 3 days of primary tape; a run proposes a champion but never applies it when autopromote is off (1207.5464ms)
+✔ trader: APPLY changes the paper params only, resets qualification and disables real autopilot with paramsChanged (207.9012ms)
+✔ trader: legacy autopromote cannot bypass current evidence with a short synthetic search (1138.4597ms)
+✔ trader: the loop tick buffers the durable tape and the paper params change disables real autopilot immediately (89.1241ms)
+✔ sealed holdout: the search never sees the newest 20%, context only warms indicators, and every gate refuses on its own (201.5489ms)
+✔ the evolve view passes the Lab daily-bar verdict through untouched (and null without a Lab record) (13.8429ms)
+✔ a fresh Evolution Lab Robinhood lane stands the trader's own automatic search down (11.4656ms)
+✔ prospective holdout accumulates across days and restarts without consuming a decision row twice (36.2959ms)
+[MPOS][MODE] Robinhood=PAPER | P&L=PAPER | live code enabled=false | real-host POSTs code-locked
+[MPOS][MODE] Robinhood=PAPER | P&L=PAPER | live code enabled=false | real-host POSTs code-locked
+✔ candle expansion and merge: tagged, on the sample grid, real rows win, seams stay under the gap threshold (13.0304ms)
+✔ fetchPublicCandles is a plain unauthenticated GET, capped at 300 bars and sorted oldest first (5.1932ms)
+✔ warm start from the durable tape needs no network and makes the strategy warm immediately (63.2451ms)
+✔ a short tape and a restart gap are backfilled from candles tagged coinbase-candles, and the tape stays gap-free (142.3621ms)
+✔ always-on: the tick samples quotes with both autopilots of the strict book off (121.6732ms)
+✔ exploration book trades on its own bank and never touches the strict book or qualification (196.7938ms)
+✔ scheduled exploration bypasses only the cost wall, keeps direction and spread gates, and persists its interval (0.8734ms)
+✔ exploration scans taped ADA beyond the saved BTC/ETH selection and saves probe receipts across reloads (136.123ms)
+✔ gauge fields per symbol for both books in the snapshot (43.605ms)
+✔ collection follows ROBINHOOD_AUTOSTART only: POLYMARKET_AUTOSTART=false no longer silences the Robinhood loop (11.0583ms)
+bigint: Failed to load bindings, pure JS will be used (try npm run rebuild?)
+[MPOS][MODE] Polymarket US=LIVE_CAPABLE_UNARMED | realEnabled=true | armed=false | credentials=false
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+[journal] +460 from git
+[MPOS][MODE] Robinhood=PAPER | P&L=PAPER | live code enabled=false | real-host POSTs code-locked
+Dashboard: http://127.0.0.1:0
+✔ snapshot and readiness endpoints work without keys and boot disarmed (134.197ms)
+✔ daily-bar book routes: read-only snapshot, reset needs the typed phrase, paper only (52.4756ms)
+✔ real routes stay hard-locked while credential configuration remains paper-safe (77.6274ms)
+✔ evolution routes: GET ledger view, manual run refuses without tape, apply refuses without a champion (paper-only) (31.746ms)
+✔ cross-origin, DNS-rebinding hosts and non-JSON mutations are rejected (17.631ms)
+✔ paper reset requires exact confirmation and preserves its new starting bank (21.3584ms)
+✔ invalid JSON and unknown routes fail cleanly; missing Robinhood keys still permit simulated paper buys (22.1125ms)
+✔ panel ships as /js/mpo-robinhood-panel.js, preserves desktop layout and has no real-money routes (paper-only HUD, 2026-10-02) (32.9807ms)
+✔ automatic panel refresh cannot replace a focused input (5.3602ms)
+✔ the panel loads from its own file at the old position, and every script parses (run D2) (39.981ms)
+✔ the panel has no live or real-money controls, phrases or numbers (9.7511ms)
+✔ required controls, fieldsets and routes are present (4.0971ms)
+✔ desktop shell registers the window, keeps the layout version and leaves Polymarket modules alone (2.7282ms)
+✔ automatic refresh never replaces a focused input or a typed secret (19.0365ms)
+✔ gauge and exploration sections render both books, label EXPLORATION (NOT A STRATEGY) and never offer promotion (7.1914ms)
+✔ multi-asset suite: crypto views keep their parts, stocks & ETFs and practice get their own tabs (1.9089ms)
+✔ readiness text is honest about fees, data and the unwired Agentic MCP (3.4786ms)
+✔ stocks & ETFs tab: status, target weights, positions, curve vs SPY and cash, last decision and next session (8.1803ms)
+✔ practice panel renders the isolated ledger with its controls and never offers promotion (7.029ms)
+✔ file paths live under MONEY_PRINTER_DATA_DIR and constants match the contract (9.178ms)
+✔ ENOENT -> defaults with autopilot off; default shapes pin the spec keys (8.3213ms)
+✔ normalizers survive garbage input and never carry sessionArmed (7.1126ms)
+✔ corrupt journal -> recoveryRequired, autopilot forced off, paper untouched (20.1816ms)
+✔ corrupt journal keeps autopilot off even when the file said enabled (normalizer path) (0.755ms)
+✔ corrupt paper -> cashUsd 0, autopilot off, qualification revoked, real journal untouched (36.7886ms)
+✔ saves are atomic: tmp file pattern, and no tmp survives a write or rename failure (49.2832ms)
+✔ saveJournal strips sessionArmed and the file never contains it (27.8227ms)
+✔ load is memoised; save refreshes the cache; reset re-reads the disk (18.1442ms)
+✔ makeRealEntry matches the Entry shape with a persisted uuid clientOrderId (6.4775ms)
+✔ transition graph: every allowed edge passes and every forbidden edge throws code unknown (9.3895ms)
+✔ transition on a missing id throws notFound; terminal rows cannot be transitioned (0.9855ms)
+✔ CLOSED requires fillVerified && exit.filledQty > 0 (1.4824ms)
+✔ open + history count invariant across a full lifecycle and history cap 200 newest-first (10.736ms)
+✔ recomputeStats counts only verified CLOSED rows, fees on both legs, unverified open rows (2.2543ms)
+✔ realizedTodayUsd uses local startOfDay and ignores FORGOTTEN null P/L (6.9289ms)
+✔ cooldowns work on journal and paper alike (0.9802ms)
+✔ appendTape dedupes on t, keeps ascending order, ring-caps at 720 and tapeFor returns the mid shape (11.1699ms)
+✔ savePaper throttles unforced writes to 30 s but forced saves and cache updates land immediately (58.6003ms)
+✔ paper history caps at 500 and positions keep only OPEN rows (0.8122ms)
+✔ qualificationThresholds reads env with defaults 20 / 0.45 / 1.3 / 30 (1.2643ms)
+✔ evaluateQualification: a clean paper record qualifies and carries the full shape (2.7994ms)
+✔ evaluateQualification filters: placedBy, closedBy, paramsHash, window, status (4.1342ms)
+✔ evaluateQualification reasons: closes, hitRate, profitFactor, pnl, drawdown vs dailyLossCapUsd, stale, paperRecovery (5.9617ms)
+✔ requiredHitRate is the median of (stop + C)/(take + stop) across counted closes (1.9419ms)
+✔ paper save cannot touch the real journal file and vice versa (54.2324ms)
+✔ public paper quote is read-only, validates BBO, preserves observed depth and exposes future venue time (12.0361ms)
+✔ public paper pair exposes only simulation sizing metadata (2.732ms)
+✔ public paper market batches symbols and contains no account or order routes (6.9769ms)
+✔ invalid/crossed public books fail closed (2.9647ms)
+✔ import performs no fetch; boots disarmed; realEnabled mirrors env and defaults false (32.3291ms)
+✔ sessionArmed is never persisted and is false again after reset/configure (34.662ms)
+✔ gate chain refuses in order and never signs a request while failing (91.9076ms)
+✔ limits are exactly four keys and are re-read from env on every call (2.6459ms)
+﹣ journal row with clientOrderId exists before the signed request; fill becomes OPEN (0.3449ms) # needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.
+﹣ a sent-but-unanswered request becomes SUBMITTED_UNCERTAIN and is never resent (0.2544ms) # needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.
+﹣ any 4xx on place lands in history as REJECTED; 401 disables real autopilot (0.2255ms) # needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.
+✔ real autopilot needs the phrase, real enabled, arm and qualification; disables on paramsChanged, qualificationLost and dailyLossCap (145.9396ms)
+✔ cancel, cancel-all and forget require their exact phrases; forget never touches the network (28.9915ms)
+✔ production Robinhood transport has a code-level real-host POST barrier (5.007ms)
+✔ import performs no fetch (8.7591ms)
+✔ docs seed derives the docs public key (4.1481ms)
+✔ docs signature vector reproduces byte-for-byte (5.064ms)
+✔ JSON body signs deterministically and verifies with crypto.verify (7.8439ms)
+✔ default timestamp is unix seconds (1.5962ms)
+✔ badKey: 64-byte seed||publicKey rejected with hint, 16-byte rejected, garbage rejected (6.402ms)
+✔ generateRobinhoodKeyPair round-trips through loadRobinhoodPrivateKey (7.4159ms)
+✔ buildPath repeats arrays, keeps commas unencoded and the trailing slash, skips null (1.3302ms)
+✔ formatIncrement floors and never emits an exponent (7.2959ms)
+✔ ceilIncrement rounds up and incrementDecimals counts places (2.0098ms)
+✔ transport re-exports the error surface (0.9359ms)
+✔ creds are trimmed and never cached; keyObject memoises and notes badKey (7.7032ms)
+✔ noCredentials and badKey are raised locally before any fetch (5.1295ms)
+✔ signed GET signs the path including query and the headers verify (10.9831ms)
+﹣ POST serialises once and signs the exact bytes it sends (0.2938ms) # needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.
+✔ classifyRobinhoodError table (0.7993ms)
+﹣ HTTP error envelope becomes RobinhoodError with sent:true and no body leakage (0.2197ms) # needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.
+﹣ network failure -> network sent:true; post-send timeout -> uncertain (0.1915ms) # needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.
+﹣ 401 with skewed date header retries once with corrected timestamp and identical body; second 401 -> keyNotFound (0.2034ms) # needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.
+﹣ 401 without skew, without date header, with retryOn401=false, or a first 403: no retry (0.2164ms) # needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.
+﹣ 429 sets exponential backoff and the next request is refused locally (0.2475ms) # needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.
+﹣ token bucket: 60 capacity, refills 1/s, refuses locally without network (0.1936ms) # needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.
+﹣ lastDateHeaderSec is recorded on 2xx and rhClock shape is stable (0.2727ms) # needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.
+✔ noteRobinhoodAuth strips html and truncates (3.289ms)
+✔ rhPaginate follows absolute next URLs, strips the base, re-signs, caps pages (14.5345ms)
+✔ fetchAccount prefers api-tradable v2 account and falls back to v1 on 404/403 (9.6054ms)
+✔ fetchTradingPairs maps symbols with repeated query keys and v1 fallback (6.5426ms)
+✔ fetchHoldings passes account_number and asset codes (3.5575ms)
+✔ fetchBestBidAsk batches symbols in one call; v1 fallback maps spread-inclusive fields (5.19ms)
+✔ fetchBestBidAsk: a small v2 cross is uncrossed and a small clock lead takes the receipt time; wide ones pass through (2.2225ms)
+✔ fetchEstimatedPrice sends unencoded comma list capped at 10 and maps fee fields (4.5212ms)
+✔ normalizeOrder parses decimals, maps states, drops raw (3.1268ms)
+✔ listOrders passes filters and paginates; getOrder falls back to list on 404/405 (12.9714ms)
+﹣ placeOrder v2 by default with account_number; v1 path when ROBINHOOD_ORDER_API=v1; body serialised once (0.2306ms) # needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.
+✔ orderBody validates enum/decimal inputs on v2 (2.4388ms)
+﹣ cancelOrder posts an empty body to the cancel path and signs it as such (0.3151ms) # needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.
+﹣ rhRequest normalises absolute URLs and bare paths against the base (0.1953ms) # needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.
+✔ STRATEGY_DEFAULTS pinned to the contract values (10.2775ms)
+✔ normalizeParams clamps, types and drops unknown keys (5.4702ms)
+✔ paramsHash is 12 hex, stable across key order, sensitive to values (10.3587ms)
+✔ roundTripCost = 2*fee + spread + 2*slipBps/1e4 (7.5399ms)
+✔ computeFeatures: warmup below minSamples (4.9739ms)
+✔ computeFeatures: stale when ageMs > 3*sampleMs (3.1397ms)
+✔ computeFeatures: gaps when more than maxGapRatio of lookback intervals exceed 2*sampleMs (1.9411ms)
+✔ computeFeatures: sigma1 and expectedMovePct on a known alternating series (3.6566ms)
+✔ computeFeatures: Donchian excludes the current sample (2.1832ms)
+✔ computeFeatures: EMA fast/slow/slowPrev match a hand-computed loop (2.8847ms)
+✔ entrySignal: reasons fire in order features -> spread -> lowVol -> noBreakout -> noTrend -> breakout (1.9399ms)
+✔ entrySignal: cost geometry at the defaults and requiredHitRate 0.4 (0.7188ms)
+✔ entrySignal: end-to-end synthetic tapes (2.1291ms)
+✔ same tape yields the same features and decisions (1.3294ms)
+✔ exitSignal: priority stop > take > trail > time > fade (1.4859ms)
+✔ exitSignal: trailing stop arms, tracks peakBid and never decreases (0.8992ms)
+✔ exitSignal: time exit and fade exit rules (3.4572ms)
+✔ sizeOrder floors to increment and returns net-of-fee cost (1.9551ms)
+✔ sizeOrder never emits exponent notation for tiny quantities (0.9774ms)
+✔ sizeOrder failure reasons: minOrder, increment, aboveMax, orderCap, buyingPower (1.1993ms)
+✔ limitBuyPrice ceils to quoteIncrement with tolerance capped at 0.2% (0.5031ms)
+✔ paperBuyFill / paperSellFill: model path (8.0078ms)
+✔ paperBuyFill / paperSellFill: estimate path only when <= 15 s old (1.6313ms)
+✔ markToMarket = qty*bid*(1-fee) - costUsd (0.475ms)
+✔ cooldownUntil: win vs loss minutes (0.5235ms)
+✔ pickCandidates ranks by expectedMove/cost, ties by symbol, honours open/cooldown/maxOpen (1.5911ms)
+✔ tape dir lives under MONEY_PRINTER_DATA_DIR and constants match the contract (5.0376ms)
+✔ buffer rejects malformed, crossed and repeated samples and touches no disk until flush (3.9398ms)
+✔ flush is throttled to 30 s unless forced, appends NDJSON and reports fs errors instead of throwing (35.5817ms)
+✔ loadTape sorts, dedupes, filters by sinceMs and adds mid; coverage reports days (23.2026ms)
+✔ compaction keeps only the newest 45 days and runs from flush at most every 6 hours (117.9348ms)
+✔ rows carry their quote source; unknown or malformed sources read back as null and are counted (33.3294ms)
+ℹ tests 213
+ℹ suites 0
+ℹ pass 193
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 20
+ℹ todo 0
+ℹ duration_ms 5737.0126
+
+> money-printer-os@0.5.0-alpha.91 test:robinhood-equities
+> node --test tests/robinhood-equities.test.mjs tests/robinhood-equities-lab.test.mjs
+
+✔ bars: weekday bars before the calendar start are kept; weekends and dates past the table are not (4.0684ms)
+✔ refresh: asks Alpaca for at least 6 years, keeps the old bars and hands them to the Lab in lab-link (902.998ms)
+✔ strategy: month-ends before the calendar come from the data, so the older history is usable (31.6045ms)
+✔ Lab champion: applied only when cleared for paper, for this strategy, in bounds and with the trader hash (47.5233ms)
+✔ controller: a cleared policy persists after Lab withdraws the proposal; fresh books use defaults (3859.3287ms)
+✔ consumer independently verifies prospective metrics, cost binding, trials, timing and safety flags (70.3786ms)
+✔ actual sibling Lab freeze, prospective evaluator and publisher satisfy the consumer contract (51.3928ms)
+bigint: Failed to load bindings, pure JS will be used (try npm run rebuild?)
+[MPOS][MODE] Polymarket US=LIVE_CAPABLE_UNARMED | realEnabled=true | armed=false | credentials=false
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+[journal] +460 from git
+[MPOS][MODE] Robinhood=PAPER | P&L=PAPER | live code enabled=false | real-host POSTs code-locked
+Dashboard: http://127.0.0.1:0
+✔ calendar: holidays, early closes, DST and completed-session rules (4.3671ms)
+✔ data: NO_DATA without a key, no fetch; invalid symbols rejected; partial bars dropped; Alpaca shape parsed (110.843ms)
+✔ strategy: no lookahead, deterministic hash, trend exits in a crash, month-end rotation (70.2319ms)
+✔ baseline replay: strategy vs buy-and-hold SPY vs cash on the same window (170.369ms)
+✔ book: fees, fractional flooring, $1 minimum, T+1 settled cash (1.9374ms)
+✔ book: corrupt file forces recovery and is never overwritten (5.7269ms)
+✔ controller: decide once per session, fill at next open exactly once, late fill after PC off, snapshot shape (1037.4358ms)
+✔ controller: without a key it reports NO_DATA, writes nothing, fetches nothing (3.2275ms)
+✔ HTTP: read-only GET route with the local guard (2167.8197ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5240.1052
+
+> money-printer-os@0.5.0-alpha.91 test:lane-contracts
+> node --test tests/marketlab-loading.test.mjs tests/practice-risk-marks.test.mjs tests/recovery-final.test.mjs tests/legacy-mirror-recovery.test.mjs tests/research-zero-credit.test.mjs tests/intelligence.test.mjs tests/research-lane-registry.test.mjs tests/money-physics.test.mjs tests/market-core.test.mjs tests/book-reconcile.test.mjs tests/paper-trading-core.test.mjs tests/robinhood-practice.test.mjs tests/champion-state.test.mjs tests/data-coverage.test.mjs tests/runtime-controls.test.mjs tests/scoreboard.test.mjs
+
+✔ a mirrored book that agrees reconciles on all five comparisons, cash included (10.8211ms)
+✔ drift is caught in the fields cash alone cannot see: basis, count, realized and fees (2.6715ms)
+✔ the tolerance is one rounding step per compared row, so length alone is never a difference (1.2417ms)
+✔ unknown and missing evidence cannot certify coverage (2.5739ms)
+✔ currency and account are never crossed: a matching number in another book is not a match (1.459ms)
+✔ the platform derives coverage.legacyBooks and refuses it when a mirrored book disagrees (61.4076ms)
+✔ missing, unknown or newer-schema states fail closed to SHADOW (2.4331ms)
+✔ paper needs PAPER-or-higher AND the existing paper-review gate (0.8077ms)
+✔ coverage reports live/down status, per-day rows and the largest gap per source (83.2981ms)
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+✔ reservations survive restart, failures and midnight; zero limits disable paid work (73.0994ms)
+✔ concurrent filing requests share one local extraction; no model call even with credentials (21.5097ms)
+✔ triage ignores unchanged heartbeats and backtests; new losses yield durable local findings (5.8866ms)
+✔ cross-market memory retains blockers, unknown EV and quote expiry (4.9358ms)
+✔ closed-outcome measurements retain breakevens and never coerce unknown P/L to zero edge (1.6095ms)
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+✔ a reset already trading before the next sync gets a separate append-only mirror account (35.5084ms)
+✔ history compaction never changes the original deposit timestamp or creates funds (15.9813ms)
+✔ an explicit new generation permits a same-bankroll reset without deleting the old book (15.9599ms)
+✔ changed bankroll with overlapping history is a conflict, never an automatic reset (14.1211ms)
+✔ an inconsistent replacement book cannot mint a fresh opening balance (14.2541ms)
+✔ a later append error rolls back the entire mirror batch, including its opening deposit (13.7419ms)
+✔ canonical identity is source-qualified and delimiter-safe (4.4303ms)
+✔ fixed-point cash remains exact and refuses hidden rounding/nonfinite input (1.1758ms)
+✔ observation history enforces availability and keeps revised values out of past replay (5.706ms)
+✔ event notifications are bounded, isolate consumers, and expose failures (25.302ms)
+✔ ledger reconstructs fee-aware partial closes, idempotency and currency/mode isolation (12.6397ms)
+✔ overselling and overdrafts roll back atomically, including a failed batch (6.3243ms)
+✔ governor checks every money limit, modes and stale/nonfinite inputs (4.418ms)
+✔ loss limits block new BUYs but never trap a risk-reducing SELL (regression) (0.5567ms)
+✔ book risk state is GREEN/YELLOW/RED from loss metrics; HALTED wins (0.8124ms)
+✔ matching needs complete verified settlement terms, never just equal titles (1.6884ms)
+✔ arbitrage prices both complementary books with depth, fees and stale-data refusal (3.2758ms)
+✔ Kalshi fixed-point dollars and reciprocal books preserve subcent prices (1.0864ms)
+✔ Polymarket token IDs are mapped by outcome name and never assumed to be US slugs (0.3969ms)
+✔ provider caches retain the original timestamp, coalesce requests and report failures (4.29ms)
+✔ paper order flows through proposal, repeat risk check, atomic ledger and idempotent fill (37.1261ms)
+✔ concurrent previews cannot overspend; sequential commit revalidates balance (19.1845ms)
+✔ emergency stop persists across connections/processes and blocks a previously valid preview (295.5442ms)
+✔ core mutations reject cross-origin browser requests and remote clients (0.6315ms)
+✔ promotion needs every criterion; one strong metric is never enough (1.1119ms)
+✔ strategy lifecycle follows allowed edges, never reaches LIVE, and keeps append-only history (10.7385ms)
+✔ legacy books are read-only, never converted, and unknowns stay unknown (6.2462ms)
+✔ Lab champions mirror into the registry through the common gate, never past it (41.1224ms)
+✔ combo performance: empty is unknown, not zero; rates, interval, edge and calibration are exact (3.083ms)
+✔ contract terms: real venue text becomes a comparable proposition (37.9279ms)
+✔ contract matching: lines, dates, scope and inverted outcomes; never EXACT automatically (3.053ms)
+✔ EXACT MATCH needs an attestation that dies when either venue edits its rules (16.2915ms)
+✔ complement legs are priced from both books with fees; never flagged risk-free (0.6947ms)
+✔ regressions from the live check: lazy names; single-market fetch keeps the parent event (1.8724ms)
+✔ venue taker fees follow the published formulas and fail closed (1.3622ms)
+✔ arbitrage prices fees on each direction's actual fills; unknown fees block the locked return (1.0969ms)
+✔ Kalshi contracts carry the series fee model and settlement source (9.6878ms)
+✔ paper fills default to the venue fee schedule; no schedule and no typed fee is refused (23.8125ms)
+✔ stocks paper broker: preview -> risk -> fill in the unified ledger; sells pay pass-through fees (32.6061ms)
+✔ stocks paper broker refuses closed markets, missing keys, one-sided quotes, non-marketable limits and live mode (30.0923ms)
+✔ stale stock quote at submit time is rejected by the governor (11.4787ms)
+✔ Alpaca snapshot parsing keeps IEX sizes and timestamps; auth errors are labelled (1.4985ms)
+✔ replay reveals data by availability: candle-derived samples only after their minute closes (1.4142ms)
+✔ replay backtest: decisions see only the past, fills happen on the next available quote (6.133ms)
+✔ Market Lab runs are reproducible experiment records (fingerprint, code version, append-only) (43.4974ms)
+✔ macro vintages: a revision is invisible before it was published; values count from end of publication day (ET) (5.7067ms)
+✔ macro: keyless FRED refuses as-of history; Kalshi ladder gives an implied median without inventing rungs (1.5779ms)
+✔ macro snapshot: FRED and Kalshi failures stay local to their indicator (2497.236ms)
+✔ EDGAR facts: submissions JSON, Atom feed and Form 4 XML parse into declared facts only (3.2476ms)
+✔ EDGAR analysis is labelled and separate; filings are stored at acceptance time and announced once (8.7333ms)
+✔ weather buckets: exclusive ranges, tails, median and expected high from the normalized distribution (1.1811ms)
+✔ NWS parsing: daytime highs by date, alerts with sent time, storms; links are labelled speculative (1.7619ms)
+✔ weather snapshot: NWS forecast compared with the Kalshi ladder for the same date; failures stay per city (262.7893ms)
+✔ sports: venue contracts cluster into one canonical event with per-venue winner prices (2.1359ms)
+✔ sports live feeds: MLB/NHL parsing and attachment by names and day (0.8783ms)
+✔ sports snapshot stores canonical events, links contracts, announces live changes once (547.0823ms)
+✔ wire parsing and rule-based extraction: RSS variants, entities, related markets, importance (4.4355ms)
+✔ wire snapshot: stores RSS as NewsEvents at first receipt, flags items touching held positions (19.4785ms)
+✔ whale token graph: authority, siblings, holder overlap, early buyers, big swaps, labelled flags (2.6558ms)
+✔ whale flow and wallet view; labels are append-only user notes; reader failures are reported (7.6659ms)
+✔ event pages join the Kalshi event, same-window Polymarket markets, macro values, assets, exposure and signals (3.0407ms)
+✔ walk-forward chooses parameters on the previous fold only; test folds cannot change the choice (14.9301ms)
+✔ Monte Carlo is seeded and reproducible; evidence attaches without promoting (34.575ms)
+✔ legacy mirror: Solana book with partial exits reconciles, progresses by deltas, and detects a reset (21.7774ms)
+✔ legacy mirror: a book that cannot reconcile is reported, not adjusted; unreadable books and combos stay out (9.5527ms)
+✔ event pages for sports, weather and corporate events share one generic, labelled shape (4.2397ms)
+✔ Kalshi event fee overrides: pending, applied after vanishing, unverified uses the higher multiplier (1.7337ms)
+boot probe: 82 modules resolved from platform.js, 0 from @anthropic-ai/sdk
+✔ Market Lab worker pool: same results as inline, and the main thread keeps running during a heavy job (377.7306ms)
+✔ local filing research and disabled paid adapter: citations, limits and cache (19.8176ms)
+✔ the Anthropic SDK loads on first request, so the engine boot path never pays its 9.4 MB (848.1147ms)
+✔ venue reconciliation: read-only states, confirmed cash opening balance, and live stays locked (9.6766ms)
+✔ Market Lab initial source load clears the Working indicator after the asynchronous response (23.6901ms)
+✔ Market Lab offline retries are bounded and recover without staying visually busy (10.5263ms)
+✔ physics is deterministic, bounded, and floor-safe (7.3838ms)
+✔ wind and throw velocity are represented (0.8862ms)
+✔ MarketAdapter normalizes depth and marks stale/future observations (4.9387ms)
+✔ OrderSimulator walks the executable side, then applies configured friction (3.6865ms)
+✔ depth shortage is an honest partial fill or a rejection when partials are disabled (1.7692ms)
+✔ configured no-fill and seeded randomness are deterministic (3.5004ms)
+✔ venue friction is tunable through scoped PAPER configuration (1.6322ms)
+✔ PortfolioTracker persists PAPER cost basis and realized P&L, and refuses LIVE mode (2.4032ms)
+✔ OrderSimulator and PortfolioTracker preserve BACKTEST provenance (1.0662ms)
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+✔ fresh observed practice depth supplies conservative after-cost marks without changing ledger or calling a provider (36.2218ms)
+✔ missing, stale, future, indicative and shallow practice books remain fail-closed; only affected marks clear (60.2868ms)
+✔ changed practice positions or recovery state cannot lend an old mark to an unreconciled book (43.9616ms)
+✔ L1 liquidity is shared across instruments for the same asset instead of duplicated (10.8487ms)
+✔ public-book adapter preserves size and future timestamps rather than manufacturing freshness (3.2028ms)
+✔ a reader exception invalidates the practice mark without taking down the whole dashboard (12.4636ms)
+✔ a slightly future venue clock remains blocked until reached, then can be used without rewriting either timestamp (12.0118ms)
+✔ old receipt times and mismatched quote symbols cannot masquerade as a fresh position mark (37.7758ms)
+✔ paper cash receipts retain posting and simulated times separately and reject incorrect balances (5.3759ms)
+✔ source cash identity never implies complete historical posting evidence (1.5297ms)
+✔ Command Center lazy details do not build hidden tables and ledger currencies stay distinct (70.3484ms)
+✔ registry contains independent Polymarket and Robinhood lanes (3.5386ms)
+✔ lane status is explicit and cannot acquire live authority (1.4241ms)
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+✔ zero-credit build denies the provider boundary even with an explicitly injected client (7.324ms)
+✔ local excerpts preserve exact source ranges, decimal figures and explicit scope (1.8477ms)
+✔ research cache survives restart, records reuse, and refuses expired evidence (61.8691ms)
+✔ historical AI cache remains readable without provider calls or new document fetches (11.6188ms)
+✔ event identities dedupe source retries but never confuse two fills on one order (14.441ms)
+✔ event overflow never poisons a retry identity and observer failures are isolated (2.4495ms)
+✔ settings are clamped and the snapshot never claims authority (15.7898ms)
+✔ manual order and close pay spread, slippage and fees, and write only the practice file (38.9437ms)
+✔ momentum autopilot warms up, ignores a flat tape and enters on a real move (44.0422ms)
+✔ mean reversion does not fire on the spread alone (52.4646ms)
+✔ stale quotes, observe-only mode and a dead feed block fills (36.0866ms)
+✔ the default public feed path works (the feed takes a clock function, not a timestamp) (15.5341ms)
+✔ a corrupt ledger is never overwritten; reset keeps a backup (33.7717ms)
+✔ real-time practice uses receipt-time freshness instead of rejecting quotes fetched after cycle start (99.834ms)
+✔ custom exits are clamped to hard bounds and junk is dropped (6.1161ms)
+✔ max-open override replaces the aggression default; live still capped by env; SPRINT floor kept (1.0998ms)
+bigint: Failed to load bindings, pure JS will be used (try npm run rebuild?)
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+✔ closeStats: hit rate, profit factor, net per trade and the single-best-trade outlier check (7.1524ms)
+✔ verdict: NOT ENOUGH DATA below the bar, NO when only the best trade beats the baseline, YES otherwise (1.9053ms)
+✔ Pump.fun: FAIR and SPRINT books against doing nothing, with active/idle freshness (4.4169ms)
+✔ Robinhood crypto: strategy, exploration and practice books against buy-and-hold of the traded coins (6.7568ms)
+✔ Robinhood equities: per-session evidence against buy-and-hold SPY (7.6727ms)
+✔ Polymarket US shadow: settled combos per window against cash; VOID is not a close (3.5558ms)
+✔ Core ledger: per-close stats come from the ledger itself, one row per venue (41.6171ms)
+✔ Paper bots: Kalshi bots, every farm variant, the mirror and the Polymarket copy bot each get one row (100.8337ms)
+✔ Robinhood daily book: per marked day against holding the same coins; recovery is unknown (1.962ms)
+✔ paperBotInputs reads the full settled history, not the 50-row snapshot slice (19.1583ms)
+✔ Evolution Lab rows: lifecycle state plus held-out result, verdict only with enough held-out trades (2.8197ms)
+✔ buildScoreboard: one broken source is reported, not thrown; summary counts verdicts (3.9944ms)
+✔ readScoreboard reads the real modules from a data dir without writing to it (2948.7259ms)
+ℹ tests 138
+ℹ suites 0
+ℹ pass 138
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 7115.0964
+
+> money-printer-os@0.5.0-alpha.91 test:fitness
+> node --test tests/fitness-ledger.test.mjs tests/jupiter-evidence.test.mjs tests/robinhood-lab-trial.test.mjs
+
+✔ evidence gate fails closed and can only be tightened (2.5731ms)
+✔ a module record carries the safety flags, a verdict and JSON-safe numbers (1.8535ms)
+✔ Solana: the running FAIR policy is published and the lane stays blocked without executable prices (2.3738ms)
+✔ Polymarket record comes from the shadow summary and stays blocked while combos are parked (0.5476ms)
+✔ files are written atomically per module and bad files read as missing (17.9844ms)
+✔ Solana fitness reports a non-qualifying Jupiter tape but still fails closed (0.6085ms)
+✔ Jupiter tape becomes executable-price evidence only when rows validate and stay fresh (10.8788ms)
+✔ Solana fitness can clear the shared evidence gate from validated Jupiter quotes plus real paper closes (3.3207ms)
+✔ off by default and refuses unless every condition holds (34.0627ms)
+✔ thin or synthetic evidence refuses the proposal (55.317ms)
+✔ apply starts a trial; 20 better closes keep it (54.4699ms)
+✔ a worse trial reverts to the incumbent and is never applied again (55.0211ms)
+✔ a trial with no close in 14 days reverts; a hand edit abandons it (104.0508ms)
+✔ corrupt trial authority refuses application without overwriting evidence (26.0421ms)
+✔ loss budget reverts before 20 outcomes; stale and future proposals are refused (97.7902ms)
+✔ manual Lab apply uses the same safety, provenance, evidence and bounded trial gate (107.305ms)
+✔ trial state missing its epoch or equity and inconsistent rollback policy fail closed without overwriting authority (251.9101ms)
+✔ PREPARING and interrupted rollback reconcile durable policy on restart (74.944ms)
+✔ a candidate with mismatched hash or open positions cannot start a trial (44.0108ms)
+✔ failed rollback retains its authority and actual applied hash until a successful retry (71.8517ms)
+✔ future candidate outcomes never count as prospective evidence (42.0083ms)
+✔ a successful keep waits for a flat portfolio even after twenty closes (50.5119ms)
+ℹ tests 22
+ℹ suites 0
+ℹ pass 22
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1358.2237
+
+> money-printer-os@0.5.0-alpha.91 test:unattended
+> node --test tests/unattended-storage.test.mjs tests/desktop-alerts.test.cjs tests/self-report.test.mjs tests/lab-health.test.mjs tests/panic-runbook.test.mjs
+
+✔ conditions: every alert the brief asks for, from data the apps already serve (3.7431ms)
+✔ startup is silent; a new condition alerts once; repeats wait 30 min; at most six an hour (0.9087ms)
+✔ the supervisor polls only local services, honours the Settings toggle, and Settings saves it (4.1047ms)
+✔ a paused recovered checkpoint is healthy only when freshly read back at the expected generation (1.7573ms)
+✔ tape collector health goes RED on a stale heartbeat and WARN on capture or write problems (0.7845ms)
+✔ a RUNNING lab whose generation stops advancing goes RED after 30 minutes (1.7422ms)
+✔ disk, order POSTs, live flags and raw retention (0.783ms)
+✔ the runbook covers stop, verify, recover, reset and exit codes (1.7384ms)
+✔ every endpoint and control the runbook names still exists (0.9242ms)
+✔ every diagnostic code and health field the runbook names still exists (0.8478ms)
+✔ the documented state-file recovery story matches store.js (0.7363ms)
+✔ the documented defaults are the defaults in config.js (0.7311ms)
+✔ a day report is rewritten hourly, then finalized and journaled once on the next day (67.3189ms)
+✔ markdown reads cleanly and a broken data dir reports an error instead of throwing (3.7351ms)
+✔ retention drops day files past keepDays with their sidecars, never today or yesterday (17.2614ms)
+✔ over budget, the oldest go first, but today and yesterday stay even if still over (29.0711ms)
+✔ atomic write fsyncs before rename, and a failed write never replaces the target (16.8168ms)
+✔ agent preflight flags a running app whose on-disk status is stale or missing (3.0481ms)
+✔ Jupiter sampler: positions first, quote-only GETs, round trip from the exact buy output, stops on 429 (6.304ms)
+✔ retention dry run reports what a policy would remove and deletes nothing; streams can keep fewer days (11.9689ms)
+✔ Pump.fun is parked: the paper engine scans at most every 20 s and Solana ticks are taped every 30 s (2.8184ms)
+ℹ tests 21
+ℹ suites 0
+ℹ pass 21
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 681.0158
+
+> money-printer-os@0.5.0-alpha.91 test:upgrade
+> node --test tests/core-replay-correctness.test.mjs tests/lab-pool-lifecycle.test.mjs tests/marked-risk.test.mjs tests/prediction-experiment.test.mjs tests/upgrade-boundaries.test.mjs tests/upgrade-bridge.test.mjs
+
+✔ candle OHLC path is never executable after close (4.814ms)
+✔ closed trade return includes entry and exit fees and matches cash (0.9053ms)
+✔ terminal mark is in drawdown and pending order does not fill at boundary (2.3534ms)
+✔ walk-forward predeclares boundary exit and charges terminal fee and slippage (2.0727ms)
+✔ walk-forward counts closed outcomes, not order legs, and keeps boundary positions open (2.6072ms)
+✔ editable metrics and stale evidence cannot pass promotion (20.0265ms)
+✔ bounded queue, queued cancellation and deadline release capacity (150.4292ms)
+✔ worker crash and shutdown each settle jobs once and release leases (67.103ms)
+✔ cancellation holds shared slot until worker exit; lease cleanup errors cannot lose result (534.0476ms)
+✔ withdrawing every unit and later redepositing cannot erase historical drawdown (4.3231ms)
+✔ open losses and terminal marks change drawdown despite zero realized loss (15.1508ms)
+✔ deposits and withdrawals preserve NAV drawdown and high water survives a governor restart (12.1122ms)
+✔ missing/stale/depth-limited marks fail closed, foreign currencies remain explicitly excluded (6.3971ms)
+✔ liquidation fees count in marked equity and loss limits do not trap reducing sells (6.0213ms)
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+✔ prediction evaluator uses a future offer and retains capital until observed settlement (3.6802ms)
+✔ unobserved outcomes, changed rules, wrong venue, unknown fees and event duplicates cannot qualify (1.0257ms)
+✔ unsupported Kalshi history remains waiting and fixed policy results are stored append-only (21.2102ms)
+✔ cross-venue quote is conditional and includes failed-leg loss even when rules match (3.273ms)
+✔ every settlement-relevant field invalidates a prior contract attestation (2.1804ms)
+bigint: Failed to load bindings, pure JS will be used (try npm run rebuild?)
+[MPOS][MODE] Polymarket US=LIVE_CAPABLE_UNARMED | realEnabled=true | armed=false | credentials=false
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+[journal] +461 from git
+[MPOS][MODE] Robinhood=PAPER | P&L=PAPER | live code enabled=false | real-host POSTs code-locked
+Dashboard: http://127.0.0.1:0
+✔ Electron navigation uses exact local origins and a safe external protocol allowlist (1.7429ms)
+✔ legacy dashboard mutations refuse foreign origins, rebinding hosts and non-JSON before side effects (2329.1789ms)
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+✔ actual trader-to-Lab Kalshi handoff, shared leases and evaluator bytes interoperate offline (1131.7151ms)
+ℹ tests 22
+ℹ suites 0
+ℹ pass 22
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2610.3101
+
+> money-printer-os@0.5.0-alpha.91 test:pump-profit
+> node --test tests/pump-profit-policy.test.mjs tests/pump-profit-runtime.test.mjs tests/pump-paper-shared.test.mjs
+
+✔ Pump PAPER entry uses shared depth/friction engine and never idealized mid (6.4089ms)
+✔ Pump PAPER rejects stale quotes and uneconomical tiny buys (1.1007ms)
+✔ Pump PAPER partial fills are tunable and deterministic (2.7497ms)
+✔ Pump PAPER exit maps partial execution back to cost basis (1.1458ms)
+✔ small bankrolls obey cash, fees, lamport rounding and reserves (3.6437ms)
+✔ reconciliation and paper/live isolation fail closed (1.0451ms)
+✔ operator limits survive champion changes and only tighten configured ceilings (3.9238ms)
+✔ policy hashes include sizing, ownership and immutable position exits (1.395ms)
+✔ heuristic score and winning streak cannot authorize an adaptive increase (0.6135ms)
+✔ loss streak reduces size rather than martingale; missing exit capacity rejects (1.2712ms)
+✔ partial sells are not independent wins; duplicate outcomes flagged (4.5364ms)
+✔ equal-capital books do not invent missing executable fills (6.8302ms)
+✔ quote matching rejects stale, wrong-size, future and missing-route evidence (0.9545ms)
+✔ exact-size quote entry, partial exit and final close reconcile once per position (9.4708ms)
+✔ same pool and slot are not reused for simultaneous liquidity (2.3353ms)
+✔ chronology, holdout blinding, mint purging and bounded entry work (3.5765ms)
+✔ unqualified promotion is refused; canary requires every gate; rollback restores baseline (1.3293ms)
+✔ exact-input buys cannot exceed allowed SOL; liquidity and timestamp safeguards remain active (8.1446ms)
+✔ keyless quotes use public GET only, retain executable data, and enforce budget (32.0221ms)
+✔ runtime safety and pinned policies survive a new Node process without resetting capital (239.8567ms)
+✔ SOL exchange-rate conversion is prospective; untagged historical positions remain unchanged (7.4382ms)
+✔ production state store preserves safety limits and capital across restart (959.5748ms)
+✔ experimental positions and fixed-horizon observations remain tracked outside the active book (17.193ms)
+ℹ tests 23
+ℹ suites 0
+ℹ pass 23
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1490.2878
+
+> money-printer-os@0.5.0-alpha.91 test:paper-completion
+> node --test tests/aggressive-paper-profile.test.mjs tests/aggressive-sizing.test.mjs tests/analytics.test.mjs tests/arbitrage-poller.test.mjs tests/arbitrage.test.mjs tests/kalshi-demo.test.mjs tests/onchain-flow.test.mjs tests/paper-qualification.test.mjs tests/paper-routing.test.mjs tests/polymarket-us-categories.test.mjs tests/polymarket-us-singles-paper.test.mjs tests/portfolio-risk.test.mjs tests/pumpfun-native-paper.test.mjs tests/pumpfun-sniper.test.mjs tests/regime-routing.test.mjs tests/robinhood-equities-paper-adapter.test.mjs tests/shadow-collector.test.mjs tests/shadow-live.test.mjs tests/wallet-tracker-copy.test.mjs tests/paper-completion-regression.test.mjs
+
+✔ profile constants and all risk overrides only activate in paper (5.005ms)
+✔ aggressive estimator is not routed unless explicit aggressive paper mode is active (2.5058ms)
+✔ separate aggressive fill model omits speed and thin-pool penalties and remains a simulated fill (5.2901ms)
+✔ strict learner thresholds are byte-identical by default and relaxed only by opt-in (0.6618ms)
+✔ half Kelly uses expectancy over variance and obeys the configured caps (3.4798ms)
+✔ aggressive sizing is a no-op outside aggressive paper and logs every active decision (3.771ms)
+✔ sizes above the threshold split into two to four time-staggered clips (1.2262ms)
+✔ aggressive paper engine derives size from closed returns and stages later clips (2.7717ms)
+✔ recent closed returns are chronological, finite, paper-only and independent of array order (4.2205ms)
+✔ strategy report computes win rate, expectancy, average outcomes, drawdown and observed span (48.546ms)
+✔ signal attribution and edge confidence intervals use closed trade fixtures (3.7358ms)
+✔ decay flags signals with more than fifty percent trailing expectancy drop (1.4532ms)
+✔ cross-source price validation logs and skips divergences and missing source pairs (1.2514ms)
+✔ replay window accepts timestamps and dates and rejects reversed or malformed input (2.2237ms)
+✔ recurring public-book scan creates a funded paper pair and settles both observed outcomes (46.5527ms)
+✔ unverified settlement terms are recorded but cannot create an arbitrage fill (11.9655ms)
+✔ matcher requires the same event and outcome across venues (4.2474ms)
+✔ dislocation signal clears fee and slippage hurdle and orders cheap buy before rich sell (1.451ms)
+✔ uses executable asks and bids and normalizes Kalshi cents into contract prices (1.8082ms)
+✔ every opportunity is logged and paper paired proposals keep both legs together (14.0516ms)
+✔ paired paper settlement fills both legs together or cancels both (4.2894ms)
+✔ paper client refuses non-demo Kalshi hosts and defaults to official demo host (4.3559ms)
+✔ signing and request functions cover authenticated Kalshi operations (56.5788ms)
+✔ Kalshi paper book enforces stake and open bounds without network calls (12.3132ms)
+✔ net exchange flow and whale accumulation produce signed paper research signals (9.3348ms)
+✔ snapshot cache reuses RPC result inside TTL and refreshes after expiry (1.743ms)
+✔ indexed transaction rows produce cached SOL and mint signals without making another RPC call (2.1515ms)
+✔ baseline fills retain configured friction and stream logs have one bounded owner (3.4972ms)
+✔ aggressive fills expose the USD price used by position accounting (3.4095ms)
+✔ missing numbers never turn into fabricated zero profit (0.604ms)
+✔ qualification rejects future trades, missing evidence and cancellation of signed gaps (2.0226ms)
+bigint: Failed to load bindings, pure JS will be used (try npm run rebuild?)
+✔ wallet subscriptions map request IDs correctly after reconnect and an RPC read (145.8479ms)
+✔ slow shadow quotes do not block trading or start overlapping collectors (863.2256ms)
+✔ qualification metrics cover Sharpe, drawdown, win rate, count, days and optimism/shadow gaps (10.1171ms)
+✔ promotion verdict is thresholded, read-only and never authorizes auto-promotion (5.6962ms)
+✔ dashboard exposes qualification through a read-only GET route (2.7527ms)
+✔ dashboard shows qualification as a read-only badge and does not expose live controls (6.1101ms)
+✔ all requested asset classes share proposals and decisions with actual IDs, without implicit FX (8.4245ms)
+✔ regime snapshots include every class and preserve unknown observations; automatic strategies are gated (2.0027ms)
+✔ Kalshi and Polymarket paper placements persist their central proposal IDs and route records (67.763ms)
+✔ Polymarket US paper category filter recognizes weather, sports, culture and politics (3.8679ms)
+✔ single paper bounds match the combo paper lane and no orders can be sent outside paper mode (4.4976ms)
+✔ single paper book reserves virtual cash, prices Yes and No from public BBO, and marks open positions (68.868ms)
+✔ correlation matrix uses explicit pair data or narrative defaults (2.7326ms)
+✔ drawdown tiers move from size cut to entry halt to flatten (0.5943ms)
+✔ correlated exposure and narrative caps gate only the aggressive paper profile (3.9992ms)
+bigint: Failed to load bindings, pure JS will be used (try npm run rebuild?)
+✔ binary Anchor CreateEvent decodes a launch before an indexed market is available (3.3484ms)
+✔ official SDK generates unsigned create/buy/sell instruction plans with priority and bundle costs (52.6598ms)
+✔ native transport and Jupiter fallback use account/quote reads and never submit an order (40.6593ms)
+✔ launch-to-fill-to-exit paper lane accounts for cash and stays unreachable in live mode (24.4501ms)
+bigint: Failed to load bindings, pure JS will be used (try npm run rebuild?)
+✔ launch parser extracts a mint and native transaction capability fails closed (1.7485ms)
+✔ sniper is aggressive-paper gated, dedupes mints and rate-limits per block (0.6297ms)
+✔ market regimes classify trending, choppy and risk-off conditions per class (4.3083ms)
+✔ strategy gate and asset routing cover all requested route classes (1.2387ms)
+✔ supervisor records per-candidate route decisions and engine paper entries pass through proposals (3.8774ms)
+✔ Robinhood equities paper adapter refuses non-paper mode (2.61ms)
+✔ adapter accepts stock and ETF symbols and uses aggressive execution only for the paper profile (0.9411ms)
+bigint: Failed to load bindings, pure JS will be used (try npm run rebuild?)
+✔ unknown books/fees never manufacture a comparison; dedupe includes output and side (14.3828ms)
+✔ US No shadows and marks use complementary Yes BBO with honest modeled fee provenance (12.2829ms)
+✔ recurring collector reads books and depth, refuses live, places zero orders, rotates bounded work (27.2293ms)
+✔ native, Solana, equity and crypto observations call only injected quote readers (12.6594ms)
+✔ shadow live computes fill divergence and writes a separate row tagged without orders (22.4203ms)
+✔ shadow sources cannot call trading endpoints (2.2012ms)
+✔ shadow fill uses executable side BBO, applies the observed fee and deduplicates one-minute marks (8.7317ms)
+✔ only tracked signer Pump.fun buys become source-tagged copy signals (91.9784ms)
+✔ copy-trading layer refuses non-paper mode and journals allowed signals (4.5041ms)
+✔ graded losing wallets are demoted while ungraded tracked wallets can gather evidence (4.3616ms)
+✔ trailing scorecard window qualifies and automatically demotes losing wallets (0.6165ms)
+✔ tracked wallet parser emits Pump.fun buys and ignores sells, non-signers and other programs (2.584ms)
+ℹ tests 69
+ℹ suites 0
+ℹ pass 69
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2070.2506
+
+> money-printer-os@0.5.0-alpha.91 test:wallet-crowd
+> node --test tests/wallet-crowd.test.mjs tests/wallet-crowd-runtime.test.mjs
+
+✔ isolated baseline, direct, crowd and filter books use equal capital; incumbent is untouched (5.9853ms)
+✔ profitable leader move can lose for a delayed copy after entry price doubles (3.845ms)
+✔ quote before our submission delay cannot fill, even if the leader traded earlier (1.3001ms)
+✔ experimental positions stay managed after Observe Only and after entry budget is exhausted (1.9534ms)
+✔ Observe Only and global risk stop cancel entries without relabeling old cohorts (2.033ms)
+✔ duplicate scanner/copy events and incumbent paper exposure cannot multiply positions (1.197ms)
+✔ entry size never masquerades as executable exit capacity (0.4262ms)
+✔ new live modes and baseline tampering are refused before any book work (0.803ms)
+✔ holdout results remain blinded and earlier assets are purged (1.4073ms)
+✔ journal recovery restores first-observed timestamps and duplicates after lost checkpoint (16.3813ms)
+✔ corrupted evidence is blocked instead of silently reset; immutable capital cannot be changed (24.8605ms)
+✔ v1 finalized indexer persists earlier transaction receipts when later RPC throws (1.7808ms)
+✔ null transactions retry without cursor loss, then explicitly quarantine instead of looping forever (0.3342ms)
+✔ failed transactions never become swap evidence (0.7671ms)
+✔ partial-depth fixtures use the shared simulator, never invent unlimited liquidity (1.316ms)
+✔ crowd quote requests share the existing cap even if study protocol changes (6.3671ms)
+✔ common horizon includes deliberate NO TRADE as zero and leaves open exits unknown (1.6153ms)
+✔ Command Center panel renders bounded unknown values safely and declares all three modes (9.049ms)
+✔ normalized records preserve separate clocks, finality, provenance and currency (3.1164ms)
+✔ historical-only, future, failed, transfer, multi-asset and create transactions do not invent profit (0.5373ms)
+✔ reconnect dedupe keeps FIRST observation; conflicting economics invalidate without rewriting (3.1602ms)
+✔ missing interval, leader-only feed, nonfinality and future windows cannot claim coverage (0.6368ms)
+✔ byte-level contract integrity and real-order refusal fail closed (1.3528ms)
+✔ repeated follower inference uses distinct assets and clusters, not subscriber counts (6.5636ms)
+✔ common-signal fixture cannot be labeled a causal or profitable follower effect (2.4376ms)
+✔ related addresses increase address count but collapse economic concentration (3.5311ms)
+✔ model inference does not mutate raw capture or use future receipts/outcomes (4.73ms)
+✔ null/too-small evidence keeps uncertainty unknown; followers are not independent trials (0.5407ms)
+✔ early follow requires positive copy-realizable evidence and remaining flow (3.1188ms)
+✔ crowded flow relative to observed exit capacity is rejected, not automatically shorted (2.9491ms)
+✔ unknown costs, stale/missing evidence, and source sells legitimately produce NO_TRADE (2.8437ms)
+✔ profitable historical copying is not proof a much higher current entry remains profitable (2.9346ms)
+✔ a reversal that never confirms never creates a reversal or unsupported short (4.9736ms)
+✔ mode changes need explicit paper opt-in and reject live/invented modes (0.686ms)
+✔ event budget does not fabricate discarded observations (11.0714ms)
+✔ chronological phases have explicit embargo and sealed holdout boundaries (1.2723ms)
+✔ empty or huge variant count cannot qualify a crowd policy (1.0865ms)
+✔ ablations preserve unknown stress evidence and show influence rather than fake approvals (16.4755ms)
+ℹ tests 38
+ℹ suites 0
+ℹ pass 38
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 533.561
+
+> money-printer-os@0.5.0-alpha.91 test:paper-bots
+> node --test tests/paper-bots.test.mjs tests/forward-scorecard.test.mjs tests/audit-root.test.mjs tests/audit-safety.test.mjs tests/pumpfun-copy-paper.test.mjs
+
+✔ practice accumulates observed moves and refuses churn below its full cost wall (94.0471ms)
+✔ daily allocations conserve a $25 bankroll across eight or three sleeves (0.7464ms)
+✔ daily candle-derived wins cannot qualify as prospective execution evidence (2.3737ms)
+✔ sports provider retains Polymarket execution identity separately from titles (2.0398ms)
+✔ daily orders wait for a post-decision observed quote while the open window remains (27.802ms)
+✔ farm proposal admission rejects legacy, stale, and diagnostic evidence (0.8984ms)
+✔ mirror binds repeated games to a token or day and refuses conflicting identity (6.1735ms)
+✔ mirror refuses a shortened team that names both participants or target sides (0.5255ms)
+✔ mirror rejects stale, future and malformed observations before queueing or spending (46.8407ms)
+✔ mirror includes fees within its stake budget, persists settlement once, and survives restart (681.4383ms)
+✔ transient board and provider errors retain a queued buy for the next run (519.4408ms)
+✔ reset refuses an in-flight run and preserves the queued generation (518.782ms)
+✔ an enqueue during settlement never persists both a payout and its old open position (445.6643ms)
+✔ malformed persisted books expose unknown balances, refuse new work and archive evidence on reset (31.7534ms)
+✔ Lab weather accepts fresh, bounded, improved evidence and all ensemble constituents (32.3037ms)
+✔ Lab weather rejects stale/future times, unknown models, unsafe parameters and unimproved scores (29.7454ms)
+✔ Lab weather ensemble refuses partial forecasts instead of silently changing the calibrated model (5.9884ms)
+✔ weather truth never turns absent settlement values into a zero-degree high (2.2946ms)
+✔ realized / predicted per-bet return, with n and CI for each; observed bets never count (6.1756ms)
+✔ gaps stay unknown, never zero (0.6389ms)
+✔ a Lab farm proposal carries its held-out prediction, stamped when it is admitted (1.3246ms)
+✔ the scoreboard row of a Lab variant shows its scorecard; a fixed variant has an unknown prediction (60.6291ms)
+✔ probability models are calibrated distributions (3.8771ms)
+✔ sides are scored after the taker fee, and large model/market gaps are refused (3.2582ms)
+✔ weather bot enters at the live book, settles from the market result and scores model vs market (497.3516ms)
+✔ an unreadable book is never overwritten; reset needs the typed phrase (16.8001ms)
+✔ copy bot follows a point-in-time leaderboard and copies only trades made after following (98.4267ms)
+✔ weather calibration: fitted bias/sigma are used only when they beat the default on held-out days (11.061ms)
+✔ the weather bot prices with the calibrated model when one is available (171.6846ms)
+✔ the weather-nws control arm never uses the calibration, so the A/B compares only the forecast model (169.6617ms)
+✔ the bot tape appends one JSON line per row, gzips finished days and drops days past keepDays (27.0791ms)
+✔ the variant farm prices the live bots' frame, fills at ask + slippage, settles once per ticker and tapes it (642.0347ms)
+✔ Kalshi books on the old $500 defaults move once to the $25 wallet ($12.50 per bot); the old file is kept (25.9352ms)
+✔ the farm runs Evolution Lab proposals only when they are well formed and inside the bounds; a withdrawn one keeps its book (11.7912ms)
+✔ the weather calibrator uses the Evolution Lab's best model when it beats this calibration on held-out days (10.3608ms)
+✔ the Kalshi mirror copies a leader's game-winner buy onto Kalshi at Kalshi's price, and refuses anything else (858.6157ms)
+✔ model guard: no verdict under 10 settled bets; stands down when the model is worse than the market; window is the latest 20 (0.7512ms)
+✔ model guard compares unrounded scores even when the displayed scores tie (0.2081ms)
+✔ longshot guard: a side under 15 cents needs a 15-cent edge; dearer sides are unaffected (0.2826ms)
+✔ a saved BTC book moves to model revision 2 once: settings change, history stays, the change is logged (10.498ms)
+✔ a bot whose model is worse than the market stands down: no cash is used, bets are observed and settle, and it can earn its way back (175.7571ms)
+✔ farm variants started on the revision-1 BTC model keep it; the live r2 model runs as its own variant (0.4156ms)
+✔ farm shares its 30-bet standard and retires losing variants without erasing their evidence (16.1849ms)
+✔ copy drawdown pause stops new buys but preserves cash, history and exit monitoring (1.5619ms)
+✔ a farm variant whose model is worse than the market records observe-only bets, without cash, until it earns its way back (166.0485ms)
+✔ a new BTC model revision is judged only on its own bets, not the previous model's (1.6899ms)
+✔ the mirror matches a Kalshi game by date and both teams when the board has no Polymarket contract; team codes match Kalshi sides (1.5183ms)
+✔ the mirror watches sports-leaderboard wallets and queues buys and exits after it started watching (11.6927ms)
+✔ the bots price with the shared kalshiModel the Lab replays (run B4) (0.869ms)
+bigint: Failed to load bindings, pure JS will be used (try npm run rebuild?)
+✔ qualification uses a prior fresh card and cannot be carried by the best winning trip (7.9863ms)
+✔ deleting an initialized Pump book cannot replenish its paper capital (30.5163ms)
+✔ live mode and old signals make no quote calls; unqualified wallets remain waiting (30.3199ms)
+✔ cash starts at $25 using fresh observed SOL FX, and never funds from stale FX (33.952ms)
+✔ new leader buys fill exact raw quantities, charge both quote costs, and persist duplicate protection (50.3421ms)
+✔ missing, stale, non-executable and expensive quotes never debit cash or create a fill (79.4684ms)
+✔ unavailable exits preserve held tokens and cash even beyond max hold, then close at the next real quote (66.5644ms)
+✔ serialized simultaneous buys obey the cap and preserve reserve cash (40.8977ms)
+✔ corrupt saved accounts fail closed and retain their bytes (15.2751ms)
+✔ persisted risk, balances, duplicate positions and future marks cannot fabricate an account (84.5569ms)
+✔ native quotes must match an unsigned unsubmitted paper plan for the requested asset and side (235.4276ms)
+✔ quote delays recheck source age and paused engines never fetch a quote (12.559ms)
+✔ journal failures cannot reverse a completed fill, while failed persistence never reports a fill (59.9414ms)
+✔ copy scoreboard uses only recorded after-cost closes and cash baseline (23.3992ms)
+ℹ tests 63
+ℹ suites 0
+ℹ pass 63
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3180.2939
+
+> money-printer-os@0.5.0-alpha.91 test:web-demo
+> node --test tests/web-demo.test.mjs
+
+✔ the build is static: shim first, relative asset paths, /api/ left for the shim (1101.3526ms)
+✔ recorded data is scrubbed of local paths and the git-history journal (871.6129ms)
+✔ GETs replay fixtures with timestamps moved to now; writes get the read-only answer (862.7154ms)
+✔ every page load is a new session: the timeline starts at its first frame and holds at the last (855.549ms)
+✔ accounts follow the website's hub switch: off means no requests, and ?hub= only works on localhost (1178.405ms)
+✔ register, resume, cloud-saved desktop and sign-out against the hub API; a down hub never signs anyone out (177.8463ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5285.6915
+
+> money-printer-os@0.5.0-alpha.91 test:paper-potential
+> node --test tests/paper-potential-runtime.test.mjs tests/paper-potential-lifecycles.test.mjs tests/copy-pipeline.test.mjs tests/disclosure-equity-research.test.mjs tests/robinhood-external-features.test.mjs tests/request-deadlines.test.mjs tests/administrative-actions-durable.test.mjs
+
+bigint: Failed to load bindings, pure JS will be used (try npm run rebuild?)
+✔ accepted administrative controls survive a later aborted cycle and are not replayed from pending actions (45.4665ms)
+✔ a profile queued after a held-position exit is durable while that earlier network action remains pending (23.2125ms)
+✔ control-only publication preserves newer persisted positions/cash and unrelated runtime values (0.7159ms)
+✔ transient entry intent survives restart and duplicate/out-of-order pages without duplicate exposure (67.1796ms)
+✔ real tape supports copy selection and receipts while historical catch-up yields to health timers (187.7121ms)
+✔ copy hard deadlines reject signal-ignoring transport and bodies without overlap or late fills (59.2728ms)
+✔ mirror supervises retained exits before a signal-ignoring sports board and coalesces the stalled board (710.5038ms)
+✔ modeled processing latency defers quote capture; stale buys never spend (47.8828ms)
+✔ evicted leaders free discovery slots and their positions retain partial exit supervision (67.9124ms)
+✔ bounded pagination marks missing catch-up honestly and deduplicates overlapping pages (18.2547ms)
+✔ unreadable copy book exposes unknown cash and never overwrites evidence (8.466ms)
+✔ initialized copy and mirror books fail closed when the primary disappears, including during a live session (44.9188ms)
+✔ valid legacy copy and mirror books acquire a marker without changing their cash or preserved bytes (22.2516ms)
+✔ separate funded exploratory policy preserves incumbent and immutable identity (15.0319ms)
+✔ metadata cache never caches execution quotes and title inference is labeled (0.7591ms)
+✔ shared discovery reads coalesce but every follower execution quote remains independent (0.614ms)
+✔ Kalshi mirrored exits retain failed bids and persist wallet/timing attribution (678.2242ms)
+✔ multiple failed leader exits retain distinct quantities and never replay earlier partial requests (80.9914ms)
+✔ settlement can complete during a failed exit lookup without double payout (63.5533ms)
+✔ source handoff retry remains durable after the follower entry has filled (32.5907ms)
+✔ category specialist uses documented category leaderboard and requires provider-labeled markets (45.2225ms)
+✔ bounded latency summary excludes unknown timings and separates observation from fill (1.337ms)
+✔ four independent cohorts reuse discovery while retaining four fresh follower books (134.166ms)
+✔ restart completes receipt journaling for an already committed exposure (46.3603ms)
+✔ default isolated copy inventory has seven unique funded books and $175 hypothetical funding (0.4402ms)
+✔ momentum confirmation waits for later two-sided follower quotes and fills their current depth (41.1583ms)
+✔ an ask move without bid confirmation does not establish executable follower momentum (38.1398ms)
+✔ fade requires exact binary identity and follows the opposite current quote plus attributable source exit (61.4105ms)
+✔ copy full history survives both executable close and settlement beyond 500 outcomes (82.3628ms)
+✔ Kalshi mirror full historical outcomes survive future settlement and restart (184.6734ms)
+✔ 13F facts use public acceptance, preserve units, namespaces and no ticker fabrication (11.9769ms)
+✔ 13F amendments are point-in-time revisions: restatement replaces and new holdings supplements (8.0333ms)
+✔ 13F research export deduplicates real snapshots and preserves same-accession revisions (21.296ms)
+✔ EDGAR source discovers actual XML documents, reports no complete table instead of invented holdings (316.2576ms)
+✔ daily OHLC contradictions are excluded and incomplete or repeated pagination fails closed (4.5744ms)
+✔ Alpaca disclosure quotes are GET-only, current-day entries work and held exposure requires action coverage (4.546ms)
+✔ splits and dividends are journaled once; receivables survive sale and T+1 limits reinvestment (217.7644ms)
+✔ immutable initialization evidence blocks missing primary refunds and never replaces intact marker (17.7824ms)
+✔ farm and Kalshi primary deletion or malformed exposures fail closed, preserve bytes and archive explicit resets (55.3159ms)
+✔ corrupt books preserve cash history checkpoint and never silently fund (60.956ms)
+✔ singles require real depth, retry exits, partial exits and settle idempotently after restart (125.1973ms)
+✔ disclosure follows public availability, excludes grants/amendments and closes using provider quote (169.5535ms)
+✔ scoreboard includes open losses and missing marks never become zero losses (2.9067ms)
+bigint: Failed to load bindings, pure JS will be used (try npm run rebuild?)
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+✔ leader discovery deduplicates sources and retains the last real candidates on provider failure (15.1631ms)
+✔ discovery never elevates leaderboard profit to follower qualification and rejects nonfinite data (0.5852ms)
+✔ copy refill uses only fresh weekly evidence in the frozen category (1.1743ms)
+✔ coordination separates discovery, watched leaders, loss pauses, and missing Lab status (1.0318ms)
+✔ Lab connection coalesces reads and requires profile acknowledgement (1.8518ms)
+✔ price overview reads every stored contract and distinguishes quotes, session closes and unknowns (25.8643ms)
+✔ exact-size RH estimates reject either invalid quote leg and retain greater observed fees (0.8621ms)
+✔ US singles read exact best-level capacity and reject crossed or mismatched books (1.7916ms)
+✔ steady preserves fast paper lanes and cannot enable real orders (0.718ms)
+✔ exploratory admission checks identities, frozen window and authority without qualification bypass (1.6307ms)
+✔ admitted books freeze params and capital; changing proposal does not reset prior outcomes (18.8352ms)
+✔ prospective collector retains separate exact-depth receipts and settles without backfilling (22.7103ms)
+✔ exploratory Pump cohorts do not alter the qualified wallet gate or share cash (5.4425ms)
+✔ market deadline releases signal-ignoring fetch and accepts a subsequent fresh request (43.699ms)
+✔ late provider body cannot become a cached executable observation (26.5884ms)
+✔ cycle cancellation releases a coalesced waiter without cancelling another lane (1.3949ms)
+✔ native flow requires attributable swap legs and preserves feature identity (4.3228ms)
+✔ three isolated paper ablations require delayed quote and supervise paused exits with corruption isolated (486.381ms)
+✔ Pump profit discovery books remain separate and unobserved exposure unavailable (3.2326ms)
+ℹ tests 62
+ℹ suites 0
+ℹ pass 62
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2981.167
