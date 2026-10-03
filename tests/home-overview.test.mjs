@@ -317,7 +317,7 @@ test('Pump.fun labels the scanner mode and the separate copy paper book without 
   h.run('glanceTrade()');
   const html = h.rendered.trade;
   assert.match(html, /LIVE results for this book only/);
-  assert.match(html, /1\.0000 SOL/);
+  assert.match(html, /1\.0000(?: SOL|<small>SOL<\/small>)/);
   assert.match(html, /Pump copy · paper/);
   assert.match(html, /\$25\.00/);
   assert.doesNotMatch(html, /\$125\.00/);

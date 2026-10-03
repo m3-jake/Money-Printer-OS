@@ -71,7 +71,7 @@ window.MPOSPlatform = (() => {
     for(const [label,b] of [['Kalshi weather',data?.kalshi?.weather],['Kalshi NWS control',data?.kalshi?.['weather-nws']],['Kalshi BTC',data?.kalshi?.btc],['Polymarket copy',data?.polycopy],['Kalshi copy mirror',data?.mirror]])if(b)books.push({label,note:`PAPER · ${Array.isArray(b.open)?b.open.length:'Unknown'} open · ${b.settings?.enabled===true?'enabled':b.settings?.enabled===false?'paused':'state unknown'}`,value:overviewMoney(b.equityUsd)+' modeled equity'});
     return overviewCard('Independent paper books',books.length?`<ul class="overview-list">${books.map(b=>overviewLine(b.label,b.note,b.value)).join('')}</ul><p class="overview-note">Original units and source books stay separate. Cash and modeled equity are different measures.</p>`:'<p class="overview-note">Paper balances have not been reported yet.</p>',overviewNav('money','About paper books'));
   }
-  function commandOverview(){
+  function commandReportOverview(){
     const proposals=overviewArray(snapshot?.proposals).filter(p=>!['FILLED','REJECTED','CANCELED','CANCELLED','EXPIRED'].includes(p.status)),caps=overviewArray(snapshot?.capabilities?.rows||snapshot?.capabilities);
     const sources=overviewArray(diag?.sources),known=sources.filter(s=>['CONNECTED','IDLE'].includes(s.status)),rows=overviewArray(scoreboard?.rows),labs=rows.filter(r=>r.kind==='lab');
     const research=overviewArray(intelligence?.research).filter(r=>r.status==='NEEDS_EVIDENCE');
@@ -79,6 +79,37 @@ window.MPOSPlatform = (() => {
     const activity=`<ul class="overview-list">${overviewLine('Core order proposals',Array.isArray(snapshot?.proposals)?`${proposals.length} pending or under review`:'Not reported')}${recent.map(r=>overviewLine(`${r.mode||'UNKNOWN MODE'} · ${r.venue||'venue unknown'} · ${r.kind||'activity'}`,when(r.at),overviewMoney(r.gross,r.currency||'UNKNOWN UNIT'))).join('')}</ul>`;
     const evidence=`<ul class="overview-list">${overviewLine('Research lanes',scoreboard?`${labs.length} reported · research results do not grant trading authority`:'Results not reported · research results do not grant trading authority')}${overviewLine('Paper evidence',caps.length?`${caps.filter(c=>c.evidenceReady===true).length} capability checks ready · applied strategy is checked separately`:'Readiness not reported')}${research.slice(0,2).map(r=>overviewLine(r.module||'Research',r.nextTest||r.reason||'More observations needed')).join('')}</ul>`;
     return `<div class="mpo-overview"><p class="overview-note">See what each trading module is observing, how its paper books are doing and which research or data issues need attention. Open a desk to investigate or use its controls.</p><div class="overview-grid">${overviewModules()}${overviewAttention()}${overviewBooks()}${overviewCard('Open activity',activity,overviewNav('journal','Journal'))}${overviewCard('Research & qualification',evidence,overviewNav('evolution','Evolution Lab')+overviewNav('marketlab','Market Lab'))}${overviewCard('Data health',`<ul class="overview-list">${overviewLine('Sources',diag?`${known.length} connected or idle / ${sources.length} reported`:'Not reported')}${overviewLine('Latest platform snapshot',when(snapshot?.at))}${overviewLine('Market coverage',snapshot?`${contracts.length} loaded listings across venues · partial snapshot`:'Not reported')}${overviewLine('Live core',snapshot?.executionModes?.liveCore||'Status not reported')}</ul>`,overviewNav('wire','Wire')+overviewNav('macro','Macro'))}</div></div>`;
+  }
+  const plotColors=['#39ff68','#00c8ff','#ffb000','#b388ff','#ff6ad5','#ff5b70'];
+  const plotAt=v=>{const n=overviewNumber(v)??Date.parse(v);return Number.isFinite(n)&&n>0&&n<=Date.now()?n:null;};
+  const liveMetric=(label,value,note='')=>`<div class="g-tile live-metric"><label>${escape(label)}</label><b>${escape(value)}</b><small>${escape(note)}</small></div>`;
+  const chartMarkup=(key,type,data,title,height=170)=>{
+    window.MPOViz?.set(key,type,{...data,observationOnly:true});
+    return window.MPOViz?.canvas(key,height,title)||`<div class="g-empty">${escape(title)} · chart renderer loading</div>`;
+  };
+  const plotPanel=(title,chart,note='',main=false)=>`<section class="live-chart ${main?'live-main-chart':''}"><h3>${escape(title)}</h3>${chart}${note?`<p class="overview-note">${escape(note)}</p>`:''}</section>`;
+  const plotLegend=(rows,unit)=>`<div class="live-legend">${rows.map((r,i)=>`<span style="--series:${plotColors[i%plotColors.length]}">${escape(r.label)} <b>${escape(overviewNumber(r.value)==null?'Unavailable':overviewMoney(r.value,unit))}</b></span>`).join('')}</div>`;
+  function commandResultPlot(unit){
+    const rows=overviewArray(scoreboard?.rows).filter(r=>r.kind!=='lab'&&r.unit===unit&&r.mode==='PAPER').slice(0,6).map((r,i)=>({id:r.id||`${r.module}:${r.book}`,label:r.book||r.module,color:plotColors[i],unit,value:overviewNumber(r.netPnl)}));
+    const key='command-results-'+unit;
+    window.MPOViz?.observe(key,{at:scoreboard?.at,series:rows,maxPoints:180,replaceSeries:true});
+    const canvas=window.MPOViz?.history(key,{height:210,title:`Net after costs · ${unit}`,unit:unit==='USD'?'$':'',zero:true,legend:false,empty:'Waiting for recorded paper results'});
+    return (canvas||'<div class="g-empty">Waiting for recorded paper results</div>')+plotLegend(rows,unit);
+  }
+  function probabilityHistogram(rows){
+    const bins=Array.from({length:10},(_,i)=>({lo:i/10,hi:(i+1)/10,count:0,label:`${i*10}–${(i+1)*10}`}));
+    let priced=0;
+    for(const c of rows){const d=c.data||{},bid=overviewNumber(d.yesBid),ask=overviewNumber(d.yesAsk),p=bid!=null&&ask!=null?(bid+ask)/2:ask??bid;if(p==null||p<0||p>1)continue;bins[Math.min(9,Math.floor(p*10))].count++;priced++;}
+    return {bins:priced?bins:[],empty:'Waiting for observed YES quotes',observationOnly:true};
+  }
+  function commandOverview(){
+    const sources=overviewArray(diag?.sources),jobs=Object.values(window.MPOBots?.data?.lab?.jobs||{}),ledger=overviewArray(snapshot?.ledger),beats=ledger.map(r=>plotAt(r.at)).filter(v=>v!=null).sort((a,b)=>a-b);
+    const health=sources.length?[...new Set(sources.map(s=>s.status||'UNKNOWN'))].slice(0,8).map(label=>({label,value:sources.filter(s=>(s.status||'UNKNOWN')===label).length})):[];
+    const lab=jobs.length?[{label:'Completed',value:jobs.filter(j=>j.ok===true).length},{label:'Failed',value:jobs.filter(j=>j.ok===false).length},{label:'Unreported',value:jobs.filter(j=>j.ok==null).length}]:[];
+    const metrics=liveMetric('Paper books',overviewCount(scoreboard?.paperSummary?.books),'independent accounts')+liveMetric('Loaded markets',snapshot?String(contracts.length):'Unknown','partial cached coverage')+liveMetric('Logical CPU cores',overviewCount(diag?.process?.cpuCount),'reported by host')+liveMetric('Engine RAM',overviewNumber(diag?.process?.rssMb)==null?'Unknown':diag.process.rssMb+' MB','process resident memory');
+    const nav=[['trade','Pump.fun'],['robinhood','Robinhood'],['sportsbook','Polymarket'],['kalshi','Kalshi'],['evolution','Evolution Lab']].map(([id,label])=>overviewNav(id,label)).join('');
+    const plots=plotPanel('Dollar paper books',commandResultPlot('USD'),'Observed scoreboard updates · each book keeps its own line',true)+plotPanel('Solana paper books',commandResultPlot('SOL'),'SOL stays separate from dollars')+plotPanel('Market probabilities',chartMarkup('command-probabilities','hist',probabilityHistogram(contracts),'Observed YES price distribution'),'Number of priced listings per 10-point range · partial snapshot')+plotPanel('Recorded activity',chartMarkup('command-activity','pulse',{beats,at:snapshot?.at,spanMs:300000,label:'Core ledger events',empty:'Waiting for ledger events'},'Recorded paper ledger activity'),'Spikes mark actual ledger timestamps')+plotPanel('Feed health',chartMarkup('command-source-health','funnel',{stages:health},'Reported source states'),'Observed provider state counts')+plotPanel('Research health',chartMarkup('command-research-health','funnel',{stages:lab},'Workbench job receipts'),'Completed job receipts · research never authorizes a trade');
+    return `<div class="mpo-overview live-overview"><div class="live-metrics">${metrics}</div><nav class="overview-nav">${nav}</nav><div class="live-chart-grid">${plots}</div><details class="overview-help"><summary>Suite guide, books, and source detail</summary>${commandReportOverview()}</details></div>`;
   }
   function commandGlance(bad){
     const ps=scoreboard?.paperSummary,need=overviewNumber(ps?.notEnoughData);
@@ -94,7 +125,7 @@ window.MPOSPlatform = (() => {
     if(kalshiWxBusy||Date.now()-kalshiWxAt<(kalshiWx?600000:60000))return;kalshiWxBusy=true;kalshiWxAt=Date.now();
     request('/weather').then(v=>{kalshiWx=v;kalshiWxError='';}).catch(e=>{kalshiWxError=e.message;}).finally(()=>{kalshiWxBusy=false;draw('kalshi');});
   }
-  function kalshiOverview(){
+  function kalshiReportOverview(){
     const loaded=[...new Map([...overviewArray(contracts).filter(c=>c.provider==='kalshi'),...states.kalshi.rows].map(c=>[c.id||c.sourceId,c])).values()];
     const categories=new Map();for(const c of loaded){const name=c.data?.category||'Uncategorized';categories.set(name,(categories.get(name)||0)+1);}
     const cats=[...categories].sort((a,b)=>b[1]-a[1]),knownCategories=cats.filter(([name])=>name!=='Uncategorized').length;
@@ -114,6 +145,30 @@ window.MPOSPlatform = (() => {
     const degree=v=>overviewNumber(v)==null?'Unknown':Number(v).toFixed(1)+'°F';
     const weather=overviewCard('Weather preview',weatherRows.length?`<ul class="overview-list">${weatherRows.map(({c,m})=>overviewLine(c.label||c.id,`${m.date||'Date unknown'} · NWS ${degree(m.nwsHigh)} · market ${degree(m.expectedHigh)}`,overviewNumber(m.gap)==null?'Unknown gap':`${m.gap>0?'+':''}${Number(m.gap).toFixed(1)}°F gap`)).join('')}</ul><p class="overview-note">Forecast gaps are context. Tradable asks, fees and observed depth are checked by the paper bots.</p>`:`<p class="overview-note">${escape(kalshiWxError?'Weather preview unavailable: '+kalshiWxError:kalshiWx?'No upcoming weather markets in this snapshot.':'Weather preview is loading.')}</p>`,overviewNav('weather','Weather desk'));
     return `<div class="mpo-overview"><p class="overview-note">Explore Kalshi event markets and observed probabilities, then compare the weather, Bitcoin and copy models in their separate paper books. Follow current activity and research before opening a detailed desk.</p><div class="overview-grid">${coverage}${paper}${research}${activity}${status}${weather}</div></div>`;
+  }
+  function kalshiEquityPlot(){
+    const data=window.MPOBots?.data,books=[['Weather',data?.kalshi?.weather],['NWS control',data?.kalshi?.['weather-nws']],['BTC',data?.kalshi?.btc],['Copy mirror',data?.mirror]];
+    const series=books.map(([label,b],i)=>{
+      const pts=overviewArray(b?.curve).filter(p=>plotAt(p.at)!=null&&overviewNumber(p.equityUsd)!=null).map(p=>({at:plotAt(p.at),value:Number(p.equityUsd)})).sort((a,b)=>a.at-b.at);
+      const at=plotAt(data?.at),value=overviewNumber(b?.equityUsd);
+      if(at!=null&&value!=null){if(pts.at(-1)?.at===at)pts.pop();pts.push({at,value});}
+      return {label,color:plotColors[i],points:pts.slice(-200).map(p=>p.value),times:pts.slice(-200).map(p=>p.at)};
+    });
+    return chartMarkup('kalshi-paper-equity','lines',{series,unit:'$',zero:false,legend:false,empty:'Waiting for timestamped book equity'},'Independent paper equity · USD',230)+plotLegend(books.map(([label,b])=>({label,value:b?.equityUsd})),'USD');
+  }
+  function kalshiOverview(){
+    const data=window.MPOBots?.data,books=Object.values(data?.kalshi||{}),loaded=overviewArray(contracts).filter(c=>c.provider==='kalshi'),variants=overviewArray(data?.farm?.variants),provider=overviewArray(snapshot?.providers).find(p=>p.id==='kalshi');
+    const metrics=liveMetric('Public listings',snapshot?String(loaded.length):'Unknown','partial cached universe')+liveMetric('Model books',data?.kalshi?String(books.length):'Unknown','independent paper banks')+liveMetric('Variants',data?.farm?String(variants.length):'Unknown','forward observation only')+liveMetric('Provider',provider?.status||'Unknown','read-only market feed');
+    const nav=overviewNav('kalshi','Market desk',true)+overviewNav('kalshibots','Paper bots')+overviewNav('pmcopy','Copy mirror')+overviewNav('weather','Weather desk')+overviewNav('evolution','Research');
+    const wx=overviewArray(kalshiWx?.cities).map(c=>({c,m:overviewArray(c.markets).find(m=>m.closeAt>Date.now()&&overviewArray(m.buckets).some(b=>overviewNumber(b.p)!=null))})).filter(r=>r.m).slice(0,3);
+    const weather=wx.map(({c,m},i)=>{
+      const bins=overviewArray(m.buckets).filter(b=>overviewNumber(b.p)!=null&&b.p>=0&&b.p<=1).map(b=>({label:b.lo==null?'≤'+b.hi:b.hi==null?b.lo+'+':b.lo+'–'+b.hi,count:Math.round(b.p*1000)/10,highlight:overviewNumber(m.nwsHigh)!=null&&(b.lo==null||m.nwsHigh>=b.lo)&&(b.hi==null||m.nwsHigh<=b.hi)}));
+      return plotPanel(c.label||c.id,chartMarkup('kalshi-weather-'+i,'hist',{bins,max:100,unit:'¢'},'Observed bucket prices',165),`${m.date||'Date unreported'} · NWS ${overviewNumber(m.nwsHigh)==null?'unknown':m.nwsHigh+'°F'} · quoted prices, not guaranteed probabilities`);
+    }).join('')||plotPanel('Weather markets',chartMarkup('kalshi-weather-0','hist',{bins:[],empty:'Waiting for observed weather bucket prices'},'Weather distribution'),'Forecast and market data are loading');
+    const scores=[['Weather',data?.kalshi?.weather],['Control',data?.kalshi?.['weather-nws']],['BTC',data?.kalshi?.btc]].filter(([,b])=>overviewNumber(b?.stats?.brierMarket)!=null&&overviewNumber(b?.stats?.brierModel)!=null&&b.stats.settled>0).map(([label,b])=>({label,x:b.stats.brierMarket,y:b.stats.brierModel,n:b.stats.settled,color:b.stats.brierModel<=b.stats.brierMarket?'#39ff68':'#ff5b70'}));
+    const farm=variants.slice().sort((a,b)=>(b.settled||0)-(a.settled||0)).slice(0,6).map(v=>({id:v.id,label:v.label,value:overviewNumber(v.pnlUsd)}));
+    const plots=plotPanel('Paper book equity',kalshiEquityPlot(),'Settled-event equity and the latest modeled mark · no combined balance',true)+weather+plotPanel('Forward variants',chartMarkup('kalshi-forward-results','bars',{rows:farm,unit:' USD'},'Recorded farm net after modeled costs'),'Independent variants · most settled first · no result grants trading authority')+plotPanel('Forecast scoring',chartMarkup('kalshi-model-scores','scatter',{points:scores,lo:0,hi:1,xLabel:'market Brier →',yLabel:'model',empty:'Waiting for settled model scores'},'Model vs market probability error'),'Lower error is better · bubbles reflect settled sample size')+plotPanel('Market universe',chartMarkup('kalshi-public-probabilities','hist',probabilityHistogram(loaded),'Observed YES price distribution'),'Cached priced listings per range · browse the full venue in Market desk');
+    return `<div class="mpo-overview live-overview"><div class="live-metrics">${metrics}</div><nav class="overview-nav">${nav}</nav><div class="live-chart-grid">${plots}</div><details class="overview-help"><summary>Books, forecasts, and research detail</summary>${kalshiReportOverview()}</details></div>`;
   }
   function kalshiGlance(){
     loadKalshiWx();
