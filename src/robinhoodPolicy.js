@@ -16,7 +16,7 @@ export const DATA_DIR=path.dirname(J.JOURNAL_FILE), USER_ROOT=path.dirname(DATA_
 let clockFn=null;
 export const now=()=>clockFn?clockFn():Date.now();
 export function setRobinhoodClock(fn){clockFn=fn}
-export const symbols=v=>[...new Set((Array.isArray(v)?v:String(v||'').split(',')).map(x=>String(x).trim().toUpperCase()).filter(x=>SYMBOL_RE.test(x)))].slice(0,6);
+export const symbols=v=>[...new Set((Array.isArray(v)?v:String(v||'').split(',')).map(x=>String(x).trim().toUpperCase()).filter(x=>SYMBOL_RE.test(x)))].slice(0,8);
 export const validSymbol=s=>{const v=String(s||'').trim().toUpperCase();if(!SYMBOL_RE.test(v))fail('validation','Use a crypto USD pair such as BTC-USD');return v};
 export const safeMessage=e=>{let m=String(e?.message||e);for(const v of Object.values(creds()))if(v)m=m.split(v).join('[redacted]');return m.slice(0,240)};
 // §21 Bitcoin specialization: primary symbol, candidate weight and per-order multiplier, all re-read from env.

@@ -62,6 +62,22 @@ Architecture, active work and release evidence live in `.agent-state/PROJECT_STA
 ledger remains `AUDIT.md` and `PROGRESS.md`. Later sections below are historical unless dated
 as the current release. Last updated: 2026-10-03.
 
+## Batch PF-11 (2026-10-03, Codex): scheduled exploration (run item A3)
+
+Before: the exploration candidate list used saved BTC/ETH selections and the same low-vol refusal as strategy.
+After: all configured/taped coins are considered (configured universe cap raised from 6 to 8). Long-direction
+probes cost at most $2, once per coin per six hours, with stable time strata and persisted entry receipts.
+The $2 cap includes fees and avoids the $1 venue minimum refusing a $1 all-in budget. Fresh quotes, spread,
+cash, cooldown and open-position gates remain; declining signals are observed because the book is long-only.
+Four-hour exits bound probe duration. Bankroll remains $25. `explore-autopilot` closes remain excluded from
+qualification even with a forged strategy hash. Lab `explorationInput` reports close counts, P/L and symbols,
+explicitly diagnostic; it does not use those P/L rows as search or holdout returns.
+
+Targeted exploration tests 10/10, including ADA beyond BTC/ETH, reload receipts and qualification exclusion.
+Lab feedback test passes. Full source suites recorded below when finished. Actual daily closes need installed
+runtime observation; none are invented. Source only; A3 forward-observation requirement remains pending release.
+Run checkpoint: A1/A2 source complete; A3 implementation complete, observation pending; A4 next; A4–D3 open.
+
 ## Batch PF-10 (2026-10-03, Codex): model-vs-market stand-down (run item A2)
 
 The interrupted A2 changes are completed in source. Every Kalshi bot and farm variant checks the latest 20

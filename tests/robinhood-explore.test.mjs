@@ -103,6 +103,31 @@ test('exploration book trades on its own bank and never touches the strict book 
  assert.equal(snap.explore.stats.closes,1);assert.equal(snap.paper.stats.closes,0);assert.equal(snap.paper.qualification.closes,0);assert.equal(snap.readiness.qualified,false);
 });
 
+test('scheduled exploration bypasses only the cost wall, keeps direction and spread gates, and persists its interval',()=>{
+ const f={ok:true,spreadBps:2,emaFast:101,emaSlow:100,emaSlowPrev:99,expectedMovePct:0.0001};
+ const p=S.normalizeParams({...RH.EXPLORE_OVERRIDES});
+ const at=1700000000000;
+ assert.equal(RH.explorationProbe('ADA-USD',f,p,at).enter,true);
+ assert.equal(RH.explorationProbe('ADA-USD',f,p,at+1000,at).reason,'probeScheduled');
+ assert.equal(RH.explorationProbe('ADA-USD',f,p,at+7*3600e3,at).enter,true);
+ assert.equal(RH.explorationProbe('ADA-USD',{...f,emaFast:98},p,at).enter,false);
+ assert.equal(RH.explorationProbe('ADA-USD',{...f,spreadBps:100},p,at).enter,false);
+ assert.equal(RH.explorationProbe('ADA-USD',{ok:false,reason:'stale'},p,at).enter,false);
+});
+
+test('exploration scans taped ADA beyond the saved BTC/ETH selection and saves probe receipts across reloads',async()=>{
+ reset();const rows=risingRows(200,time-TICK),p=J.loadPaper();
+ p.tape={'ADA-USD':{intervalMs:TICK,quoteSource:'v2',samples:rows.map(r=>[r.t,r.bid,r.ask])}};J.savePaper(p,{force:true});
+ process.env.ROBINHOOD_SYMBOLS='BTC-USD,ETH-USD,SOL-USD,DOGE-USD,XRP-USD,AVAX-USD,LINK-USD,ADA-USD';
+ bid=rows.at(-1).bid*1.001;ask=bid*1.0002;
+ try{
+  await RH.__testing.tick();const e=J.loadExplore(),pos=e.positions.find(x=>x.symbol==='ADA-USD');
+  assert.ok(pos,JSON.stringify(e.autopilot.skipped));assert.ok(pos.costUsd<=2);assert.equal(pos.countsTowardQualification,false);
+  J.__testing.resetPaper();const saved=J.loadExplore();assert.equal(saved.probeReceipts['ADA-USD'].at,time);
+  assert.equal(RH.explorationProbe('ADA-USD',{ok:true,spreadBps:2,emaFast:3,emaSlow:2,emaSlowPrev:1},saved.params,time+1000,saved.probeReceipts['ADA-USD'].at).enter,false);
+ }finally{process.env.ROBINHOOD_SYMBOLS='BTC-USD'}
+});
+
 test('gauge fields per symbol for both books in the snapshot',async()=>{
  reset();const rows=risingRows(200,time-TICK);const p=J.loadPaper();
  p.tape={'BTC-USD':{intervalMs:TICK,quoteSource:'v2',samples:rows.map(r=>[r.t,r.bid,r.ask])}};J.savePaper(p,{force:true});

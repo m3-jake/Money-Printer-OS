@@ -59,6 +59,19 @@ let evolveCheckedAt=0;
 // §23: quotes are collected on every tick while the app runs (ROBINHOOD_COLLECT_QUOTES=false restores the old idle tick),
 // and a second paper book explores with looser, bounded params. It never counts toward qualification or promotion.
 export const EXPLORE_LABEL='EXPLORATION (NOT A STRATEGY)', EXPLORE_OVERRIDES=Object.freeze({costMultiple:0.2,lookbackSamples:40,maxHoldMin:240});
+export const EXPLORE_PROBE_HOURS=6, EXPLORE_PROBE_USD=2;
+// Stable per-coin offsets distribute probes through each six-hour window. Receipts survive restarts.
+export function explorationProbe(symbol,features,params,at,lastAt=null){
+ const period=EXPLORE_PROBE_HOURS*3600e3;
+ const offset=[...symbol].reduce((n,c)=>(n*31+c.charCodeAt(0))>>>0,0)%period;
+ const slot=Math.floor((at-offset)/period);
+ if(Number.isFinite(lastAt)&&(at-lastAt<period||Math.floor((lastAt-offset)/period)>=slot))return {enter:false,reason:'probeScheduled',slot};
+ if(!features?.ok)return {enter:false,reason:features?.reason||'warmup',slot};
+ if(features.spreadBps>params.maxSpreadBps)return {enter:false,reason:'spread',slot};
+ // The paper book is long-only; declining signals remain observations, never fabricated shorts.
+ if(!(features.emaFast>features.emaSlow&&features.emaSlow>features.emaSlowPrev))return {enter:false,reason:'noLongSignal',slot};
+ return {enter:true,reason:'scheduled exploration probe',slot};
+}
 const collectAlways=()=>String(process.env.ROBINHOOD_COLLECT_QUOTES??'true').toLowerCase()!=='false';
 const exploreEnabled=()=>String(process.env.ROBINHOOD_EXPLORE_ENABLED??'true').toLowerCase()!=='false';
 let warmStatus=null, warmFlight=null;
@@ -479,11 +492,18 @@ function openPaperAt(p,symbol,usd,placedBy='manual',tapeBook=p){
  if(J.inCooldown(p,symbol,now()))fail('cooldown','The symbol is cooling down');
  const q=quote(symbol),size=paperSizing(p,symbol,usd,q),f=S.computeFeatures(J.tapeFor(tapeBook,symbol),p.params,now());
  const costPct=S.roundTripCost(fee(),(q.ask-q.bid)/((q.ask+q.bid)/2),p.params),signal=S.entrySignal(f,{costPct,params:p.params});
- if((placedBy==='paper-autopilot'||placedBy==='explore-autopilot')&&!signal.enter)fail('validation','No entry signal: '+signal.reason);
+ if(placedBy==='paper-autopilot'&&!signal.enter)fail('validation','No entry signal: '+signal.reason);
+ if(placedBy==='explore-autopilot'){
+  if(p.exploration!==true)fail('validation','Scheduled probes require the separate exploration book');
+  const probe=explorationProbe(symbol,f,p.params,now(),p.probeReceipts?.[symbol]?.at);
+  if(!probe.enter)fail('validation','No exploration probe: '+probe.reason);
+ }
  const fill=S.paperBuyFill({qty:size.qty,bid:q.bid,ask:q.ask,feeRatio:fee(),now:now(),params:p.params});
  if(!(fill.costUsd>0)||fill.costUsd>usd+1e-8||fill.costUsd>p.cashUsd)fail('paperCash','Modeled fill would exceed the paper budget');
  const position={id:J.newPaperId(),mode:'PAPER',pnlMode:'PAPER',symbol,placedBy,qty:size.qty,entryAsk:q.ask,...fill,paperFillStatus:fill.status||'FILLED',status:'OPEN',at:now(),openedAt:now(),stopPct:signal.stopPct,takePct:signal.takePct,trailArmPct:signal.trailArmPct,trailPct:signal.trailPct,peakBid:q.bid,trailStop:null,maxFavorablePct:0,maxAdversePct:0,params:clone(p.params),paramsHash:p.paramsHash,costPct,quoteSource:q.source,exit:null,pnlUsd:null};
- p.cashUsd-=fill.costUsd;p.positions.push(position);p.feeRatio=fee();return position;
+ p.cashUsd-=fill.costUsd;p.positions.push(position);p.feeRatio=fee();
+ if(placedBy==='explore-autopilot'){p.probeReceipts||={};p.probeReceipts[symbol]={at:now(),positionId:position.id};position.explorationLabel=EXPLORE_LABEL;position.countsTowardQualification=false}
+ return position;
 }
 function closePaperAt(p,id,reason='manual',closedBy='manual'){
  assertPaper(p);const index=p.positions.findIndex(x=>x.id===id);if(index<0)fail('notFound','Paper position not found');
@@ -573,10 +593,11 @@ function explorePass(strict){
   position.peakBid=exit.peakBid;position.trailStop=exit.trailStop;position.maxFavorablePct=Math.max(position.maxFavorablePct||0,q.bid/position.fillPrice-1);position.maxAdversePct=Math.min(position.maxAdversePct||0,q.bid/position.fillPrice-1);
   if(exit.exit){closePaperAt(e,position.id,exit.reason,'strategy');changed=true;e.autopilot.lastAction={action:'close',symbol:position.symbol,reason:exit.reason,at:now()}}
  }
- if(e.autopilot.enabled){const rows=featureRows(e,[...e.autopilot.symbols,...e.positions.map(x=>x.symbol)],strict),eligible=Object.fromEntries(Object.entries(rows).filter(([,r])=>r.signal.enter));
-  for(const [symbol,row]of Object.entries(rows))if(!row.signal.enter)e.autopilot.skipped.push({symbol,reason:row.signal.reason});
+ if(e.autopilot.enabled){const universe=[...new Set([...robinhoodSymbols(),...Object.keys(strict.tape||{}),...e.positions.map(x=>x.symbol)])].filter(s=>/^[A-Z0-9]{2,10}-USD$/.test(s));
+  const rows=featureRows(e,universe,strict),eligible={};
+  for(const [symbol,row]of Object.entries(rows)){const probe=explorationProbe(symbol,row.features,e.params,now(),e.probeReceipts?.[symbol]?.at);if(probe.enter)eligible[symbol]={...row,signal:{...row.signal,enter:true}};else e.autopilot.skipped.push({symbol,reason:probe.reason})}
   for(const symbol of S.pickCandidates(eligible,e.positions.map(x=>x.symbol),e.cooldowns,Math.min(e.autopilot.maxOpen,robinhoodLimits().maxOpen),now(),primaryWeights())){
-   try{openPaperAt(e,symbol,e.autopilot.orderUsd,'explore-autopilot',strict);changed=true;e.autopilot.lastAction={action:'buy',symbol,at:now()}}catch(err){e.autopilot.skipped.push({symbol,reason:err.code||safeMessage(err)})}
+   try{openPaperAt(e,symbol,Math.min(EXPLORE_PROBE_USD,e.autopilot.orderUsd),'explore-autopilot',strict);changed=true;e.autopilot.lastAction={action:'buy',symbol,at:now()}}catch(err){e.autopilot.skipped.push({symbol,reason:err.code||safeMessage(err)})}
   }
  }
  e.autopilot.lastRunAt=now();exploreStats(e);J.saveExplore(e,{force:changed});return {ran:true,changed,open:e.positions.length};
