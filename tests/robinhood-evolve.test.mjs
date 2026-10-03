@@ -121,11 +121,13 @@ test('trader: legacy autopromote cannot bypass current evidence with a short syn
  delete process.env.ROBINHOOD_EVOLVE_AUTOPROMOTE;
 });
 test('trader: the loop tick buffers the durable tape and the paper params change disables real autopilot immediately',async()=>{
+ // Tape mechanics, not the coin universe: three coins, like the mock.
+ process.env.ROBINHOOD_SYMBOLS='BTC-USD,ETH-USD,SOL-USD';
  reset();qualify();RH.armRobinhood(true);RH.setRobinhoodAutopilot({enabled:true,confirmation:'ENABLE REAL CRYPTO AUTOPILOT'});
  RH.setRobinhoodPaperAutopilot({params:{takeMult:6}});assert.equal(RH.robinhoodAutopilot().enabled,false);assert.equal(RH.robinhoodAutopilot().disabledReason,'paramsChanged');
  RH.setRobinhoodPaperAutopilot({params:{takeMult:6}});assert.equal(RH.robinhoodAutopilot().disabledReason,'paramsChanged','same hash: no new event');
  RH.setRobinhoodPaperAutopilot({enabled:true,symbols:['BTC-USD']});const tick=await RH.__testing.tick();assert.equal(tick.ran,true,JSON.stringify(tick));
- const st=T.tapeStatus(),perSym=['BTC-USD','ETH-USD','SOL-USD'].map(s=>T.loadTape(s).length);assert.equal(st.pending+st.flushedRows,perSym.reduce((a,b)=>a+b,0),'every sampled quote reached the durable tape');assert.ok(perSym.every(n=>n<=1),'one quote per collected symbol per tick');const rows=T.loadTape('BTC-USD');assert.equal(rows.length,1);assert.equal(rows[0].bid,100);assert.equal(rows[0].t,mock.state.time);
+ const st=T.tapeStatus(),perSym=[...new Set([...RH.robinhoodSymbols(),'DOGE-USD','AVAX-USD','XRP-USD'])].map(s=>T.loadTape(s).length);assert.equal(st.pending+st.flushedRows,perSym.reduce((a,b)=>a+b,0),'every sampled quote reached the durable tape');assert.ok(perSym.every(n=>n<=1),'one quote per collected symbol per tick');delete process.env.ROBINHOOD_SYMBOLS;const rows=T.loadTape('BTC-USD');assert.equal(rows.length,1);assert.equal(rows[0].bid,100);assert.equal(rows[0].t,mock.state.time);
  mock.state.time+=RH.__testing.TICK_MS;mock.state.bid=101;mock.state.ask=101.1;await RH.__testing.tick();assert.equal(T.loadTape('BTC-USD').length,2);
  RH.stopRobinhoodLoops();assert.equal(T.pendingTapeRows(),0);assert.equal(T.loadTape('BTC-USD').length,2,'stop flushes the tape');assert.ok(fs.existsSync(T.tapeFile('BTC-USD')));
 });

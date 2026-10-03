@@ -34,7 +34,7 @@ export const DAILY_BOOK_LABELS = Object.freeze({
 // its rule (lookback >= 100 days), and is the book that runs whenever no proposal is cleared for paper.
 export const LAB_DEFAULT_DAILY = Object.freeze({ family: 'trend', params: Object.freeze({ smaDays: 200, bandPct: 2 }) });
 export const DAILY_DEFAULTS = Object.freeze({
-  startUsd: 25, feeFloor: 0.0095, slipBps: 5, symbols: Object.freeze(['BTC-USD', 'ETH-USD', 'SOL-USD']),
+  startUsd: 25, feeFloor: 0.0095, slipBps: 5, symbols: Object.freeze(['BTC-USD', 'ETH-USD', 'SOL-USD', 'DOGE-USD', 'XRP-USD', 'AVAX-USD', 'LINK-USD', 'ADA-USD']),
   quoteWindowMin: 30, retryMs: 15 * 60_000, barsKeep: 500, historyDays: 299,
 });
 // Qualification suited to a book that trades one or two times a month. Paper evidence only: passing it never
@@ -288,7 +288,8 @@ export async function runDailyOnce({ dataDir, now = Date.now(), env = process.en
   const startUsd = envNum(env, 'ROBINHOOD_DAILY_START_USD', DAILY_DEFAULTS.startUsd);
   const slipBps = Number.isFinite(Number(env?.ROBINHOOD_DAILY_SLIP_BPS)) && env.ROBINHOOD_DAILY_SLIP_BPS !== '' ? Math.min(100, Math.max(0, Number(env.ROBINHOOD_DAILY_SLIP_BPS))) : DAILY_DEFAULTS.slipBps;
   const fee = feeFrom(feeRatio), quoteWindowMs = envNum(env, 'ROBINHOOD_DAILY_QUOTE_WINDOW_MIN', DAILY_DEFAULTS.quoteWindowMin) * 60_000;
-  const book = loadDailyBook(dataDir, { startUsd, slipBps, now });
+  const symbols = String(env?.ROBINHOOD_DAILY_SYMBOLS || '').split(',').map(x => x.trim().toUpperCase()).filter(x => SYMBOL_RE.test(x));
+  const book = loadDailyBook(dataDir, { startUsd, slipBps, now, ...(symbols.length ? { symbols } : {}) });
   if (book.recoveryRequired) return { book, events: ['RECOVERY'] };
   const events = [];
   // Strategy source: re-read the Lab record every pass. A switch applies from the next decision on.

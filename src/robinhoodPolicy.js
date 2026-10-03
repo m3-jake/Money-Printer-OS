@@ -30,6 +30,6 @@ export function robinhoodPrimary(){
 export const primaryFirst=list=>{const p=robinhoodPrimary().symbol;return list.includes(p)?[p,...list.filter(s=>s!==p)]:list};
 export const primaryWeights=()=>{const p=robinhoodPrimary();return {[p.symbol]:p.weight}};
 export function primaryOrderUsd(symbol,orderUsd,limits=robinhoodLimits()){const p=robinhoodPrimary(),base=Number(orderUsd)||0;return Math.min(symbol===p.symbol?base*p.orderMult:base,limits.maxOrderUsd)}
-export function robinhoodSymbols(){const s=symbols(process.env.ROBINHOOD_SYMBOLS);return primaryFirst(s.length?s:['BTC-USD','ETH-USD','SOL-USD'])}
+export function robinhoodSymbols(){const s=symbols(process.env.ROBINHOOD_SYMBOLS);return primaryFirst(s.length?s:['BTC-USD','ETH-USD','SOL-USD','DOGE-USD','XRP-USD','AVAX-USD','LINK-USD','ADA-USD'])}
 export function paper(){const p=J.loadPaper();p.params=S.normalizeParams({...p.params,sampleMs:TICK_MS});p.paramsHash=S.paramsHash(p.params);return p}
 export function fresh(q){return q&&Number.isFinite(q.bid)&&q.bid>0&&Number.isFinite(q.ask)&&q.ask>=q.bid&&Number.isFinite(q.at)&&q.at<=now()&&now()-q.at<=30000}

@@ -59,7 +59,7 @@ test('real routes stay hard-locked while credential configuration remains paper-
 test('evolution routes: GET ledger view, manual run refuses without tape, apply refuses without a champion (paper-only)',async()=>{
  const r=await fetch(base+'/api/robinhood/evolve');assert.equal(r.status,200);const v=await r.json();
  for(const k of ['enabled','generation','champion','proposed','tapeDays','lastRunAt','autopromote','minGainPct','intervalMin','candidates','history','events','currentParamsHash'])assert.ok(k in v,k);
- assert.equal(v.autopromote,false);assert.equal(v.generation,0);assert.equal(v.proposed,null);assert.deepEqual(Object.keys(v.tapeDays),['BTC-USD','ETH-USD','SOL-USD']);
+ assert.equal(v.autopromote,false);assert.equal(v.generation,0);assert.equal(v.proposed,null);assert.deepEqual(Object.keys(v.tapeDays),['BTC-USD','ETH-USD','SOL-USD','DOGE-USD','XRP-USD','AVAX-USD','LINK-USD','ADA-USD']);
  let p=await post('/api/robinhood/evolve/run',{});assert.equal(p.status,200);const run=await p.json();assert.equal(run.ok,true);assert.equal(run.result.ran,false);assert.equal(run.result.reason,'insufficientTape');
  p=await post('/api/robinhood/evolve/apply',{});assert.equal(p.status,400);assert.equal((await p.json()).code,'notFound');
  p=await post('/api/robinhood/evolve/apply',{paramsHash:'abc'});assert.equal(p.status,400);assert.equal((await p.json()).code,'notFound');

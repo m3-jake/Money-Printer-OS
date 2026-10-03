@@ -26,7 +26,8 @@ const TRANSITIONS={
  CLOSING_UNCERTAIN:['CLOSED','OPEN','CLOSING'],
 };
 const HISTORY_CAP=200, PAPER_HISTORY_CAP=500, TAPE_CAP=720, TAPE_FLUSH_MS=30000, STALE_MS=72*3600e3;
-const DEFAULT_SYMBOLS=['BTC-USD','ETH-USD'];
+// Six coins (the autopilot's cap). BTC/ETH alone almost never clear the ~2% round trip (audit 2026-10-03).
+const DEFAULT_SYMBOLS=['BTC-USD','ETH-USD','SOL-USD','DOGE-USD','AVAX-USD','XRP-USD'];
 const SYMBOL_RE=/^[A-Z0-9]{2,10}-USD$/;
 
 const num=v=>{const n=Number(v);return Number.isFinite(n)?n:0};
@@ -40,7 +41,8 @@ const list=(v)=>Array.isArray(v)?v.filter(isObj):[];
 const objMap=(v)=>{const o={};if(isObj(v))for(const [k,x] of Object.entries(v)){const n=num(x);if(n>0)o[k]=n}return o};
 
 // ---------------------------------------------------------------- real journal
-export function defaultRealAutopilot(){return {enabled:false,orderUsd:10,maxOpen:2,dailyLossCapUsd:25,symbols:DEFAULT_SYMBOLS.slice(),orderType:'market',
+const REAL_DEFAULT_SYMBOLS=['BTC-USD','ETH-USD'];
+export function defaultRealAutopilot(){return {enabled:false,orderUsd:10,maxOpen:2,dailyLossCapUsd:25,symbols:REAL_DEFAULT_SYMBOLS.slice(),orderType:'market',
  lastRunAt:0,lastAction:null,skipped:[],disabledReason:null,disabledAt:0,enabledAt:0,paramsHash:null}}
 function defaultStats(){return {placed:0,closed:0,won:0,lost:0,pnlUsd:0,feesUsd:0,hitRate:null,profitFactor:null,unverified:0}}
 export function defaultJournal(){return {version:1,mode:'LIVE',pnlMode:'LIVE',open:[],history:[],stats:defaultStats(),autopilot:defaultRealAutopilot(),cooldowns:{},

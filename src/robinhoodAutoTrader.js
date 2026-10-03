@@ -58,7 +58,7 @@ let sessionArmed=false, placeBusy=false, apBusy=false, reconcileBusy=false, last
 let evolveCheckedAt=0;
 // §23: quotes are collected on every tick while the app runs (ROBINHOOD_COLLECT_QUOTES=false restores the old idle tick),
 // and a second paper book explores with looser, bounded params. It never counts toward qualification or promotion.
-export const EXPLORE_LABEL='EXPLORATION (NOT A STRATEGY)', EXPLORE_OVERRIDES=Object.freeze({costMultiple:0.5,lookbackSamples:40,maxHoldMin:120});
+export const EXPLORE_LABEL='EXPLORATION (NOT A STRATEGY)', EXPLORE_OVERRIDES=Object.freeze({costMultiple:0.2,lookbackSamples:40,maxHoldMin:240});
 const collectAlways=()=>String(process.env.ROBINHOOD_COLLECT_QUOTES??'true').toLowerCase()!=='false';
 const exploreEnabled=()=>String(process.env.ROBINHOOD_EXPLORE_ENABLED??'true').toLowerCase()!=='false';
 let warmStatus=null, warmFlight=null;

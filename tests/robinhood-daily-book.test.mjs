@@ -87,7 +87,7 @@ test('controller: one decision per closed bar, next-open fill on a Robinhood quo
   m['BTC-USD'].set(addDays(D0, 1), { o: 106, h: 107, l: 105, c: 106 });
   for (let k = 1; k <= 5; k++) for (const s of ['ETH-USD', 'SOL-USD']) m[s].set(addDays(D0, k), { o: 100, h: 100.5, l: 99.5, c: 100 }); // candles appear only once their day starts
   let now = t0(addDays(D0, 1)) + 10 * 60_000; const calls = [], fetchFn = coinbase(m, () => now, calls);
-  const run = (extra = {}) => D.runDailyOnce({ dataDir: dir, now, env: {}, fetchFn, labDaily: null, ...extra });
+  const run = (extra = {}) => D.runDailyOnce({ dataDir: dir, now, env: { ROBINHOOD_DAILY_SYMBOLS: SYMS.join(',') }, fetchFn, labDaily: null, ...extra });
   let r = await run({ quoteFn: rhQuote(106.9, 107), feeRatio: 0.001 });
   assert.ok(r.events.includes('DECIDED buy BTC-USD for the 2026-09-21 open'), r.events.join());
   assert.ok(r.events.some(e => e.startsWith('FILLED buy BTC-USD 2026-09-21 @ robinhood-quote:v2')), r.events.join());
@@ -131,12 +131,12 @@ test('controller: a decision is saved before its fill; without any price it wait
   const dir = tmp(), D0 = '2026-09-20', m = market(D0);
   m['BTC-USD'].set(D0, { o: 100, h: 105.5, l: 99.8, c: 105 });
   let now = t0(addDays(D0, 1)) + 5 * 60_000; const fetchFn = coinbase(m, () => now);
-  let r = await D.runDailyOnce({ dataDir: dir, now, env: {}, fetchFn, labDaily: null });
+  let r = await D.runDailyOnce({ dataDir: dir, now, env: { ROBINHOOD_DAILY_SYMBOLS: SYMS.join(',') }, fetchFn, labDaily: null });
   assert.equal(r.book.pending.length, 1, 'no quote and no open yet: the order waits'); assert.equal(r.book.lastDecidedDay, D0);
   const saved = JSON.parse(fs.readFileSync(D.bookFile(dir), 'utf8')); assert.equal(saved.lastDecidedDay, D0); assert.equal(saved.pending.length, 1);
   m['BTC-USD'].set(addDays(D0, 1), { o: 106, h: 106, l: 106, c: 106 });
   now += 20 * 60_000;
-  r = await D.runDailyOnce({ dataDir: dir, now, env: {}, fetchFn, labDaily: null });
+  r = await D.runDailyOnce({ dataDir: dir, now, env: { ROBINHOOD_DAILY_SYMBOLS: SYMS.join(',') }, fetchFn, labDaily: null });
   assert.equal(r.book.pending.length, 0); assert.equal(r.book.fills.length, 1); assert.equal(r.book.fills[0].priceSource, 'coinbase-open');
   assert.equal(r.book.fills[0].refPrice, 106); assert.ok(!r.events.some(e => e.startsWith('DECIDED')), 'not decided twice');
 });
@@ -144,7 +144,7 @@ test('controller: a decision is saved before its fill; without any price it wait
 test('controller: switches to a cleared Lab proposal and labels it', async () => {
   const dir = tmp(), D0 = '2026-09-20', m = market(D0); let now = t0(addDays(D0, 1)) + 5 * 60_000;
   const lab = { phase: 'PAPER_REVIEW_READY', paperPromotionAllowed: true, proposal: { id: 'RH-DAILY-trend-abc', family: 'trend', params: { smaDays: 150, bandPct: 5 }, stateSchema: 'mpo.champion-state.v1', state: 'PAPER', traderExecutable: false, liveActivationAllowed: false } };
-  const r = await D.runDailyOnce({ dataDir: dir, now, env: {}, fetchFn: coinbase(m, () => now), labDaily: lab });
+  const r = await D.runDailyOnce({ dataDir: dir, now, env: { ROBINHOOD_DAILY_SYMBOLS: SYMS.join(',') }, fetchFn: coinbase(m, () => now), labDaily: lab });
   assert.equal(r.book.source.kind, 'lab-proposal'); assert.equal(r.book.source.id, 'RH-DAILY-trend-abc'); assert.match(r.book.source.label, /LAB DAILY PROPOSAL/);
   assert.equal(r.book.lastDecision.paramsHash, D.dailyParamsHash('trend', { smaDays: 150, bandPct: 5 }));
 });
@@ -170,7 +170,7 @@ test('qualification: minimum trades and days over a long window, beats cash and 
 
 test('book: corrupt file forces recovery and is never overwritten; reset needs the typed phrase', async () => {
   const dir = tmp(); fs.writeFileSync(D.bookFile(dir), '{nope');
-  const r = await D.runDailyOnce({ dataDir: dir, now: Date.now(), env: {}, fetchFn: () => { throw new Error('no fetch expected'); }, labDaily: null });
+  const r = await D.runDailyOnce({ dataDir: dir, now: Date.now(), env: { ROBINHOOD_DAILY_SYMBOLS: SYMS.join(',') }, fetchFn: () => { throw new Error('no fetch expected'); }, labDaily: null });
   assert.deepEqual(r.events, ['RECOVERY']); assert.equal(fs.readFileSync(D.bookFile(dir), 'utf8'), '{nope');
   assert.throws(() => D.resetDailyBook({ dataDir: dir, confirmation: 'reset' }), /RESET DAILY/);
   const snap = D.resetDailyBook({ dataDir: dir, confirmation: 'RESET DAILY' });

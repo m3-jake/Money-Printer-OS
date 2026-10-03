@@ -27,7 +27,7 @@ const PARAM_RANGES = {
   emaFast: [2, 500, true],
   emaSlow: [2, 720, true],
   emaSlopeSamples: [1, 200, true],
-  costMultiple: [0.5, 10, false],
+  costMultiple: [0.1, 10, false], // 0.1 lets the exploration book (never counts) trade below the strict cost wall
   breakoutBufferPct: [0, 0.05, false],
   maxSpreadBps: [1, 1000, false],
   takeMult: [0.5, 20, false],

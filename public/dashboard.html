@@ -1690,6 +1690,17 @@ function glanceSportsbook(){
 }
 // Polymarket copy bot (paper, global Polymarket) as one row in the Polymarket glance.
 function copyBotRow(){const c=window.MPOBots?.data?.polycopy;return c?`<div class="g-rows">${gRow('Copy bot · paper',`${c.settings.enabled?'on':'paused'} · ${c.follows.length} leaders · ${c.open.length} open · ${c.stats.closed} closed`,`${money(c.equityUsd)} <span class="${gTone(c.returnPct)}">${gSigned(c.returnPct,2,'%')}</span>`,c.lastError?'bad':c.settings.enabled?'ok':'warn')}</div>`:''}
+// Why each Robinhood book is (or is not) trading: the crypto cost wall from the account's fee tier and the vol gate,
+// the exploration book, and the daily book's current source.
+function rhWhyRows(r){
+ const fee=Number(r?.account?.feeRatio),vg=r?.evolve?.volGate?.bySymbol||{},syms=Object.entries(vg),best=syms.slice().sort((a,b)=>b[1].ratio-a[1].ratio)[0];
+ const ex=r?.explore||{},exN=(ex.positions||[]).length,exC=ex.stats?.closes||0,d=r?.daily||{},inCash=!(Array.isArray(d.book?.positions)?d.book.positions.length:Object.keys(d.book?.positions||{}).length);
+ const rows=[];
+ if(Number.isFinite(fee)&&best)rows.push(gRow('Short trades',`fee ${(fee*100).toFixed(2)}%/side → ${(best[1].costPct*100).toFixed(1)}% round trip; needs ${(best[1].requiredMovePct*100).toFixed(1)}% moves, best now ${best[0].replace('-USD','')} ${(best[1].p95ExpectedMovePct*100).toFixed(1)}%`,best[1].ratio>=1?'open':'waiting',best[1].ratio>=1?'ok':'warn'));
+ rows.push(gRow('Exploration',`${exN} open · ${exC} closed · small trades past the cost wall, never counts`,'',exN||exC?'ok':'warn'));
+ if(d.source)rows.push(gRow('Daily book',`${String(d.source.family||d.source.id||'').replace(/^lab-default-/,'')} · ${inCash?'in cash (no coin above its signal)':'holding'}`,'',inCash?'warn':'ok'));
+ return rows.join('');
+}
 function glanceRobinhood(){
  const r=rhState||{},pp=r.paper||{},st=pp.stats||{},eq=Number(pp.equityUsd),start=Number(pp.startUsd)||0,ev=r.evolve||{};
  const rec=r.readiness?.recoveryRequired||pp.recoveryRequired;
@@ -1699,7 +1710,7 @@ function glanceRobinhood(){
  // rhLiveViz registers the tape ticker and the edge meter (expected move vs the move a trade needs).
  // Suite lines: the stocks & ETFs paper lane (§25) and the isolated practice sandbox.
  const ed=rhEq?.data||{},eb=rhEq?.book||{},es=ed.status||'NO_DATA',pr=r.practice||{},pt=pr.telemetry||{};
- const suite=`<div class="g-rows">${gRow('Stocks & ETFs',!rhEq?'loading':es==='NO_DATA'&&!ed.configured?'no data · add a free Alpaca key':`${es.toLowerCase().replace('_',' ')} · next session ${rhEq.market?.nextSession||'—'}`,rhEq&&es!=='NO_DATA'?`${money(eb.equityUsd)} <span class="${gTone(eb.returnPct)}">${gSigned(eb.returnPct,2,'%')}</span>`:'',es==='FRESH'?'ok':es==='STALE'?'warn':'bad')}${gRow('Practice',[String(pt.loopStatus||'—').toLowerCase(),pr.settings?.autopilot?'autopilot on':'autopilot off',`${(pr.positions||[]).length} open`,'never counts'].join(' · '),Number.isFinite(Number(pr.equityUsd))?money(pr.equityUsd):'',pr.lastError||pr.recoveryRequired?'bad':pt.loopStatus==='BLOCKED'?'warn':pt.loopStatus?'ok':'')}</div>`;
+ const suite=`<div class="g-rows">${rhWhyRows(r)}${gRow('Stocks & ETFs',!rhEq?'loading':es==='NO_DATA'&&!ed.configured?'no data · add a free Alpaca key':`${es.toLowerCase().replace('_',' ')} · next session ${rhEq.market?.nextSession||'—'}`,rhEq&&es!=='NO_DATA'?`${money(eb.equityUsd)} <span class="${gTone(eb.returnPct)}">${gSigned(eb.returnPct,2,'%')}</span>`:'',es==='FRESH'?'ok':es==='STALE'?'warn':'bad')}${gRow('Practice',[String(pt.loopStatus||'—').toLowerCase(),pr.settings?.autopilot?'autopilot on':'autopilot off',`${(pr.positions||[]).length} open`,'never counts'].join(' · '),Number.isFinite(Number(pr.equityUsd))?money(pr.equityUsd):'',pr.lastError||pr.recoveryRequired?'bad':pt.loopStatus==='BLOCKED'?'warn':pt.loopStatus?'ok':'')}</div>`;
  const viz=(window.MPOViz&&r.tape?(rhLiveViz(r),`${MPOViz.canvas('rh-ticker',22)}${tiles}<div class="g-fill">${MPOViz.canvas('rh-edge',90,'edge meter · expected move vs required')}</div>`):tiles)+suite;
  setGlance('robinhood',glance({title:'Robinhood · paper only',pill,
   hero:Number.isFinite(eq)?money(eq):'—',heroSub:start&&Number.isFinite(eq)?`<span class="${gTone(eq-start)}">${gSigned((eq-start)/start*100,2,'%')}</span> since start · paper crypto book (simulated, not your Robinhood account)`:'Paper equity · simulated, not your Robinhood account',

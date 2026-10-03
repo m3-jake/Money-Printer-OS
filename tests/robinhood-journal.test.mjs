@@ -56,7 +56,7 @@ test('ENOENT -> defaults with autopilot off; default shapes pin the spec keys',(
  const p=J.loadPaper();
  assert.equal(p.recoveryRequired,undefined);
  assert.equal(p.cashUsd,25);assert.equal(p.startUsd,25);assert.equal(p.feeRatio,0.0095);
- assert.deepEqual(p.autopilot,{enabled:false,orderUsd:5,maxOpen:3,symbols:['BTC-USD','ETH-USD'],lastRunAt:0,lastAction:null,skipped:[]});
+ assert.deepEqual(p.autopilot,{enabled:false,orderUsd:5,maxOpen:3,symbols:['BTC-USD','ETH-USD','SOL-USD','DOGE-USD','AVAX-USD','XRP-USD'],lastRunAt:0,lastAction:null,skipped:[]});
  assert.deepEqual(Object.keys(p.qualification),['qualified','paramsHash','closes','hitRate','profitFactor','pnlUsd','grossPnlUsd','feesUsd','feeDragPct','maxDrawdownUsd','requiredHitRate','lastCloseAt','windowDays','reasons','at']);
  assert.deepEqual(p.qualification.reasons,['closes 0 < 20']);
  assert.equal(fs.existsSync(J.JOURNAL_FILE),false,'load never writes');

@@ -103,7 +103,7 @@ test('primary symbol weighting in pickCandidates is backwards compatible and ran
  assert.deepEqual(S.pickCandidates(rows,[],{},1,0,{'BTC-USD':'nope'}),['SOL-USD'],'invalid weights are ignored');
 });
 test('primary order multiplier is capped by maxOrderUsd and by 2.0; default universe is BTC,ETH,SOL with BTC first',()=>{
- reset();assert.deepEqual(RH.robinhoodSymbols(),['BTC-USD','ETH-USD','SOL-USD']);process.env.ROBINHOOD_SYMBOLS='SOL-USD,BTC-USD';assert.deepEqual(RH.robinhoodSymbols(),['BTC-USD','SOL-USD']);
+ reset();assert.deepEqual(RH.robinhoodSymbols(),['BTC-USD','ETH-USD','SOL-USD','DOGE-USD','XRP-USD','AVAX-USD','LINK-USD','ADA-USD'],'eight liquid coins by default');process.env.ROBINHOOD_SYMBOLS='SOL-USD,BTC-USD';assert.deepEqual(RH.robinhoodSymbols(),['BTC-USD','SOL-USD']);
  assert.equal(RH.primaryOrderUsd('BTC-USD',20),20);assert.equal(RH.primaryOrderUsd('ETH-USD',20),20);
  process.env.ROBINHOOD_PRIMARY_ORDER_MULT='2';assert.equal(RH.primaryOrderUsd('BTC-USD',10),20);assert.equal(RH.primaryOrderUsd('BTC-USD',20),25,'never above maxOrderUsd');assert.equal(RH.primaryOrderUsd('ETH-USD',20),20);
  process.env.ROBINHOOD_PRIMARY_ORDER_MULT='9';assert.equal(RH.robinhoodPrimary().orderMult,2);process.env.ROBINHOOD_PRIMARY_SYMBOL='eth-usd';process.env.ROBINHOOD_PRIMARY_WEIGHT='2.5';
