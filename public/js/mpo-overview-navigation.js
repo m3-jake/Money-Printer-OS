@@ -16,7 +16,7 @@
     const id = link.dataset.overviewOpen;
     if (typeof appMeta !== 'function' || !appMeta(id)) return;
     event.preventDefault(); openApp(id);
-    if (link.dataset.overviewDetail === 'true') setDetail(hostOf(id), true);
+    if (id !== hostOf(id) || link.dataset.overviewDetail === 'true') setDetail(hostOf(id), true);
   });
   globalThis.addEventListener('mpo:overview-data', () => {
     if (!document.hidden && typeof renderAll === 'function') renderAll();
