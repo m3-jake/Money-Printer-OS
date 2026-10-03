@@ -139,6 +139,17 @@ export function pumpfunRows(state = {}, { now = Date.now() } = {}) {
   return rows;
 }
 
+export function pumpfunCopyRow(book = {}, { now = Date.now() } = {}) {
+  const stats = closeStats((book?.history || []).map(p => ({ pnl: p.pnlSol, at: p.closedAt })));
+  return scoreRow({ id: 'pumpfun-copy', module: 'Pump.fun', book: 'Scored-wallet copy paper', unit: 'SOL', stats,
+    baseline: { kind: 'cash', label: 'Cash (0 SOL)', netPnl: 0, note: 'Separate $25 paper bank, converted with observed SOL FX when funded.' },
+    fresh: freshness(book?.lastRunAt, { now, maxAgeMs: 5 * MIN, source: 'copy book maintenance' }),
+    note: book?.status === 'WAITING_FOR_WALLET_EVIDENCE' ? 'Waiting for prior profitable wallet round trips, also profitable without their best trade.'
+      : book?.status === 'WAITING_FOR_SOL_PRICE' ? 'Waiting for a fresh observed SOL/USD price to fund the separate $25 paper bank.'
+        : 'Exact-size native/Jupiter quote fills, after modeled slippage and network fees; missing exits stay open.',
+    extra: { open: book?.open?.length || 0, status: book?.status || 'WAITING_FOR_WALLET_EVIDENCE' } });
+}
+
 // ---------------------------------------------------------------- Robinhood crypto
 // Buy-and-hold baseline: the book's starting bank split equally across the coins it traded, bought at the
 // first traded window's start and marked at the latest tape mid, after one buy and one sell fee.
@@ -285,6 +296,7 @@ export function buildScoreboard(inputs = {}, { now = Date.now() } = {}) {
   const rows = [], errors = [];
   const add = (name, fn) => { try { rows.push(...fn()); } catch (e) { errors.push({ source: name, error: String(e?.message || e).slice(0, 200) }); } };
   if (inputs.pumpfun !== undefined) add('pumpfun', () => pumpfunRows(inputs.pumpfun, { now }));
+  if (inputs.pumpfunCopy !== undefined) add('pumpfun-copy', () => [pumpfunCopyRow(inputs.pumpfunCopy, { now })]);
   if (inputs.robinhood !== undefined) add('robinhood', () => robinhoodCryptoRows(inputs.robinhood || {}, { now }));
   if (inputs.equities !== undefined) add('equities', () => [equitiesRow(inputs.equities, { now })]);
   if (inputs.polymarket !== undefined) add('polymarket', () => polymarketRows(inputs.polymarket, { now }));
@@ -333,6 +345,7 @@ export async function readScoreboard({ now = Date.now(), maxAgeMs = 5000 } = {})
   const readJson = f => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } };
 
   inputs.pumpfun = await attempt('pumpfun', async () => (await import('./store.js')).loadStateCached());
+  inputs.pumpfunCopy = await attempt('pumpfun-copy', async () => (await import('./pumpfunCopyPaper.js')).pumpfunCopyPaper().view());
   inputs.robinhood = await attempt('robinhood', async () => {
     const J = await import('./robinhoodJournal.js'), T = await import('./robinhoodTape.js'), RP = await import('./robinhoodPractice.js');
     const strict = J.loadPaper(), explore = J.loadExplore(), practice = RP.loadPracticeBook(path.dirname(J.PAPER_FILE));

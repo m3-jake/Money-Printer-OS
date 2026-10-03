@@ -20,6 +20,8 @@ let seedCache = { ts: 0, meta: new Map(), health: {} };
 
 const WSOL_MINT = 'So11111111111111111111111111111111111111112';
 let solPriceCache = { priceUsd: 0, ts: 0 };
+// Observation time stays old when a failed refresh returns cached FX.
+export const solUsdPriceSnapshot = () => ({ ...solPriceCache, source: 'dexscreener' });
 export async function solUsdPrice() {
   if (solPriceCache.priceUsd > 0 && Date.now() - solPriceCache.ts < 30_000) return solPriceCache.priceUsd;
   try {

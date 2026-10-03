@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { cfg } from './config.js';
 import { assertLiveConfig } from './liveConfig.js';
-import { discoverCandidates, refreshPair, refreshPositionPairs, discoveryHealth, discoveryFanout, setCycleSignal, solUsdPrice, batchTokenPrices } from './dexscreener.js';
+import { discoverCandidates, refreshPair, refreshPositionPairs, discoveryHealth, discoveryFanout, setCycleSignal, solUsdPrice, solUsdPriceSnapshot, batchTokenPrices } from './dexscreener.js';
 import { analyze, explain, marketRegime } from './strategy.js';
 import { mintRisk, benchmarkRpcs } from './rpc.js';
 import { loadState, saveState, appendJournal, appendJournalBatch, drainActions, resetPaper } from './store.js';
@@ -26,6 +26,7 @@ import { copyTradeSignals } from './copyTrade.js';
 import { simulateAggressivePaperExecution } from './executionSimAggressive.js';
 import { parsePumpfunLaunch, PUMPFUN_PROGRAM_ID } from './pumpfun.js';
 import { pumpfunPaperLane } from './pumpfunPaper.js';
+import { pumpfunCopyPaper } from './pumpfunCopyPaper.js';
 import { aggressionParams, exitPresets, operatingProfiles, customExitPolicy, sanitizeCustomExit, openLimitFor, MAX_OPEN_OVERRIDE, isAggressivePaper } from './runtime.js';
 import { recordUniverse, postmortemTrade } from './research.js';
 import { supervisorTick } from './supervisor.js';
@@ -771,6 +772,7 @@ async function cycle(budget = null) {
   s.consecutiveLosses = consecutiveLosses(s);
   if (latestRpcHealth) s.rpcHealth = latestRpcHealth;
   s.market.solUsd = Number(await solPricePromise) || Number(s.market.solUsd || 0);
+  s.market.solUsdObservedAt = solUsdPriceSnapshot().ts || null;
   updatePortfolio(s);
   const econSnap=apiUnitEconomicsSnapshot();
   const dataCostUsd=econSnap.totals.pricedRequests?econSnap.totals.configuredCostUsd:null; // total priced data cost, not scan-purpose-only attribution
@@ -793,6 +795,8 @@ async function cycle(budget = null) {
   catch (e) { s.system.arbitragePaper = { error: compactError(e), ordersSubmitted: 0 }; }
   try { s.system.pumpfunPaper = await pumpfunPaperLane().maintain({ runtime: s.runtime, mode: cfg.mode, solUsd: s.market?.solUsd }); }
   catch (e) { s.system.pumpfunPaper = { error: compactError(e), ordersSubmitted: 0 }; }
+  try { s.system.pumpfunCopyPaper = pumpfunCopyPaper().scheduleMaintain({ mode: cfg.mode, solUsd: s.market?.solUsd, solUsdAt: s.market?.solUsdObservedAt }); }
+  catch (e) { s.system.pumpfunCopyPaper = { error: compactError(e), ordersSubmitted: 0 }; }
   try { s.system.shadowPaper = scheduleShadowTick(marketPlatform(), s, cfg.mode); }
   catch (e) { s.system.shadowPaper = { error: compactError(e), ordersSubmitted: 0 }; }
   if(cfg.mode==='paper'&&s.runtime?.profile==='AGGRESSIVE_PAPER'&&s.system.portfolioRisk?.some(x=>x.flatten)){
@@ -880,7 +884,24 @@ async function main() {
       .then(decision => appendJournal({ type: 'pumpfun-sniper-signal', mode: cfg.mode.toUpperCase(), ...launch, ...decision, source: 'pumpfun:sniper', orderSubmitted: false }))
       .catch(error => appendJournal({ type: 'pumpfun-sniper-error', mode: 'PAPER', mint: launch.mint, error: compactError(error), orderSubmitted: false }));
   }, { programIds: [...cfg.programLogIds, PUMPFUN_PROGRAM_ID], enabled: () => cfg.directStreamEnabled || isAggressivePaper(loadState().runtime, cfg.mode) });
-  const walletStream = once ? null : startTrackedWalletStream(event=>copyTradeSignals([event],{mode:cfg.mode,wallets:smartWallets(),log:appendJournal}));
+  const copyBook = pumpfunCopyPaper();
+  let walletStream = null, walletStreamKey = '';
+  const refreshCopyStream = () => {
+    if (once || cfg.mode !== 'paper') return;
+    const wallets = [...new Set([...copyBook.view().leaders.map(w => w.wallet), ...smartWallets()])].slice(0, 8), key = wallets.join(',');
+    if (key === walletStreamKey) return;
+    walletStream?.close?.(); walletStreamKey = key;
+    walletStream = startTrackedWalletStream(event => {
+      const signals = copyTradeSignals([event], { mode: cfg.mode, wallets, log: appendJournal });
+      const state = loadState();
+      for (const signal of signals) copyBook.onSignal(signal, { mode: cfg.mode, entriesAllowed: !state.system?.paused && !state.system?.killSwitch, solUsd: state.market?.solUsd, solUsdAt: state.market?.solUsdObservedAt })
+        .then(decision => appendJournal({ type: 'pumpfun-copy-paper-signal', mode: 'PAPER', ...decision }))
+        .catch(error => appendJournal({ type: 'pumpfun-copy-paper-error', mode: 'PAPER', error: compactError(error), orderSubmitted: false }));
+    }, { wallets });
+  };
+  try { refreshCopyStream(); } catch (e) { appendJournal({ type: 'pumpfun-copy-paper-error', mode: 'PAPER', error: compactError(e), orderSubmitted: false }); }
+  const copyStreamTimer = once ? null : setInterval(() => { try { refreshCopyStream(); } catch {} }, 60_000);
+  copyStreamTimer?.unref?.();
   let shuttingDown = false;
   let activeBudget = null;
   const shutdown = () => {
@@ -890,6 +911,7 @@ async function main() {
     try { activeBudget?.abort('shutdown'); } catch {}
     try { stream?.close?.(); } catch {}
     try { walletStream?.close?.(); } catch {}
+    clearInterval(copyStreamTimer);
     try { stopAlphaWorker(); } catch {}
     try { dashboard?.close?.(); } catch {}
   };

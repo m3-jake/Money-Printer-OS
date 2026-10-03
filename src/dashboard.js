@@ -36,6 +36,7 @@ import { readApiUnitEconomics } from './apiUnitEconomics.js';
 import { recordUSSingleShadow } from './shadowCollector.js';
 import { readShadowRows, shadowDivergenceReport } from './shadowReport.js';
 import { pumpfunPaperLane } from './pumpfunPaper.js';
+import { pumpfunCopyPaper } from './pumpfunCopyPaper.js';
 import updateChannel from '../desktop/update-channel.cjs';
 import { handlePlatformRequest, localMutationAllowed } from './core/http.js';
 import { KalshiPaperBots, KALSHI_BOT_IDS } from './kalshiBots.js';
@@ -106,7 +107,10 @@ function statePayload(tag) {
 }
 // The live readings that used to be embedded in /api/state, plus the ones that read their own files.
 function telemetryView() {
+  let pumpfunCopy = null;
+  try { pumpfunCopy = pumpfunCopyPaper().summary(); } catch (e) { pumpfunCopy = { status: 'QUOTE_UNAVAILABLE', lastError: String(e.message).slice(0,200), equityUsd: null }; }
   return { at: Date.now(), metrics: systemTelemetry(), resources: resourceSnapshot(), holderRpc: holderRpcHealth(), walletScorecard: walletScorecardView(),
+    pumpfunCopy,
     note: 'Sampled live and never cached: merged by the HUD on top of /api/state. Keep it out of any ETag.' };
 }
 // Telemetry failure must never make a completed paper order look rejected.
@@ -615,6 +619,7 @@ export function startDashboard() {
       }
       if (req.method === 'GET' && u.pathname === '/api/shadow-report') { const rows=await readShadowRows(path.join(DATA_DIR,'shadow-live.ndjson'));return json(res,{...shadowDivergenceReport(rows,100),orderPlaced:false}); }
       if (req.method === 'GET' && u.pathname === '/api/pumpfun/paper') return json(res, { ...pumpfunPaperLane().view(), orderSubmitted: false });
+      if (req.method === 'GET' && u.pathname === '/api/pumpfun/copy-paper') return json(res, pumpfunCopyPaper().view());
       if (req.method === 'GET' && u.pathname === '/api/polymarket-us/combos/journal') { const j=usComboJournalView({historyLimit:500}); return json(res, {...j,performance:comboPerformance(j.history,j.open)}); }
       if (req.method === 'GET' && u.pathname === '/api/polymarket-us/combos') { const snap=await usComboSnapshot(); let paper=null; try{paper=paperBookView()}catch(e){paper={error:String(e.message||e)}} return json(res, {...snap,paper}); }
       if (req.method === 'GET' && u.pathname === '/api/polymarket-us/paper') return json(res, paperBookView());
