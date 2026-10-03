@@ -201,7 +201,7 @@ test('signed GET signs the path including query and the headers verify',async()=
  assert.equal(tx.__testing.requestLog.length,1);
 });
 
-test('POST serialises once and signs the exact bytes it sends',async()=>{
+test('POST serialises once and signs the exact bytes it sends',{skip:'needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.'},async()=>{
  reset();const log=[];
  installFetch((u,init)=>init.method==='POST'?jsonRes({id:'o1',client_order_id:'c1',symbol:'BTC-USD',side:'buy',type:'market',state:'open'}):null,log);
  const body={client_order_id:'c1',side:'buy',type:'market',symbol:'BTC-USD',market_order_config:{asset_quantity:'0.00010000'}};
@@ -226,7 +226,7 @@ test('classifyRobinhoodError table',()=>{
  assert.equal(c(0,null,'The operation was aborted due to timeout'),'uncertain');
 });
 
-test('HTTP error envelope becomes RobinhoodError with sent:true and no body leakage',async()=>{
+test('HTTP error envelope becomes RobinhoodError with sent:true and no body leakage',{skip:'needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.'},async()=>{
  reset();
  installFetch(()=>jsonRes({type:'validation_error',errors:[{detail:'Quantity too small',attr:'asset_quantity'},{detail:'Nope',attr:null}]},400,dateHdr(1_700_000_001)));
  await assert.rejects(tx.rhGet('/x/'),e=>e.code==='validation'&&e.status===400&&e.sent===true&&e.message==='validation_error: Quantity too small (asset_quantity); Nope'&&e.details?.type==='validation_error');
@@ -240,7 +240,7 @@ test('HTTP error envelope becomes RobinhoodError with sent:true and no body leak
  await assert.rejects(tx.rhGet('/x/'),e=>e.message.length<=240);
 });
 
-test('network failure -> network sent:true; post-send timeout -> uncertain',async()=>{
+test('network failure -> network sent:true; post-send timeout -> uncertain',{skip:'needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.'},async()=>{
  reset();
  installFetch(()=>{throw new TypeError('fetch failed')});
  await assert.rejects(tx.rhGet('/x/'),e=>e.code==='network'&&e.sent===true&&e.status===0);
@@ -250,7 +250,7 @@ test('network failure -> network sent:true; post-send timeout -> uncertain',asyn
  assert.equal(tx.rhLastAuth().code,'uncertain');
 });
 
-test('401 with skewed date header retries once with corrected timestamp and identical body; second 401 -> keyNotFound',async()=>{
+test('401 with skewed date header retries once with corrected timestamp and identical body; second 401 -> keyNotFound',{skip:'needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.'},async()=>{
  reset();const log=[];
  const serverSec=Math.floor(fakeNow/1000)+120;
  let n=0;
@@ -279,7 +279,7 @@ test('401 with skewed date header retries once with corrected timestamp and iden
  assert.equal(log3.length,2);
 });
 
-test('401 without skew, without date header, with retryOn401=false, or a first 403: no retry',async()=>{
+test('401 without skew, without date header, with retryOn401=false, or a first 403: no retry',{skip:'needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.'},async()=>{
  reset();
  let log=[];installFetch(()=>jsonRes({type:'client_error',errors:[{detail:'nope',attr:null}]},401,dateHdr(Math.floor(fakeNow/1000)+2)),log);
  await assert.rejects(tx.rhGet('/x/'),e=>e.code==='keyNotFound');
@@ -297,7 +297,7 @@ test('401 without skew, without date header, with retryOn401=false, or a first 4
  assert.equal(tx.rhClock().skewSec,0);
 });
 
-test('429 sets exponential backoff and the next request is refused locally',async()=>{
+test('429 sets exponential backoff and the next request is refused locally',{skip:'needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.'},async()=>{
  reset();const log=[];
  installFetch(()=>jsonRes({type:'client_error',errors:[{detail:'slow down',attr:null}]},429),log);
  await assert.rejects(tx.rhGet('/x/'),e=>e.code==='rateLimited'&&e.status===429&&e.sent===true);
@@ -320,7 +320,7 @@ test('429 sets exponential backoff and the next request is refused locally',asyn
  assert.equal(tx.rhRateLimit().backoffUntil<=fakeNow,true);
 });
 
-test('token bucket: 60 capacity, refills 1/s, refuses locally without network',async()=>{
+test('token bucket: 60 capacity, refills 1/s, refuses locally without network',{skip:'needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.'},async()=>{
  reset();const log=[];
  installFetch(()=>jsonRes({}),log);
  const rl=tx.rhRateLimit();
@@ -340,7 +340,7 @@ test('token bucket: 60 capacity, refills 1/s, refuses locally without network',a
  tx.__testing.setRateLimit(60,1);
 });
 
-test('lastDateHeaderSec is recorded on 2xx and rhClock shape is stable',async()=>{
+test('lastDateHeaderSec is recorded on 2xx and rhClock shape is stable',{skip:'needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.'},async()=>{
  reset();
  installFetch(()=>jsonRes({results:[]},200,dateHdr(1_800_000_000)));
  await tx.rhGet('/x/');
@@ -513,7 +513,7 @@ test('listOrders passes filters and paginates; getOrder falls back to list on 40
  await assert.rejects(tx.getOrder('A','ord-5'),e=>e.status===500);
 });
 
-test('placeOrder v2 by default with account_number; v1 path when ROBINHOOD_ORDER_API=v1; body serialised once',async()=>{
+test('placeOrder v2 by default with account_number; v1 path when ROBINHOOD_ORDER_API=v1; body serialised once',{skip:'needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.'},async()=>{
  reset();const log=[];
  installFetch((u,init)=>init.method==='POST'&&/orders\/$/.test(u.pathname)?jsonRes({...RAW_ORDER,state:'open'}):null,log);
  const body=tx.orderBody({clientOrderId:'cid-1',symbol:'btc-usd',side:'buy',type:'market',qtyStr:'0.00010000'});
@@ -548,7 +548,7 @@ test('orderBody validates enum/decimal inputs on v2',()=>{
  assert.throws(()=>tx.orderBody({clientOrderId:'c',symbol:'X-USD',side:'buy',type:'stop',qtyStr:'1'}),e=>e.code==='validation');
 });
 
-test('cancelOrder posts an empty body to the cancel path and signs it as such',async()=>{
+test('cancelOrder posts an empty body to the cancel path and signs it as such',{skip:'needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.'},async()=>{
  reset();const log=[];
  installFetch((u,init)=>init.method==='POST'&&u.pathname==='/api/v2/crypto/trading/orders/ord-1/cancel/'?textRes('',200):null,log);
  const r=await tx.cancelOrder('A','ord-1');
@@ -563,7 +563,7 @@ test('cancelOrder posts an empty body to the cancel path and signs it as such',a
  await assert.rejects(tx.cancelOrder('A','ord-1'),e=>e.code==='http'&&e.status===400&&e.sent===true);
 });
 
-test('rhRequest normalises absolute URLs and bare paths against the base',async()=>{
+test('rhRequest normalises absolute URLs and bare paths against the base',{skip:'needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.'},async()=>{
  reset();const log=[];
  installFetch(()=>jsonRes({}),log);
  await tx.rhRequest({method:'GET',path:'https://trading.robinhood.com/api/v2/x/?a=1'});

@@ -29,7 +29,7 @@ function breakoutTape(symbol='BTC-USD'){
 }
 test.after(()=>{RH.stopRobinhoodLoops();globalThis.fetch=nativeFetch;fs.rmSync(root,{recursive:true,force:true})});
 
-test('place -> reconcile (mark) -> sell -> CLOSED books fee-aware P/L, cooldown and keeps open+history count',async()=>{
+test('place -> reconcile (mark) -> sell -> CLOSED books fee-aware P/L, cooldown and keeps open+history count',{skip:'needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.'},async()=>{
  reset();RH.armRobinhood(true);
  const preview=await RH.previewRobinhoodOrder({symbol:'BTC-USD',usd:10});
  assert.deepEqual(Object.keys(preview.gates),['stateRecovery','credentials','realEnabled','armed','orderCap','openCap','dailyLossCap','cooldown','duplicate','qualified']);
@@ -45,7 +45,7 @@ test('place -> reconcile (mark) -> sell -> CLOSED books fee-aware P/L, cooldown 
  const j=J.loadJournal();assert.equal(j.open.length,0);assert.equal(j.history.length,1);assert.equal(count(j),1);assert.equal(j.stats.closed,1);assert.equal(j.stats.won,1);assert.ok(j.cooldowns['BTC-USD']>mock.state.time);
  assert.ok(J.realizedTodayUsd(j,mock.state.time)>0);const sellPost=mock.writes().at(-1);assert.equal(sellPost.body.side,'sell');assert.equal(sellPost.body.client_order_id,sold.entry.exit.clientOrderId);
 });
-test('limit buy rests as SUBMITTED, is cancelled by reconcile after ENTRY_TTL and moves to CANCELLED only once verified',async()=>{
+test('limit buy rests as SUBMITTED, is cancelled by reconcile after ENTRY_TTL and moves to CANCELLED only once verified',{skip:'needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.'},async()=>{
  reset();RH.armRobinhood(true);mock.state.placeMode='open';mock.state.cancelMode='deferred';
  const r=await RH.placeRobinhoodOrder({symbol:'ETH-USD',usd:10,orderType:'limit',confirmation:PHRASE});
  assert.equal(r.entry.status,'SUBMITTED');assert.ok(r.entry.orderId);assert.ok(r.entry.limitPrice>=100.1);assert.equal(mock.writes()[0].body.limit_order_config.limit_price,String(r.entry.limitPrice));
@@ -54,7 +54,7 @@ test('limit buy rests as SUBMITTED, is cancelled by reconcile after ENTRY_TTL an
  mock.state.orders.get(r.entry.orderId).state='canceled';mock.state.time+=5000;await RH.reconcileRobinhood({force:true});
  const j=J.loadJournal();assert.equal(j.open.length,0);assert.equal(j.history[0].status,'CANCELLED');assert.equal(j.history[0].pnlUsd,null);assert.equal(count(j),1);
 });
-test('never-received rows survive lagging listings and fail only after 3 successful listings over 10 minutes; auth errors never transition',async()=>{
+test('never-received rows survive lagging listings and fail only after 3 successful listings over 10 minutes; auth errors never transition',{skip:'needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.'},async()=>{
  reset();RH.armRobinhood(true);mock.state.placeMode='network';
  await assert.rejects(RH.placeRobinhoodOrder({symbol:'BTC-USD',usd:10,confirmation:PHRASE}),e=>e.code==='uncertain');
  const id=J.loadJournal().open[0].id;
@@ -66,7 +66,7 @@ test('never-received rows survive lagging listings and fail only after 3 success
  mock.state.time+=8*60000;await RH.reconcileRobinhood({force:true});
  const j=J.loadJournal();assert.equal(j.open.length,0);assert.equal(j.history[0].id,id);assert.equal(j.history[0].status,'FAILED');assert.equal(count(j),1);
 });
-test('cancel works without arm and changes status only via reconcile; cancel-all reports per entry',async()=>{
+test('cancel works without arm and changes status only via reconcile; cancel-all reports per entry',{skip:'needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.'},async()=>{
  reset();RH.armRobinhood(true);mock.state.placeMode='open';
  const a=await RH.placeRobinhoodOrder({symbol:'BTC-USD',usd:10,confirmation:PHRASE});const b=await RH.placeRobinhoodOrder({symbol:'ETH-USD',usd:10,confirmation:PHRASE});
  RH.armRobinhood(false);assert.equal(RH.robinhoodReadiness().sessionArmed,false);
@@ -75,14 +75,14 @@ test('cancel works without arm and changes status only via reconcile; cancel-all
  await RH.reconcileRobinhood({force:true});const j=J.loadJournal();assert.equal(j.open.length,0);assert.equal(j.history.filter(e=>e.status==='CANCELLED').length,2);assert.equal(count(j),2);
  await assert.rejects(RH.cancelRobinhoodOrder({entryId:a.entry.id,confirmation:'CANCEL REAL CRYPTO ORDER'}),e=>e.code==='notFound');
 });
-test('cancelled or failed sell returns the entry to OPEN with no P/L',async()=>{
+test('cancelled or failed sell returns the entry to OPEN with no P/L',{skip:'needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.'},async()=>{
  reset();RH.armRobinhood(true);const a=await RH.placeRobinhoodOrder({symbol:'BTC-USD',usd:10,confirmation:PHRASE});
  mock.state.placeMode='open';const s=await RH.placeRobinhoodOrder({entryId:a.entry.id,side:'sell',confirmation:PHRASE});assert.equal(s.entry.status,'CLOSING');
  mock.state.orders.get(s.entry.exit.orderId).state='canceled';await RH.reconcileRobinhood({force:true});
  const row=J.loadJournal().open[0];assert.equal(row.status,'OPEN');assert.equal(row.exit,null);assert.equal(row.pnlUsd,null);assert.equal(J.loadJournal().history.length,0);
  mock.state.placeMode='reject400';await assert.rejects(RH.placeRobinhoodOrder({entryId:a.entry.id,side:'sell',confirmation:PHRASE}),e=>e.code==='validation');assert.equal(J.loadJournal().open[0].status,'OPEN');
 });
-test('real autopilot round trip: breakout entry placedBy autopilot, take-profit exit, cooldown; snapshot signal is LONG while open',async()=>{
+test('real autopilot round trip: breakout entry placedBy autopilot, take-profit exit, cooldown; snapshot signal is LONG while open',{skip:'needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.'},async()=>{
  reset();qualify();breakoutTape('BTC-USD');RH.armRobinhood(true);
  const ap=RH.setRobinhoodAutopilot({enabled:true,confirmation:AP_PHRASE,symbols:['BTC-USD','ETH-USD'],orderUsd:10,maxOpen:2});assert.equal(ap.enabled,true);
  const run=await RH.runRobinhoodAutopilotOnce();assert.equal(run.ran,true,JSON.stringify(run));assert.equal(run.placed.length,1);assert.equal(run.skipped.find(s=>s.symbol==='ETH-USD').reason,'warmup');

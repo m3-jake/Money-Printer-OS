@@ -28,7 +28,7 @@ const arg = name => process.argv.includes(name) ? process.argv[process.argv.inde
 const minutes = Number(arg('--minutes')) || 30;
 // Everything that shows the session's progress is on the timeline, so balance, trades and scores agree.
 const FRAMED = new Set(['/api/state', '/api/telemetry', '/api/robinhood', '/api/scoreboard', '/api/platform/status',
-  '/api/journal?limit=180', '/api/paper-qualification', '/api/robinhood-equities', '/api/polymarket-us/combos/journal']);
+  '/api/journal?limit=180', '/api/paper-qualification', '/api/robinhood-equities', '/api/polymarket-us/combos/journal', '/api/bots']);
 const FRAME_GAP_MS = 20_000, MAX_FRAMES = 90; // 30 minutes; frames past that are not kept, so the start is never lost
 
 const resume = !!arg('--sandbox');
@@ -59,7 +59,8 @@ Object.assign(env, {
 });
 
 const previous = fs.existsSync(OUT) ? JSON.parse(fs.readFileSync(OUT, 'utf8')) : { responses: {} };
-const catalog = Object.keys(previous.responses).filter(k => !FRAMED.has(k));
+// Endpoints newer than the previous recording (alpha.79: Kalshi weather glance) are always fetched once.
+const catalog = [...new Set([...Object.keys(previous.responses), '/api/platform/weather'])].filter(k => !FRAMED.has(k));
 const fixtures = resume && fs.existsSync(OUT) ? JSON.parse(fs.readFileSync(OUT, 'utf8')) : { recordedAt: null, responses: {}, frames: {} };
 fixtures.frames ||= {};
 fixtures.champion = champion ? { id: champion.champion?.id, generation: champion.generation, stage: champion.champion?.stage } : null;

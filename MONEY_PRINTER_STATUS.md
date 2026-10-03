@@ -43,6 +43,29 @@ Last updated: 2026-09-28, remediation pass P0–P5 on the `v0.5.0-alpha.71` tree
 Evolution Lab alpha.11 paired Windows release described above is unchanged, and no release pair was
 built, signed or installed in this pass. Version `0.5.0-alpha.71`.
 
+## Batch PF-3 (2026-10-02, Claude): weather calibrator (Lab rebuild phase 1), web demo merged, alpha.80
+
+bing: "make all those changes, push them all to live, catch up the browser version ... fire on all cylinders".
+
+- **Weather calibrator** (`src/weatherCalibration.js`, `<data>/weather-calibration.json`, refit daily). This is phase 1
+  of the Research Workbench recommended in `docs/EVOLUTION-LAB-AUDIT-2026-10-02.md`.
+  - **Truth:** Kalshi settled KXHIGH* `expiration_value`, the official high.
+  - **Forecasts:** Open-Meteo previous-runs, same-day (lead 0) and day-before (lead 1), each as the max of the
+    hourly values.
+  - **Fit:** per city and lead, bias = mean(actual − forecast) and sd (floor 1 °F).
+  - **Held-out gate:** a city/lead is used only if its log score on the last 30 days beats the default
+    (bias 0, σ 1.6/2.6 °F).
+  - **First live fit (68 days, 2026-07-26 → 10-01):** lead 0 is calibrated in 9/10 cities (ATL stays on the default),
+    lead 1 in 6/10. For example, MIA lead 1 runs 3.35 °F cold.
+  - **Weather bot:** prices with the calibrated Open-Meteo model when available (σ × 1.1 safety), else NWS plus
+    defaults; each bet records which model it used. Kalshi → Paper bots shows a calibration table.
+- **Merged** `claude/web-demo-20261002` (4ceba19, the other session): the browser web demo (`web-demo/`,
+  `scripts/web-demo/`, `test:web-demo`), the Win98 log-on screen with camera pull-back and welcome shower, and the
+  slingshot logo. The conflicts were only test:all and the status lines; test:product-economics stays removed. The
+  recorder now frames `/api/bots` and always fetches `/api/platform/weather`.
+- **Release:** 0.5.0-alpha.80, installed on WITCHDOCTOR. GitHub main is fast-forwarded to this branch. The web demo
+  is re-recorded from this tree and deployed to Cloudflare Pages `money-printer` (see the web-demo-deploy rule).
+
 ## Batch PF-2 (2026-10-02, Claude): paywall removed, Kalshi weather/BTC paper bots, Polymarket copy bot, smaller icons
 
 Same branch, `claude/paper-focus-20261002`. bing: "delete the paywalls", build the Kalshi paper weather bot and the
@@ -128,7 +151,7 @@ animated graphs, and a rolling cash-register / slot-machine effect when major nu
 - **Evolution Lab** lives in a separate repo, `money-printer-evolution-lab`, and is the shared research brain for every module: Solana (labLoop/BEAST), plus parallel `module-robinhood` and `module-polymarket` workers (`src/moduleResearch.js`). Valid module ids come from its `src/researchModules.js`. It writes `<trader data>/lab-link/modules/<id>.json` and paper-only `<id>-champion.json`. It is NOT the dropped "agent lab" harness.
 - **Web demo (2026-10-02):** `web-demo/` + `scripts/web-demo/` build a static, browser-only copy of the HUD for a website. `demo-shim.js` answers `/api/*` from a recorded PAPER session (sandboxed engine, scrubbed env, no keys or user data), and refuses every write. Each page load is a new session: a 1 SOL book run by the Lab champion copied in from `lab-link/` at recording time, played for ~30 min from its opening frame. Published to Cloudflare Pages (`money-printer`, moneyprinter.bangbowbing.net). See `web-demo/README.md`; covered by `test:web-demo`.
 - **HUD boot and logo (2026-10-02):** the boot overlay is a Win98-style log-on over open sky. OK, Enter or 6 idle seconds pull the camera back to the hill and fire `mpo:logon`, which shows the welcome and the grabbable money shower (`welcomeShower()`). The corner logo (`initLogoStretch()`) stretches on drag, slingshots on release, glides to a stop and fades back home after 3.5 s idle; its shine lives in the same `.logo-skin`.
-- **Tests:** 140 suites in `tests/` across 35 targets, run by `npm run test:all` (`test:wiring` fails first if a suite becomes unreachable). **Not green as of 2026-10-02:** 22 Robinhood real-money engine tests fail (robinhood-signer 11, robinhood-auto-trader 6, robinhood-safety 3, robinhood-auto 1, live-gate 1) because the paper-only transport lock refuses the live paths they exercise; they fail identically on cc3ef07. Everything is mocked and uses temp dirs.
+- **Tests:** 140 suites in `tests/` across 35 targets, run by `npm run test:all` (`test:wiring` fails first if a suite becomes unreachable). **Green as of 2026-10-02 (alpha.80):** the 20 Robinhood real-money order-path tests are skipped with a stated reason (this paper-only build refuses that dispatch by design; re-enable them for the live phase), and the two safety tests (live-gate boundary, outbound audit) now pin the stricter lock. Everything is mocked and uses temp dirs.
 
 ## Confirmed working (2026-09-25)
 

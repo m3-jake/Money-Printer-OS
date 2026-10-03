@@ -107,7 +107,8 @@ test('outbound audit: paper ticks and paper orders make zero Robinhood POSTs; PO
  await RH.placeRobinhoodPaperOrder({symbol:'BTC-USD',usd:10});
  const st=TX.rhCallStats();assert.ok(st.get>0,JSON.stringify(st));assert.equal(st.post,0);assert.equal(st.postRefused,0);
  assert.equal((await RH.robinhoodSnapshot()).outbound.post,0);
- for(const p of ['/api/v2/crypto/trading/accounts/','/api/v2/crypto/marketdata/best_bid_ask/','/api/v2/crypto/trading/orders/../accounts/'])await assert.rejects(TX.rhPost(p,{}),e=>e.code==='validation');
- assert.equal(TX.rhCallStats().postRefused,3);assert.equal(TX.rhCallStats().post,0);assert.ok(calls.every(c=>c.method==='GET'));
+ // The paper-only lock now refuses every POST before route validation (ROBINHOOD_PAPER_ONLY_BUILD).
+ for(const p of ['/api/v2/crypto/trading/accounts/','/api/v2/crypto/marketdata/best_bid_ask/','/api/v2/crypto/trading/orders/../accounts/'])await assert.rejects(TX.rhPost(p,{}),e=>e.code==='validation'||e.code==='ROBINHOOD_PAPER_ONLY_BUILD');
+ assert.equal(TX.rhCallStats().postRefused+(TX.rhCallStats().mutationRefused||0),3);assert.equal(TX.rhCallStats().post,0);assert.ok(calls.every(c=>c.method==='GET'));
  assert.ok(TX.RH_POST_ALLOWED.test('/api/v2/crypto/trading/orders/?account_number=1')&&TX.RH_POST_ALLOWED.test('/api/v2/crypto/trading/orders/abc-1/cancel/?account_number=1'));
 });

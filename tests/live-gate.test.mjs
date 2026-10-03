@@ -104,7 +104,9 @@ test('every armable order path consults the shared execution boundary, and no en
   // statements, so moving one behind a fetch is a test failure rather than a review catch.
   assert.match(read('src/jupiter.js'), /async function signExecute\(o\)\{assertLiveDispatchAllowed\(\);/);
   assert.match(read('src/providers.js'), /export async function jitoSendTransaction\(signedBase64\)\{assertLiveDispatchAllowed\(\);/);
-  assert.match(read('src/robinhoodTransport.js'), /if\(mutation&&!isTestDestination\(\)\)\{\s*\n\s*if\(!ROBINHOOD_LIVE_TRADING_ENABLED\)throw[\s\S]{0,200}?\n\s*assertLiveDispatchAllowed\(\);/);
+  // Since 5d56f2f the paper-only lock has no test-destination exemption: every non-read request is refused
+  // unless live trading is compiled in, and then it still asserts the boundary first.
+  assert.match(read('src/robinhoodTransport.js'), /if\(mutation\)\{\s*\n\s*if\(!ROBINHOOD_LIVE_TRADING_ENABLED\)\{[^\n]*throw[\s\S]{0,400}?\n\s*assertLiveDispatchAllowed\(\);/);
   const us = read('src/polymarketUS.js');
   for (const fn of ['submitPolymarketUSOrder', 'closePolymarketUSPosition']) {
     const row = us.split('\n').find(line => line.startsWith(`export async function ${fn}(`));
