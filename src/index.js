@@ -11,7 +11,7 @@ import { discoverCandidates, refreshPair, refreshPositionPairs, discoveryHealth,
 import { analyze, explain, marketRegime } from './strategy.js';
 import { mintRisk, benchmarkRpcs } from './rpc.js';
 import { RiskPrefetcher } from './riskPrefetch.js';
-import { loadState, saveState, appendJournal, appendJournalBatch, drainActions, resetPaper } from './store.js';
+import { loadState, saveState, appendJournal, appendJournalBatch, drainActions, enqueueAction, resetPaper } from './store.js';
 import { recordCycleError, markCleanCycle, recordCycleBudgetAbort } from './cycleRecovery.js';
 import { createCycleBudget, isCycleBudgetError } from './cycleBudget.js';
 import { buyWithSol, sellTokenForSol, walletSolBalance } from './jupiter.js';
@@ -349,10 +349,28 @@ function applyRuntimeControlPatch(s,raw={},opts={}){
   return patch;
 }
 
+const administrativeActionTypes=new Set(['toggle-pause','toggle-kill','runtime','control-settings','profile','lab-sync','autonomy','favorite','clear-error']);
+// Publish only the accepted control delta onto the latest persisted account. Never publish this
+// cycle's possibly stale positions/cash merely to make an administrative setting durable.
+export function persistAdministrativeControls(s,before,action,{load=loadState,save=saveState}={}){
+ const latest=load();latest.runtime||={};latest.system||={};latest.research||={};
+ for(const key of new Set([...Object.keys(before.runtime||{}),...Object.keys(s.runtime||{})]))if(JSON.stringify(before.runtime?.[key])!==JSON.stringify(s.runtime?.[key])){
+  if(s.runtime[key]===undefined)delete latest.runtime[key];else latest.runtime[key]=structuredClone(s.runtime[key]);
+ }
+ for(const key of ['paused','killSwitch','lastError'])if(JSON.stringify(before.system?.[key])!==JSON.stringify(s.system?.[key]))latest.system[key]=s.system[key];
+ if(action.type==='clear-error')latest.system.lastError=null;
+ if(before.autonomyLevel!==s.research?.autonomyLevel)latest.research.autonomyLevel=s.research?.autonomyLevel;
+ latest.system.lastAction={...s.system.lastAction,durable:true};
+ latest.pendingActions=(latest.pendingActions||[]).filter(a=>action.id?a.id!==action.id:JSON.stringify(a)!==JSON.stringify(action));
+ save(latest);
+}
 async function actions(s) {
-  const xs = [...(s.pendingActions || []), ...drainActions()];
+  const drained = [...(s.pendingActions || []), ...drainActions()];
+  // Administrative controls do not wait behind a remote enter/exit. Preserve their relative order.
+  const xs=[...drained.filter(a=>administrativeActionTypes.has(a.type)),...drained.filter(a=>!administrativeActionTypes.has(a.type))];
   s.pendingActions = [];
-  for (const a of xs) {
+  for (let actionIndex=0;actionIndex<xs.length;actionIndex++) {
+    const a=xs[actionIndex],administrative=administrativeActionTypes.has(a.type),before=administrative?{runtime:structuredClone(s.runtime),system:structuredClone(s.system),autonomyLevel:s.research?.autonomyLevel}:null;
     if (a.type === 'reset-paper') {
       const amount = Number(a.amountSol);
       const keep = {
@@ -443,6 +461,7 @@ async function actions(s) {
       s.runtime[k] = [...set];
     } else if (a.type === 'clear-error') s.system.lastError = null;
     s.system.lastAction = { id: a.id || null, type: a.type, appliedAt: Date.now() };
+    if(administrative){try{persistAdministrativeControls(s,before,a);s.system.lastAction.durable=true;}catch(error){for(const pending of xs.slice(actionIndex))enqueueAction(pending);throw error;}}
   }
   expireProposals(s);
 }
@@ -998,4 +1017,4 @@ if (isMainModule) {
 // above since bbc8f4d), but `export { main }` was the whole surface, so cycle/enter/
 // updatePositions could only be exercised by spawning a whole process or by grep. See
 // tests/trade-path.test.mjs. Nothing here changes runtime behaviour.
-export { main, cycle, enter, updatePositions };
+export { main, cycle, enter, updatePositions, actions };
