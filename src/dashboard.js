@@ -57,7 +57,9 @@ const packageMeta = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 
 const MAX_BODY = 32 * 1024;
 const DATA_DIR = path.resolve(process.env.MONEY_PRINTER_DATA_DIR || path.join(ROOT,'data'));
 let paperBots = null;
-function paperBotsView(){ if(!paperBots) return {ok:false,error:'Paper bots not started'}; return {ok:true,at:Date.now(),mode:'PAPER',kalshi:paperBots.kalshi.snapshots(),polycopy:paperBots.copy.snapshot(),calibration:paperBots.calibration.snapshot(),farm:paperBots.farm.snapshot(),tape:paperBots.tape.stats()}; }
+// The Evolution Lab's Research Workbench summary (lab-link/workbench.json), if the Lab on this machine has published one.
+function readLabWorkbench(){try{const w=JSON.parse(fs.readFileSync(path.join(DATA_DIR,'lab-link','workbench.json'),'utf8'));return w&&w.schema==='mpo.lab-workbench.v1'?w:null;}catch{return null;}}
+function paperBotsView(){ if(!paperBots) return {ok:false,error:'Paper bots not started'}; return {ok:true,at:Date.now(),mode:'PAPER',kalshi:paperBots.kalshi.snapshots(),polycopy:paperBots.copy.snapshot(),calibration:paperBots.calibration.snapshot(),farm:paperBots.farm.snapshot(),tape:paperBots.tape.stats(),lab:readLabWorkbench()}; }
 const UPDATE_STATUS_FILE = path.join(DATA_DIR,'update-status.json');
 const UPDATE_REQUEST_FILE = path.join(DATA_DIR,'update-request.json');
 // Desktop-shell preferences (read by desktop/main.cjs every ~1 s): background operation,

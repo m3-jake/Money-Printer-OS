@@ -37,10 +37,24 @@ export const FARM_VARIANTS = Object.freeze([
   { id: 'btc-v150', kind: 'btc', label: 'BTC · vol × 1.5', over: { volMultiple: 1.5 } },
   { id: 'btc-v200', kind: 'btc', label: 'BTC · vol × 2.0', over: { volMultiple: 2.0 } },
 ]);
+// The Evolution Lab's Research Workbench may propose up to four extra variants (lab-link/farm-proposals.json),
+// only from calibrations that beat the current settings on held-out data. Each is checked here: a known kind,
+// an id 'lab-…', and only these settings, inside these bounds. Anything else is ignored.
+const LAB_OVER = { volMultiple: [0.5, 4], minEdge: [0.02, 0.3], calibrationSafety: [1, 3], maxDisagreement: [0.05, 0.5], sigmaBaseF: [0.5, 8], sigmaPerDayF: [0, 5], biasF: [-10, 10] };
+export function labVariants(doc) {
+  const out = [];
+  for (const v of Array.isArray(doc?.variants) ? doc.variants.slice(0, 4) : []) {
+    if (!/^lab-[a-z0-9-]{3,40}$/.test(String(v?.id)) || !['weather', 'btc'].includes(v.kind) || !v.over || typeof v.over !== 'object') continue;
+    const over = {}; let ok = true;
+    for (const [k, x] of Object.entries(v.over)) { const n = Number(x), lim = LAB_OVER[k]; if (!lim || !Number.isFinite(n) || n < lim[0] || n > lim[1]) { ok = false; break; } over[k] = n; }
+    if (ok && Object.keys(over).length) out.push({ id: v.id, kind: v.kind, label: String(v.label || v.id).slice(0, 60), over, lab: true, reason: String(v.reason || '').slice(0, 200) });
+  }
+  return out;
+}
 const round = (v, d = 4) => Math.round(v * 10 ** d) / 10 ** d;
 const localDay = t => new Date(t).toLocaleDateString('en-CA');
 
-function emptyBook(v) { return { id: v.id, kind: v.kind, startUsd: FARM_START_USD, cashUsd: FARM_START_USD, open: [], history: [], entered: 0, skippedSlippage: 0 }; }
+function emptyBook(v) { return { id: v.id, kind: v.kind, label: v.label, startUsd: FARM_START_USD, cashUsd: FARM_START_USD, open: [], history: [], entered: 0, skippedSlippage: 0 }; }
 export function variantSettings(v) { return { ...(v.kind === 'weather' ? KALSHI_DEFAULTS.weather : KALSHI_DEFAULTS.btc), ...v.over, enabled: true }; }
 
 // Per-bet P/L t-statistic and a plain verdict.
@@ -54,6 +68,7 @@ export function verdict(pnls) {
 export class BotFarm {
   constructor({ dataDir, bots, now = () => Date.now() } = {}) {
     this.file = path.join(dataDir, 'bot-farm.json'); this.bots = bots; this.now = now; this.busy = new Set(); this.recoveryError = null;
+    this.labFile = path.join(dataDir, 'lab-link', 'farm-proposals.json');
     this.state = this.load(); this.last = {};
   }
   load() {
@@ -68,6 +83,14 @@ export class BotFarm {
     for (const v of FARM_VARIANTS) s.books[v.id] ||= emptyBook(v);
     return s;
   }
+  // The fixed variants plus the Lab's current proposals. A proposal that the Lab withdraws keeps its book (history
+  // stays visible) but makes no new bets.
+  variants() {
+    let lab = []; try { lab = labVariants(JSON.parse(fs.readFileSync(this.labFile, 'utf8'))); } catch {}
+    for (const v of lab) this.state.books[v.id] ||= emptyBook(v);
+    const active = new Set(lab.map(v => v.id)), retired = Object.values(this.state.books).filter(b => /^lab-/.test(b.id) && !active.has(b.id)).map(b => ({ id: b.id, kind: b.kind, label: b.label || b.id, over: {}, lab: true, withdrawn: true }));
+    return [...FARM_VARIANTS, ...lab, ...retired];
+  }
   save() { if (this.recoveryError) return; fs.mkdirSync(path.dirname(this.file), { recursive: true }); writeFileAtomicSync(this.file, JSON.stringify(this.state)); }
   reset({ confirmation } = {}) {
     if (confirmation !== 'RESET BOT') throw new Error('Type RESET BOT to confirm');
@@ -81,11 +104,12 @@ export class BotFarm {
     try {
       const k = this.bots.kalshi(); if (!k) throw new Error('Kalshi provider unavailable');
       const frame = kind === 'weather' ? await this.bots.weatherFrame() : await this.bots.btcFrame(k);
-      const now = this.now(), books = FARM_VARIANTS.filter(v => v.kind === kind).map(v => [v, this.state.books[v.id]]);
+      const now = this.now(), books = this.variants().filter(v => v.kind === kind).map(v => [v, this.state.books[v.id]]);
       await this.settle(books.map(([, b]) => b), k, now);
       const marks = markIndex(kind, frame);
       for (const [v, b] of books) {
         const s = variantSettings(v), held = new Set(b.open.map(p => p.eventTicker));
+        if (v.withdrawn) continue; // settled above; no new bets
         const { cands } = kind === 'weather' ? pickWeather(frame, s, held, now) : pickBtc(frame, s, held, now);
         for (const x of cands) {
           if (x.edge < s.minEdge) continue;
@@ -130,11 +154,11 @@ export class BotFarm {
 
   snapshot() {
     const today = localDay(this.now()), days = Array.from({ length: 7 }, (_, i) => localDay(this.now() - i * 86400e3));
-    const variants = FARM_VARIANTS.map(v => {
+    const variants = this.variants().map(v => {
       const b = this.state.books[v.id], h = b.history, n = h.length, open = b.open.reduce((a, p) => a + (p.markUsd ?? p.costUsd), 0), equity = b.cashUsd + open;
       const byDay = Object.fromEntries(days.map(d => [d, 0])); for (const x of h) { const d = localDay(x.settledAt); if (d in byDay) byDay[d] = round(byDay[d] + x.pnlUsd, 2); }
       const mean = k => n ? round(h.reduce((a, x) => a + x[k], 0) / n, 4) : null;
-      return { id: v.id, kind: v.kind, label: v.label, over: v.over, equityUsd: round(equity, 2), returnPct: round((equity - b.startUsd) / b.startUsd * 100, 2), open: b.open.length, entered: b.entered, skippedSlippage: b.skippedSlippage,
+      return { id: v.id, kind: v.kind, label: v.label, over: v.over, lab: !!v.lab, withdrawn: !!v.withdrawn, equityUsd: round(equity, 2), returnPct: round((equity - b.startUsd) / b.startUsd * 100, 2), open: b.open.length, entered: b.entered, skippedSlippage: b.skippedSlippage,
         settled: n, wins: h.filter(x => x.won).length, hitRate: n ? round(h.filter(x => x.won).length / n, 3) : null, pnlUsd: round(h.reduce((a, x) => a + x.pnlUsd, 0), 2), feesUsd: round(h.reduce((a, x) => a + x.feeUsd, 0), 2),
         today: byDay[today], week: round(Object.values(byDay).reduce((a, x) => a + x, 0), 2), byDay, brierModel: mean('brierModel'), brierMarket: mean('brierMarket'), verdict: verdict(h.map(x => x.pnlUsd)) };
     });

@@ -179,3 +179,22 @@ test('Kalshi books on the old $500 defaults move once to the $25 wallet ($12.50 
   bots.reset('weather', { confirmation: 'RESET BOT', startUsd: 500 }); 
   assert.equal(new KalshiPaperBots({ dataDir: dir }).snapshot('weather').startUsd, 500, 'a $500 book chosen after the move is left alone');
 });
+
+test('the farm runs Evolution Lab proposals only when they are well formed and inside the bounds; a withdrawn one keeps its book', async () => {
+  const { BotFarm, labVariants } = await import('../src/botFarm.js');
+  assert.deepEqual(labVariants({ variants: [
+    { id: 'lab-btc-v16', kind: 'btc', label: 'BTC · vol × 1.6 (Lab fit)', over: { volMultiple: 1.6 } },
+    { id: 'btc-v999', kind: 'btc', over: { volMultiple: 1.6 } },          // not a lab- id
+    { id: 'lab-btc-huge', kind: 'btc', over: { volMultiple: 40 } },        // out of bounds
+    { id: 'lab-wx-stake', kind: 'weather', over: { stakeUsd: 500 } },      // a setting the Lab may not touch
+    { id: 'lab-news', kind: 'news', over: { minEdge: 0.05 } },             // unknown kind
+  ] }).map(v => v.id), ['lab-btc-v16']);
+  const dir = tmp(); fs.mkdirSync(path.join(dir, 'lab-link'));
+  const file = path.join(dir, 'lab-link', 'farm-proposals.json');
+  fs.writeFileSync(file, JSON.stringify({ variants: [{ id: 'lab-btc-v16', kind: 'btc', label: 'BTC · vol × 1.6 (Lab fit)', over: { volMultiple: 1.6 } }] }));
+  const farm = new BotFarm({ dataDir: dir, bots: { kalshi: () => null } });
+  const v = farm.snapshot().variants.find(x => x.id === 'lab-btc-v16');
+  assert.equal(v.lab, true); assert.equal(v.withdrawn, false); assert.equal(v.equityUsd, 12.5);
+  fs.rmSync(file);
+  assert.equal(farm.snapshot().variants.find(x => x.id === 'lab-btc-v16').withdrawn, true, 'withdrawn, history kept');
+});

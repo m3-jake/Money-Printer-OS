@@ -56,20 +56,26 @@
     const row = (name, x) => `<tr><td>${name}</td><td>${usd(x.equityUsd)} (${pct(x.returnPct)})</td><td>${x.stats.settled}</td><td>${x.stats.hitRate == null ? '—' : Math.round(x.stats.hitRate * 100) + '%'}</td><td>${x.stats.brierModel ?? '—'}</td></tr>`;
     return `<h3>A/B: calibrated vs NWS-only control</h3>${table(['Bot', 'Paper equity', 'Settled', 'Hit rate', 'Brier (lower = better)'], row('Calibrated', a) + row('Control', b), '')}<p class="core-muted">Same markets, stake and edge rules; only the forecast model differs. A real difference needs dozens of settled bets.</p>`;
   }
+  // Evolution Lab Research Workbench (lab-link/workbench.json): its review of this farm and its BTC vol fit.
+  function labLine(w) {
+    if (!w) return '<p class="core-muted">Evolution Lab: no Workbench results yet (the Lab reviews this farm when it runs on this PC).</p>';
+    const b = w.btcVol, f = w.farm;
+    return `<p class="core-muted"><b>Evolution Lab review:</b> ${escape(f?.note || 'waiting for settled bets')}${b ? ` · BTC vol fit: ${escape(b.reason)}` : ''}. Variants marked "Lab" come from its calibrations.</p>`;
+  }
   // Forward-test farm (src/botFarm.js): paper variants of the weather and BTC bots on the same markets, plus the tape.
   function farmView(f, tape) {
     if (!f) return '';
     const money = v => `<span class="${v > 0 ? 'pm-up' : v < 0 ? 'pm-down' : ''}">${usd(v)}</span>`;
     // Best all-time P/L first; ties keep the farm's own order (weather, then BTC).
     const order = new Map(f.variants.map((v, i) => [v.id, i]));
-    const rows = f.variants.slice().sort((a, b) => b.pnlUsd - a.pnlUsd || order.get(a.id) - order.get(b.id)).map(v => `<tr title="${escape(v.brierModel == null ? 'No settled bets yet' : `Brier (lower is better): model ${v.brierModel} vs market ${v.brierMarket}`)}"><td style="white-space:nowrap">${escape(v.label)}</td><td>${v.open}</td><td>${v.settled}${v.settled ? ` · ${Math.round(v.hitRate * 100)}%` : ''}</td><td>${money(v.today)}</td><td>${money(v.week)}</td><td>${money(v.pnlUsd)}</td><td>${escape(v.settled < f.minSettled ? `${v.settled}/${f.minSettled} settled` : v.verdict.text)}</td></tr>`).join('');
+    const rows = f.variants.slice().sort((a, b) => b.pnlUsd - a.pnlUsd || order.get(a.id) - order.get(b.id)).map(v => `<tr title="${escape(v.brierModel == null ? 'No settled bets yet' : `Brier (lower is better): model ${v.brierModel} vs market ${v.brierMarket}`)}"><td style="white-space:nowrap">${escape(v.label)}${v.lab ? ` <span class="mpo-badge" title="${escape(v.withdrawn ? 'Proposed by the Evolution Lab, since withdrawn: no new bets' : 'Proposed by the Evolution Lab Workbench from a held-out calibration')}">${v.withdrawn ? 'Lab · withdrawn' : 'Lab'}</span>` : ''}</td><td>${v.open}</td><td>${v.settled}${v.settled ? ` · ${Math.round(v.hitRate * 100)}%` : ''}</td><td>${money(v.today)}</td><td>${money(v.week)}</td><td>${money(v.pnlUsd)}</td><td>${escape(v.settled < f.minSettled ? `${v.settled}/${f.minSettled} settled` : v.verdict.text)}</td></tr>`).join('');
     const last = k => f.last?.[k] ? `${k} ${ago(f.last[k].at)}${f.last[k].error ? ' (error: ' + escape(f.last[k].error) + ')' : ''}` : `${k} not run yet`;
     const days = tape ? Math.max(0, ...Object.values(tape.streams).map(s => s.days)) : 0;
     const tapeLine = tape ? `Tape (what the bots saw, for replay): ${days} day${days === 1 ? '' : 's'} · ${(tape.bytes / 1e6).toFixed(1)} MB · kept ${tape.keepDays} days${tape.errors ? ` · ${tape.errors} write errors (${escape(tape.lastError)})` : ''}` : '';
     return `<h3>Forward-test farm (${f.variants.length} paper variants)</h3>
       <p class="core-muted">Each variant has its own ${usd(f.startUsd)} paper book and prices the same market snapshot as the live bots, so it costs no extra API calls. Variants fill at the quoted ask + ${Math.round(f.slippage * 100)}¢ instead of walking the book; "live settings" uses the weather bot's own settings, so the gap between the two shows what that shortcut costs. A verdict needs ${f.minSettled} settled bets; hover a row for its Brier score. Last runs: ${last('weather')} · ${last('btc')}.</p>
       ${f.error ? `<p class="core-error">${escape(f.error)}</p>` : ''}${table(['Variant', 'Open', 'Settled · hit', 'Today', '7 days', 'All time', 'Verdict'], rows, 'No variants.')}
-      <p class="core-muted">${tapeLine}</p>
+      <p class="core-muted">${tapeLine}</p>${labLine(data.lab)}
       <details><summary>Reset the farm</summary><form class="core-toolbar" data-bot-form="reset" data-bot="farm"><label>Type RESET BOT<input name="confirmation" autocomplete="off" style="width:110px"></label><button class="btn" type="submit">Reset every variant</button></form></details>`;
   }
   function kalshiView() {

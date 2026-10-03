@@ -1013,11 +1013,23 @@ function labLinkLine(l){
  const where=l.source==='local'?'this machine':l.source==='bridge'?'bridge':polyEscape(l.source);
  return `<div class="${l.connected?'muted':'amber'}">Lab ${l.connected?'linked':'STALE'} via ${where}${l.labName?' · '+polyEscape(l.labName):''}${l.labVersion?' v'+polyEscape(l.labVersion):''} · status ${l.ageMs!=null?age(Date.now()-l.ageMs):'—'} old${l.championId?' · champion '+polyEscape(l.championId):''}${l.error?' · '+polyEscape(l.error):''}</div>`;
 }
+// Research Workbench (the Evolution Lab rebuild, 2026-10-03): what the Lab is working on now that the furnace is retired.
+function labWorkbenchHtml(w){
+ if(!w)return '<div class="muted" style="margin:6px 0">Research Workbench: not published yet. The Lab on this PC runs calibrators, reviews the paper-bot farm and records data.</div>';
+ const j=Object.entries(w.jobs||{}).map(([id,x])=>`<tr><td>${polyEscape(id)}</td><td>${x.ok===false?'<b class="mpo-badge mpo-badge--down">FAILED</b>':x.lastRunAt?'ok':'waiting'}</td><td>${x.lastRunAt?new Date(x.lastRunAt).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}):'—'}</td><td>${polyEscape(x.error||'')}</td></tr>`).join('');
+ const b=w.btcVol,f=w.farm,wx=w.weather?.best||{},used=Object.values(wx).filter(l=>(l||[]).some(x=>x?.use)).length;
+ return `<fieldset class="mpo-fieldset" style="margin:6px 0"><legend>Research Workbench · furnace ${polyEscape(String(w.furnace||'').toLowerCase())}</legend>
+  <div>Farm review: ${polyEscape(f?.note||'waiting for the paper-bot farm')}</div>
+  <div>BTC vol: ${polyEscape(b?.reason||'collecting settled contracts')}</div>
+  <div>Weather models: ${w.weather?`${used} of ${Object.keys(wx).length} cities have a model that beats the default on held-out days`:'first run pending'}</div>
+  <table class="table mpo-table" style="margin-top:4px"><thead><tr><th>Job</th><th>Status</th><th>Last run</th><th></th></tr></thead><tbody>${j}</tbody></table></fieldset>`;
+}
 function renderEvolution(){
  const e=state?.evolutionLoop||{},c=e.champion||{},m=c.metrics||{},l=state?.labLink||null;
  const live=e.status==='RUNNING'&&(!l||l.connected);
  setBody('evolution',`<div class="dark terminal mpo-surface-dark" style="height:100%;padding:8px"><div class="mpo-status" title="STRATEGIES EVOLVE. PROFITS SURVIVE."><span class="ico" style="width:18px;height:18px"><b class="pixel-glyph">DNA</b></span><b>EVOLUTION LAB</b><b class="mpo-badge ${live?'mpo-badge--live':l&&!l.connected&&l.source!=='none'?'mpo-badge--down':'mpo-badge--degraded'}">${polyEscape(l&&!l.connected?(l.source==='none'?'NOT LINKED':'STALE'):(e.status||'COLLECTING'))}</b><span class="muted">${e.cluster?.enabled?'DISTRIBUTED':l?.source==='bridge'?'REMOTE LAB':'LOCAL LAB'} · ${e.workerCount??0} workers</span></div>
  ${labLinkLine(l)}
+ ${labWorkbenchHtml(window.MPOBots?.data?.lab)}
  <div class="mpo-metrics"><div class="mpo-metric"><label>GENERATION</label><b>${e.generation??0}</b></div><div class="mpo-metric"><label>VARIANTS</label><b>${e.variantsTested??0}</b></div><div class="mpo-metric"><label>SURVIVORS</label><b>${e.survivors??0}</b></div><div class="mpo-metric" title="Compound ${fmt(m.compoundedMultiple,2)}× · activity ${fmt(m.activityPct,1)}%"><label>CHAMPION</label><b>${polyEscape(c.id||'BASE')}</b></div><div class="mpo-metric"><label>HELD-OUT AVG</label><b>${fmt(m.heldOutAvgPct,2)}%</b></div><div class="mpo-metric"><label>GEO GROWTH</label><b class="green">${fmt(m.geometricMeanPct,2)}%</b></div><div class="mpo-metric"><label>MAX DD</label><b class="${Number(m.maxDrawdownPct||0)>0?'red':''}">${fmt(m.maxDrawdownPct,2)}%</b></div><div class="mpo-metric"><label>MONTE CARLO</label><b class="${Number(m.monteCarloPassPct||0)<80?'amber':'green'}">${fmt(m.monteCarloPassPct,1)}%</b></div></div>
  <div class="muted">Dataset ${e.datasetSamples??0} · velocity ${fmt(m.profitVelocityPctPerMin,3)}%/min · next generation</div>
  <div class="progress"><i style="width:${Math.max(2,e.nextGenerationProgress||0)}%"></i></div>
