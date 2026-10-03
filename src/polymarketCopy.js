@@ -14,12 +14,12 @@ import { createHash } from 'node:crypto';
 import { writeFileAtomicSync } from './atomicRename.js';
 import { takerFee, polymarketFeeModel } from './core/fees.js';
 import { copyAttribution, copyRisk, COPY_EVICT_MIN_CLOSES } from './copyAttribution.js';
-import { copyEvent, tradeKey, validCopyTrade, fetchLeaderTrades, classifyCopyMarket, CopyMetadataCache, boundedCopyMap, copyLatencySummary } from './copyEvent.js';
+import { copyEvent, tradeKey, validCopyTrade, fetchLeaderTrades, classifyCopyMarket, CopyMetadataCache, boundedCopyMap, copyLatencySummary, oppositeCopyOutcome, COPY_POLICY_SUPPORT } from './copyEvent.js';
 
 const SCHEMA = 'mpo.polymarket-copy-paper.v1';
 const DATA = 'https://data-api.polymarket.com', CLOB = 'https://clob.polymarket.com', GAMMA = 'https://gamma-api.polymarket.com';
-export const COPY_DEFAULTS = Object.freeze({ enabled: true, startUsd: 500, stakeUsd: 10, maxOpen: 25, follows: 6, minLeaderTradeUsd: 100, minPrice: 0.05, maxPrice: 0.95, maxChase: 0.03, minLeaderVolumeUsd: 100000, minLeaderMargin: 0.02, refollowDays: 7, maxTradeAgeMs: 30 * 60000, processingLatencyMs: 0 });
-const LIMITS = { stakeUsd: [1, 250], maxOpen: [1, 100], follows: [1, 20], minLeaderTradeUsd: [1, 100000], minPrice: [0.01, 0.5], maxPrice: [0.5, 0.99], maxChase: [0, 0.2], minLeaderVolumeUsd: [0, 1e9], minLeaderMargin: [0, 1], refollowDays: [1, 90], startUsd: [10, 100000], maxTradeAgeMs: [1000, 86400000], processingLatencyMs: [0, 60000] };
+export const COPY_DEFAULTS = Object.freeze({ enabled: true, startUsd: 500, stakeUsd: 10, maxOpen: 25, follows: 6, minLeaderTradeUsd: 100, minPrice: 0.05, maxPrice: 0.95, maxChase: 0.03, minLeaderVolumeUsd: 100000, minLeaderMargin: 0.02, refollowDays: 7, maxTradeAgeMs: 30 * 60000, processingLatencyMs: 0, confirmationMinMs: 1000, momentumMinChange: .001 });
+const LIMITS = { stakeUsd: [1, 250], maxOpen: [1, 100], follows: [1, 20], minLeaderTradeUsd: [1, 100000], minPrice: [0.01, 0.5], maxPrice: [0.5, 0.99], maxChase: [0, 0.2], minLeaderVolumeUsd: [0, 1e9], minLeaderMargin: [0, 1], refollowDays: [1, 90], startUsd: [10, 100000], maxTradeAgeMs: [1000, 86400000], processingLatencyMs: [0, 60000], confirmationMinMs: [1000, 60000], momentumMinChange: [.0001, .1] };
 const round = (v, d = 4) => Math.round(v * 10 ** d) / 10 ** d;
 const short = w => `${String(w).slice(0, 6)}…${String(w).slice(-4)}`;
 
@@ -48,7 +48,7 @@ export class PolymarketCopyPaper {
     this.onLeaderEvent = onLeaderEvent; this.metadataCache = metadataCache || new CopyMetadataCache({ now }); this.readCache = readCache;
     this.state.intents ||= {}; this.state.cursors ||= {}; this.state.exitLeaders ||= []; this.state.sourceHoldings ||= {}; this.state.receipts ||= [];
     if (experiment && !this.recoveryError) {
-      if (!experiment.id || !['direct', 'liquidity-scaled', 'no-trade', 'random-eligible', 'category-specialist'].includes(experiment.policy)) throw new Error('copy experiment requires id and executable policy');
+      if (!experiment.id || !['direct', 'liquidity-scaled', 'no-trade', 'random-eligible', 'category-specialist', 'momentum-confirmed', 'fade'].includes(experiment.policy)) throw new Error('copy experiment requires id and executable policy');
       if (experiment.policy === 'category-specialist' && !['SPORTS', 'CRYPTO'].includes(experiment.category)) throw new Error('category-specialist requires supported SPORTS or CRYPTO scope');
       if (this.state.experiment && this.state.experiment.id !== experiment.id) throw new Error('immutable copy experiment identity mismatch');
       const identity = { id: experiment.id, policy: experiment.policy, ...(experiment.category ? { category: experiment.category } : {}), exploratory: experiment.exploratory === true, startUsd: experiment.startUsd ?? 25, settings: Object.fromEntries(Object.entries(experiment.settings || {}).sort(([a], [b]) => a.localeCompare(b))) };
@@ -157,7 +157,7 @@ export class PolymarketCopyPaper {
           if (r.eventAt <= f.followedAt || t.side === 'BUY' && this.now() - r.eventAt > st.maxTradeAgeMs) { intent.status = 'SKIPPED'; r.reason = r.eventAt <= f.followedAt ? 'before leader selection' : 'stale leader trade'; }
           else if (this.now() >= r.firstObservedAt + st.processingLatencyMs) {
             r.decisionAt = this.now(); intent.attempts++; this.retryReason = null;
-            try { const filled = await this.copy(f, t, r); if (filled) copied++; if (!this.retryReason) intent.status = filled ? 'FILLED' : 'SKIPPED'; else r.reason = this.retryReason; }
+            try { const filled = await this.copy(f, t, r); if (filled) copied++; if (!this.retryReason) { intent.status = filled ? 'FILLED' : 'SKIPPED'; if (filled) r.reason = null; } else r.reason = this.retryReason; }
             catch (e) { r.reason = 'transient execution: ' + e.message; }
           }
           r.status = intent.status;
@@ -184,14 +184,14 @@ export class PolymarketCopyPaper {
       if (settlement) await this.settle();
       s.lastError = null;
     } catch (e) { s.lastError = String(e.message || e).slice(0, 300); }
-    finally { s.lastRunAt = this.now(); this.busy = false; this.save(); }
+    finally { s.lastRunAt = this.now(); this.busy = false; s.status = this.operatingState().status; this.save(); }
     return this.snapshot();
   }
 
   async copy(f, t, receipt = null) {
-    const s = this.state, st = s.settings, leaderUsd = Number(t.size) * Number(t.price), title = t.title || t.slug || t.asset;
+    const s = this.state, st = s.settings, sourceTrade = t, leaderUsd = Number(t.size) * Number(t.price), title = t.title || t.slug || t.asset;
     if (t.side === 'SELL') {
-      const pos = s.open.find(p => p.asset === t.asset && p.leader === f.wallet); if (!pos) return false;
+      const pos = s.open.find(p => (p.sourceAsset || p.asset) === t.asset && p.leader === f.wallet); if (!pos) return false;
       const eventId = receipt?.id || `${t.transactionHash}:${t.timestamp}`;
       pos.exitRequests ||= {};
       if (pos.pendingExitQty > 0 && !Object.keys(pos.exitRequests).length && pos.pendingExitEvent) pos.exitRequests[pos.pendingExitEvent] = { remainingQty: pos.pendingExitQty, reason: pos.pendingExitReason, receipt: pos.exitReceipt };
@@ -220,12 +220,35 @@ export class PolymarketCopyPaper {
     if (s.open.some(p => p.asset === t.asset)) { this.decide({ leader: f.name, title, action: 'SKIP', reason: 'already holding this outcome' }); return false; }
     if (s.open.length >= st.maxOpen) { this.decide({ leader: f.name, title, action: 'SKIP', reason: 'max open copies' }); return false; }
     if (s.cashUsd < st.stakeUsd) { this.decide({ leader: f.name, title, action: 'SKIP', reason: 'not enough paper cash' }); return false; }
-    let book, m; try { [book, m] = await Promise.all([this.get(`${CLOB}/book?token_id=${t.asset}`).then(b => { if (receipt) receipt.quoteAt = this.now(); return b; }), this.market(t.asset)]); } catch (e) { this.retryReason = 'book unavailable'; this.decide({ leader: f.name, title, action: 'WAIT', reason: this.retryReason }); return false; }
+    let book, m;
+    try {
+      if (s.experiment?.policy === 'fade') {
+        m = await this.market(t.asset); const opposite = oppositeCopyOutcome(m, t);
+        if (!opposite.asset) { this.retryReason = opposite.reason; if (receipt) receipt.policyBlocker = opposite.reason; this.decide({ leader: f.name, title, action: 'WAIT', reason: opposite.reason }); return false; }
+        t = { ...t, asset: opposite.asset, outcome: opposite.outcome, outcomeIndex: opposite.outcomeIndex, price: opposite.comparisonPrice };
+        if (receipt) { receipt.policyBlocker = null; receipt.followerInstrument = opposite.asset; receipt.followerOutcome = opposite.outcome; receipt.comparisonPrice = opposite.comparisonPrice; receipt.oppositeMapping = { sourceToken: sourceTrade.asset, oppositeToken: opposite.asset, conditionId: m.conditionId || sourceTrade.conditionId || null, sourceOutcome: sourceTrade.outcome, oppositeOutcome: opposite.outcome, provenance: 'Gamma exact exhaustive binary token/outcome identity' }; }
+        if (s.open.some(p => p.asset === t.asset)) return false;
+        book = await this.get(`${CLOB}/book?token_id=${t.asset}`); if (receipt) receipt.quoteAt = this.now();
+      } else [book, m] = await Promise.all([this.get(`${CLOB}/book?token_id=${t.asset}`).then(b => { if (receipt) receipt.quoteAt = this.now(); return b; }), this.market(t.asset)]);
+    } catch (e) { this.retryReason = 'book unavailable'; this.decide({ leader: f.name, title, action: 'WAIT', reason: this.retryReason }); return false; }
     if (s.experiment?.policy === 'category-specialist') {
       const classification = classifyCopyMarket(m, t), expected = s.experiment.category.toLowerCase();
       if (classification.toLowerCase() !== expected && !(expected === 'sports' && m?.sportsMarketType)) { this.decide({ leader: f.name, title, action: 'SKIP', reason: `category specialist requires provider-labeled ${expected} market; received ${classification}` }); return false; }
     }
-    const { asks } = sortBook(book), best = Number(asks[0]?.price);
+    const { asks, bids } = sortBook(book), best = Number(asks[0]?.price);
+    if (s.experiment?.policy === 'momentum-confirmed') {
+      if (!receipt) { this.retryReason = 'momentum requires durable post-observation receipt'; return false; }
+      const bid = Number(bids[0]?.price), observations = receipt.confirmationObservations ||= [];
+      if (!(Number.isFinite(best) && Number.isFinite(bid) && best >= bid && bid >= 0)) { this.retryReason = 'momentum requires current two-sided follower book'; return false; }
+      const observation = { at: receipt.quoteAt, bestAsk: best, bestBid: bid, asks: asks.slice(0, 10), bids: bids.slice(0, 10), source: 'post-observation follower CLOB book' };
+      if (!observations.length) { observations.push(observation); this.retryReason = 'collecting first post-observation momentum quote'; this.decide({ action: 'WAIT', reason: this.retryReason }); return false; }
+      const baseline = observations[0];
+      if (observation.at - baseline.at < st.confirmationMinMs || best - baseline.bestAsk < st.momentumMinChange - 1e-9 || bid - baseline.bestBid < st.momentumMinChange - 1e-9) {
+        if (observation.at > observations.at(-1).at) { observations.push(observation); if (observations.length > 4) observations.splice(1, observations.length - 4); }
+        this.retryReason = 'awaiting independent later follower bid/ask momentum confirmation'; return false;
+      }
+      observations.push(observation); receipt.policyEligibleAt = observation.at; receipt.confirmationDecision = { minChange: st.momentumMinChange, elapsedMs: observation.at - baseline.at, askChange: best - baseline.bestAsk, bidChange: bid - baseline.bestBid };
+    }
     if (!(best >= st.minPrice && best <= st.maxPrice)) { this.decide({ leader: f.name, title, action: 'SKIP', reason: `ask ${best || '—'} outside ${st.minPrice}–${st.maxPrice}` }); return false; }
     if (best > Number(t.price) + st.maxChase) { this.decide({ leader: f.name, title, action: 'SKIP', reason: `ask ${best} chased past leader ${round(Number(t.price), 3)}` }); return false; }
     const fee = polymarketFeeModel(m); if (!fee.model) { this.retryReason = fee.reason; this.decide({ leader: f.name, title, action: 'WAIT', reason: fee.reason }); return false; }
@@ -236,7 +259,7 @@ export class PolymarketCopyPaper {
     if(!Number.isFinite(feeUsd)||cost+feeUsd>s.cashUsd){this.decide({leader:f.name,title,action:'SKIP',reason:'fees unavailable or total exceeds paper cash'});return false}
     s.cashUsd = round(s.cashUsd - cost - feeUsd, 6);
     s.open.push({ id: `copy-${this.now()}-${String(t.asset).slice(-8)}`, asset: t.asset, conditionId: t.conditionId, title, outcome: t.outcome, outcomeIndex: t.outcomeIndex, leader: f.wallet, leaderName: f.name, leaderPrice: round(Number(t.price), 4), leaderUsd: round(leaderUsd, 2), leaderAt: Number(t.timestamp) * 1000, qty: round(qty, 6), avgPrice: round(cost / qty, 4), costUsd: round(cost, 4), feeUsd: round(feeUsd, 5), feeModel: fee.model, openedAt: this.now(), markUsd: round(cost, 4), endDate: m?.endDate || null, slug: t.eventSlug || t.slug || null });
-    Object.assign(s.open.at(-1), { marketType: classifyCopyMarket(m, t), sourceEntryQty: Number(t.size), exitPolicy: 'entry-relative leader sells; full exit for legacy unknown holdings', receipt, firstObservedAt: receipt?.firstObservedAt ?? this.now(), quoteAt: receipt?.quoteAt ?? this.now(), experimentId: receipt?.experimentId || null });
+    Object.assign(s.open.at(-1), { marketType: classifyCopyMarket(m, t), sourceAsset: sourceTrade.asset, leaderPrice: Number(sourceTrade.price), leaderComparisonPrice: Number(t.price), sourceEntryQty: Number(t.size), exitPolicy: 'entry-relative leader sells; full exit for legacy unknown holdings', receipt, firstObservedAt: receipt?.firstObservedAt ?? this.now(), quoteAt: receipt?.quoteAt ?? this.now(), experimentId: receipt?.experimentId || null });
     if (receipt) { receipt.fills = fills; receipt.positionId = s.open.at(-1).id; receipt.feeUsd = feeUsd; receipt.exitPolicy = s.open.at(-1).exitPolicy; receipt.fillAt = this.now(); }
     if (receipt && s.intents[receipt.id]) s.intents[receipt.id].status = 'FILLED';
     this.save(); // balance, position, intent receipt committed together by caller
@@ -260,7 +283,7 @@ export class PolymarketCopyPaper {
     if (request) { request.remainingQty = round(Math.max(0, request.remainingQty - sold), 6); pos.pendingExitQty = round(Object.values(pos.exitRequests).reduce((n, r) => n + r.remainingQty, 0), 6); }
     else pos.pendingExitQty = round(Math.max(0, requestedQty - sold), 6);
     if (pos.exitReceipt && s.intents[pos.exitReceipt.id] && (!s.open.includes(pos) || request && !request.remainingQty || !pos.pendingExitQty)) s.intents[pos.exitReceipt.id].status = 'FILLED';
-    s.history.unshift(exit); s.history.length = Math.min(s.history.length, 500); this.save();
+    s.history.unshift(exit); this.save();
     this.tape?.append('polycopy-receipts', { receipts: [{ ...pos.exitReceipt, status: exit.status, exitQuoteAt: exit.exitQuoteAt, fills, positionId: pos.id, pnlUsd: exit.pnlUsd }] });
     this.decide({ leader: pos.leaderName, title: pos.title, action: 'SELL', price: round(proceeds / sold, 3), reason, pnl: round(pnl, 2) });
     return true;
@@ -277,24 +300,30 @@ export class PolymarketCopyPaper {
         const px = prices[Number(pos.outcomeIndex)]; if (!(px === 0 || px === 1)) continue; // wait for a clean 0/1 resolution
         const payout = px * pos.qty, pnl = payout - pos.costUsd - pos.feeUsd;
         s.cashUsd = round(s.cashUsd + payout, 6); s.open = s.open.filter(p => p !== pos);
-        s.history.unshift({ ...pos, status: 'RESOLVED', won: px === 1, payoutUsd: round(payout, 4), pnlUsd: round(pnl, 4), closedAt: this.now() }); s.history.length = Math.min(s.history.length, 500);
+        s.history.unshift({ ...pos, status: 'RESOLVED', won: px === 1, payoutUsd: round(payout, 4), pnlUsd: round(pnl, 4), closedAt: this.now() });
         this.save(); this.tape?.append('polycopy-receipts', { receipts: [{ ...pos.receipt, status: 'RESOLVED', positionId: pos.id, closedAt: this.now(), payoutUsd: payout, pnlUsd: pnl, settlementSource: 'gamma-clean-binary-outcome' }] });
         continue;
       }
-      try { const { bids } = sortBook(await this.get(`${CLOB}/book?token_id=${pos.asset}`)); if (!s.open.includes(pos)) continue; const fills = walkSell(bids, pos.qty), qty = fills.reduce((n, f) => n + f.quantity, 0), fee = takerFee(pos.feeModel, fills); pos.markAt = this.now(); pos.markExecutable = qty >= pos.qty * .999999 && Number.isFinite(fee); pos.markUsd = pos.markExecutable ? round(fills.reduce((n, f) => n + f.price * f.quantity, 0) - fee, 4) : null; pos.markUnavailableReason = pos.markExecutable ? null : 'insufficient exact-size bid depth or fees'; } catch { pos.markExecutable = false; pos.markUsd = null; pos.markUnavailableReason = 'follower quote unavailable'; }
+      try { const { bids } = sortBook(await this.get(`${CLOB}/book?token_id=${pos.asset}`)); if (!s.open.includes(pos)) continue; const fills = walkSell(bids, pos.qty), qty = fills.reduce((n, f) => n + f.quantity, 0), fee = takerFee(pos.feeModel, fills); pos.markAt = this.now(); pos.markExecutable = qty >= pos.qty * .999999 && Number.isFinite(fee); pos.markUsd = pos.markExecutable ? round(fills.reduce((n, f) => n + f.price * f.quantity, 0) - fee, 4) : null; pos.markValueUsd = pos.markUsd; pos.markUnavailableReason = pos.markExecutable ? null : 'insufficient exact-size bid depth or fees'; } catch { pos.markExecutable = false; pos.markUsd = null; pos.markValueUsd = null; pos.markUnavailableReason = 'follower quote unavailable'; }
     }
   }
 
   async runSettlement() { if (this.recoveryError) throw new Error(this.recoveryError); if (this.settlementBusy) return this.snapshot(); this.settlementBusy = true; try { await this.settle(); } finally { this.settlementBusy = false; this.save(); } return this.snapshot(); }
+
+  operatingState() {
+    const s = this.state, st = s.settings;
+    const reason = !st.enabled ? 'entries disabled; existing exits remain supervised' : s.drawdownPause?.active ? 'incumbent drawdown pause' : s.cashUsd < st.stakeUsd ? 'paper cash below frozen entry stake' : s.open.length >= st.maxOpen ? 'open-position capacity reached' : s.experiment?.policy === 'no-trade' ? 'preregistered no-trade control' : null;
+    return { status: !st.enabled || s.drawdownPause?.active ? 'PAUSED' : s.cashUsd < st.stakeUsd && !s.open.length ? 'EXHAUSTED' : reason && s.open.length ? 'AWAITING_SETTLEMENT' : s.open.length ? 'EXPLORING' : 'COLLECTING', admission: { enabled: st.enabled, entriesAdmitted: !reason, reason } };
+  }
 
   snapshot() {
     if (this.recoveryError) return { id: 'polycopy', mode: 'PAPER', recoveryRequired: true, settings: this.state.settings, cashUsd: null, equityUsd: null, returnPct: null, open: [], history: [], follows: [], stats: {}, lastError: this.recoveryError, running: this.busy };
     const s = this.state, h = s.history, n = h.length, wins = h.filter(x => x.pnlUsd > 0).length, open = s.open.reduce((a, p) => a + (p.markUsd ?? p.costUsd), 0), equity = s.cashUsd + open;
     const byLeader = {}; for (const x of [...h, ...s.open]) { const k = x.leaderName || short(x.leader); byLeader[k] ||= { leader: k, copies: 0, settled: 0, pnlUsd: 0 }; byLeader[k].copies++; if (x.pnlUsd != null) { byLeader[k].settled++; byLeader[k].pnlUsd = round(byLeader[k].pnlUsd + x.pnlUsd, 2); } }
     let run = s.startUsd; const curve = [{ at: null, equityUsd: s.startUsd }]; for (const x of h.slice().reverse()) { run += x.pnlUsd; curve.push({ at: x.closedAt, equityUsd: round(run, 2) }); }
-    return { id: 'polycopy', label: 'Polymarket copy bot', mode: 'PAPER', venue: 'polymarket.com (global), not Polymarket US', epoch: s.epoch, settings: s.settings, startUsd: s.startUsd, cashUsd: round(s.cashUsd, 2), equityUsd: round(equity, 2), returnPct: round((equity - s.startUsd) / s.startUsd * 100, 2),
+    return { id: 'polycopy', label: 'Polymarket copy bot', mode: 'PAPER', ...this.operatingState(), venue: 'polymarket.com (global), not Polymarket US', epoch: s.epoch, settings: s.settings, startUsd: s.startUsd, cashUsd: round(s.cashUsd, 2), equityUsd: round(equity, 2), returnPct: round((equity - s.startUsd) / s.startUsd * 100, 2),
       follows: s.follows, open: s.open.map(({ feeModel, ...p }) => p), history: h.slice(0, 50).map(({ feeModel, ...p }) => p), decisions: s.decisions.slice(0, 30), curve: curve.slice(-200), byLeader: Object.values(byLeader).sort((a, b) => b.pnlUsd - a.pnlUsd),
-      attribution:copyAttribution(h),latency:copyLatencySummary(s.receipts || []),discoveryCache:this.readCache?.stats || null, drawdownPause:s.drawdownPause||copyRisk(s),evicted:s.evicted||{}, exitLeaders: s.exitLeaders, cursors: s.cursors, pendingIntents: Object.values(s.intents || {}).filter(i => i.status === 'PENDING').length,pendingHandoffs:Object.values(s.intents || {}).filter(i => i.handoffPending).length, receipts: (s.receipts || []).slice(-30), experiment: s.experiment || null,
+      attribution:copyAttribution(h),latency:copyLatencySummary(s.receipts || []),discoveryCache:this.readCache?.stats || null,policySupport:COPY_POLICY_SUPPORT, drawdownPause:s.drawdownPause||copyRisk(s),evicted:s.evicted||{}, exitLeaders: s.exitLeaders, cursors: s.cursors, pendingIntents: Object.values(s.intents || {}).filter(i => i.status === 'PENDING').length,pendingHandoffs:Object.values(s.intents || {}).filter(i => i.handoffPending).length, receipts: (s.receipts || []).slice(-30), experiment: s.experiment || null,
       stats: { closed: n, wins, hitRate: n ? round(wins / n, 3) : null, pnlUsd: round(h.reduce((a, x) => a + x.pnlUsd, 0), 2), feesUsd: round(h.reduce((a, x) => a + x.feeUsd + (x.exitFeeUsd || 0), 0), 2) },
       lastRunAt: s.lastRunAt, lastError: this.recoveryError || s.lastError, lastNote: s.lastNote, running: this.busy };
   }

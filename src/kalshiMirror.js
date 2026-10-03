@@ -44,7 +44,7 @@ function validateState(s) {
   const st = s.settings;
   if (!(nonnegative(st.startUsd) && st.startUsd >= 1 && st.startUsd <= 100000 && nonnegative(st.stakeUsd) && st.stakeUsd >= 1 && st.stakeUsd <= 250 && Number.isSafeInteger(st.maxOpen) && st.maxOpen >= 1 && st.maxOpen <= 100 && nonnegative(st.maxChase) && st.maxChase <= .2 && nonnegative(st.minPrice) && st.minPrice > 0 && st.minPrice <= st.maxPrice && nonnegative(st.maxPrice) && st.maxPrice < 1)) throw new Error('invalid mirror settings');
   for (const key of ['queue', 'open', 'history', 'decisions', 'seen']) if (!Array.isArray(s[key])) throw new Error(`invalid mirror ${key}`);
-  if (s.queue.length > 50 || s.open.length > 100 || s.history.length > 500 || s.decisions.length > 60 || s.seen.length > 3000 || s.seen.some(x => typeof x !== 'string')) throw new Error('invalid mirror journal bounds');
+  if (s.queue.length > 50 || s.open.length > 100 || s.decisions.length > 60 || s.seen.length > 3000 || s.seen.some(x => typeof x !== 'string')) throw new Error('invalid mirror journal bounds');
   if (s.queue.some(q => !q || typeof q.key !== 'string' || !q.key || typeof q.title !== 'string' || typeof q.outcome !== 'string' || !Number.isFinite(q.price) || q.price <= 0 || q.price >= 1 || !Number.isSafeInteger(q.ts) || q.ts <= 0)) throw new Error('invalid queued trade');
   const tickers = new Set();
   for (const p of [...s.open, ...s.history]) {
@@ -115,7 +115,7 @@ export class KalshiMirrorPaper {
   }
   fresh(start = MIRROR_DEFAULTS.startUsd, settings = MIRROR_DEFAULTS, epoch = 1) { return { schema: SCHEMA, epoch, startUsd: start, cashUsd: start, settings: { ...settings, startUsd: start }, queue: [], open: [], history: [], decisions: [], seen: [], lastRunAt: null, lastError: null, lastNote: null }; }
   load() {
-    try { if (fs.statSync(this.file).size > 8 * 1024 * 1024) throw new Error('mirror book exceeds read budget'); const s = JSON.parse(fs.readFileSync(this.file, 'utf8')); return validateState(s); }
+    try { if (fs.statSync(this.file).size > 64 * 1024 * 1024) throw new Error('mirror book exceeds read budget'); const s = JSON.parse(fs.readFileSync(this.file, 'utf8')); return validateState(s); }
     catch (e) { if (e.code === 'ENOENT') return this.fresh(); this.recoveryError = `Kalshi mirror book unreadable (${e.message}); the file was kept. Reset to start a new book.`; return this.fresh(); }
   }
   save() { if (this.recoveryError) throw new Error(this.recoveryError); try { validateState(this.state); writeFileAtomicSync(this.file, JSON.stringify(this.state)); } catch (e) { this.recoveryError = `Kalshi mirror persistence failed (${e.message}); recovery is required.`; throw new Error(this.recoveryError); } }
@@ -265,7 +265,7 @@ export class KalshiMirrorPaper {
       if (out === 'YES' || out === 'NO') {
         const won = out === 'YES', payout = won ? p.qty : 0; s.cashUsd = round(s.cashUsd + payout, 6);
         s.history.unshift({ ...p, outcome: out, won, payoutUsd: payout, pnlUsd: round(payout - p.costUsd - p.feeUsd, 4), settledAt: this.now() });
-        s.open = s.open.filter(x => x !== p); s.history.length = Math.min(s.history.length, 500); this.save(); continue;
+        s.open = s.open.filter(x => x !== p); this.save(); continue;
       }
       if (Number.isFinite(d.yesBid) && d.yesBid >= 0 && d.yesBid <= 1) p.markUsd = round(d.yesBid * p.qty, 4);
     }
@@ -290,7 +290,7 @@ export class KalshiMirrorPaper {
     s.cashUsd = round(s.cashUsd + proceeds - fee, 6); q.remainingExitQty -= sold;
     if (sold === p.qty) s.open = s.open.filter(x => x !== p);
     else { p.qty -= sold; p.costUsd = round(p.costUsd - cost, 6); p.feeUsd = round(p.feeUsd - entryFee, 6); p.markUsd *= 1 - fraction; if (p.sourceEntryQty > 0) p.sourceEntryQty *= 1 - fraction; }
-    s.history.unshift(h); s.history.length = Math.min(s.history.length, 500);
+    s.history.unshift(h);
     if (!q.remainingExitQty || !s.open.includes(p)) s.queue = s.queue.filter(x => x.key !== q.key);
     this.save(); return !q.remainingExitQty || !s.open.includes(p);
   }

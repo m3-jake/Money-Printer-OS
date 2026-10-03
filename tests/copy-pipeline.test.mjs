@@ -5,13 +5,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { PolymarketCopyPaper } from '../src/polymarketCopy.js';
 import { KalshiMirrorPaper } from '../src/kalshiMirror.js';
-import { fetchLeaderTrades, classifyCopyMarket, CopyMetadataCache, CopyReadCache, copyLatencySummary } from '../src/copyEvent.js';
+import { fetchLeaderTrades, classifyCopyMarket, CopyMetadataCache, CopyReadCache, copyLatencySummary, COPY_EXPERIMENT_COHORTS, oppositeCopyOutcome } from '../src/copyEvent.js';
 const NOW = 1800000000000, wallet = '0x' + 'a'.repeat(40);
 const fixture = t => { const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'copy-pipeline-')); t.after(() => fs.rmSync(dir, { recursive: true, force: true })); return dir; };
 const trade = (patch = {}) => ({ transactionHash: 'buy', timestamp: NOW / 1000, asset: 'asset', side: 'BUY', size: 100, price: .5, title: 'Bitcoin above $100000?', outcome: 'Yes', outcomeIndex: 0, ...patch });
 function setup(dir, overrides = {}) {
-  const env = { now: NOW + 1000, trades: [trade()], offline: false, bids: [{ price: .49, size: 100 }], calls: [], ...overrides };
-  const create = extra => new PolymarketCopyPaper({ dataDir: dir, now: () => env.now, fetchImpl: async url => { env.calls.push(url); if (url.includes('/trades')) return { ok: true, json: async () => env.trades }; if (url.includes('/book')) { if (env.offline) throw new Error('offline'); if (env.bookGate) await env.bookGate; return { ok: true, json: async () => ({ asks: [{ price: .51, size: 100 }], bids: env.bids }) }; } return { ok: true, json: async () => [{ feesEnabled: false, closed: env.closed || false, outcomePrices: '["1","0"]', tags: [{ label: 'Crypto' }] }] }; }, ...extra });
+  const env = { now: NOW + 1000, trades: [trade()], offline: false, asks: [{ price: .51, size: 100 }], bids: [{ price: .49, size: 100 }], calls: [], ...overrides };
+  const create = extra => new PolymarketCopyPaper({ dataDir: dir, now: () => env.now, fetchImpl: async url => { env.calls.push(url); if (url.includes('/trades')) return { ok: true, json: async () => env.trades }; if (url.includes('/book')) { if (env.offline) throw new Error('offline'); if (env.bookGate) await env.bookGate; return { ok: true, json: async () => env.bookByAsset?.[new URL(url).searchParams.get('token_id')] || ({ asks: env.asks, bids: env.bids }) }; } return { ok: true, json: async () => [{ feesEnabled: false, closed: env.closed || false, outcomePrices: '["1","0"]', tags: [{ label: 'Crypto' }], ...env.metadata }] }; }, ...extra });
   const bot = create(); bot.state.follows = [{ wallet, name: 'leader', followedAt: NOW - 1000 }]; bot.state.settings.follows = 1; bot.state.settings.stakeUsd = 5; bot.state.settings.minLeaderTradeUsd = 1; return { env, bot, create };
 }
 test('transient entry intent survives restart and duplicate/out-of-order pages without duplicate exposure', async t => {
@@ -116,4 +116,38 @@ test('four independent cohorts reuse discovery while retaining four fresh follow
 test('restart completes receipt journaling for an already committed exposure', async t => {
   const { env, bot, create } = setup(fixture(t)); await bot.run({ settlement: false }); const i = Object.values(bot.state.intents).find(i => i.status === 'FILLED'); i.receiptLogged = false; bot.state.receipts = []; bot.save();
   const restarted = create(); await restarted.run({ settlement: false }); assert.equal(restarted.state.receipts.length, 1); assert.equal(restarted.state.receipts[0].status, 'FILLED'); assert.equal(restarted.state.open.length, 1);
+});
+test('default isolated copy inventory has seven unique funded books and $175 hypothetical funding', () => {
+  assert.equal(COPY_EXPERIMENT_COHORTS.length, 7); assert.equal(new Set(COPY_EXPERIMENT_COHORTS.map(c => c.id)).size, 7); assert.equal(COPY_EXPERIMENT_COHORTS.reduce((n, c) => n + c.startUsd, 0), 175);
+  assert.equal(COPY_EXPERIMENT_COHORTS.find(c => c.category === 'CRYPTO').policy, 'category-specialist');
+});
+test('momentum confirmation waits for later two-sided follower quotes and fills their current depth', async t => {
+  const { env, bot } = setup(fixture(t)); bot.state.experiment = { id: 'momentum-test', policy: 'momentum-confirmed', exploratory: true };
+  await bot.run({ settlement: false }); assert.equal(bot.state.open.length, 0); const intent = Object.values(bot.state.intents)[0]; assert.equal(intent.receipt.confirmationObservations.length, 1);
+  env.now += 1000; env.asks = [{ price: .512, size: 100 }]; env.bids = [{ price: .492, size: 100 }]; await bot.run({ settlement: false });
+  assert.equal(bot.state.open[0].avgPrice, .512); assert.equal(bot.state.open[0].receipt.confirmationDecision.elapsedMs, 1000); assert.equal(bot.state.open[0].receipt.confirmationObservations[0].bestAsk, .51); assert.equal(bot.state.open[0].receipt.sourcePrice, .5);
+});
+test('an ask move without bid confirmation does not establish executable follower momentum', async t => {
+  const { env, bot } = setup(fixture(t)); bot.state.experiment = { id: 'momentum-test', policy: 'momentum-confirmed', exploratory: true }; await bot.run({ settlement: false });
+  env.now += 1000; env.asks = [{ price: .52, size: 100 }]; await bot.run({ settlement: false }); assert.equal(bot.state.open.length, 0); assert.equal(bot.snapshot().pendingIntents, 1);
+});
+test('fade requires exact binary identity and follows the opposite current quote plus attributable source exit', async t => {
+  const { env, bot } = setup(fixture(t), { trades: [trade({ price: .7 })], metadata: { clobTokenIds: '["asset","opposite"]', outcomes: '["Yes","No"]', conditionId: 'condition' }, bookByAsset: { opposite: { asks: [{ price: .31, size: 100 }], bids: [{ price: .30, size: 100 }] } } });
+  bot.state.experiment = { id: 'fade-test', policy: 'fade', exploratory: true }; await bot.run({ settlement: false });
+  assert.equal(bot.state.open.length, 1); assert.equal(bot.state.open[0].asset, 'opposite'); assert.equal(bot.state.open[0].sourceAsset, 'asset'); assert.equal(bot.state.open[0].avgPrice, .31); assert.equal(bot.state.open[0].receipt.followerOutcome, 'No');
+  env.trades = [trade({ transactionHash: 'exit', side: 'SELL', size: 100, price: .7 })]; await bot.run({ settlement: false }); assert.equal(bot.state.open.length, 0); assert.equal(bot.state.history.length, 1); assert.equal(bot.state.history[0].asset, 'opposite');
+  assert.match(oppositeCopyOutcome({ clobTokenIds: '["asset","opposite"]', outcomes: '["Yes","No"]', negRisk: true }, trade()).reason, /negative-risk/);
+  assert.match(oppositeCopyOutcome({ clobTokenIds: '["asset","opposite"]', outcomes: '["Yes","No"]' }, trade({ outcomeIndex: 1 })).reason, /conflicts/);
+});
+test('copy full history survives both executable close and settlement beyond 500 outcomes', async t => {
+  const { env, bot, create } = setup(fixture(t)); bot.state.cashUsd = 495; bot.state.history = Array.from({ length: 500 }, (_, i) => ({ id: `old-${i}`, leader: 'other', asset: `old-${i}`, pnlUsd: -.01, feeUsd: 0, openedAt: NOW - 2000, closedAt: NOW - 1000 }));
+  await bot.run({ settlement: false }); await bot.close(bot.state.open[0], 'test exact exit'); assert.equal(bot.state.history.length, 501);
+  env.trades = [trade({ transactionHash: 'second', asset: 'second' })]; await bot.run({ settlement: false }); env.closed = true; await bot.runSettlement(); assert.equal(bot.state.history.length, 502);
+  const restored = create(); assert.equal(restored.state.history.length, 502); assert.equal(restored.snapshot().stats.closed, 502); assert.equal(restored.snapshot().history.length, 50); assert.ok(restored.state.history.some(r => r.id === 'old-499'));
+});
+test('Kalshi mirror full historical outcomes survive future settlement and restart', async t => {
+  const dir = fixture(t); const k = { market: async () => ({ data: { settlementOutcome: 'YES' } }) };
+  const bot = new KalshiMirrorPaper({ dataDir: dir, kalshi: () => k, now: () => NOW }); const old = i => ({ ticker: `old-${i}`, qty: 1, costUsd: .01, feeUsd: 0, markUsd: 0, outcome: 'NO', payoutUsd: 0, pnlUsd: -.01, settledAt: NOW - 1000 });
+  bot.state.cashUsd = 7; bot.state.history = Array.from({ length: 500 }, (_, i) => old(i)); bot.state.open = [{ ticker: 'new', qty: 1, costUsd: .5, feeUsd: 0, markUsd: .5 }]; bot.save(); await bot.runSettlement();
+  const restored = new KalshiMirrorPaper({ dataDir: dir, kalshi: () => k, now: () => NOW }); assert.equal(restored.state.history.length, 501); assert.equal(restored.snapshot().stats.settled, 501); assert.equal(restored.snapshot().history.length, 50); assert.equal(restored.snapshot().recoveryRequired, undefined);
 });

@@ -1,5 +1,23 @@
 // Public trade receipts shared by paper followers. A price stream is not a wallet stream.
 export const COPY_EVENT_SCHEMA = 'mpo.copy-event.v1';
+export const COPY_EXPERIMENT_COHORTS = Object.freeze([
+  { id: 'polycopy-direct-v1', policy: 'direct', scoreboardId: 'polymarket-copy-direct' },
+  { id: 'polycopy-liquidity-scaled-v1', policy: 'liquidity-scaled', scoreboardId: 'polymarket-copy-liquidity-scaled' },
+  { id: 'polycopy-random-eligible-v1', policy: 'random-eligible', scoreboardId: 'polymarket-copy-random-eligible' },
+  { id: 'polycopy-no-trade-v1', policy: 'no-trade', scoreboardId: 'polymarket-copy-no-trade' },
+  { id: 'polycopy-crypto-v1', policy: 'category-specialist', category: 'CRYPTO', scoreboardId: 'polymarket-copy-crypto' },
+  { id: 'polycopy-momentum-v1', policy: 'momentum-confirmed', scoreboardId: 'polymarket-copy-momentum' },
+  { id: 'polycopy-fade-v1', policy: 'fade', scoreboardId: 'polymarket-copy-fade' },
+].map(c => Object.freeze({ ...c, startUsd: 25 })));
+export const COPY_POLICY_SUPPORT = Object.freeze({ direct: 'SUPPORTED', 'liquidity-scaled': 'SUPPORTED_ENTRY_RELATIVE', 'random-eligible': 'SUPPORTED_CONTROL', 'no-trade': 'SUPPORTED_CONTROL', 'category-specialist': 'SUPPORTED_PROVIDER_LABELS_REQUIRED', 'momentum-confirmed': 'SUPPORTED_PROSPECTIVE_QUOTES_REQUIRED', fade: 'SUPPORTED_EXACT_BINARY_OPPOSITE_REQUIRED', 'independent-leader-consensus': 'BLOCKED_WALLET_INDEPENDENCE_OR_CLUSTER_LABELS_UNAVAILABLE' });
+export function oppositeCopyOutcome(m, trade) {
+  const parse = v => Array.isArray(v) ? v : (() => { try { return JSON.parse(v || '[]'); } catch { return []; } })();
+  const tokens = parse(m?.clobTokenIds).map(String), outcomes = parse(m?.outcomes);
+  if (tokens.length !== 2 || outcomes.length !== 2 || new Set(tokens).size !== 2 || new Set(outcomes.map(v => String(v).toLowerCase())).size !== 2 || !outcomes.every(v => /^(yes|no)$/i.test(String(v))) || m?.negRisk === true) return { reason: 'fade requires exact exhaustive YES/NO binary outcome/token metadata without negative-risk ambiguity' };
+  const sourceIndex = tokens.indexOf(String(trade.asset));
+  if (sourceIndex < 0 || Number(trade.outcomeIndex) !== sourceIndex || String(outcomes[sourceIndex]).toLowerCase() !== String(trade.outcome).toLowerCase() || trade.conditionId && m?.conditionId && trade.conditionId !== m.conditionId) return { reason: 'fade source asset/outcome/condition identity conflicts with metadata' };
+  return { asset: tokens[1 - sourceIndex], outcome: outcomes[1 - sourceIndex], outcomeIndex: 1 - sourceIndex, comparisonPrice: 1 - Number(trade.price) };
+}
 export function tradeKey(wallet, t) {
   return [String(wallet || '').toLowerCase(), t.transactionHash, t.asset, t.side, t.timestamp, t.size].join(':');
 }
