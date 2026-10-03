@@ -125,8 +125,9 @@ export function trackLegs(state,byWindow,now=Date.now()){
 export function longSettlement(market){
  if(!market||market.status!=='MARKET_STATUS_RESOLVED')return null;
  const long=(market.marketSides||[]).find(s=>s?.long===true);
- let px=long?Number(long.price):NaN;
- if(!Number.isFinite(px)){try{px=Number(JSON.parse(market.outcomePrices||'[]')[0])}catch{px=NaN}}
+ const binary=v=>v===0||v===1||v==='0'||v==='1'?Number(v):NaN;
+ let px=long?binary(long.price):NaN;
+ if(!Number.isFinite(px)){try{px=binary(JSON.parse(market.outcomePrices||'[]')[0])}catch{px=NaN}}
  return px===1||px===0?px:null;
 }
 export function legWon(side,long){return long==null?null:side==='SIDE_BUY'?long===1:long===0}

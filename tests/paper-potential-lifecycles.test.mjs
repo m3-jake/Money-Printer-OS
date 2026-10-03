@@ -23,6 +23,7 @@ test('singles require real depth, retry exits, partial exits and settle idempote
  const q=closePaperSingle({file,id:p.id,quantity:2,market:{slug:'x',bid:.6,quoteAt:1001,bidSize:20},now:1001,receiptId:'exit-1'});
  assert.equal(q.quantity,2);assert.equal(closePaperSingle({file,id:p.id,quantity:2,market:{slug:'x',bid:.6,quoteAt:1001,bidSize:20},now:1001,receiptId:'exit-1'}),null);
  assert.equal(paperSinglesBookView({file}).open[0].quantity,p.quantity-2);
+ assert.equal((await settlePaperSingles({file,markets:[{slug:'x',status:'MARKET_STATUS_RESOLVED',outcomePrices:'[null,null]'}],now:1999})).settled,0);
  const markets=[{slug:'x',status:'MARKET_STATUS_RESOLVED',outcomePrices:'[1,0]'}];
  assert.equal((await settlePaperSingles({file,markets,now:2000})).settled,1);assert.equal((await settlePaperSingles({file,markets,now:2001})).settled,0);
  const b=paperSinglesBookView({file});assert.equal(b.history.length,2);assert.equal(b.openCount,0);assert.ok(Math.abs(b.cashUsd-25-b.history.reduce((sum,x)=>sum+x.pnlUsd,0))<.011);

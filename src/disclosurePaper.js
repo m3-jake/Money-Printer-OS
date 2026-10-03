@@ -29,9 +29,10 @@ export function initializeDisclosurePaper({ file = DISCLOSURE_FILE, now = Date.n
     qualification: 'UNQUALIFIED_EXPLORATION', funding: [{ at: now, amountUsd: 25, kind: 'INITIAL_CAPITAL' }], decisions: [], status: 'COLLECTING' });
 }
 export function disclosurePaperView({ file = DISCLOSURE_FILE } = {}) { return paperBookStatus(file); }
-function executable(q, side, now, eligibleAt, policy) {
+function executable(q, side, now, eligibleAt, policy, symbol) {
   const price = Number(q?.[side]), size = Number(q?.[`${side}Size`]), at = Number(q?.observedAt ?? q?.quoteAt);
   if (!q?.provider || q.assetClass !== 'equity') return 'PROVIDER_LABELED_EQUITY_QUOTE_REQUIRED';
+  if (String(q.symbol || '').toUpperCase() !== symbol) return 'MATCHING_EQUITY_INSTRUMENT_REQUIRED';
   if (q.session !== 'REGULAR_OPEN') return 'WAITING_FOR_REGULAR_SESSION';
   if (!Number.isFinite(at) || at < eligibleAt || at > now || now - at > policy.maxQuoteAgeMs) return 'WAITING_FOR_POST_AVAILABILITY_QUOTE';
   if (!(price > 0) || !(size > 0) || !(Number(q.bid) > 0) || !(Number(q.ask) >= Number(q.bid))) return 'EXECUTABLE_DEPTH_REQUIRED';
@@ -51,7 +52,7 @@ export async function tickDisclosurePaper({ filings = [], quote = null, secConfi
   const decisions = [];
   for (const p of book.open) {
     let q; try { q = await quote(p.symbol, { side: 'SELL', quantity: p.quantity, eligibleAt: p.openedAt, now }); } catch { q = null; }
-    const reason = executable(q, 'bid', now, p.openedAt, policy);
+    const reason = executable(q, 'bid', now, p.openedAt, policy, p.symbol);
     if (reason) { decisions.push({ at: now, id: p.id, action: 'WAIT_EXIT', reason }); continue; }
     mutatePaperBook(file, b => {
       const live = b.open.find(x => x.id === p.id); if (!live) return;
@@ -70,7 +71,7 @@ export async function tickDisclosurePaper({ filings = [], quote = null, secConfi
     const eligibleAt = Math.max(signal.availableAt, seenAt) + policy.processingMs;
     if (now < eligibleAt || current.open.length >= policy.maxOpen || current.cashUsd < 1) continue;
     let q; try { q = await quote(signal.symbol, { side: 'BUY', notionalUsd: policy.stakeUsd, eligibleAt, now }); } catch { q = null; }
-    const reason = executable(q, 'ask', now, eligibleAt, policy);
+    const reason = executable(q, 'ask', now, eligibleAt, policy, signal.symbol);
     if (reason) { decisions.push({ at: now, id: signal.id, action: 'WAIT_ENTRY', reason }); continue; }
     const budget = Math.min(current.cashUsd, policy.stakeUsd), step = q.fractional === true ? Number(q.quantityStep || .000001) : 1;
     const quantity = Math.floor((budget - q.feeUsd) / q.ask / step) * step;
