@@ -11,6 +11,10 @@ and PAPER-only runtime checks. Existing user data, books, P/L, credentials and j
 
 ### Completed source behavior
 
+- Module home pages explain their entire suite and show coverage, separate books, research and
+  operating state. Command Center brings the modules together, Money Printer OS explains its
+  features and workflow, and explicit links open detailed desks. Visible overviews share bounded
+  cache refreshes; unknown balances are not displayed as zero or combined across currencies.
 - Robinhood samples a wider crypto universe, keeps exploration separate from qualification and
   studies multi-day strategies. Practice entries now require a move covering at least two modeled
   round-trip costs over a longer observed lookback. Daily paper sleeves conserve every starting
