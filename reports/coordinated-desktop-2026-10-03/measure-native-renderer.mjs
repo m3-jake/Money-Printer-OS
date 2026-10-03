@@ -30,6 +30,9 @@ try{
    for(let i=0;i<12;i++){const el=document.querySelector('[data-cc-sys="'+(i%2?'modules':'books')+'"]'),t=performance.now();el?.click();await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));interactions.push(performance.now()-t);}
    return {viewport:[innerWidth,innerHeight],frame:{n:frames.length,p50Ms:percentile(frames,.5),p95Ms:percentile(frames,.95)},interaction:{n:interactions.length,p50Ms:percentile(interactions,.5),p95Ms:percentile(interactions,.95)},charts:document.querySelectorAll('.pw canvas').length,status:document.querySelector('.cc-strip')?.textContent,hud:window.MPOHud?.metrics?.(),limitations:['Hidden native renderer, installed archive UI and real stored/live data; physical pointer latency and visible multi-monitor transitions unmeasured']};
   }).toString()+')()');
+  await win.webContents.executeJavaScript("document.querySelector('[data-cc-sys=copy]')?.click()");await pause(2500);
+  result.copy=await win.webContents.executeJavaScript("({text:document.querySelector('.cc-sys-body')?.textContent,selected:document.querySelector('[data-cc-sys=copy]')?.getAttribute('aria-selected')})");
+  fs.writeFileSync(process.env.MPO_CHECK_REPORT.replace('.json','-copy.png'),(await win.webContents.capturePage()).toPNG());
   result.at=new Date().toISOString();result.electron=process.versions.electron;result.processes=app.getAppMetrics();
   fs.writeFileSync(process.env.MPO_CHECK_REPORT,JSON.stringify(result,null,2));app.quit();
  }).catch(e=>{fs.writeFileSync(process.env.MPO_CHECK_REPORT,JSON.stringify({error:e.message}));app.exit(1);});

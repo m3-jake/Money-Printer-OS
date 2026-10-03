@@ -1,0 +1,146 @@
+{
+  "at": "2026-10-03T20:29:31.175Z",
+  "rounds": 12,
+  "results": [
+    {
+      "app": "trader",
+      "path": "/api/health",
+      "status": null,
+      "error": "The operation was aborted due to timeout",
+      "n": 0,
+      "p50Ms": 0,
+      "p95Ms": 0,
+      "bytes": null
+    },
+    {
+      "app": "trader",
+      "path": "/api/state",
+      "status": 200,
+      "error": null,
+      "n": 12,
+      "p50Ms": 21,
+      "p95Ms": 10149,
+      "bytes": 187877
+    },
+    {
+      "app": "trader",
+      "path": "/api/telemetry",
+      "status": 200,
+      "error": null,
+      "n": 12,
+      "p50Ms": 26,
+      "p95Ms": 186,
+      "bytes": 9319
+    },
+    {
+      "app": "trader",
+      "path": "/api/command-center",
+      "status": 200,
+      "error": null,
+      "n": 12,
+      "p50Ms": 406,
+      "p95Ms": 5266,
+      "bytes": 2488963
+    },
+    {
+      "app": "trader",
+      "path": "/api/command-center?view=summary",
+      "status": 200,
+      "error": null,
+      "n": 12,
+      "p50Ms": 141,
+      "p95Ms": 9752,
+      "bytes": 125638
+    },
+    {
+      "app": "trader",
+      "path": "/api/scoreboard",
+      "status": 200,
+      "error": null,
+      "n": 12,
+      "p50Ms": 5,
+      "p95Ms": 652,
+      "bytes": 158929
+    },
+    {
+      "app": "trader",
+      "path": "/api/bots",
+      "status": 200,
+      "error": null,
+      "n": 12,
+      "p50Ms": 36,
+      "p95Ms": 690,
+      "bytes": 792417
+    },
+    {
+      "app": "trader",
+      "path": "/api/resources",
+      "status": 200,
+      "error": null,
+      "n": 12,
+      "p50Ms": 3,
+      "p95Ms": 141,
+      "bytes": 150
+    },
+    {
+      "app": "trader",
+      "path": "/api/market-history?ids=crypto:BTC-USD,crypto:ETH-USD,equity:SPY&points=300",
+      "status": 200,
+      "error": null,
+      "n": 12,
+      "p50Ms": 16,
+      "p95Ms": 304,
+      "bytes": 63602
+    },
+    {
+      "app": "trader",
+      "path": "/api/market-groups",
+      "status": 200,
+      "error": null,
+      "n": 12,
+      "p50Ms": 28,
+      "p95Ms": 4564,
+      "bytes": 8789
+    },
+    {
+      "app": "trader",
+      "path": "/api/coordinator",
+      "status": 200,
+      "error": null,
+      "n": 12,
+      "p50Ms": 1,
+      "p95Ms": 2,
+      "bytes": 42066
+    },
+    {
+      "app": "trader",
+      "path": "/api/copy-funnel",
+      "status": 200,
+      "error": null,
+      "n": 12,
+      "p50Ms": 1,
+      "p95Ms": 182,
+      "bytes": 46256
+    },
+    {
+      "app": "lab",
+      "path": "/api/health",
+      "status": 200,
+      "error": null,
+      "n": 12,
+      "p50Ms": 2,
+      "p95Ms": 4,
+      "bytes": 1040
+    },
+    {
+      "app": "lab",
+      "path": "/api/state",
+      "status": 200,
+      "error": null,
+      "n": 12,
+      "p50Ms": 42,
+      "p95Ms": 50,
+      "bytes": 642039
+    }
+  ]
+}

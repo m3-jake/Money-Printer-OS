@@ -1,0 +1,224 @@
+{
+  "initial": [
+    {
+      "app": "Pump.fun",
+      "tab": "Overview",
+      "passed": true
+    },
+    {
+      "app": "Pump.fun",
+      "tab": "Evolution Lab",
+      "passed": true
+    },
+    {
+      "app": "Pump.fun",
+      "tab": "Wallets",
+      "passed": true
+    },
+    {
+      "app": "Pump.fun",
+      "tab": "Risk",
+      "passed": true
+    },
+    {
+      "app": "Pump.fun",
+      "tab": "Archive",
+      "passed": true
+    },
+    {
+      "app": "Pump.fun",
+      "tab": "Controls",
+      "passed": true
+    },
+    {
+      "app": "Pump.fun",
+      "tab": "Whale Watch",
+      "passed": true
+    },
+    {
+      "app": "Pump.fun",
+      "tab": "Lab Monitor",
+      "passed": true
+    },
+    {
+      "app": "Polymarket",
+      "tab": "Overview",
+      "passed": true
+    },
+    {
+      "app": "Polymarket",
+      "tab": "Markets",
+      "passed": true
+    },
+    {
+      "app": "Polymarket",
+      "tab": "Positions",
+      "passed": true
+    },
+    {
+      "app": "Polymarket",
+      "tab": "History",
+      "passed": true
+    },
+    {
+      "app": "Polymarket",
+      "tab": "Performance",
+      "passed": true
+    },
+    {
+      "app": "Polymarket",
+      "tab": "Copytrading",
+      "passed": false,
+      "error": "Error: Error: Playwright selector deadline exceeded\nlocator.press failed for selector internal:role=tab[name=\"Copytradin"
+    },
+    {
+      "app": "Kalshi",
+      "tab": "Overview",
+      "passed": true
+    },
+    {
+      "app": "Kalshi",
+      "tab": "Paper bots",
+      "passed": true
+    },
+    {
+      "app": "System",
+      "tab": "Overview",
+      "passed": true
+    },
+    {
+      "app": "System",
+      "tab": "Network",
+      "passed": true
+    },
+    {
+      "app": "System",
+      "tab": "Live Log",
+      "passed": false,
+      "error": "Error: Error: Playwright selector deadline exceeded\nlocator.press failed for selector internal:role=tab[name=\"Live Log\"s"
+    },
+    {
+      "app": "System",
+      "tab": "Updater",
+      "passed": true
+    },
+    {
+      "app": "System",
+      "tab": "Settings",
+      "passed": true
+    }
+  ],
+  "completed": [
+    {
+      "app": "Polymarket",
+      "tab": "Copy trading",
+      "passed": true
+    },
+    {
+      "app": "Polymarket",
+      "programs": [
+        "  - tab \"Overview\"",
+        "  - tab \"Markets\"",
+        "  - tab \"Positions\"",
+        "  - tab \"History\"",
+        "  - tab \"Performance\"",
+        "  - tab \"Copy trading\" [active] [selected]"
+      ],
+      "passed": true
+    },
+    {
+      "app": "System",
+      "tab": "Log",
+      "passed": true
+    },
+    {
+      "app": "System",
+      "programs": [
+        "  - tab \"Overview\"",
+        "  - tab \"Network\"",
+        "  - tab \"Log\" [active] [selected]",
+        "  - tab \"Updater\"",
+        "  - tab \"Settings\""
+      ],
+      "passed": true
+    },
+    {
+      "app": "Command Center",
+      "tab": "Overview",
+      "passed": true
+    },
+    {
+      "app": "Command Center",
+      "tab": "Arbitrage",
+      "passed": true
+    },
+    {
+      "app": "Command Center",
+      "tab": "Stocks",
+      "passed": true
+    },
+    {
+      "app": "Command Center",
+      "tab": "Market Lab",
+      "passed": true
+    },
+    {
+      "app": "Command Center",
+      "tab": "Macro",
+      "passed": true
+    },
+    {
+      "app": "Command Center",
+      "tab": "EDGAR",
+      "passed": true
+    },
+    {
+      "app": "Command Center",
+      "tab": "Weather",
+      "passed": true
+    },
+    {
+      "app": "Command Center",
+      "tab": "Sports",
+      "passed": true
+    },
+    {
+      "app": "Command Center",
+      "tab": "Wire",
+      "passed": true
+    },
+    {
+      "app": "Command Center",
+      "programs": [
+        "  - tab \"Overview\"",
+        "  - tab \"Arbitrage\"",
+        "  - tab \"Stocks\"",
+        "  - tab \"Market Lab\"",
+        "  - tab \"Macro\"",
+        "  - tab \"EDGAR\"",
+        "  - tab \"Weather\"",
+        "  - tab \"Sports\"",
+        "  - tab \"Wire\" [active] [selected]"
+      ],
+      "passed": true
+    },
+    {
+      "app": "Robinhood",
+      "programs": [
+        "- button \"Crypto trades\"",
+        "- button \"Stocks & ETFs\""
+      ],
+      "passed": true
+    },
+    {
+      "app": "Journal",
+      "programs": [],
+      "passed": true
+    },
+    {
+      "app": "Money Printer OS",
+      "programs": [],
+      "passed": true
+    }
+  ]
+}

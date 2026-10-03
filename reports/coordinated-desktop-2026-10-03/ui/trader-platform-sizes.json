@@ -1,0 +1,114 @@
+{
+  "rhviews": [
+    {
+      "view": "Crypto paper",
+      "passed": true
+    },
+    {
+      "view": "Why not trading",
+      "passed": true
+    },
+    {
+      "view": "Charts",
+      "passed": true
+    },
+    {
+      "view": "Exploration",
+      "passed": true
+    },
+    {
+      "view": "Daily bars",
+      "passed": true
+    },
+    {
+      "view": "Stocks & ETFs",
+      "passed": true
+    },
+    {
+      "view": "Practice",
+      "passed": true
+    },
+    {
+      "view": "More",
+      "passed": true
+    }
+  ],
+  "multi": [
+    {
+      "h": 480,
+      "sw": 640,
+      "w": 640,
+      "windows": [
+        {
+          "app": "trade",
+          "h": 406,
+          "w": 538,
+          "zoom": "1"
+        },
+        {
+          "app": "robinhood",
+          "h": 406,
+          "w": 538,
+          "zoom": "1"
+        }
+      ]
+    },
+    {
+      "h": 600,
+      "sw": 800,
+      "w": 800,
+      "windows": [
+        {
+          "app": "trade",
+          "h": 470,
+          "w": 558,
+          "zoom": "1"
+        },
+        {
+          "app": "robinhood",
+          "h": 470,
+          "w": 558,
+          "zoom": "1"
+        }
+      ]
+    },
+    {
+      "h": 650,
+      "sw": 900,
+      "w": 900,
+      "windows": [
+        {
+          "app": "trade",
+          "h": 470,
+          "w": 558,
+          "zoom": "1"
+        },
+        {
+          "app": "robinhood",
+          "h": 470,
+          "w": 558,
+          "zoom": "1"
+        }
+      ]
+    },
+    {
+      "h": 720,
+      "sw": 1280,
+      "w": 1280,
+      "windows": [
+        {
+          "app": "trade",
+          "h": 470,
+          "w": 558,
+          "zoom": "1"
+        },
+        {
+          "app": "robinhood",
+          "h": 470,
+          "w": 558,
+          "zoom": "1"
+        }
+      ]
+    }
+  ]
+}

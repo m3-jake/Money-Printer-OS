@@ -64,4 +64,25 @@ Actual per-module stage, blocker, dependency, receipt and next action after rele
 
 ## Installation
 
-Pending final release smoke checks and paired receipt verification. Before-install accounting and runtime evidence is saved in `installed-before.json`; the installer preserves data and writes matching paired receipts to both installed roots. Unrelated launch configuration, user status content, older report files, upload ZIP and Lab workflow files are preserved.
+Installed and verified at 2026-10-03T20:33:05.2323173Z: trader **alpha.93 @ 89fa8d7**, Lab **alpha.28 @ 9cfaa89**. Both research profiles are **MAX_RESEARCH**. Matching installed paired receipts and independently hashed archives agree with the running commits. Every verification endpoint returns 200. Retention checks pass for all **24** recorded books, including prior receipt hashes, capital/experiment identities and active loss pauses. Paper-only controls remain locked and paid models disabled.
+
+Verified data backup: `W:/money-printer-backups/update-20261003-163121/paper-data-backup`; sealed evidence: `W:/money-printer-backups/evidence-store`. Both installed resources folders retain `app.asar.backup-20261003-163121` for paired rollback. The first attempts stopped before any archive swap because verification previews held SQLite readers; all previews were closed and the backup subsequently verified. `installer-verified.log` records the successful final install.
+
+Unrelated launch configuration, user status content, older report files, upload ZIP and Lab workflow files were restored intact. Only the existing test-suite count was separately committed as 167. Recovery snapshots remain in Git stashes (trader `49704b9`, Lab `a891b1c`). The initial task runtime snapshot is `installed-task-start.json`; `installed-first-release.json` proves retention through the first installed release, and final before/after snapshots verify the small profile-label correction.
+
+## Final runtime measurements
+
+| Measurement | Before | After |
+|---|---:|---:|
+| Opening summary payload | 2,381,285 B | 146,286 B |
+| Opening summary p50 / p95 | 473 / 1,710 ms | 2 / 181 ms |
+| Full detail p50 / p95 | 467 / 1,132 ms | 38 / 752 ms |
+| Lab state p50 / p95 | 42 / 51 ms | 39 / 46 ms |
+
+Twelve sequential reads per endpoint are recorded in `bench-before.json` and `bench-steady.json`. The separate immediately-after-startup run `bench-after.json` includes a 30-second health timeout and p95 spikes near 10 seconds; it is retained, not pooled into the settled figures. Startup under MAX_RESEARCH still has transient contention. No comparable native before-renderer or server event-loop-delay series was captured; no improvement is claimed for those unmeasured baselines.
+
+The final installed archive UI runs in an isolated, GET-only native Electron renderer with real endpoint data: **120 frames**, p50/p95 **16.7 / 16.8 ms**; **12 programmatic interactions**, p50/p95 **33.7 / 35.8 ms**. `native-renderer-metrics.json` includes renderer long tasks and real process counters. The final populated Copy tab and matching MAX_RESEARCH labels are captured in `native-renderer-metrics-copy.png`. This measures logical 1280×720 rendering; physical input/multi-monitor latency remains unmeasured.
+
+`runtime-final.json` records actual CPU/RAM/GPU use separately from reserved slots, provider pacing/remaining credits, current job fingerprints and the ten module objectives. A BTC research completion receipt after the final install proves a live trader-request → Lab evaluation → receipt cycle. Unchanged-evidence receipts preserve waiting status rather than claiming qualification. Frozen prospective books and follower outcomes continue feeding the scoreboard/coordinator; collection/research completion does not establish profitable strategies.
+
+Final source correction: **18/18** runtime/chart/profile checks and **15/15** wiring/documentation/reachability/shared-parity checks passed after correcting the label. Full suites remain trader **1,399 pass / 20 intentional skips / 0 failures**, Lab **365 pass / 0 skips / 0 failures**; visual suite **127 pass**. Twenty-one shared files match byte for byte. No public push or publication was performed.

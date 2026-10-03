@@ -1,0 +1,1 @@
+{"module":"src\\zz-sim-old-indexer.js","minutes":120,"synthetic":true,"creditsSpent":593,"callsByMethod":{"getSignaturesForAddress":373,"getTransaction":220},"byDetail":null,"txFetched":220,"swapEvents":220,"wallets":212,"roundTrips":4,"walletsWithRoundTrip":4,"unmatchedSells":103,"eventsPerCredit":0.371,"roundTripsPer100Credits":0.67}

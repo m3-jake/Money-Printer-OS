@@ -1,0 +1,15 @@
+# UI verification — coordinated desktop completion
+
+Final UI sources frozen. npm run test:visual: 127 passed, 0 failed (ui-tests.log). Root added equity half-day/per-bar-source regression and owns final history changes.
+
+Browser runtime: authorized in-app Browser Use, source trader preview8861 and Lab8875. No runtime state injection, fake quotes, or CSS zoom. Browser sandbox excludes requestAnimationFrame; renderer frame measurements delegated to root native Electron instrumentation. Search+refresh browser interaction round trip113ms (includes tool overhead; not renderer frame latency); search value BTC retained.
+
+Command Center populated history screenshots: trader-640-command.jpg, trader-800-command.jpg, trader-900-command.jpg, trader-1280-command.jpg. Exact viewport640x480,800x600,900x650,1280x720. Document horizontal width equals viewport at every size; chart and system pane both visible. Final640 plot displays ADA-USD observed line, Robinhood BBO source and observation age. 800/900/1280 snapshots contain observed histories and truthful missing-series counts. Canvas zoom1.
+
+Several windows open: Pump.fun and Robinhood at all four requested sizes in trader-{640,800,900,1280}-platforms.jpg. Exact viewport/document widths recorded in trader-platform-sizes.json. All windows zoom1; compact views scroll locally. Generic panes preserve scroll/focus/open disclosures and avoid replacing actively edited forms or selected text.
+
+Navigation audit: all8 launcher windows opened. Pump.fun8 program tabs, Polymarket6 program tabs, Kalshi2 tabs, System5 tabs, Command Center9 tabs all activated. Robinhood8 detail views activated: Crypto paper, Why not trading, Charts, Exploration, Daily bars, Stocks & ETFs, Practice, More. Journal and Money Printer OS overview opened. trader-inventory.json records initial two mistaken label attempts and successful corrected Copy trading/Log navigation, rather than application failures. Screenshots of all suite families at1280 are retained. Inventory does not claim every pane exhaustively inspected at every dimension.
+
+Lab: all six views Overview, Workbench, Platforms, Experiments, Handoffs, Resources checked at640,800,900,1280. Lab900/1280 screenshot series show settled Research online reports and measured hardware history. Every document width equals viewport. Narrow640 uses accessible Lab view native select. Prospective weather and Scheduler sections additionally checked at640; no mutation of scheduler controls.
+
+Preview limitations: installed upstream version remainsalpha.92 until root final build/install. Running8861 process predates copy-funnel route import; HTTP404 retained/stale banner is truthful and root notified to reload backend process. Other upstream request timeouts occur under concurrent suites; retained values visibly labeled. Cold-load placeholders are not evidence of successful history rendering. Root owns final backend route/populated funnel and renderer latency validation. screenshot trader-1280-copy.jpg may show fallback existing copy book view until route reload; behavioral funnel tests cover per-policy reasons/counts/original currencies/pause and escaping.

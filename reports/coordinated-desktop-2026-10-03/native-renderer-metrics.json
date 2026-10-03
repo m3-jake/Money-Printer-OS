@@ -1,0 +1,134 @@
+{
+  "viewport": [
+    1280,
+    720
+  ],
+  "frame": {
+    "n": 120,
+    "p50Ms": 16.69999999999891,
+    "p95Ms": 16.799999999999272
+  },
+  "interaction": {
+    "n": 12,
+    "p50Ms": 33.700000000186265,
+    "p95Ms": 35.799999999813735
+  },
+  "charts": 1,
+  "status": " ConnectingProfile ? / ?Lab Unknown CPU · UnknownTrader UnknownMachine UnknownGPU UnknownReserved UnknownRunning idleCopy ? found → ? watched → ? open No exceptions",
+  "hud": {
+    "longTasks": 2,
+    "longTaskMs": 178,
+    "frame": {
+      "n": 59,
+      "p50": 16.699999999999818,
+      "p95": 99.89999999999964,
+      "max": 1300.1000000000004
+    },
+    "layoutAndFit": {
+      "n": 3,
+      "p50": 0.599999999627471,
+      "p95": 0.599999999627471,
+      "max": 4.2000000001862645
+    },
+    "allRenderers": {
+      "n": 11,
+      "p50": 0.7000000001862645,
+      "p95": 2.300000000745058,
+      "max": 6
+    },
+    "stateParse": {
+      "n": 1,
+      "p50": 1.099999999627471,
+      "p95": 1.099999999627471,
+      "max": 1.099999999627471
+    },
+    "feedback": {
+      "n": 13,
+      "p50": 16.200000000186265,
+      "p95": 18.700000000186265,
+      "max": 41.40000000037253
+    }
+  },
+  "limitations": [
+    "Hidden native renderer, installed archive UI and real stored/live data; physical pointer latency and visible multi-monitor transitions unmeasured"
+  ],
+  "copy": {
+    "text": "polymarket-global · incumbent164 Candidates→9 Rejected observations→250 Observed→43 Eligible→6 Followed→87 Copied→11 Open→76 Exited→76 Evaluatedpolymarket-global · category-specialist164 Candidates→9 Rejected observations→250 Observed→46 Eligible→3 Followed→0 Copied→0 Open→0 Exited→0 Evaluatedpolymarket-global · direct164 Candidates→9 Rejected observations→250 Observed→47 Eligible→3 Followed→11 Copied→8 Open→3 Exited→3 Evaluatedpolymarket-global · fade164 Candidates→9 Rejected observations→250 Observed→47 Eligible→3 Followed→0 Copied→0 Open→0 Exited→0 Evaluatedpolymarket-global · liquidity-scaled164 Candidates→9 Rejected observations→250 Observed→47 Eligible→3 Followed→11 Copied→8 Open→3 Exited→3 Evaluatedpolymarket-global · momentum-confirmed164 Candidates→9 Rejected observations→250 Observed→47 Eligible→3 Followed→0 Copied→0 Open→0 Exited→0 Evaluatedpolymarket-global · no-trade164 Candidates→9 Rejected observations→250 Observed→47 Eligible→3 Followed→0 Copied→0 Open→0 Exited→0 Evaluatedpolymarket-global · random-eligible164 Candidates→9 Rejected observations→250 Observed→47 Eligible→3 Followed→5 Copied→3 Open→2 Exited→2 Evaluatedpumpfun · strict-wallet-copy9755 Candidates→? Rejected observations→13531 Observed→0 Eligible→0 Followed→0 Copied→0 Open→0 Exited→0 Evaluatedpumpfun · emerging9755 Candidates→? Rejected observations→13531 Observed→47 Eligible→8 Followed→0 Copied→0 Open→0 Exited→0 Evaluatedpumpfun · consensus9755 Candidates→? Rejected observations→13531 Observed→47 Eligible→8 Followed→0 Copied→0 Open→0 Exited→0 Evaluatedpolymarket-global · incumbent · UNQUALIFIED · Loss pauseCurrent fresh point-in-time source under this book selection settings; eligibility is not profitabilityFollower outcome −$134.99 · no-trade $0.00 · 76 evaluated positions · 0 partial exit slices.Reasons: Bounded catch-up incomplete; historical source holdings unknown (4); Trades unavailable: paper copy provider read still draining after timeout; no overlapping request (51); Drawdown pause (4); Trades unavailable: paper copy provider deadline exceeded; pending work retained (1) · 60 retained decisions; not all-time totals.Retained book records; completed positions counted once across partial exits. Cross-book controls are independent, not matched causal estimates.polymarket-global · category-specialist · UNQUALIFIEDCurrent fresh point-in-time source under this book selection settings; eligibility is not profitabilityFollower outcome $0.00 · no-trade $0.00 · 0 evaluated positions · 0 partial exit slices.Reasons: Trades unavailable: paper copy provider read still draining after timeout; no overlapping request (57); Trades unavailable: paper copy provider deadline exceeded; pending work retained (3) · 60 retained decisions; not all-time totals.Retained book records; completed positions counted once across partial exits. Cross-book controls are independent, not matched causal estimates.polymarket-global · direct · UNQUALIFIEDCurrent fresh point-in-time source under this book selection settings; eligibility is not profitabilityFollower outcome +$1.23 · no-trade $0.00 · 3 evaluated positions · 0 partial exit slices.Reasons: Trades unavailable: paper copy provider read still draining after timeout; no overlapping request (55); Book unavailable (1); Trades unavailable: the operation was aborted due to timeout (2); Trades unavailable: paper copy provider deadline exceeded; pending work retained (1) · 60 retained decisions; not all-time totals.Retained book records; completed positions counted once across partial exits. Cross-book controls are independent, not matched causal estimates.polymarket-global · fade · UNQUALIFIEDCurrent fresh point-in-time source under this book selection settings; eligibility is not profitabilityFollower outcome $0.00 · no-trade $0.00 · 0 evaluated positions · 0 partial exit slices.Reasons: Fade requires exact exhaustive yes/no binary outcome/token metadata without negative-risk ambiguity (1); Trades unavailable: paper copy provider read still draining after timeout; no overlapping request (54); Book unavailable (2); Trades unavailable: the operation was aborted due to timeout (2); Trades unavailable: paper copy provider deadline exceeded; pending work retained (1) · 60 retained decisions; not all-time totals.Retained book records; completed positions counted once across partial exits. Cross-book controls are independent, not matched causal estimates.polymarket-global · liquidity-scaled · UNQUALIFIEDCurrent fresh point-in-time source under this book selection settings; eligibility is not profitabilityFollower outcome +$1.23 · no-trade $0.00 · 3 evaluated positions · 0 partial exit slices.Reasons: Trades unavailable: paper copy provider read still draining after timeout; no overlapping request (55); Book unavailable (1); Trades unavailable: the operation was aborted due to timeout (2); Trades unavailable: paper copy provider deadline exceeded; pending work retained (1) · 60 retained decisions; not all-time totals.Retained book records; completed positions counted once across partial exits. Cross-book controls are independent, not matched causal estimates.polymarket-global · momentum-confirmed · UNQUALIFIEDCurrent fresh point-in-time source under this book selection settings; eligibility is not profitabilityFollower outcome $0.00 · no-trade $0.00 · 0 evaluated positions · 0 partial exit slices.Reasons: Collecting first post-observation momentum quote (1); Trades unavailable: paper copy provider read still draining after timeout; no overlapping request (54); Book unavailable (2); Trades unavailable: the operation was aborted due to timeout (2); Trades unavailable: paper copy provider deadline exceeded; pending work retained (1) · 60 retained decisions; not all-time totals.Retained book records; completed positions counted once across partial exits. Cross-book controls are independent, not matched causal estimates.polymarket-global · no-trade · UNQUALIFIEDCurrent fresh point-in-time source under this book selection settings; eligibility is not profitabilityFollower outcome $0.00 · no-trade $0.00 · 0 evaluated positions · 0 partial exit slices.Reasons: Preregistered no-trade control (6); Trades unavailable: paper copy provider read still draining after timeout; no overlapping request (51); Trades unavailable: the operation was aborted due to timeout (2); Trades unavailable: paper copy provider deadline exceeded; pending work retained (1) · 60 retained decisions; not all-time totals.Retained book records; completed positions counted once across partial exits. Cross-book controls are independent, not matched causal estimates.polymarket-global · random-eligible · UNQUALIFIEDCurrent fresh point-in-time source under this book selection settings; eligibility is not profitabilityFollower outcome −$2.00 · no-trade $0.00 · 2 evaluated positions · 0 partial exit slices.Reasons: Trades unavailable: paper copy provider read still draining after timeout; no overlapping request (56); Trades unavailable: paper copy provider deadline exceeded; pending work retained (3); Trades unavailable: the operation was aborted due to timeout (1) · 60 retained decisions; not all-time totals.Retained book records; completed positions counted once across partial exits. Cross-book controls are independent, not matched causal estimates.pumpfun · strict-wallet-copy · UNQUALIFIEDCurrent fresh point-in-time source under this book selection settings; eligibility is not profitabilityFollower outcome 0.000 SOL · no-trade 0.000 SOL · 0 evaluated positions · 0 partial exit slices.Reasons: None retained · 0 retained decisions; not all-time totals.Retained book records; completed positions counted once across partial exits. Cross-book controls are independent, not matched causal estimates.pumpfun · emerging · UNQUALIFIEDCurrent separate exploratory policy selection under its frozen settings; eligibility is not strict qualificationFollower outcome 0.000 SOL · no-trade 0.000 SOL · 0 evaluated positions · 0 partial exit slices.Reasons: None retained · 0 retained decisions; not all-time totals.Retained book records; completed positions counted once across partial exits. Cross-book controls are independent, not matched causal estimates.pumpfun · consensus · UNQUALIFIEDCurrent separate exploratory policy selection under its frozen settings; eligibility is not strict qualificationFollower outcome 0.000 SOL · no-trade 0.000 SOL · 0 evaluated positions · 0 partial exit slices.Reasons: None retained · 0 retained decisions; not all-time totals.Retained book records; completed positions counted once across partial exits. Cross-book controls are independent, not matched causal estimates.PolicyLeadersOpenClosesNet USDStateincumbentNew copies paused at 15% drawdown; existing positions still settle and follow exits61176−$134.99Loss pause3s agodirect3 leaders followed · 0 copies this run383+$1.23Exploring10s agoliquidity-scaled3 leaders followed · 0 copies this run383+$1.23Exploring10s agorandom-eligible3 leaders followed · 0 copies this run332−$2.00Exploring10s agono-trade3 leaders followed · 0 copies this run300$0.00Collecting10s agocategory-specialist3 leaders followed · 0 copies this run300$0.00Collecting10s agomomentum-confirmed3 leaders followed · 0 copies this run300$0.00Collecting10s agofade3 leaders followed · 0 copies this run300$0.00Collecting10s agoPump.fun copy: Waiting for wallet evidence · 0 qualifying leaders · 0 open · 2 separate exploratory books. Kalshi mirror: 16 leaders · 1416 signals checked · 2 matched. paper copy provider deadline exceeded; pending work retainedA leaderboard lead is not proven profitable for a follower; outcomes are net after costs.",
+    "selected": "true"
+  },
+  "at": "2026-10-03T20:34:14.195Z",
+  "electron": "38.8.6",
+  "processes": [
+    {
+      "cpu": {
+        "cumulativeCPUUsage": 7.649543,
+        "percentCPUUsage": 0,
+        "idleWakeupsPerSecond": 0
+      },
+      "pid": 47608,
+      "type": "Browser",
+      "creationTime": 1791059634772.528,
+      "memory": {
+        "workingSetSize": 116344,
+        "peakWorkingSetSize": 191884,
+        "privateBytes": 51504
+      },
+      "integrityLevel": "medium",
+      "sandboxed": false
+    },
+    {
+      "cpu": {
+        "cumulativeCPUUsage": 13.714928,
+        "percentCPUUsage": 0,
+        "idleWakeupsPerSecond": 0
+      },
+      "pid": 10704,
+      "type": "GPU",
+      "creationTime": 1791059635021.976,
+      "serviceName": "GPU",
+      "memory": {
+        "workingSetSize": 385156,
+        "peakWorkingSetSize": 392768,
+        "privateBytes": 804960
+      },
+      "integrityLevel": "low",
+      "sandboxed": true
+    },
+    {
+      "cpu": {
+        "cumulativeCPUUsage": 0.413917,
+        "percentCPUUsage": 0,
+        "idleWakeupsPerSecond": 0
+      },
+      "pid": 48060,
+      "type": "Utility",
+      "creationTime": 1791059635054.241,
+      "serviceName": "network.mojom.NetworkService",
+      "name": "Network Service",
+      "memory": {
+        "workingSetSize": 49764,
+        "peakWorkingSetSize": 53460,
+        "privateBytes": 15456
+      },
+      "integrityLevel": "medium",
+      "sandboxed": false
+    },
+    {
+      "cpu": {
+        "cumulativeCPUUsage": 4.584684,
+        "percentCPUUsage": 0,
+        "idleWakeupsPerSecond": 0
+      },
+      "pid": 36852,
+      "type": "Tab",
+      "creationTime": 1791059635080.963,
+      "memory": {
+        "workingSetSize": 265516,
+        "peakWorkingSetSize": 301852,
+        "privateBytes": 120092
+      },
+      "integrityLevel": "untrusted",
+      "sandboxed": true
+    }
+  ]
+}
