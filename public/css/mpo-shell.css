@@ -1062,6 +1062,11 @@ img.bill.phys.grabbing { cursor: grabbing; z-index: 5; }
 .desktop.camera-sky .sky-clouds { transform: scale(2) translateY(-4%); }
 .desktop.camera-sky .hill-foreground, .desktop.camera-sky .cloud-shadows { transform: scale(3.2); }
 .desktop.camera-sky .grass-layer { transform: scale(3.6); }
+/* Windows live in their own layer above the scenery. Without it, #windows fading in (opacity < 1) becomes a stacking
+   context at z-index 0 and the hill, grass, logo and icons paint over the windows until the fade ends (bing: windows
+   must not start behind the hill). */
+#windows { position: absolute; inset: 0; z-index: 10; pointer-events: none; }
+.desktop:not(.camera-sky) #windows > * { pointer-events: auto; }
 .desktop .brand, .desktop .icons, .desktop #windows, .desktop .taskbar, .desktop .money-event-feed { transition: opacity .9s ease 1.7s; }
 .desktop.camera-sky .brand, .desktop.camera-sky .icons, .desktop.camera-sky #windows, .desktop.camera-sky .taskbar, .desktop.camera-sky .money-event-feed { opacity: 0; pointer-events: none; }
 .mpo-low-motion .desktop :is(.wallpaper, .sky-clouds, .hill-foreground, .cloud-shadows, .grass-layer, .brand, .icons, #windows, .taskbar, .money-event-feed), .mpo-low-motion .logon .bootprog i { transition: none !important; }
