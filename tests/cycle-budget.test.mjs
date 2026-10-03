@@ -124,3 +124,9 @@ test('the engine loop races each cycle against a stall timer, skips a late save,
   assert.match(src, /if \(budget\?\.abandoned\) return;[^\n]*\n\s*s\.system\.metrics\.saveMs = saveState\(s\)/, 'an abandoned cycle never overwrites newer state');
   assert.match(dash, /health: stalled \? 'STALLED'/); assert.match(dash, /engine = \{ lastCycle: lc, ageMs: age, stalled:/);
 });
+
+test('the desktop supervisor needs three missed health probes (5 s each) before it swaps the dashboard for recovery', () => {
+  const main = fs.readFileSync(new URL('../desktop/main.cjs', import.meta.url), 'utf8');
+  assert.match(main, /health\(5000\)\.then\(h => \{\n\s*healthMisses = h \? 0 : healthMisses \+ 1;/);
+  assert.match(main, /if \(!h && showingDashboard && healthMisses >= 3\)/, 'one slow answer never reloads the HUD');
+});

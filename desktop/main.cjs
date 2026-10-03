@@ -359,11 +359,16 @@ async function boot() {
   else showRecovery(`The trading engine did not answer on ${BASE} within ${READY_TIMEOUT_MS / 1000} s.`);
 }
 
+// One slow answer is not lost contact: the engine shares its event loop with the HUD server, so a busy moment (a large
+// save) used to swap the dashboard for the recovery page and reload it seconds later, every ~10 s under load
+// (2026-10-03). The probe now waits 5 s and the recovery page needs three misses in a row.
+let healthMisses = 0;
 function monitorTick() {
   if (quitting) return;
-  health().then(h => {
+  health(5000).then(h => {
+    healthMisses = h ? 0 : healthMisses + 1;
     if (h && win && !showingDashboard) showDashboard();
-    if (!h && showingDashboard) showRecovery(`Lost contact with the engine on ${BASE}.`);
+    if (!h && showingDashboard && healthMisses >= 3) { log(`window: no engine answer ${healthMisses} times in a row; showing recovery`); showRecovery(`Lost contact with the engine on ${BASE}.`); }
   });
 }
 
