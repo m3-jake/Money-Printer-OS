@@ -317,21 +317,22 @@ img.sky-cloud,
   z-index: 5;
   display: grid;
   grid-auto-flow: column;
-  grid-template-rows: repeat(auto-fill, 100px);
-  grid-auto-columns: 104px;
+  grid-template-rows: repeat(auto-fill, 78px);
+  grid-auto-columns: 84px;
   align-content: start;
   gap: 4px 6px;
   padding-top: 4px;
 }
+/* 2026-10-02 (bing): icons about 25% smaller (56 → 42 px image, 100 → 80 px cell). */
 .icon {
-  width: 100px;
+  width: 80px;
   text-align: center;
   color: #fff;
   text-shadow: 1px 1px #000,0 0 3px #000,0 0 1px #000;
   user-select: none;
   padding: 2px;
-  font-size: 13px;
-  line-height: 16px;
+  font-size: 12px;
+  line-height: 14px;
 }
 .icon:hover { background: #00008022; }
 .icon:hover .ico { transform: translateY(-2px); filter: drop-shadow(0 4px 3px #0006); }
@@ -371,8 +372,8 @@ img.sky-cloud,
   display: block;
 }
 .ico.png { background: none; box-shadow: none; border: 0; }
-.icon .ico { width: 56px; height: 56px; font-size: 28px; }
-.icon .pixel-glyph { font-size: 14px; }
+.icon .ico { width: 42px; height: 42px; font-size: 21px; }
+.icon .pixel-glyph { font-size: 11px; }
 .pixel-glyph {
   font: 700 10px/1 Tahoma, Arial, sans-serif;
   letter-spacing: -.4px;

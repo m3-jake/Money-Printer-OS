@@ -33,7 +33,7 @@ export function bucketLadder(markets) {
     else if (d.strikeType === 'less' && Number.isFinite(d.capStrike)) { lo = -Infinity; hi = d.capStrike - 1; }
     else if (d.strikeType === 'greater' && Number.isFinite(d.floorStrike)) { lo = d.floorStrike + 1; hi = Infinity; }
     else continue;
-    rows.push({ lo, hi, p: (bid + ask) / 2, label: d.yesLabel || d.outcomeDefinition || d.title, sourceId: m.sourceId, closeAt: d.closeAt });
+    rows.push({ lo, hi, p: (bid + ask) / 2, label: d.yesLabel || d.outcomeDefinition || d.title, sourceId: m.sourceId, closeAt: d.closeAt, yesBid: bid, yesAsk: ask, noBid: d.noBid ?? null, noAsk: d.noAsk ?? null, feeModel: d.feeModel || null });
   }
   rows.sort((a, b) => a.lo - b.lo);
   const total = rows.reduce((s, r) => s + r.p, 0);

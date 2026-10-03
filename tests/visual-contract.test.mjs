@@ -415,7 +415,10 @@ test('paper-focus batch (2026-10-02): rolling numbers, Kalshi weather glance and
   assert.match(glanceCss, /\.glancepane span\.roll-d \{/, 'wheel styles are scoped above tile/row span rules');
   assert.match(platform, /if\(id==='kalshi'&&typeof glance==='function'\)return kalshiGlance\(\);/);
   assert.match(platform, /request\('\/weather'\)/, 'the Kalshi glance reads the server-cached weather desk');
-  assert.match(platform, /Paper · no Kalshi bot yet/, 'the Kalshi glance says plainly that no bot trades it yet');
+  assert.match(platform, /title:'Kalshi · paper bots'/, 'the Kalshi glance leads with the paper bots');
+  assert.ok(platform.includes('weather + BTC paper bots (simulated)'), 'and says they are simulated');
+  for (const s of ["['kalshibots','Paper bots','BOT','dark','kalshi']", "['pmcopy','Copy trading','CPY','dark','sportsbook']", '<script src="/js/mpo-bots.js"></script>']) assert.ok(html.includes(s), s);
+  assert.doesNotThrow(() => new vm.Script(read('public/js/mpo-bots.js'), { filename: 'mpo-bots.js' }));
   assert.match(dashJs, /portfolioSeries: compactSeries\(s\.portfolioSeries,1000,600\)\.map\(roundSeriesPoint\)/);
   const ctx = vm.createContext({}); vm.runInContext(dashJs.slice(dashJs.indexOf('const roundSol='), dashJs.indexOf('// alpha.53:')), ctx);
   assert.deepEqual(JSON.parse(vm.runInContext("JSON.stringify(roundSeriesPoint({ts:1,mode:'PAPER',equitySol:0.95982771586,cashSol:1,unrealizedSol:null}))", ctx)), { ts: 1, mode: 'PAPER', equitySol: 0.959828, cashSol: 1, unrealizedSol: null });

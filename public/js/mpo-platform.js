@@ -44,11 +44,16 @@ window.MPOSPlatform = (() => {
       return `<div class="g-wx-row"><span class="g-wx-city">${escape(c.label)}<small>${escape(dateLabel(m.date))}</small></span><span class="g-wx-dist" title="Kalshi bucket prices; outlined bucket holds the NWS forecast">${m.buckets.map(b=>`<i class="${inBucket(b,m.nwsHigh)?'nws':''}" style="--p:${Math.max(4,Math.round(b.p/hi*100))}%" title="${escape(b.lo==null?'≤'+b.hi:b.hi==null?b.lo+'+':b.lo+'–'+b.hi)}°F · ${Math.round(b.p*100)}¢"></i>`).join('')}</span><span class="g-wx-fig">NWS ${deg(m.nwsHigh)} · mkt ${deg(m.expectedHigh)}${Number.isFinite(m.gap)?` <b class="${Math.abs(m.gap)>=2?(m.gap>0?'g-pos':'g-neg'):''}">${m.gap>0?'+':m.gap<0?'−':''}${Math.abs(m.gap).toFixed(1)}°</b>`:''}</span></div>`;}).join('')}</div>`
       :`<div class="g-empty">${kalshiWxError?escape('Weather desk unavailable: '+kalshiWxError):'Loading NWS forecasts and Kalshi weather markets (first load can take a minute)…'}</div>`;
     const next=rows.map(r=>r.m.closeAt).sort((a,b)=>a-b)[0];
-    return glance({title:'Kalshi · weather desk',pill:{label:'Paper · no Kalshi bot yet',tone:'warn'},
-      hero:top?`${top.m.gap>0?'+':top.m.gap<0?'−':''}${Math.abs(top.m.gap).toFixed(1)}`:'—',heroUnit:'°F',
-      heroSub:top?escape(`Biggest forecast − market gap: ${top.c.label} ${dateLabel(top.m.date)} · NWS ${deg(top.m.nwsHigh)} vs market ${deg(top.m.expectedHigh)}`):'Biggest NWS forecast − Kalshi market gap',
-      stats:[{label:'Cities',value:String(kalshiWx?.cities?.length??'—')},{label:'Gaps ≥ 2°F',value:kalshiWx?String(gaps.filter(r=>Math.abs(r.m.gap)>=2).length):'—'},{label:'Next close',value:next?new Date(next).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}):'—'}],
-      visual:list,foot:gFoot(['bars = Kalshi prices per °F bucket','outlined = NWS forecast','a gap is a question, not a signal'])});
+    // Paper bots (mpo-bots.js): hero is the combined weather + BTC paper equity; weather bars stay as the visual.
+    const bots=window.MPOBots?.data?.kalshi,w=bots?.weather,b=bots?.btc,on=w?.settings?.enabled||b?.settings?.enabled;
+    const eq=bots?w.equityUsd+b.equityUsd:null,start=bots?w.startUsd+b.startUsd:null,open=bots?w.open.length+b.open.length:null,settled=bots?w.stats.settled+b.stats.settled:0,wins=bots?w.stats.wins+b.stats.wins:0;
+    const money=v=>'$'+Number(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+    const botRow=(name,x)=>x?gRow(name,`${x.settings.enabled?'on':'paused'} · ${x.open.length} open · ${x.stats.settled} settled${x.stats.brierModel!=null?` · model ${x.stats.brierModel<x.stats.brierMarket?'beats':'trails'} market`:''}`,`${money(x.equityUsd)}`,x.lastError?'bad':x.settings.enabled?'ok':'warn'):'';
+    return glance({title:'Kalshi · paper bots',pill:bots?{label:on?'Paper bots on':'Paper bots paused',tone:on?'ok':'warn'}:{label:'Paper',tone:''},
+      hero:eq!=null?money(eq):'—',
+      heroSub:eq!=null?`<span class="${eq>=start?'g-pos':'g-neg'}">${eq>=start?'+':'−'}${Math.abs((eq-start)/start*100).toFixed(2)}%</span> · weather + BTC paper bots (simulated)`:'Weather + BTC paper bots',
+      stats:[{label:'Open bets',value:open==null?'—':String(open)},{label:'Settled · won',value:bots?`${settled} · ${wins}`:'—'},{label:'Gaps ≥ 2°F',value:kalshiWx?String(gaps.filter(r=>Math.abs(r.m.gap)>=2).length):'—'}],
+      visual:`${bots?`<div class="g-rows">${botRow('Weather bot',w)}${botRow('BTC range bot',b)}</div>`:''}${list}`,foot:gFoot([top&&`biggest gap ${top.c.label} ${top.m.gap>0?'+':''}${top.m.gap}°F`,'bars = Kalshi prices per °F bucket','outlined = NWS forecast',next&&`next close ${new Date(next).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}`])});
   }
   const button=(action,label,extra='')=>`<button class="btn" data-core-action="${action}" ${extra} ${busy&&action!=='halt'?'disabled':''}>${label}</button>`;
   async function request(route,data){

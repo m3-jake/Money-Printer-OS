@@ -12,6 +12,7 @@
 <script src="/js/mpo-hud-runtime.js"></script>
 <script src="/js/mpo-viz.js"></script>
 <script src="/js/mpo-roll.js"></script>
+<script src="/js/mpo-bots.js"></script>
 <link rel="stylesheet" href="/css/mpo-platform.css">
 <script src="/js/wallet-crowd.js"></script>
 <script src="/js/mpo-platform.js"></script>
@@ -454,8 +455,10 @@ const APPS=[
 ['pmpositions','Positions','PM','dark','sportsbook'],
 ['pmhistory','History','PM','dark','sportsbook'],
 ['pmperformance','Performance','PM','dark','sportsbook'],
+['pmcopy','Copy trading','CPY','dark','sportsbook'],
 ['command','Command Center','CMD','dark'],
 ['kalshi','Kalshi','K','dark'],
+['kalshibots','Paper bots','BOT','dark','kalshi'],
 ['arbitrage','Arbitrage','ARB','dark','command'],
 ['stocks','Stocks','STK','dark','command'],
 ['marketlab','Market Lab','RPL','dark','command'],
@@ -475,7 +478,7 @@ const APPS=[
 ['settings','Settings','⚙','light','system']
 ];
 const ICON_PNG={money:'money.png',command:'command.png',trade:'trade.png',sportsbook:'sportsbook.png',kalshi:'kalshi.png',arbitrage:'arbitrage.png',wire:'wire.png',stocks:'stocks.png',marketlab:'marketlab.png',macro:'macro.png',edgar:'edgar.png',weather:'weather.png',sports:'sports.png',robinhood:'robinhood.png',journal:'journal.png',system:'settings.png',network:'network.png',settings:'settings.png'};
-const TAB_LABEL={sportsbook:'Live combos',trade:'Pump.fun',evolution:'Evolution Lab',wallet:'Wallets',risk:'Risk',archive:'Archive',control:'Controls',researchmon:'Lab Monitor',command:'Command',arbitrage:'Arbitrage',stocks:'Stocks',marketlab:'Market Lab',macro:'Macro',edgar:'EDGAR',weather:'Weather',sports:'Sports',wire:'Wire',system:'Monitor',economics:'Product',network:'Network',log:'Log',updater:'Updater',settings:'Settings'};
+const TAB_LABEL={sportsbook:'Live combos',trade:'Pump.fun',evolution:'Evolution Lab',wallet:'Wallets',risk:'Risk',archive:'Archive',control:'Controls',researchmon:'Lab Monitor',command:'Command',arbitrage:'Arbitrage',stocks:'Stocks',marketlab:'Market Lab',macro:'Macro',edgar:'EDGAR',weather:'Weather',sports:'Sports',wire:'Wire',system:'Monitor',kalshi:'Markets',kalshibots:'Paper bots',pmcopy:'Copy trading',network:'Network',log:'Log',updater:'Updater',settings:'Settings'};
 const DESKTOP_ICONS=['money','command','trade','sportsbook','kalshi','robinhood','journal','system'];
 const appMeta=id=>APPS.find(a=>a[0]===id);
 const hostOf=id=>appMeta(id)?.[4]||id;
@@ -1634,8 +1637,10 @@ function glanceSportsbook(){
  setGlance('sportsbook',glance({title:'Polymarket US · live combos',pill,
   hero:Number.isFinite(bal)?money(bal):'—',heroSub:polyUSAccount?.keyStatus==='VERIFIED'?'Balance · key verified':'Balance',
   stats:[{label:'Live games',value:String(f.eventsLive??'—')},{label:'Picks',value:String(f.candidates??picks.length)},{label:'Open bets',value:String((j.open||[]).length)}],
-  visual:viz,foot:gFoot([st.placed?`settled ${gSigned(st.pnlUsd,2)} USD`:'no settled bets yet',block&&`autopilot: ${block}`])}));
+  visual:viz+copyBotRow(),foot:gFoot([st.placed?`settled ${gSigned(st.pnlUsd,2)} USD`:'no settled bets yet',block&&`autopilot: ${block}`])}));
 }
+// Polymarket copy bot (paper, global Polymarket) as one row in the Polymarket glance.
+function copyBotRow(){const c=window.MPOBots?.data?.polycopy;return c?`<div class="g-rows">${gRow('Copy bot · paper',`${c.settings.enabled?'on':'paused'} · ${c.follows.length} leaders · ${c.open.length} open · ${c.stats.closed} closed`,`${money(c.equityUsd)} <span class="${gTone(c.returnPct)}">${gSigned(c.returnPct,2,'%')}</span>`,c.lastError?'bad':c.settings.enabled?'ok':'warn')}</div>`:''}
 function glanceRobinhood(){
  const r=rhState||{},pp=r.paper||{},st=pp.stats||{},eq=Number(pp.equityUsd),start=Number(pp.startUsd)||0,ev=r.evolve||{};
  const rec=r.readiness?.recoveryRequired||pp.recoveryRequired;
@@ -1684,7 +1689,7 @@ function glanceMoney(){
 }
 const GLANCE={
  trade:{render:glanceTrade,sig:()=>{const s=state||{},p=s.portfolio||{},ps=s.portfolioSeries||[];return[p.equitySol,s.dailyPnlSol,s.system?.paused,s.system?.killSwitch,s.system?.health,(s.positions||[]).length,s.solanaBook?.hitRate,s.watchlist,s.memeIndex,s.system?.opportunityFunnel,s.walletIntel?.holderRpc?.status,s.evolutionLoop?.generation,ps.length,ps.at(-1)?.ts,s.market?.solUsd,s.mode]}},
- sportsbook:{render:glanceSportsbook,sig:()=>[polyUSComboState,polyUSAccount?.balance,polyUSAccount?.keyStatus]},
+ sportsbook:{render:glanceSportsbook,sig:()=>{const c=window.MPOBots?.data?.polycopy;return[polyUSComboState,polyUSAccount?.balance,polyUSAccount?.keyStatus,c?.equityUsd,c?.open?.length,c?.lastRunAt]}},
  robinhood:{render:glanceRobinhood,sig:()=>{const r=rhState||{};return[r.at,r.paper?.equityUsd,r.paper?.positions?.length,r.paper?.stats,r.quotes,r.loop?.running,r.evolve?.generation,r.evolve?.phase,r.paper?.autopilot?.enabled,r.readiness?.recoveryRequired,rhEq?.at,rhEq?.data?.status,rhEq?.book?.equityUsd,r.practice?.equityUsd,r.practice?.telemetry?.loopStatus,r.practice?.settings?.autopilot,r.practice?.positions?.length,r.practice?.lastError]}},
  system:{render:glanceSystem,sig:()=>{const s=state||{},m=s.system?.metrics||{},e=s.evolutionLoop||{};return[sysHist.length,sysHist.at(-1)?.at,s.system?.health,s.mode,e.status,e.generation,e.workerCount,s.walletIntel?.holderRpc?.status,s.walletIntel?.holderRpc?.calls,(networkState?.peers||[]).filter(x=>x.online).length,Math.round((m.cycleMs||0)/100)]}},
  journal:{render:glanceJournal,sig:()=>[projectJournal?.rows?.length,projectJournal?.rows?.[0]?.at,journal.length,journal.at(-1)?.ts]},
@@ -1703,6 +1708,7 @@ function renderAll(force=false){
  window.MPOSports?.render();
  window.MPOWire?.render();
  window.MPOWhales?.render();
+ window.MPOBots?.render();
  if(force)renderSig.clear(); const s=state||{},m=s.system?.metrics||{},e=s.evolutionLoop||{},p=s.portfolio||{};
  sampleSystem();renderGlances();
  renderChanged('trade',[p.equitySol,p.cashSol,s.dailyPnlSol,s.system?.health,s.system?.paused,s.system?.killSwitch,s.watchlist,s.positions,s.solanaBook],renderTrade);

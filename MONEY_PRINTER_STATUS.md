@@ -43,6 +43,46 @@ Last updated: 2026-09-28, remediation pass P0–P5 on the `v0.5.0-alpha.71` tree
 Evolution Lab alpha.11 paired Windows release described above is unchanged, and no release pair was
 built, signed or installed in this pass. Version `0.5.0-alpha.71`.
 
+## Batch PF-2 (2026-10-02, Claude): paywall removed, Kalshi weather/BTC paper bots, Polymarket copy bot, smaller icons
+
+Same branch, `claude/paper-focus-20261002`. bing: "delete the paywalls", build the Kalshi paper weather bot and the
+rest of the recommended bots, make the desktop icons smaller, audit the Evolution Lab.
+
+- **Paywall gone.** Removed: the System → Product Economics tab, `/api/product-economics` (+ `/event`), visitor and
+  activation telemetry, `src/productEconomics.js`, its tests and docs, and the queued Research Pro plan. The
+  uncommitted Research Pro WIP in `W:\money-printer-os` was deleted after a patch backup in this session's scratchpad.
+  The old `product-economics.sqlite` in AppData is now unused and harmless.
+- **Kalshi paper bots** (`src/kalshiBots.js`, book `<data>/kalshi-paper-bots.json`, no order code):
+  - **weather:** the NWS forecast becomes per-bucket odds, high ~ Normal(forecast + bias, σ = 1.6 + 1.0 °F per day
+    to close).
+  - **btc:** KXBTCD/KXBTC from Coinbase spot and realized vol: 1-minute vol for bets closing within 6 h, 24 h of
+    5-minute vol beyond that, × 1.25.
+  - **Shared rules:** both sides of each contract are scored after the Kalshi taker fee, at most one bet per event,
+    fills walk the live book, settlement uses the market's own result, and the Brier score of model vs market is
+    recorded per bet.
+  - **Max model–market gap 0.2:** larger disagreements are logged and skipped. In live checks BTC realized vol was
+    about 3× what Kalshi's range ladder implied, so a large gap is treated as a likely model error until the Brier
+    data says otherwise.
+  - **Kalshi calls** are paced, and rate-limit answers are retried with backoff.
+- **Polymarket copy bot** (`src/polymarketCopy.js`, book `<data>/polymarket-copy-paper.json`):
+  - **Leaders:** the WEEK-by-PnL leaderboard at the moment of following, filtered on volume ≥ $100k and
+    PnL/volume ≥ 2% (no market makers).
+  - **Copying:** only trades made after following are copied. Fills are at the live CLOB ask when the copy is
+    noticed, up to a max chase of +3¢ over the leader's price, with the market's own taker fee. Copies sell when the
+    leader sells and settle from Gamma outcomePrices.
+  - **Venue:** global Polymarket prices, labelled as not Polymarket US.
+- **Runs:** in `dashboard.js`: weather every 10 min, BTC every 3 min (first run at 2.5 min), copy every minute. Off under
+  `node --test` or with `MPO_PAPER_BOTS=false`. `GET /api/bots`; `POST /api/bots/{config,run,reset,unfollow}` (reset
+  needs `RESET BOT`).
+- **HUD** (`public/js/mpo-bots.js`): Kalshi → "Paper bots" tab, Polymarket → "Copy trading" tab. The Kalshi glance hero
+  is now the bots' paper equity, with the weather bars kept; the Polymarket glance gets a copy-bot row.
+- **Desktop icons** are about 25% smaller (56 → 42 px image, 100 → 80 px cell).
+- **Evolution Lab audit:** `docs/EVOLUTION-LAB-AUDIT-2026-10-02.md`. 1.36 billion variants on 1,827 samples, champion
+  held-out t 0.89 vs 6.51 required, and every module "no edge". Recommendation: rebuild it as a Research Workbench
+  (recorder, calibrators, forward-test farm), not more search.
+- **Tests:** new `tests/paper-bots.test.mjs` (5, offline) in `test:paper-bots`. Per-file run: 1153 tests, 1130 pass;
+  only the 22 pre-existing Robinhood live-engine failures remain, plus one fixed in this batch.
+
 ## Batch PF-1 (2026-10-02, Claude): paper focus — Robinhood paper-only HUD, Kalshi glance, rolling numbers, lag
 
 Branch `claude/paper-focus-20261002` (worktree `W:\mpo-paper-focus`) from cc3ef07. Not built or installed. bing asked for an
@@ -86,7 +126,7 @@ animated graphs, and a rolling cash-register / slot-machine effect when major nu
 - **Robinhood (this branch):** `src/robinhood*.js`, paper only. Real execution isn't installed. See `docs/ROBINHOOD-AUTO-TRADER.md` and `docs/ROBINHOOD-RECOVERY-2026-09-25.md`.
 - **Research/evidence:** `src/researchCollector.js` writes the tape to `<data>/research-evidence/raw/*.ndjson`. Around it sit `researchEvidenceGate/Store`, `researchControlPlane` and `polymarketResearchEval`. The gate is intentionally not wired into the live app.
 - **Evolution Lab** lives in a separate repo, `money-printer-evolution-lab`, and is the shared research brain for every module: Solana (labLoop/BEAST), plus parallel `module-robinhood` and `module-polymarket` workers (`src/moduleResearch.js`). Valid module ids come from its `src/researchModules.js`. It writes `<trader data>/lab-link/modules/<id>.json` and paper-only `<id>-champion.json`. It is NOT the dropped "agent lab" harness.
-- **Tests:** 138 suites in `tests/` across 33 targets, run by `npm run test:all` (`test:wiring` fails first if a suite becomes unreachable). **Not green as of 2026-10-02:** 22 Robinhood real-money engine tests fail (robinhood-signer 11, robinhood-auto-trader 6, robinhood-safety 3, robinhood-auto 1, live-gate 1) because the paper-only transport lock refuses the live paths they exercise; they fail identically on cc3ef07. Everything is mocked and uses temp dirs.
+- **Tests:** 139 suites in `tests/` across 34 targets, run by `npm run test:all` (`test:wiring` fails first if a suite becomes unreachable). **Not green as of 2026-10-02:** 22 Robinhood real-money engine tests fail (robinhood-signer 11, robinhood-auto-trader 6, robinhood-safety 3, robinhood-auto 1, live-gate 1) because the paper-only transport lock refuses the live paths they exercise; they fail identically on cc3ef07. Everything is mocked and uses temp dirs.
 
 ## Confirmed working (2026-09-25)
 
