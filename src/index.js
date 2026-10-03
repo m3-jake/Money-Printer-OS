@@ -852,6 +852,7 @@ async function cycle(budget = null) {
   s.system.metrics.cycleMs = Math.round(performance.now() - cycleStart);
   try{persistPumpCapture(s,cfg,ranked);}catch(e){s.system.profitCaptureError=compactError(e);if(s.pumpProfitCapture)s.pumpProfitCapture.experimentPaused=true;}
   try{writeCrowdBaselineFeed(s,cfg,ranked);}catch(e){s.system.crowdCaptureError=compactError(e);}
+  if (budget?.abandoned) return; // a stalled cycle the loop already gave up on: its state is stale
   s.system.metrics.saveMs = saveState(s) || s.system.metrics.saveMs || 0;
 
   console.clear();
@@ -931,10 +932,15 @@ async function main() {
     const budget = createCycleBudget();
     activeBudget = budget;
     setCycleSignal(budget.signal);
+    // A cycle that runs past twice its budget has stalled on an await nothing can cancel: abandon it (it never saves),
+    // say where it was, and keep trading. Before this, one such await froze the engine for good.
+    let stallTimer = null;
+    const stallMs = Math.max(60_000, 2 * (budget.budgetMs || cfg.cycleBudgetMs));
     try {
-      await cycle(budget);
+      await Promise.race([cycle(budget), new Promise((_, reject) => { stallTimer = setTimeout(() => { budget.abandon(); const e = new Error(`engine cycle stalled after stage ${budget.lastStage} (${stallMs}ms); abandoned`); e.code = 'CYCLE_STALLED'; reject(e); }, stallMs); stallTimer.unref?.(); })]);
     } catch (error) {
-      if (isCycleBudgetError(error)) {
+      if (error?.code === 'CYCLE_STALLED') { const st = loadState(); st.system ||= {}; st.system.lastStall = { at: Date.now(), stage: budget.lastStage, ms: stallMs, count: Number(st.system.lastStall?.count || 0) + 1 }; saveState(st); console.error(error.message); appendJournal({ type: 'error', mode: 'PAPER', message: error.message }); }
+      else if (isCycleBudgetError(error)) {
         // Abandoned at its budget, not broken: its own journal type and counter, so a slow provider
         // never looks like an engine error (recordCycleBudgetAbort degrades only if it repeats).
         const aborted = recordCycleBudgetAbort({ error, budgetMs: budget.budgetMs });
@@ -948,6 +954,7 @@ async function main() {
           : recovery.message);
       }
     } finally {
+      clearTimeout(stallTimer);
       setCycleSignal(null);
     }
     if (once) { shutdown(); break; }

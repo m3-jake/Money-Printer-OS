@@ -1687,7 +1687,7 @@ function glanceTrade(){
  const s=state||{},p=s.portfolio||{},b=s.solanaBook||{},sys=s.system||{},sol=overviewNumber(s.market?.solUsd),eq=overviewNumber(p.equitySol),sc=s.walletIntel?.scorecard;
  const rv=s.system?.opportunityFunnel?.priceReviews;
  const killed=!!sys.killSwitch,paused=!!sys.paused,wl=s.watchlist||[],ready=wl.filter(x=>String(x.stage||'').toUpperCase()==='READY').length,h=s.walletIntel?.holderRpc,mode=String(s.mode||'paper').toUpperCase();
- const pill=!state?{label:'Connecting',tone:'warn'}:killed?{label:'Kill switch',tone:'bad'}:paused?{label:'Paused',tone:'warn'}:sys.health==='DEGRADED'?{label:'Degraded',tone:'bad'}:sys.health==='CAUTION'?{label:'Trading · caution',tone:'warn'}:{label:sys.health==='HEALTHY'?'Trading':'Starting',tone:sys.health==='HEALTHY'?'ok':'warn'};
+ const pill=!state?{label:'Connecting',tone:'warn'}:sys.engineStalled?{label:`Engine stalled · ${Math.round((sys.engineCycleAgeMs||0)/60000)} min`,tone:'bad'}:killed?{label:'Kill switch',tone:'bad'}:paused?{label:'Paused',tone:'warn'}:sys.health==='DEGRADED'?{label:'Degraded',tone:'bad'}:sys.health==='CAUTION'?{label:'Trading · caution',tone:'warn'}:{label:sys.health==='HEALTHY'?'Trading':'Starting',tone:sys.health==='HEALTHY'?'ok':'warn'};
  const ps=(s.portfolioSeries||[]).filter(q=>overviewNumber(q.ts)!==null&&overviewNumber(q.ts)<=Date.now()).slice(-200);
  const equity=window.MPOViz?homeLines('pf-equity',[{label:'Scanner equity · SOL',color:'#39ff68',points:ps.map(q=>q.equitySol),times:ps.map(q=>q.ts)}],'Scanner book · SOL equity this session',190,{observationOnly:true}):'<div class="g-fill" style="height:190px"><canvas class="g-graph" id="glanceChart" aria-label="Equity this session"></canvas></div>';
  const viz=window.MPOViz?(tradeViz(s),`${MPOViz.canvas('pf-ticker',26)}${equity}${MPOViz.canvas('pf-pulse',38)}<div class="live-chart-grid">${MPOViz.canvas('pf-meme',128,'meme market')}${MPOViz.canvas('pf-map',128,'opportunity map')}${MPOViz.canvas('pf-funnel',128,'entry funnel')}</div>`):equity;
@@ -1959,6 +1959,8 @@ function applyTelemetry(t){
  state=state||{};
  state.system=state.system||{};
  if(t.metrics)state.system.metrics={...(state.system.metrics||{}),...t.metrics};
+ // A stalled engine loop (no finished cycle for minutes) shows as DEGRADED everywhere, labelled in the Pump.fun card.
+ if(t.engine){state.system.engineStalled=!!t.engine.stalled;state.system.engineCycleAgeMs=t.engine.ageMs;if(t.engine.stalled)state.system.health='DEGRADED'}
  state.system.resources=t.resources||null;
  state.walletIntel=state.walletIntel||{};
  state.walletIntel.holderRpc=t.holderRpc||null;

@@ -106,3 +106,21 @@ test('the engine installs the budget signal for every market read and asserts pe
   const dex = fs.readFileSync(new URL('../src/dexscreener.js', import.meta.url), 'utf8');
   assert.match(dex, /signal:cycleSignal/, 'the signal reaches every dex/gecko read through getJson');
 });
+
+// 2026-10-03: the engine sat inside one cycle for 100+ minutes (an await nothing could cancel) while health said HEALTHY.
+test('a stalled cycle is abandoned: it records its last stage, aborts in-flight work and never saves', () => {
+  let now = 0;
+  const budget = createCycleBudget({ budgetMs: 45000, now: () => now });
+  budget.assertAlive('positions'); budget.assertAlive('discovery');
+  assert.equal(budget.lastStage, 'discovery'); assert.equal(budget.abandoned, false);
+  budget.abandon();
+  assert.equal(budget.abandoned, true); assert.equal(budget.signal.aborted, true);
+  assert.throws(() => budget.assertAlive('enrichment'), e => isCycleBudgetError(e) && /stalled after discovery/.test(e.message));
+});
+
+test('the engine loop races each cycle against a stall timer, skips a late save, and health reports STALLED', () => {
+  const src = fs.readFileSync(new URL('../src/index.js', import.meta.url), 'utf8'), dash = fs.readFileSync(new URL('../src/dashboard.js', import.meta.url), 'utf8');
+  assert.match(src, /await Promise\.race\(\[cycle\(budget\), new Promise\(/, 'a stalled cycle cannot block the loop');
+  assert.match(src, /if \(budget\?\.abandoned\) return;[^\n]*\n\s*s\.system\.metrics\.saveMs = saveState\(s\)/, 'an abandoned cycle never overwrites newer state');
+  assert.match(dash, /health: stalled \? 'STALLED'/); assert.match(dash, /engine = \{ lastCycle: lc, ageMs: age, stalled:/);
+});

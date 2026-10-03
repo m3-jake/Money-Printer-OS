@@ -109,8 +109,10 @@ function statePayload(tag) {
 function telemetryView() {
   let pumpfunCopy = null;
   try { pumpfunCopy = pumpfunCopyPaper().summary(); } catch (e) { pumpfunCopy = { status: 'QUOTE_UNAVAILABLE', lastError: String(e.message).slice(0,200), equityUsd: null }; }
+  // The engine loop's heartbeat: a loop with no finished cycle for a long time is stalled (the HUD turns red).
+  let engine = null; try { const lc = loadStateCached()?.system?.lastCycle || null, age = lc ? Date.now() - lc : null; engine = { lastCycle: lc, ageMs: age, stalled: age != null && age > Math.max(180_000, 4 * (cfg.cycleBudgetMs || 45_000)) }; } catch {}
   return { at: Date.now(), metrics: systemTelemetry(), resources: resourceSnapshot(), holderRpc: holderRpcHealth(), walletScorecard: walletScorecardView(),
-    pumpfunCopy,
+    pumpfunCopy, engine,
     note: 'Sampled live and never cached: merged by the HUD on top of /api/state. Keep it out of any ETag.' };
 }
 // Telemetry failure must never make a completed paper order look rejected.
@@ -573,9 +575,12 @@ export function startDashboard() {
       if (req.method === 'GET' && u.pathname === '/api/telemetry') return json(res, telemetryView());
       if (req.method === 'GET' && u.pathname === '/api/health') {
         const s = loadState();
+        // A loop that has not finished a cycle in a long time is STALLED, whatever the last cycle said.
+        const cycleAge = s.system?.lastCycle ? Date.now() - s.system.lastCycle : null, stalled = cycleAge != null && cycleAge > Math.max(180_000, 4 * (cfg.cycleBudgetMs || 45_000));
         return json(res, {
-          ok: s.system?.health !== 'DEGRADED',
-          health: s.system?.health || 'UNKNOWN',
+          ok: s.system?.health !== 'DEGRADED' && !stalled,
+          health: stalled ? 'STALLED' : s.system?.health || 'UNKNOWN',
+          stall: stalled ? { lastCycleAgeMs: cycleAge, lastStall: s.system?.lastStall || null } : null,
           lastCycle: s.system?.lastCycle || null,
           metrics: { ...(s.system?.metrics || {}), ...systemTelemetry() },
           diagnostics: s.system?.diagnostics || [],

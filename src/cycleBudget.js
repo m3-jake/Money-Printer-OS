@@ -27,7 +27,7 @@ export function createCycleBudget({ budgetMs = cfg.cycleBudgetMs, now = Date.now
   const limit = Math.max(0, Number(budgetMs) || 0);
   const deadline = startedAt + limit;
   const controller = new AbortController();
-  let abortedStage = null;
+  let abortedStage = null, lastStage = 'start', abandoned = false;
   const elapsed = () => Math.max(0, now() - startedAt);
   // A zero budget means "no deadline" (the switch is off), not "expire immediately".
   const expired = () => limit > 0 && elapsed() >= limit;
@@ -50,6 +50,7 @@ export function createCycleBudget({ budgetMs = cfg.cycleBudgetMs, now = Date.now
     remainingMs: () => Math.max(0, deadline - now()),
     // Call this at a phase boundary. Over budget means: stop now, with a reason the caller can log.
     assertAlive(stage = label) {
+      lastStage = stage;
       if (abortedStage) throw fail(abortedStage);
       if (limit > 0 && expired()) throw fail(stage);
     },
@@ -57,6 +58,10 @@ export function createCycleBudget({ budgetMs = cfg.cycleBudgetMs, now = Date.now
     abort(stage = 'shutdown') {
       if (!abortedStage) fail(stage);
     },
+    // The loop gave up waiting for this cycle (it stalled): it must not save state if it ever finishes.
+    abandon() { abandoned = true; if (!abortedStage) fail('stalled after ' + lastStage); },
+    get abandoned() { return abandoned; },
+    get lastStage() { return lastStage; },
     view() {
       return { label, budgetMs: limit, elapsedMs: elapsed(), remainingMs: Math.max(0, deadline - now()), aborted: !!abortedStage, abortedStage, expired: limit > 0 && expired() };
     },
