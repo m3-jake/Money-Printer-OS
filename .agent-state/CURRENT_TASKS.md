@@ -1,4 +1,32 @@
-# Current integration — OS alpha.76 / Lab alpha.16
+# Current source checkpoint — 2026-10-03 OS alpha.83 / Lab alpha.20
+
+The interrupted October 3 Claude audit work is integrated in the release worktrees
+`W:/mpo-accounts-views` and `W:/lab-workbench`. Current source versions are
+`0.5.0-alpha.83` and `0.1.0-alpha.20`. See `docs/APP-AUDIT-2026-10-03.md` and
+`MONEY_PRINTER_STATUS.md` for completed behavior and evidence limits. Earlier entries below
+are historical and do not reinstate withdrawn tasks. The earlier remediation ledger remains
+`PROGRESS.md`; `AUDIT.md` explains its verified premises.
+
+Implemented: wider Robinhood crypto observations, separate exploration, multi-day Lab research,
+cost-aware practice entries, cent-conserving daily sleeves and prospective quote qualification;
+bounded Lab workbench replay and weather feedback; Kalshi game-winner copy mirror; separate
+$25 scored-wallet Pump.fun copy paper book; reduced raw capture rates and focused glass blur.
+Corrupt books, stale observations and missing executable quotes refuse new entries. Historical
+weather replay remains diagnostic and negative; no strategy is newly claimed profitable.
+
+Remaining inputs: Alpaca credentials for stock/ETF quotes; operator-provided `SEC_USER_AGENT`
+and implementation of SEC insider/13F copy research; 14 actual daily leaderboard snapshots
+before copy-leader replay; bangbowbing hub deployment for web accounts. These cannot be replaced
+by simulated evidence or elapsed calendar days.
+
+Release gates: full source suites, clean exact commits, archive smoke and matching runtime
+provenance. Installed status comes only from matching `PAIRED-RELEASE.json` receipts and the
+running commits. Signed updater publication, Mac verification and a literal 24-hour observation
+remain separate evidence boundaries. Real-money and paid-model execution stay disabled.
+
+---
+
+# Historical integration — OS alpha.76 / Lab alpha.16
 
 The interrupted 16-task paper package and uncommitted quant library are integrated. Full source checks: OS 1,021 pass; Lab 279 pass. See reports/COMPLETION-2026-09-28.md. Installed status is established only by PAIRED-RELEASE.json and runtime commits after the paired installer succeeds. Historical records below do not override this entry. Real-money and paid-model execution stay disabled.
 
@@ -40,9 +68,11 @@ authentic executable-price/tape evidence rather than weakening qualification gat
 paper-bankroll resets and the requested desktop/logo polish are part of this release, not follow-up
 tasks.
 
-## Profit Lab queue — refreshed 2026-09-28
+## Historical Profit Lab queue — withdrawn 2026-10-02
 
-Highest-leverage unfinished profitability task: Research Pro monetization v1. Revenue/funnel instrumentation already exists; do not duplicate it. Fresh GitHub verification: `main` = `eba1bc5bd905688c6ca36fe8b2858250ce983922` / `0.5.0-alpha.75`; monetization is still absent, and the Profit Lab monetization branch is 0 ahead / 23 behind. Refresh the isolated branch to that verified main before applying the alpha.75 package staged at `W:\money-printer-audit-artifacts\profit-lab\research-pro-v1-alpha75`. Keep monetization disabled by default and gate read-only research detail only, never trading/risk/execution. Acceptance requires `git diff --check`, the focused monetization suite, and the full `npm run test:all` before merge.
+The Research Pro monetization plan and Product Economics window were removed at the user's
+request in the October 2 paper-focus pass (`3128cc3`). They are not active unfinished work.
+Do not restore the old monetization branch or staged alpha.75 package as part of paper research.
 
 Implementation and verification of the September 26 upgrade remain recorded in
 `reports/UPGRADE-IMPLEMENTATION-2026-09-26.md`; current operator documentation is

@@ -1,4 +1,38 @@
-# Current project state — 2026-09-27
+# Current project state — 2026-10-03 alpha.83 / Lab alpha.20
+
+The current source pair is Money Printer OS `0.5.0-alpha.83` and Evolution Lab
+`0.1.0-alpha.20`. Release worktrees are `W:/mpo-accounts-views` and `W:/lab-workbench`.
+The canonical repositories remain `W:/money-printer-os` and
+`W:/money-printer-evolution-lab`; unrelated canonical working files are preserved.
+Exact installation status comes from matching `PAIRED-RELEASE.json` receipts, archive hashes,
+trader runtime build fields and Lab health build fields. Source labels alone do not prove installation.
+
+Money Printer OS remains PAPER-only. It owns paper admission, accounting, risk and rollback.
+Evolution Lab defaults to the Research Workbench: bounded replay workers, forecast calibration,
+BTC study, farm review and read-only evidence publication. The old furnace is retired by default;
+Lab candidates do not gain live activation or automatic live promotion authority.
+
+New paper paths include the Kalshi game-winner mirror and a separate $25 scored-wallet Pump.fun
+copy book. Prior wallet evidence, exact-size quotes, modeled costs and bounded exposure gate
+the Pump.fun book. Mirror target identity, coherent settlement and recovery refusal gate the
+Kalshi book. Robinhood uses wider crypto observations and longer research horizons, separate
+exploration, cost-aware practice and prospective quote requirements for daily qualification.
+Historic candles and negative weather replay remain diagnostic, not promotion evidence.
+
+The app retains all Simple/Advanced program views and account integration. Raw capture runs at
+reduced furnace-free rates; focused glass blur reduces repeated rendering work. Measured CPU
+improvements require separate runtime evidence.
+
+Outstanding inputs are Alpaca credentials for equity quotes, operator-provided `SEC_USER_AGENT`
+plus unimplemented SEC insider/13F research, 14 recorded daily leaderboard snapshots, and the
+bangbowbing hub deployment. Signed public updater publication, Mac verification and 24-hour
+observation remain external/time boundaries. Current completion detail is
+`docs/APP-AUDIT-2026-10-03.md`; current work is `.agent-state/CURRENT_TASKS.md`.
+The earlier remediation record remains `AUDIT.md` and `PROGRESS.md`.
+
+---
+
+# Historical project state — 2026-09-27
 **2026-09-28 (audit remediation pass P0–P5, the checkout this was written against):** see `AUDIT.md`
 and `PROGRESS.md`. That checkout carries `0.5.0-alpha.71` (tag `v0.5.0-alpha.71`). The release pair of
 record is unchanged at alpha.67 / Lab alpha.11, and nothing was built, signed or installed during the

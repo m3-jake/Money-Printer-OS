@@ -1,47 +1,52 @@
 # Money Printer OS: status ledger
 
-## Current entry point — 2026-09-27 alpha.67 / Lab alpha.11 paired release
+## Current entry point — 2026-10-03 alpha.83 / Lab alpha.20
 
-The canonical release pair for this pass is Money Printer OS `0.5.0-alpha.67` plus Evolution Lab
-`0.1.0-alpha.11` on Windows/WITCHDOCTOR. The release process is fail-closed: both repositories must
-be clean, both archives carry source provenance, the pair is backed up and swapped transactionally,
-and the updater verifies the exact running trader version/commit, exact Lab version/commit, clean
-packaged provenance, PAPER-only safety switches and the Lab service identity before writing the
-shared `PAIRED-RELEASE.json` receipt. User AppData, P/L, journals, credentials and evidence are not
-reset by the release process.
+The current source pair is Money Printer OS `0.5.0-alpha.83` and Evolution Lab `0.1.0-alpha.20`.
+This completes the interrupted Claude audit implementation in `W:/mpo-accounts-views` and
+`W:/lab-workbench`. Installation is established by matching `PAIRED-RELEASE.json` receipts,
+fresh archive hashes and the running apps' exact build commits. A package version alone is not
+installation evidence. The paired installer retains clean-source, archive smoke, backup, rollback
+and PAPER-only runtime checks. Existing user data, books, P/L, credentials and journals are preserved.
 
-This pair also closes the current product polish requests. Pump.fun/Solana paper testing accepts an
-arbitrary positive starting SOL bankroll down to `0.001` plus `0.15` and `0.25 SOL` presets;
-Robinhood paper/practice accepts small custom USD bankrolls from `$1`; Polymarket US paper epochs
-accept a custom `$1+` starting bankroll. Desktop app icons use a brief press response instead of a
-persistent blue selection box, and the top-right Money Printer OS logo can be grabbed, stretched and
-released with a reduced-motion-aware elastic snap-back.
+### Completed source behavior
 
-The Lab roster includes `robinhood`, `robinhood-equities`, `kalshi`, `polymarket` and
-`polymarket-combo`. The combo and Robinhood lanes remain honest when there is no qualified edge:
-negative holdout/cost economics, incomplete authentic tape or missing executable venue evidence are
-reported as `NO_EDGE`/blocked rather than bypassed. Evolution Lab remains research-only and the
-trader remains authoritative for paper admission, accounting, risk and rollback.
+- Robinhood samples a wider crypto universe, keeps exploration separate from qualification and
+  studies multi-day strategies. Practice entries now require a move covering at least two modeled
+  round-trip costs over a longer observed lookback. Daily paper sleeves conserve every starting
+  cent, and qualification requires prospective venue entry/exit quotes. Candle and late fills
+  remain diagnostic. The Simple view explains the cost wall and waiting conditions.
+- The Lab uses bounded worker replay, forecast calibration, BTC study, farm review and proposal
+  publication. Historical weather replay is diagnostic and negative; no candle result is promoted
+  as forward executable evidence. Weather feedback requires fresh Lab timestamps, supported
+  models, bounded parameters, an improved held-out score and complete ensemble forecasts.
+- Pump.fun has a separate $25 scored-wallet copy paper book: prior profitable round trips, profit
+  without the best trip, observed SOL/USD funding, exact-size native/Jupiter quotes, modeled
+  slippage/network fees, reserve and exposure limits. Missing quotes never create fills or closes.
+- Kalshi mirrors identified Polymarket game-winner buys in a separate paper book. Market identity
+  and game date disambiguate targets; stale/future observations and corrupt accounts refuse entry.
+  Fees fit inside the stake, failed lookups retain queued work, settlements persist coherently, and
+  a running book refuses reset. The existing Polymarket copy bot stays separate.
+- Raw collection runs at furnace-free rates and only the focused window uses glass blur. All
+  existing Simple program cards, web-demo assets and account integration are retained.
 
-Both full source suites must pass before packaging, followed by isolated packaged runtime smoke and
-a post-install paper/research soak. The GitHub updater's signed/public release path remains an
-external boundary: the installed update check currently receives GitHub latest-release HTTP 404 and
-the private repository has no configured `MONEY_PRINTER_UPDATE_TOKEN`. Mac verification is not
-claimed while the Mac is offline, and no literal 24-hour soak is claimed from this repair session.
-Historical entries below are retained.
+### Remaining prerequisites and evidence limits
 
-The 2026-09-28 remediation pass — audit `AUDIT.md`, ledger `PROGRESS.md`, items P0–P5 — is the most
-recent work on this tree. It changed cycle error recovery, the market-request budget, the per-cycle
-budget, the `/api/state` contract, the legacy-book coverage claim, the engine's export surface, and
-these documents of record. Read it before re-inventorying anything below.
+Stocks/ETF quotes need Alpaca credentials. SEC insider/13F copy research remains unimplemented
+and needs an operator-provided `SEC_USER_AGENT` plus usable equity data. Copy-leader walk-forward
+research needs 14 actual daily leaderboard snapshots. The bangbowbing hub needs deployment to
+enable website accounts. No profitable strategy, signed public updater release, Mac installation
+or completed 24-hour observation is inferred from this source checkpoint.
 
-**Read this first.** It is the entry point for each new session. Deeper history lives in `.agent-state/`
-(`CURRENT_TASKS.md`, `KNOWN_BUGS.md`, `PROJECT_STATE.md`, `RELEASE_STATUS.md`) and in `reports/NEXT-STEPS-2026-09-25.md`.
-Don't re-inventory the repo. Update this file at the end of every batch.
+Regression contracts are in `tests/audit-root.test.mjs`, `tests/audit-safety.test.mjs` and
+`tests/pumpfun-copy-paper.test.mjs`; full source and paired package validation are separate release
+gates. Historical measurements and earlier test totals below retain their dates.
 
-Last updated: 2026-09-28, remediation pass P0–P5 on the `v0.5.0-alpha.71` tree. The alpha.67 /
-Evolution Lab alpha.11 paired Windows release described above is unchanged, and no release pair was
-built, signed or installed in this pass. Version `0.5.0-alpha.71`.
+**Read this first.** Current findings and completion are in `docs/APP-AUDIT-2026-10-03.md`.
+Architecture, active work and release evidence live in `.agent-state/PROJECT_STATE.md`,
+`.agent-state/CURRENT_TASKS.md` and `.agent-state/RELEASE_STATUS.md`. The earlier remediation
+ledger remains `AUDIT.md` and `PROGRESS.md`. Later sections below are historical unless dated
+as the current release. Last updated: 2026-10-03.
 
 ## Browser and desktop UI corrections (2026-10-03, Codex)
 
@@ -282,7 +287,7 @@ animated graphs, and a rolling cash-register / slot-machine effect when major nu
 - **Evolution Lab** lives in a separate repo, `money-printer-evolution-lab`, and is the shared research brain for every module: Solana (labLoop/BEAST), plus parallel `module-robinhood` and `module-polymarket` workers (`src/moduleResearch.js`). Valid module ids come from its `src/researchModules.js`. It writes `<trader data>/lab-link/modules/<id>.json` and paper-only `<id>-champion.json`. It is NOT the dropped "agent lab" harness.
 - **Web demo (2026-10-02):** `web-demo/` + `scripts/web-demo/` build a static, browser-only copy of the HUD for a website. `demo-shim.js` answers `/api/*` from a recorded PAPER session (sandboxed engine, scrubbed env, no keys or user data), and refuses every write. Each page load is a new session: a 1 SOL book run by the Lab champion copied in from `lab-link/` at recording time, played for ~30 min from its opening frame. Published to Cloudflare Pages (`money-printer`, moneyprinter.bangbowbing.net). See `web-demo/README.md`; covered by `test:web-demo`.
 - **HUD boot and logo (2026-10-02):** the boot overlay is a Win98-style log-on over open sky. OK, Enter or 6 idle seconds pull the camera back to the hill and fire `mpo:logon`, which shows the welcome and the grabbable money shower (`welcomeShower()`). The corner logo (`initLogoStretch()`) stretches on drag, slingshots on release, glides to a stop and fades back home after 3.5 s idle; its shine lives in the same `.logo-skin`.
-- **Tests:** 140 suites in `tests/` across 35 targets, run by `npm run test:all` (`test:wiring` fails first if a suite becomes unreachable). **Green as of 2026-10-03 (alpha.82):** the 20 Robinhood real-money order-path tests are skipped with a stated reason (this paper-only build refuses that dispatch by design; re-enable them for the live phase), and the two safety tests (live-gate boundary, outbound audit) now pin the stricter lock. Everything is mocked and uses temp dirs.
+- **Tests:** 143 suites in `tests/` across 35 targets, run by `npm run test:all` (`test:wiring` fails first if a suite becomes unreachable). Alpha.83 adds audit and copy-lifecycle regressions. The 20 Robinhood real-money order-path tests remain explicitly skipped because this paper-only build refuses that dispatch; active safety tests still pin the live boundary and outbound audit. Full-suite results are recorded separately from suite reachability.
 
 ## Confirmed working (2026-09-25)
 
