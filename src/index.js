@@ -10,6 +10,7 @@ import { assertLiveConfig } from './liveConfig.js';
 import { discoverCandidates, refreshPair, refreshPositionPairs, discoveryHealth, discoveryFanout, setCycleSignal, solUsdPrice, solUsdPriceSnapshot, batchTokenPrices } from './dexscreener.js';
 import { analyze, explain, marketRegime } from './strategy.js';
 import { mintRisk, benchmarkRpcs } from './rpc.js';
+import { RiskPrefetcher } from './riskPrefetch.js';
 import { loadState, saveState, appendJournal, appendJournalBatch, drainActions, resetPaper } from './store.js';
 import { recordCycleError, markCleanCycle, recordCycleBudgetAbort } from './cycleRecovery.js';
 import { createCycleBudget, isCycleBudgetError } from './cycleBudget.js';
@@ -53,6 +54,8 @@ import { latestJupiterQuote } from './jupiterEvidence.js';
 import { exitSimulation, simulatePaperExit, paperExitQuote, reviewPositionPrice, entrySizing, paperEntryRejection, emptyPriceReviewTally, tallyPriceReview } from './positionExecution.js';
 import { apiUnitEconomicsSnapshot, persistApiUnitEconomics, attributeScanCycle, strategyNetPnlAfterDataCost } from './apiUnitEconomics.js';
 import { assessPortfolioRisk } from './portfolioRisk.js';
+// One background risk prefetcher per engine process (see the risk step in the cycle).
+const riskPrefetch = new RiskPrefetcher({ lookup: mint => mintRisk(mint), concurrency: cfg.mode === 'live' ? 1 : 2 });
 import { estimateRoutedPaperExecution } from './executionSimAggressive.js';
 import { sizeFromEdge, splitTranches, recentClosedReturns } from './sizing.js';
 
@@ -634,17 +637,17 @@ async function cycle(budget = null) {
     else { f.errors = Number(f.errors || 0) + 1; f.lastError = h.error || 'feed error'; f.lastErrorAt = h.ts || Date.now(); }
   }
 
+  // Risk lookups run off the cycle (src/riskPrefetch.js, run C1): the cycle asks for its best candidates and
+  // reads only what is already known. A slow Solana RPC no longer stalls every paper book in the process.
   const riskStart = performance.now();
   const riskMap = new Map();
   const prelim = pairs
     .map(p => analyze(p, null, s.snapshots[p.baseToken?.address], s.runtime, {}))
     .sort((a, b) => b.score - a.score)
-    .slice(0, Math.min(cfg.mode === 'live' ? 8 : 6, pairs.length));
-  // SPRINT paper research must not wait seconds for holder RPC enrichment before every entry.
-  // Live mode and non-SPRINT profiles keep the existing synchronous verification path.
-  const sprintResearch = cfg.mode === 'paper' && s.runtime.profile === 'SPRINT';
-  const riskRows = sprintResearch ? [] : await mapLimit(prelim, cfg.mode === 'live' ? 1 : 2, async a => a.mint ? { mint: a.mint, risk: await mintRisk(a.mint) } : null);
-  for (const row of riskRows) if (row && !row.__error && row.mint && row.risk) riskMap.set(row.mint, row.risk);
+    .slice(0, Math.min(12, pairs.length));
+  riskPrefetch.request(prelim.map(a => a.mint));
+  for (const p of pairs) { const mint = p.baseToken?.address, risk = mint ? riskPrefetch.get(mint) : null; if (risk) riskMap.set(mint, risk); }
+  s.system.riskPrefetch = riskPrefetch.stats();
   s.system.metrics.riskMs = Math.round(performance.now() - riskStart);
 
   const analysisStart = performance.now();
@@ -672,9 +675,9 @@ async function cycle(budget = null) {
     const threshold = evolutionScore?evolutionScore.threshold:Math.min(95, Math.max(20, ap.minScore * .62 + ap.minStrategyScore * .38));
     a.entryThreshold = threshold;
     const checkedRisk = riskMap.get(mint) || null;
-    // PAPER/REPLAY research must not mechanically reject every candidate that was not
-    // selected for expensive holder enrichment. Live mode remains verification-gated.
-    const riskVerifiedEnough = cfg.mode === 'paper' || (!!checkedRisk && !checkedRisk.holderDataUnavailable);
+    // Fail closed (run C1): a mint whose risk is not known yet is not tradable in any mode. Paper accepts a
+    // partial answer (holder data unavailable); live still needs the full one.
+    const riskVerifiedEnough = !!checkedRisk && (cfg.mode === 'paper' || !checkedRisk.holderDataUnavailable);
     a.eligible = riskVerifiedEnough && !(a.critical || []).length && a.fastEdgeScore >= threshold;
     a.riskVerification = checkedRisk ? (checkedRisk.holderDataUnavailable ? 'PARTIAL' : 'VERIFIED') : 'UNSAMPLED';
     if (checkedRisk?.holderDataUnavailable && !(a.warnings || []).includes('holder-data-unavailable')) a.warnings.push('holder-data-unavailable');

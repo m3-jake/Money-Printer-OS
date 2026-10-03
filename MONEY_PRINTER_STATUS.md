@@ -62,6 +62,43 @@ Architecture, active work and release evidence live in `.agent-state/PROJECT_STA
 ledger remains `AUDIT.md` and `PROGRESS.md`. Later sections below are historical unless dated
 as the current release. Last updated: 2026-10-03.
 
+## Batch PF-16 (2026-10-03, Claude): risk lookups off the cycle, one watchdog per paper venue (run items C1, C2)
+
+Done in parallel with Codex's uncommitted A8 work (forward scorecard); no file overlaps with it.
+
+- **C1, risk off the cycle** (`src/riskPrefetch.js`, `src/index.js`).
+  - **Why:** the Pump.fun cycle awaited `mintRisk` (Solana RPC) for its top 6 candidates every cycle. Measured
+    live at 10:50 on the installed alpha.86, FAIR profile: `cycleMs 3240`, `riskMs 2122` (66% of the cycle);
+    it has spiked to about 11 s on a slow RPC.
+  - **Now:** the cycle asks a background prefetcher for its top 12 candidates and reads only answers already
+    cached (2 lookups at a time, 1 in live mode; 120 s TTL; bounded queue). Three failed lookups in a row open a
+    circuit breaker for 60 s; cached answers are still served and nothing is guessed meanwhile.
+  - **Fail closed:** a mint whose risk is not known is not tradable in any mode. Before, paper mode traded
+    unsampled mints, and SPRINT skipped risk entirely to avoid the wait; with no wait, both now need a known risk
+    (paper still accepts a partial answer with holder data unavailable; live still needs the full one). A new
+    candidate becomes tradable one cycle (about 3 s) after it first ranks.
+  - Prefetch state is in `state.system.riskPrefetch` (cached, queued, breaker, lookup p50/p95).
+  - **Expected after install:** `riskMs` is the cache read, well under 100 ms. To be measured after the release.
+  - Found by its test: a queue that waited out the breaker never resumed; `request()` now always pumps.
+- **C2, venue isolation** (`src/venueLoop.js`, `src/dashboard.js`).
+  - The eight paper-bot timers (Kalshi weather, NWS control, BTC, farm weather, farm BTC, Polymarket copy, Kalshi
+    mirror, weather calibration) now each run as a venue loop with their own budget (default twice the cadence,
+    at least 1 min) and stall watchdog. A hung run is reported `STALLED` with how long it has been running; it is
+    not started again on top of itself (two runs would race over one book); every other venue keeps its cadence.
+    `/api/health` gains `venues` and `stalledVenues`. Test: a venue hung for 10 minutes while the copy bot ran
+    all 11 times, then recovered.
+  - **Health was slow because of itself:** `/api/health` re-parsed the 4 MB `state.json` plus the 11.6 MB
+    research state on every probe. It now uses `loadStateCached()` (stamped by the state files). Before, live:
+    p50 325 ms, p95 1.35 s, max 1.80 s over 30 probes. After: to be measured after the release.
+  - **Worker-thread evaluation for the Pump.fun engine:** not done in this batch. The remaining blocking work in
+    the shared process is synchronous (the cycle's ~0.5 s `saveMs` JSON write of a 15 MB state, then parsing it
+    back for readers). A worker would isolate the HUD from that, but engine state is shared with the HUD through
+    those same files, so the cheaper first step is to shrink what is saved each cycle (C3 slows the engine to its
+    PARK verdict). Revisit with numbers after C3.
+- **Verified:** `tests/risk-prefetch.test.mjs` (5), `tests/venue-loop.test.mjs` (3), both in `test:recovery`.
+  Trader `npm run test:all`: 1,282 tests, 1,262 pass, 0 fail (20 skipped), with Codex's uncommitted A8 files
+  present in the tree.
+
 ## Batch PF-15 (2026-10-03, Codex): copy attribution and loss pause (run item A7)
 
 Measured read-only at 10:15 EDT: Polymarket copy has 62 closes, -$126.31 realized, and a marked drawdown of
@@ -488,7 +525,7 @@ animated graphs, and a rolling cash-register / slot-machine effect when major nu
 - **Evolution Lab** lives in a separate repo, `money-printer-evolution-lab`, and is the shared research brain for every module: Solana (labLoop/BEAST), plus parallel `module-robinhood` and `module-polymarket` workers (`src/moduleResearch.js`). Valid module ids come from its `src/researchModules.js`. It writes `<trader data>/lab-link/modules/<id>.json` and paper-only `<id>-champion.json`. It is NOT the dropped "agent lab" harness.
 - **Web demo (2026-10-02):** `web-demo/` + `scripts/web-demo/` build a static, browser-only copy of the HUD for a website. `demo-shim.js` answers `/api/*` from a recorded PAPER session (sandboxed engine, scrubbed env, no keys or user data), and refuses every write. Each page load is a new session: a 1 SOL book run by the Lab champion copied in from `lab-link/` at recording time, played for ~30 min from its opening frame. Published to Cloudflare Pages (`money-printer`, moneyprinter.bangbowbing.net). See `web-demo/README.md`; covered by `test:web-demo`.
 - **HUD boot and logo (2026-10-02):** the boot overlay is a Win98-style log-on over open sky. OK, Enter or 6 idle seconds pull the camera back to the hill and fire `mpo:logon`, which shows the welcome and the grabbable money shower (`welcomeShower()`). The corner logo (`initLogoStretch()`) stretches on drag, slingshots on release, glides to a stop and fades back home after 3.5 s idle; its shine lives in the same `.logo-skin`.
-- **Tests:** 146 suites in `tests/` across 35 targets, run by `npm run test:all` (`test:wiring` fails first if a suite becomes unreachable). Alpha.84 adds observed-chart history, motion, and data-boundary regressions. The 20 Robinhood real-money order-path tests remain explicitly skipped because this paper-only build refuses that dispatch; active safety tests still pin the live boundary and outbound audit. Full-suite results are recorded separately from suite reachability.
+- **Tests:** 148 suites in `tests/` across 35 targets, run by `npm run test:all` (`test:wiring` fails first if a suite becomes unreachable). Alpha.84 adds observed-chart history, motion, and data-boundary regressions. The 20 Robinhood real-money order-path tests remain explicitly skipped because this paper-only build refuses that dispatch; active safety tests still pin the live boundary and outbound audit. Full-suite results are recorded separately from suite reachability.
 
 ## Confirmed working (2026-09-25)
 

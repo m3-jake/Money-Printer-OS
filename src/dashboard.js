@@ -45,6 +45,7 @@ import { BotFarm } from './botFarm.js';
 import { KalshiMirrorPaper } from './kalshiMirror.js';
 import { PolymarketCopyPaper } from './polymarketCopy.js';
 import { registerPaperBots } from './scoreboard.js';
+import { createVenueLoops } from './venueLoop.js';
 import { WeatherCalibrator } from './weatherCalibration.js';
 import { marketPlatform, closeMarketPlatform } from './core/platform.js';
 import { practiceSnapshot,loadPracticeBook } from './robinhoodPractice.js';
@@ -60,6 +61,7 @@ const packageMeta = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 
 const MAX_BODY = 32 * 1024;
 const DATA_DIR = path.resolve(process.env.MONEY_PRINTER_DATA_DIR || path.join(ROOT,'data'));
 let paperBots = null;
+const venueLoops = createVenueLoops();
 // The Evolution Lab's Research Workbench summary (lab-link/workbench.json), if the Lab on this machine has published one.
 function readLabWorkbench(){try{const w=JSON.parse(fs.readFileSync(path.join(DATA_DIR,'lab-link','workbench.json'),'utf8'));return w&&w.schema==='mpo.lab-workbench.v1'?w:null;}catch{return null;}}
 function paperBotsView(){ if(!paperBots) return {ok:false,error:'Paper bots not started'}; return {ok:true,at:Date.now(),mode:'PAPER',kalshi:paperBots.kalshi.snapshots(),polycopy:paperBots.copy.snapshot(),calibration:paperBots.calibration.snapshot(),farm:paperBots.farm.snapshot(),tape:paperBots.tape.stats(),mirror:paperBots.mirror.snapshot(),lab:readLabWorkbench()}; }
@@ -493,11 +495,14 @@ export function startDashboard() {
   const mirror=new KalshiMirrorPaper({dataDir:DATA_DIR,kalshi:()=>marketPlatform().providers.providers.get('kalshi')||null,sports:()=>marketPlatform().sportsSnapshot()});
   paperBots={calibration,tape,kalshi:kalshiBots,farm:new BotFarm({dataDir:DATA_DIR,bots:kalshiBots}),mirror,copy:new PolymarketCopyPaper({dataDir:DATA_DIR,tape,onLeaderBuy:(f,t)=>mirror.enqueue(f,t)})};
   registerPaperBots(()=>paperBots);
-  const botTimers=[];
-  if(process.env.MPO_PAPER_BOTS!=='false'&&!process.env.NODE_TEST_CONTEXT){const every=(ms,first,fn)=>{const t=setTimeout(()=>{fn().catch(()=>{});const i=setInterval(()=>fn().catch(()=>{}),ms);i.unref();botTimers.push(i)},first);t.unref();botTimers.push(t)};
-    every(600_000,20_000,()=>paperBots.kalshi.run('weather'));every(600_000,90_000,()=>paperBots.kalshi.run('weather-nws'));every(180_000,150_000,()=>paperBots.kalshi.run('btc'));every(600_000,150_000,()=>paperBots.farm.run('weather'));every(180_000,170_000,()=>paperBots.farm.run('btc'));every(60_000,50_000,()=>paperBots.copy.run());every(60_000,80_000,()=>paperBots.mirror.run());
+  // Each paper venue has its own timer, run budget and stall watchdog (src/venueLoop.js, run C2): a venue whose run
+  // hangs is reported STALLED in /api/health and never holds up another venue or the HUD.
+  if(process.env.MPO_PAPER_BOTS!=='false'&&!process.env.NODE_TEST_CONTEXT){const v=venueLoops;
+    v.add('kalshi-weather',{everyMs:600_000,firstMs:20_000,run:()=>paperBots.kalshi.run('weather')});v.add('kalshi-weather-nws',{everyMs:600_000,firstMs:90_000,run:()=>paperBots.kalshi.run('weather-nws')});v.add('kalshi-btc',{everyMs:180_000,firstMs:150_000,run:()=>paperBots.kalshi.run('btc')});
+    v.add('kalshi-farm-weather',{everyMs:600_000,firstMs:150_000,run:()=>paperBots.farm.run('weather')});v.add('kalshi-farm-btc',{everyMs:180_000,firstMs:170_000,run:()=>paperBots.farm.run('btc')});
+    v.add('polymarket-copy',{everyMs:60_000,firstMs:50_000,run:()=>paperBots.copy.run()});v.add('kalshi-mirror',{everyMs:60_000,firstMs:80_000,run:()=>paperBots.mirror.run()});
     // Weather calibration refits once a day (and at start when missing or older than 20 h).
-    every(86_400_000,(calibration.state&&Date.now()-calibration.state.at<20*3600e3)?86_400_000:10_000,()=>calibration.run());}
+    v.add('weather-calibration',{everyMs:86_400_000,firstMs:(calibration.state&&Date.now()-calibration.state.at<20*3600e3)?86_400_000:10_000,stallMs:30*60_000,run:()=>calibration.run()});}
   let intelligenceBusy=false,intelligenceClosed=false;
   const observePaper=async()=>{if(intelligenceBusy)return;intelligenceBusy=true;try{const {readScoreboard}=await import('./scoreboard.js');const board=await readScoreboard();if(!intelligenceClosed){marketPlatform().intelligence.observe(board);marketPlatform().intelligenceError=null;}}catch(e){if(!intelligenceClosed)marketPlatform().intelligenceError=String(e.message).slice(0,200);}finally{intelligenceBusy=false;}};
   const intelligenceTimer=setInterval(observePaper,60_000);intelligenceTimer.unref();observePaper();
@@ -576,13 +581,16 @@ export function startDashboard() {
       // P1.2: the live half of what /api/state used to carry. Never cached, never tagged.
       if (req.method === 'GET' && u.pathname === '/api/telemetry') return json(res, telemetryView());
       if (req.method === 'GET' && u.pathname === '/api/health') {
-        const s = loadState();
+        // Cached by the state files' stamps: re-parsing ~15 MB of state on every probe made health itself slow (run C2).
+        const s = loadStateCached();
         // A loop that has not finished a cycle in a long time is STALLED, whatever the last cycle said.
         const cycleAge = s.system?.lastCycle ? Date.now() - s.system.lastCycle : null, stalled = cycleAge != null && cycleAge > Math.max(180_000, 4 * (cfg.cycleBudgetMs || 45_000));
         return json(res, {
           ok: s.system?.health !== 'DEGRADED' && !stalled,
           health: stalled ? 'STALLED' : s.system?.health || 'UNKNOWN',
           stall: stalled ? { lastCycleAgeMs: cycleAge, lastStall: s.system?.lastStall || null } : null,
+          // Paper venues (run C2): each one's own state; one STALLED venue does not make the app unhealthy.
+          venues: venueLoops.status(), stalledVenues: venueLoops.stalled(),
           lastCycle: s.system?.lastCycle || null,
           metrics: { ...(s.system?.metrics || {}), ...systemTelemetry() },
           diagnostics: s.system?.diagnostics || [],
@@ -741,7 +749,7 @@ export function startDashboard() {
   try { startPaperLoops(); } catch { /* paper loops are optional */ }
   startRobinhoodLoops();
   startPracticeLoop({ dataDir: DATA_DIR });
-  server.on('close',()=>{ for(const t of botTimers){clearTimeout(t);clearInterval(t);} intelligenceClosed=true;clearInterval(intelligenceTimer);clearInterval(labSyncTimer); stopPaperLoops(); stopRobinhoodLoops(); stopPracticeLoop(); closeMarketPlatform(); });
+  server.on('close',()=>{ venueLoops.stop(); intelligenceClosed=true;clearInterval(intelligenceTimer);clearInterval(labSyncTimer); stopPaperLoops(); stopRobinhoodLoops(); stopPracticeLoop(); closeMarketPlatform(); });
   startRobinhoodEquitiesLoop();
   // The Lab reads <data>/lab-link/fitness/*.json; refresh it every minute (first write shortly after start).
   const writeFitness = () => fitnessNow().then(snap => writeFitnessFiles(DATA_DIR, snap)).catch(() => {});
