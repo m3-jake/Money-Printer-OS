@@ -253,6 +253,10 @@ function fillPending(book, store, { now, fee, quoteFn, quoteWindowMs }) {
     if (q && Number.isFinite(q.bid) && q.bid > 0 && Number.isFinite(q.ask) && q.ask >= q.bid
         && Number.isFinite(q.at) && q.at <= now && now - q.at <= 30_000 && q.at >= order.decidedAt) {
       price = order.side === 'buy' ? q.ask : q.bid; priceSource = q.source ? `robinhood-quote:${q.source}` : 'robinhood-quote';
+    } else if (inWindow && typeof quoteFn === 'function') {
+      // Cached quotes normally predate a new decision. Keep it pending for the next
+      // observed quote instead of immediately consuming an historical candle fill.
+      keep.push(order); continue;
     } else {
       const o = openOf(store, order.symbol, order.fillDay);
       if (o > 0) { price = o; priceSource = 'coinbase-open'; }
@@ -286,7 +290,9 @@ function feeFrom(feeRatio) { const f = Number(feeRatio); return Math.max(DAILY_D
 function envNum(env, key, d) { const n = Number(env?.[key]); return Number.isFinite(n) && n > 0 ? n : d; }
 
 // One pass: refresh bars, fill what is due, mark the closed day, decide it once, and fill at the open if possible.
-export async function runDailyOnce({ dataDir, now = Date.now(), env = process.env, fetchFn = globalThis.fetch, quoteFn = null, feeRatio = null, labDaily } = {}) {
+export async function runDailyOnce({ dataDir, now, clock = () => Date.now(), env = process.env, fetchFn = globalThis.fetch, quoteFn = null, feeRatio = null, labDaily } = {}) {
+  const realtime = now === undefined;
+  now ??= clock();
   const startUsd = envNum(env, 'ROBINHOOD_DAILY_START_USD', DAILY_DEFAULTS.startUsd);
   const slipBps = Number.isFinite(Number(env?.ROBINHOOD_DAILY_SLIP_BPS)) && env.ROBINHOOD_DAILY_SLIP_BPS !== '' ? Math.min(100, Math.max(0, Number(env.ROBINHOOD_DAILY_SLIP_BPS))) : DAILY_DEFAULTS.slipBps;
   const fee = feeFrom(feeRatio), quoteWindowMs = envNum(env, 'ROBINHOOD_DAILY_QUOTE_WINDOW_MIN', DAILY_DEFAULTS.quoteWindowMin) * 60_000;
@@ -302,6 +308,7 @@ export async function runDailyOnce({ dataDir, now = Date.now(), env = process.en
   }
   book.source = { kind: pick.kind, label: pick.label, id: pick.id, family: pick.family, params: pick.params, paramsHash: pick.paramsHash, state: pick.state, reasons: pick.reasons, since: book.source?.paramsHash === pick.paramsHash ? book.source.since : now };
   const { store } = await refreshDailyBars(dataDir, book.symbols, { now, fetchFn });
+  if (realtime) now = clock();
   // 1) Orders due at an open that has already passed (decided earlier, not yet filled).
   for (const f of fillPending(book, store, { now, fee, quoteFn, quoteWindowMs })) events.push(`FILLED ${f.side} ${f.symbol} ${f.day} @ ${f.priceSource}${f.late ? ' (late)' : ''}`);
   // 2) Mark and decide the newest closed day, once.

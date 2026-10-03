@@ -182,16 +182,19 @@ test('Kalshi books on the old $500 defaults move once to the $25 wallet ($12.50 
 
 test('the farm runs Evolution Lab proposals only when they are well formed and inside the bounds; a withdrawn one keeps its book', async () => {
   const { BotFarm, labVariants } = await import('../src/botFarm.js');
-  assert.deepEqual(labVariants({ variants: [
+  const now = Date.now();
+  const proof = { at: now, paperPromotionAllowed: true, evidence: { executionVerified: true, availabilityVerified: true, holdoutConsumedOnce: true, holdout: { n: 40, meanPerBet: .1, ciLo: .02, ciHi: .18 } } };
+  const document = variants => ({ schema: 'mpo.lab-farm-proposals.v1', at: now, variants: variants.map(v => ({ ...proof, ...v })) });
+  assert.deepEqual(labVariants(document([
     { id: 'lab-btc-v16', kind: 'btc', label: 'BTC · vol × 1.6 (Lab fit)', over: { volMultiple: 1.6 } },
     { id: 'btc-v999', kind: 'btc', over: { volMultiple: 1.6 } },          // not a lab- id
     { id: 'lab-btc-huge', kind: 'btc', over: { volMultiple: 40 } },        // out of bounds
     { id: 'lab-wx-stake', kind: 'weather', over: { stakeUsd: 500 } },      // a setting the Lab may not touch
     { id: 'lab-news', kind: 'news', over: { minEdge: 0.05 } },             // unknown kind
-  ] }).map(v => v.id), ['lab-btc-v16']);
+  ]), now).map(v => v.id), ['lab-btc-v16']);
   const dir = tmp(); fs.mkdirSync(path.join(dir, 'lab-link'));
   const file = path.join(dir, 'lab-link', 'farm-proposals.json');
-  fs.writeFileSync(file, JSON.stringify({ variants: [{ id: 'lab-btc-v16', kind: 'btc', label: 'BTC · vol × 1.6 (Lab fit)', over: { volMultiple: 1.6 } }] }));
+  fs.writeFileSync(file, JSON.stringify(document([{ id: 'lab-btc-v16', kind: 'btc', label: 'BTC · vol × 1.6 (Lab fit)', over: { volMultiple: 1.6 } }])));
   const farm = new BotFarm({ dataDir: dir, bots: { kalshi: () => null } });
   const v = farm.snapshot().variants.find(x => x.id === 'lab-btc-v16');
   assert.equal(v.lab, true); assert.equal(v.withdrawn, false); assert.equal(v.equityUsd, 12.5);

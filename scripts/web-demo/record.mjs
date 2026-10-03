@@ -32,7 +32,7 @@ const arg = name => process.argv.includes(name) ? process.argv[process.argv.inde
 const minutes = Number(arg('--minutes')) || 30;
 // Everything that shows the session's progress is on the timeline, so balance, trades and scores agree.
 const FRAMED = new Set(['/api/state', '/api/telemetry', '/api/robinhood', '/api/scoreboard', '/api/platform/status',
-  '/api/journal?limit=180', '/api/paper-qualification', '/api/robinhood-equities', '/api/polymarket-us/combos/journal', '/api/bots']);
+  '/api/journal?limit=180', '/api/paper-qualification', '/api/robinhood-equities', '/api/polymarket-us/combos/journal', '/api/bots', '/api/pumpfun/copy-paper']);
 const FRAME_GAP_MS = 20_000, MAX_FRAMES = 90; // 30 minutes; frames past that are not kept, so the start is never lost
 
 const resume = !!arg('--sandbox');
@@ -42,7 +42,7 @@ fs.mkdirSync(path.join(sandbox, 'data'), { recursive: true });
 const LAB = process.argv.includes('--no-lab') ? null : path.resolve(arg('--lab') || path.join(process.env.APPDATA || os.homedir(), 'Money Printer OS', 'data', 'lab-link'));
 const LAB_OUT = path.join(sandbox, 'data', 'lab-link');
 const TRADER_WRITES = new Set(['dataset.json', 'trader-status.json', 'fitness']);
-const LAB_REFRESH = name => name === 'status.json' || name.endsWith('champion.json') || name === 'modules';
+const LAB_REFRESH = name => name === 'status.json' || name.endsWith('champion.json') || name === 'modules' || name === 'workbench.json' || name === 'farm-proposals.json';
 function copyLab(filter) {
   if (!LAB || !fs.existsSync(LAB)) return false;
   fs.mkdirSync(LAB_OUT, { recursive: true });

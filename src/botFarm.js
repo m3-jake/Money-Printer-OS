@@ -41,12 +41,21 @@ export const FARM_VARIANTS = Object.freeze([
 // only from calibrations that beat the current settings on held-out data. Each is checked here: a known kind,
 // an id 'lab-…', and only these settings, inside these bounds. Anything else is ignored.
 const LAB_OVER = { volMultiple: [0.5, 4], minEdge: [0.02, 0.3], calibrationSafety: [0.8, 3], maxDisagreement: [0.05, 0.5], sigmaBaseF: [0.5, 8], sigmaPerDayF: [0, 5], biasF: [-10, 10] };
-export function labVariants(doc) {
+export function labVariants(doc, now = Date.now()) {
   const out = [];
+  const fresh = at => Number.isFinite(at) && at <= now && now - at <= 48 * 3600e3;
+  if (doc?.schema !== 'mpo.lab-farm-proposals.v1' || !fresh(doc.at)) return out;
   for (const v of Array.isArray(doc?.variants) ? doc.variants.slice(0, 4) : []) {
+    const e = v?.evidence, h = e?.holdout;
+    if (!fresh(v?.at) || v.paperPromotionAllowed !== true || e?.executionVerified !== true
+        || e?.availabilityVerified !== true || e?.holdoutConsumedOnce !== true
+        || !Number.isInteger(h?.n) || h.n < 30
+        || ![h.meanPerBet, h.ciLo, h.ciHi].every(Number.isFinite)
+        || !(h.meanPerBet > 0 && h.ciLo > 0 && h.ciLo <= h.meanPerBet && h.ciHi >= h.meanPerBet)
+        || v.liveActivationAllowed === true || v.automaticLivePromotionAllowed === true) continue;
     if (!/^lab-[a-z0-9-]{3,40}$/.test(String(v?.id)) || !['weather', 'btc'].includes(v.kind) || !v.over || typeof v.over !== 'object') continue;
     const over = {}; let ok = true;
-    for (const [k, x] of Object.entries(v.over)) { const n = Number(x), lim = LAB_OVER[k]; if (!lim || !Number.isFinite(n) || n < lim[0] || n > lim[1]) { ok = false; break; } over[k] = n; }
+    for (const [k, n] of Object.entries(v.over)) { const lim = LAB_OVER[k]; if (!lim || !Number.isFinite(n) || n < lim[0] || n > lim[1]) { ok = false; break; } over[k] = n; }
     if (ok && Object.keys(over).length) out.push({ id: v.id, kind: v.kind, label: String(v.label || v.id).slice(0, 60), over, lab: true, reason: String(v.reason || '').slice(0, 200) });
   }
   return out;
@@ -86,7 +95,7 @@ export class BotFarm {
   // The fixed variants plus the Lab's current proposals. A proposal that the Lab withdraws keeps its book (history
   // stays visible) but makes no new bets.
   variants() {
-    let lab = []; try { lab = labVariants(JSON.parse(fs.readFileSync(this.labFile, 'utf8'))); } catch {}
+    let lab = []; try { lab = labVariants(JSON.parse(fs.readFileSync(this.labFile, 'utf8')), this.now()); } catch {}
     for (const v of lab) this.state.books[v.id] ||= emptyBook(v);
     const active = new Set(lab.map(v => v.id)), retired = Object.values(this.state.books).filter(b => /^lab-/.test(b.id) && !active.has(b.id)).map(b => ({ id: b.id, kind: b.kind, label: b.label || b.id, over: {}, lab: true, withdrawn: true }));
     return [...FARM_VARIANTS, ...lab, ...retired];
