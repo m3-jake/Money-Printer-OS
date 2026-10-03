@@ -8,6 +8,18 @@ const MAX_RECEIPTS = 10000;
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const fault = (code, message, cause) => Object.assign(new Error(message, { cause }), { code });
 const exists = file => { try { fs.lstatSync(file); return true; } catch (e) { if (e.code === 'ENOENT') return false; throw e; } };
+// Presence survives primary deletion. This is evidence of initialization, never a recovery source.
+export function assertPaperPrimaryAvailable(file) {
+  if(!exists(file)&&(exists(file+'.initialized.json')||exists(file+'.verified.json')))throw fault('RECOVERY_REQUIRED','Previously initialized paper primary is missing; preserve companions and recover explicitly, never refund capital');
+  return exists(file);
+}
+export function markPaperInitialized(file) {
+  if(!exists(file))throw fault('RECOVERY_REQUIRED','Cannot mark a missing paper primary initialized');
+  const marker=file+'.initialized.json';
+  try{fs.writeFileSync(marker,JSON.stringify({schema:'mpo.paper-initialized.v1',primary:path.basename(file),initializedAt:Date.now()}),{flag:'wx',flush:true});}
+  catch(error){if(error.code!=='EEXIST')throw error;}
+  return marker;
+}
 export function validatePaperBook(book) {
   if (!book || typeof book !== 'object' || Array.isArray(book) || book.mode !== 'PAPER' ||
       typeof book.cashUsd !== 'number' || !Number.isFinite(book.cashUsd) || book.cashUsd < 0 ||
@@ -31,7 +43,7 @@ function readBytes(file) {
   return bytes;
 }
 export function readPaperBook(file, validate = validatePaperBook) {
-  try { const bytes = readBytes(file); const book = JSON.parse(bytes); validate(book); return book; }
+  try { assertPaperPrimaryAvailable(file);const bytes = readBytes(file); const book = JSON.parse(bytes); validate(book);markPaperInitialized(file); return book; }
   catch (cause) { throw fault('RECOVERY_REQUIRED', 'Paper book unavailable; existing evidence is preserved. Explicit initialization is required for a genuinely new book.', cause); }
 }
 function lastVerified(file, validate) {
@@ -69,8 +81,9 @@ function checkpoint(file, book, validate) {
 export function initializePaperBook(file, book, validate = validatePaperBook) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   return withWriter(file, () => {
+    assertPaperPrimaryAvailable(file);
     if (exists(file) || exists(file + '.verified.json')) throw fault('BOOK_EXISTS', 'Existing paper evidence cannot be reset or silently refunded');
-    return checkpoint(file, { ...book, _persistence: { revision: 0 } }, validate);
+    const initialized=checkpoint(file, { ...book, _persistence: { revision: 0 } }, validate);markPaperInitialized(file);return initialized;
   });
 }
 export function mutatePaperBook(file, operation, { validate = validatePaperBook, receiptId = null } = {}) {

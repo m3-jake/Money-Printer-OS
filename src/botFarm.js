@@ -16,12 +16,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { writeFileAtomicSync } from './atomicRename.js';
+import {assertPaperPrimaryAvailable,markPaperInitialized} from './paperBookStore.js';
 import { takerFee } from './core/fees.js';
 import { KALSHI_DEFAULTS, pickWeather, pickBtc, paced, modelGuard, observedBet, settleObserved } from './kalshiBots.js';
 import { FARM_MIN_SETTLED, farmEarlyStop } from './core/farmEvidence.js';
 import { walkBook } from './core/contracts.js';
 
 const SCHEMA = 'mpo.bot-farm.v1';
+function validateFarmCapital(b){
+ if(!b||!Number.isFinite(b.cashUsd)||b.cashUsd<0||!Number.isFinite(b.startUsd)||b.startUsd<0||!Array.isArray(b.open)||!Array.isArray(b.history))throw new Error('invalid farm capital/journal');
+ for(const p of b.open)if(!p||!Number.isFinite(p.qty)||p.qty<=0||!Number.isFinite(p.costUsd)||p.costUsd<0||!Number.isFinite(p.feeUsd)||p.feeUsd<0||(p.markUsd!=null&&(!Number.isFinite(p.markUsd)||p.markUsd<0)))throw new Error('invalid farm open exposure');
+ for(const p of b.history)if(!p||(p.pnlUsd!==undefined&&!Number.isFinite(p.pnlUsd)))throw new Error('invalid farm outcome');
+}
 export const FARM_START_USD = KALSHI_DEFAULTS.weather.startUsd; // same bankroll as the live bots
 export const FARM_SLIPPAGE = 0.01;
 export const MIN_SETTLED = FARM_MIN_SETTLED;
@@ -111,11 +117,14 @@ export class BotFarm {
   load() {
     let s;
     try {
+      assertPaperPrimaryAvailable(this.file);
       s = fs.existsSync(this.file) ? JSON.parse(fs.readFileSync(this.file, 'utf8')) : { schema: SCHEMA, startedAt: this.now(), books: {} };
-      if (s.schema !== SCHEMA || !s.books) throw new Error('unknown schema');
+      if (s.schema !== SCHEMA || !s.books || Array.isArray(s.books)) throw new Error('unknown schema');
+      for(const b of Object.values(s.books))validateFarmCapital(b);
+      if(fs.existsSync(this.file))markPaperInitialized(this.file);
     } catch (e) {
       this.recoveryError = `Farm book unreadable (${e.message}); the file was kept. Reset the farm to start over.`;
-      s = { schema: SCHEMA, startedAt: this.now(), books: {} };
+      s = { schema: SCHEMA,recoveryRequired:true,startedAt: this.now(), books:Object.fromEntries(FARM_VARIANTS.map(v=>[v.id,{...emptyBook(v),cashUsd:0,startUsd:0,funding:[],recoveryRequired:true}])) };
     }
     for (const v of FARM_VARIANTS) s.books[v.id] ||= emptyBook(v);
     for (const b of Object.values(s.books)) { b.observedOpen ||= []; b.observedHistory ||= []; }
@@ -135,9 +144,10 @@ export class BotFarm {
     const exploration=existing.map(b=>({id:b.id,kind:b.kind,label:b.label,over:b.experiment.params,lab:true,exploratory:true,experiment:b.experiment,withdrawn:this.now()>=b.experiment.evaluationEndsAt}));
     return [...FARM_VARIANTS, ...lab, ...retired,...exploration];
   }
-  save() { if (this.recoveryError) return; fs.mkdirSync(path.dirname(this.file), { recursive: true }); writeFileAtomicSync(this.file, JSON.stringify(this.state)); }
+  save() { if (this.recoveryError) return;try{assertPaperPrimaryAvailable(this.file);for(const b of Object.values(this.state.books))validateFarmCapital(b);fs.mkdirSync(path.dirname(this.file), { recursive: true }); writeFileAtomicSync(this.file, JSON.stringify(this.state));markPaperInitialized(this.file);}catch(e){this.recoveryError=`RECOVERY_REQUIRED: ${e.message}`;throw e;} }
   reset({ confirmation } = {}) {
     if (confirmation !== 'RESET BOT') throw new Error('Type RESET BOT to confirm');
+    assertPaperPrimaryAvailable(this.file);if(fs.existsSync(this.file))fs.copyFileSync(this.file,`${this.file}.archive-${this.now()}-${Date.now()}.json`,fs.constants.COPYFILE_EXCL);
     this.recoveryError = null; this.state = { schema: SCHEMA, startedAt: this.now(), books: Object.fromEntries(FARM_VARIANTS.map(v => [v.id, emptyBook(v)])) }; this.save(); return this.snapshot();
   }
 
@@ -217,18 +227,19 @@ export class BotFarm {
         b.cashUsd = round(b.cashUsd + payout, 6);
         b.history.unshift({ ...p, outcome, won, payoutUsd: payout, pnlUsd: round(payout - p.costUsd - p.feeUsd, 4), settledAt: now, brierModel: round((p.pModel - (won ? 1 : 0)) ** 2, 4), brierMarket: round((p.marketPrice - (won ? 1 : 0)) ** 2, 4) });
       }
-      b.open = keep; b.history.length = Math.min(b.history.length, 2000);
+      b.open = keep;
       const still = [];
       for (const p of b.observedOpen || []) {
         const d = results.get(p.ticker), outcome = d?.settlementOutcome;
         if (outcome !== 'YES' && outcome !== 'NO') { still.push(p); continue; }
         (b.observedHistory ||= []).unshift(settleObserved(p, outcome, now));
       }
-      b.observedOpen = still; if (b.observedHistory) b.observedHistory.length = Math.min(b.observedHistory.length, 500);
+      b.observedOpen = still;
     }
   }
 
   snapshot() {
+    if(this.recoveryError)return {mode:'PAPER',status:'RECOVERY_REQUIRED',recoveryRequired:true,error:this.recoveryError,variants:[],running:[...this.busy]};
     const today = localDay(this.now()), days = Array.from({ length: 7 }, (_, i) => localDay(this.now() - i * 86400e3));
     const variants = this.variants().map(v => {
       const b = this.state.books[v.id], h = b.history, n = h.length, marksAvailable=b.open.every(p=>Number.isFinite(p.markUsd)&&p.markAt&&this.now()-p.markAt<=30_000),open=marksAvailable?b.open.reduce((a,p)=>a+p.markUsd,0):null,equity=open===null?null:b.cashUsd+open;

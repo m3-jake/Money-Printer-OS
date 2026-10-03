@@ -16,6 +16,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { writeFileAtomicSync } from './atomicRename.js';
+import {assertPaperPrimaryAvailable,markPaperInitialized} from './paperBookStore.js';
 import { takerFee } from './core/fees.js';
 import { normCdf, bucketProbability, probAbove, btcContractProbability, realizedVol, scoreSides, weatherMuSigma } from './kalshiModel.js';
 // The pricing model lives in the shared core (src/kalshiModel.js, run B4) so the Lab replays exactly this model.
@@ -129,6 +130,11 @@ export function pickBtc(frame, s, held, now) {
 }
 
 function emptyBot(id, startUsd) { return { id, startUsd, cashUsd: startUsd, open: [], history: [], decisions: [], observedOpen: [], observedHistory: [], settings: { ...KALSHI_DEFAULTS[id], startUsd }, modelRev: id === 'btc' ? BTC_MODEL_REV : undefined, lastRunAt: null, lastError: null, lastNote: null, epoch: 1 }; }
+function validateBotCapital(b){
+ if(!b||!Number.isFinite(b.cashUsd)||b.cashUsd<0||!Number.isFinite(b.startUsd)||b.startUsd<0||!Array.isArray(b.open)||!Array.isArray(b.history))throw new Error('invalid bot capital/journal');
+ for(const p of b.open)if(!p||!Number.isFinite(p.qty)||p.qty<=0||!Number.isFinite(p.costUsd)||p.costUsd<0||!Number.isFinite(p.feeUsd)||p.feeUsd<0||(p.markUsd!=null&&(!Number.isFinite(p.markUsd)||p.markUsd<0)))throw new Error('invalid bot open exposure');
+ for(const p of b.history)if(!p||(p.pnlUsd!==undefined&&!Number.isFinite(p.pnlUsd)))throw new Error('invalid bot outcome');
+}
 function sanitize(id, patch = {}) {
   const out = {};
   for (const [k, v] of Object.entries(patch)) {
@@ -149,9 +155,11 @@ export class KalshiPaperBots {
   }
   load() {
     try {
+      assertPaperPrimaryAvailable(this.file);
       if (!fs.existsSync(this.file)) return { schema: SCHEMA, wallet25: true, bots: Object.fromEntries(KALSHI_BOT_IDS.map(id => [id, emptyBot(id, KALSHI_DEFAULTS[id].startUsd)])) };
       const s = JSON.parse(fs.readFileSync(this.file, 'utf8'));
-      if (s.schema !== SCHEMA || !s.bots) throw new Error('unknown schema');
+      if (s.schema !== SCHEMA || !s.bots || Array.isArray(s.bots)) throw new Error('unknown schema');
+      for(const b of Object.values(s.bots))validateBotCapital(b);
       if (!s.wallet25 && KALSHI_BOT_IDS.some(id => s.bots[id]?.startUsd === 500 && s.bots[id]?.settings?.stakeUsd === 10)) {
         fs.copyFileSync(this.file, this.file.replace(/\.json$/, `.pre-25usd-${Date.now()}.json`));
         for (const id of KALSHI_BOT_IDS) if (s.bots[id]?.startUsd === 500 && s.bots[id]?.settings?.stakeUsd === 10) { const fresh = emptyBot(id, KALSHI_DEFAULTS[id].startUsd); fresh.epoch = (s.bots[id].epoch || 1) + 1; fresh.settings.enabled = s.bots[id].settings.enabled !== false; s.bots[id] = fresh; }
@@ -166,18 +174,19 @@ export class KalshiPaperBots {
         btc.modelRev = BTC_MODEL_REV;
         btc.decisions.unshift({ at: this.now(), action: 'SETTINGS', reason: `BTC model revision ${BTC_MODEL_REV}: vol × ${was} → × ${btc.settings.volMultiple} (1-minute realized vol already matched later BTC moves); sides under ${btc.settings.longshotPrice * 100}¢ need a ${btc.settings.longshotMinEdge * 100}¢ edge` });
       }
-      return s;
+      markPaperInitialized(this.file);return s;
     } catch (e) {
       // Never overwrite a book we cannot read: trading stops until a reset, and the file is left in place.
       this.recoveryError = `Kalshi paper book unreadable (${e.message}); the file was kept. Reset a bot to start a new book.`;
-      return { schema: SCHEMA, bots: Object.fromEntries(KALSHI_BOT_IDS.map(id => [id, emptyBot(id, KALSHI_DEFAULTS[id].startUsd)])) };
+      return { schema: SCHEMA,recoveryRequired:true,bots:Object.fromEntries(KALSHI_BOT_IDS.map(id=>[id,{...emptyBot(id,0),settings:{...KALSHI_DEFAULTS[id]},recoveryRequired:true}])) };
     }
   }
-  save() { if (this.recoveryError) return; fs.mkdirSync(path.dirname(this.file), { recursive: true }); writeFileAtomicSync(this.file, JSON.stringify(this.state)); }
+  save() { if (this.recoveryError) return;try{assertPaperPrimaryAvailable(this.file);for(const b of Object.values(this.state.bots))validateBotCapital(b);fs.mkdirSync(path.dirname(this.file), { recursive: true }); writeFileAtomicSync(this.file, JSON.stringify(this.state));markPaperInitialized(this.file);}catch(e){this.recoveryError=`RECOVERY_REQUIRED: ${e.message}`;throw e;} }
   bot(id) { if (!KALSHI_BOT_IDS.includes(id)) throw new Error('Unknown Kalshi bot ' + id); return this.state.bots[id]; }
   configure(id, patch) { const b = this.bot(id); b.settings = { ...b.settings, ...sanitize(id, patch) }; this.save(); return this.snapshot(id); }
   reset(id, { startUsd, confirmation } = {}) {
     if (confirmation !== 'RESET BOT') throw new Error('Type RESET BOT to confirm');
+    assertPaperPrimaryAvailable(this.file);if(fs.existsSync(this.file))fs.copyFileSync(this.file,`${this.file}.archive-${this.now()}-${Date.now()}.json`,fs.constants.COPYFILE_EXCL);
     const b = this.bot(id), start = startUsd == null ? b.settings.startUsd : sanitize(id, { startUsd }).startUsd;
     const fresh = emptyBot(id, start); fresh.settings = { ...b.settings, startUsd: start }; fresh.epoch = (b.epoch || 1) + 1;
     this.recoveryError = null; this.state.bots[id] = fresh; this.save(); return this.snapshot(id);
@@ -317,7 +326,7 @@ export class KalshiPaperBots {
       const bid = p.side === 'YES' ? d.yesBid : d.noBid; if (bid != null) p.markUsd = round(bid * p.qty, 4);
       keep.push(p);
     }
-    b.open = keep; b.history.length = Math.min(b.history.length, 500);
+    b.open = keep;
     // Observe-only bets settle on the same result once their market has closed.
     const still = [];
     for (const p of b.observedOpen || []) {
@@ -328,10 +337,11 @@ export class KalshiPaperBots {
       this.tapeSettlement(p.ticker, p.eventTicker, d);
       (b.observedHistory ||= []).unshift(settleObserved(p, outcome, now));
     }
-    b.observedOpen = still; if (b.observedHistory) b.observedHistory.length = Math.min(b.observedHistory.length, 200);
+    b.observedOpen = still;
   }
 
   snapshot(id) {
+    if(this.recoveryError)return {id,mode:'PAPER',status:'RECOVERY_REQUIRED',recoveryRequired:true,cashUsd:null,equityUsd:null,startUsd:null,open:[],history:[],decisions:[],stats:{settled:0,pnlUsd:null},lastError:this.recoveryError};
     const b = this.bot(id), h = b.history, n = h.length, wins = h.filter(x => x.won).length, pnl = h.reduce((s, x) => s + x.pnlUsd, 0);
     const openValue = b.open.reduce((s, p) => s + (p.markUsd ?? p.costUsd), 0), equity = b.cashUsd + openValue;
     const brier = k => n ? round(h.reduce((s, x) => s + x[k], 0) / n, 4) : null;

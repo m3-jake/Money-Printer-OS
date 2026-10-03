@@ -3,11 +3,26 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { initializePaperBook, mutatePaperBook, paperBookStatus } from '../src/paperBookStore.js';
+import { initializePaperBook, mutatePaperBook, paperBookStatus,assertPaperPrimaryAvailable,markPaperInitialized } from '../src/paperBookStore.js';
+import {BotFarm} from '../src/botFarm.js';
+import {KalshiPaperBots} from '../src/kalshiBots.js';
 import { resetPaperSingles, placePaperSingle, closePaperSingle, settlePaperSingles, paperSinglesBookView } from '../src/polymarketUSSinglesPaper.js';
 import { disclosureSignals, tickDisclosurePaper, disclosurePaperView, DISCLOSURE_POLICY } from '../src/disclosurePaper.js';
 import { standaloneBookRow } from '../src/scoreboard.js';
 const temp = fn => async () => { const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mpo-lifecycle-')); try { await fn(path.join(dir, 'book.json')); } finally { fs.rmSync(dir, { recursive: true, force: true }); } };
+test('immutable initialization evidence blocks missing primary refunds and never replaces intact marker',temp(async file=>{
+ assert.equal(assertPaperPrimaryAvailable(file),false);fs.writeFileSync(file,'original');markPaperInitialized(file);const bytes=fs.readFileSync(file+'.initialized.json','utf8');
+ markPaperInitialized(file);assert.equal(fs.readFileSync(file+'.initialized.json','utf8'),bytes);fs.unlinkSync(file);assert.throws(()=>assertPaperPrimaryAvailable(file),e=>e.code==='RECOVERY_REQUIRED');assert.equal(fs.existsSync(file),false);
+}));
+test('farm and Kalshi primary deletion or malformed exposures fail closed, preserve bytes and archive explicit resets',temp(async file=>{
+ const dataDir=path.dirname(file),farm=new BotFarm({dataDir}),bots=new KalshiPaperBots({dataDir});farm.save();bots.save();
+ fs.unlinkSync(farm.file);fs.unlinkSync(bots.file);
+ const missingFarm=new BotFarm({dataDir}),missingBots=new KalshiPaperBots({dataDir});assert.equal(missingFarm.snapshot().recoveryRequired,true);assert.equal(missingBots.snapshot('weather').cashUsd,null);
+ await assert.rejects(()=>missingFarm.run('btc'),/missing/);await assert.rejects(()=>missingBots.run('btc'),/missing/);missingFarm.save();missingBots.save();assert.equal(fs.existsSync(farm.file),false);assert.equal(fs.existsSync(bots.file),false);
+ const corrupt={schema:'mpo.kalshi-paper-bots.v1',bots:{weather:{startUsd:12.5,cashUsd:5,open:[{qty:-1,costUsd:1,feeUsd:0}],history:[]}}};const bytes=JSON.stringify(corrupt);fs.writeFileSync(bots.file,bytes);
+ const invalid=new KalshiPaperBots({dataDir});assert.equal(invalid.snapshot('weather').recoveryRequired,true);invalid.save();assert.equal(fs.readFileSync(bots.file,'utf8'),bytes);
+ invalid.reset('weather',{confirmation:'RESET BOT',startUsd:25});const archive=fs.readdirSync(dataDir).find(n=>n.startsWith('kalshi-paper-bots.json.archive-'));assert.equal(fs.readFileSync(path.join(dataDir,archive),'utf8'),bytes);
+}));
 test('corrupt books preserve cash history checkpoint and never silently fund', temp(async file => {
  initializePaperBook(file,{mode:'PAPER',cashUsd:25,open:[],history:[]});
  mutatePaperBook(file,b=>{b.cashUsd=20},{receiptId:'first'});
