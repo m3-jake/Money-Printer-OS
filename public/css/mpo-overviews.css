@@ -1,0 +1,27 @@
+/* Broad module home pages share the workstation's colors and readable, scrolling layout. */
+.mpo-overview { display:flex; flex-direction:column; gap:14px; min-width:0; }
+.overview-head { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; }
+.overview-head h2, .overview-head h3, .overview-card h2, .overview-card h3 { margin:0 0 6px; font-size:15px; letter-spacing:.02em; }
+.mpo-overview p, .overview-note { margin:0; font-size:13px; line-height:1.55; white-space:normal; }
+.overview-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr)); gap:12px; align-items:stretch; }
+.overview-card { padding:14px; border:1px solid rgba(138,170,196,.28); border-radius:9px; background:rgba(116,149,175,.065); min-width:0; }
+.overview-card > * + * { margin-top:9px; }
+.overview-card .g-row { padding-left:0; padding-right:0; }
+.overview-list { display:flex; flex-direction:column; gap:9px; margin:0; padding:0; list-style:none; }
+.overview-list li { line-height:1.5; }
+.overview-note { padding:11px 13px; border-left:3px solid rgba(130,191,217,.65); background:rgba(112,156,185,.075); border-radius:0 7px 7px 0; }
+.overview-nav { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.overview-nav button, .overview-nav a { min-height:34px; padding:7px 11px; font-size:12px; line-height:1.3; cursor:pointer; }
+.overview-nav button:focus-visible, .overview-nav a:focus-visible { outline:2px solid #74d2ff; outline-offset:3px; }
+.mpo-overview .g-row { align-items:flex-start; gap:9px; }
+.mpo-overview .g-row-name, .mpo-overview .g-row-sub, .mpo-overview .g-hero-sub { white-space:normal; overflow:visible; text-overflow:clip; }
+.mpo-overview .g-rows { min-width:0; }
+.glancepane:has(.mpo-overview) .glance { height:auto; min-height:100%; }
+.g-visual:has(.mpo-overview) { flex:none; min-height:0; }
+.g-scroll:has(.mpo-overview), .mpo-overview.g-scroll { overflow:visible; max-height:none; flex:none; }
+.overview-card .core-lcd { flex-wrap:wrap; }
+@media(max-width:600px) {
+  .overview-grid { grid-template-columns:1fr; }
+  .overview-card { padding:12px; }
+  .overview-nav button, .overview-nav a { min-height:40px; flex:1 1 140px; }
+}
