@@ -86,8 +86,8 @@ test('the 1.29 MB logo master stays off the desktop, which draws a sized derivat
   assert.ok(sized.width >= 3 * 120, '3x the widest drawn box (120 px), the same rule the master was sized by');
   assert.ok(sized.bytes < master.bytes / 3, `derivative must reclaim weight: ${sized.bytes} vs ${master.bytes}`);
   const html = fs.readFileSync(DASH, 'utf8');
-  // Six slots since alpha.82: the Updater program's Simple card shows the brand mark at 80 px.
-  assert.equal((html.match(/money-printer-logo-512\.png/g) || []).length, 6, 'all six drawn slots use the derivative');
+  // Money's Simple and Advanced views share their product overview; Updater retains its own mark.
+  assert.equal((html.match(/money-printer-logo-512\.png/g) || []).length, 5, 'all five drawn slots use the derivative');
   assert.doesNotMatch(html, /money-printer-logo\.png/, 'the master must not be drawn on the desktop');
 });
 

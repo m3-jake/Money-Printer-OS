@@ -50,8 +50,8 @@ test('required controls, fieldsets and routes are present',()=>{
 test('desktop shell registers the window, keeps the layout version and leaves Polymarket modules alone',()=>{
  assert.match(html,/\['robinhood','Robinhood','RH','dark'\]/);assert.match(html,/robinhood:\{x:200,y:90,w:880,h:720\}/);
  assert.match(html,/LAYOUT_VERSION='2026-09-26-glance'/);assert.match(html,/DEFAULT_OPEN=\[\]/);
- assert.match(html,/const POLY_MODS=\['combos'\]/);assert.match(html,/windowShown\('robinhood'\)\)refreshRobinhood\(\)/);
- assert.equal((html.match(/mpo-brand-title/g)||[]).length,2,'brand title count unchanged');
+ assert.match(html,/const POLY_MODS=\['combos'\]/);assert.match(html,/windowShown\('robinhood'\)\|\|windowShown\('money'\)\)\)refreshRobinhood\(\)/);
+ assert.equal((html.match(/mpo-brand-title/g)||[]).length,1,'Updater retains its brand title while Money shares an overview');
 });
 test('automatic refresh never replaces a focused input or a typed secret',()=>{
  for(const active of ['rhUsd','rhSecret']){let renders=0;const context=vm.createContext({document:{getElementById:()=>({}),activeElement:{id:active}},setBody:()=>renders++});vm.runInContext(panel,context);vm.runInContext('renderRobinhood()',context);assert.equal(renders,0,active)}
@@ -74,9 +74,9 @@ test('multi-asset suite: crypto views keep their parts, stocks & ETFs and practi
  assert.match(panel,/Date\.now\(\)-rhEqAt<60000/,'equities polled at most once a minute');
  assert.match(panel,/rhPrompt\('RESET PRACTICE'/,'practice reset needs a typed phrase');
  assert.doesNotMatch(panel,/\/api\/robinhood-equities'[^)]*method/,'the stocks lane is never POSTed');
- assert.match(html,/const suite=`<div class="g-rows">\$\{rhWhyRows\(r\)\}\$\{gRow\('Stocks & ETFs'/,'glance explains why each book trades or waits, then the stocks line');assert.match(html,/gRow\('Practice',/,'glance shows the practice line');
+ assert.match(html,/overviewSection\('What the books are waiting for'[^\n]+rhWhyRows\(r\)/,'the suite home explains why each book trades or waits');assert.match(html,/gRow\('Stocks & ETFs',/);assert.match(html,/gRow\('Practice',/,'the suite home shows the practice line');
  assert.match(html,/rhEq\?\.data\?\.status,rhEq\?\.book\?\.equityUsd,r\.practice\?\.equityUsd/,'glance re-renders when the suite changes');
- assert.match(html,/MPOViz\.canvas\('rh-edge',90,'edge meter · expected move vs required'\)/,'the glance keeps its graphs');
+ assert.match(html,/overviewRHNav\(\[\['paper','Trades and autopilot'\],\['charts','Price and equity charts'\]\]\)/,'the suite home links to its detailed charts');
 });
 const suiteCtx=()=>{const ctx=vm.createContext({document:{getElementById:()=>null},window:{innerWidth:1200},polyEscape:s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])),money:n=>'$'+Number(n).toFixed(2),fmt:(n,d)=>Number(n).toFixed(d)});vm.runInContext(panel,ctx);return ctx};
 test('readiness text is honest about fees, data and the unwired Agentic MCP',()=>{

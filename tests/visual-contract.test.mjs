@@ -292,7 +292,8 @@ test('shared visual token/component consolidation (VISUAL-AUDIT §5/§6) is adop
   assert.match(html, /function renderWallet\(\)[\s\S]*mpo-meter-bar--sm/);
   assert.match(html, /function renderRisk\(\)[\s\S]*class="mpo-meter"/);
   assert.match(html, /class="mpo-brand-title"/g);
-  assert.equal((html.match(/class="mpo-brand-title"/g) || []).length, 2, 'Money and Updater panels both adopt .mpo-brand-title');
+  assert.equal((html.match(/class="mpo-brand-title"/g) || []).length, 1, 'Updater retains its brand title');
+  assert.match(html, /class="g-brand-name">MONEY PRINTER OS/, 'Money shares its overview brand between both window modes');
 });
 
 test('glance telemetry recipes land on laggard panes without restyling Suite', () => {
@@ -426,7 +427,8 @@ test('glance design: every window opens as one calm card, full detail is an opti
   assert.match(html, /const FIT_MIN=\.5;let FIT_MAX=textScale\(\);/, 'text size is the fit-zoom ceiling');
   assert.match(html, /id="setFullDetail"/);assert.match(html, /id="setRestoreOnLaunch"/);assert.match(html, /data-textsize=/);
   assert.match(html, /if\(!w\|\|w\.classList\.contains\('hidden'\)\|\|w\.classList\.contains\('glance'\)\)return false;/, 'detail renderers skip glance windows');
-  for (const id of ['sportsbook', 'journal', 'robinhood']) assert.match(html, new RegExp(`windowShown\\('${id}'\\)\\)refresh`), `${id} data keeps flowing for its glance`);
+  for (const id of ['sportsbook', 'journal']) assert.match(html, new RegExp(`windowShown\\('${id}'\\)\\)refresh`), `${id} data keeps flowing for its glance`);
+  assert.match(html, /windowShown\('robinhood'\)\|\|windowShown\('money'\)\)\)refreshRobinhood\(\)/, 'Robinhood data refreshes for its suite and Money overview');
   assert.match(html, /gRow\('Stocks & ETFs',[^\n]*gRow\('Practice',/, 'Robinhood glance carries the stocks & ETFs and practice lines');
   assert.match(html, /setGlance\('robinhood',glance\(\{title:'Robinhood · paper only'/);
   assert.match(glanceCss, /\.window\.glance > \.body,\s*\.window\.glance > \.win-tabs \{ display: none; \}/);
@@ -444,8 +446,9 @@ test('paper-focus batch (2026-10-02): rolling numbers, Kalshi weather glance and
   assert.match(glanceCss, /\.glancepane span\.roll-d \{/, 'wheel styles are scoped above tile/row span rules');
   assert.match(platform, /if\(id==='kalshi'&&typeof glance==='function'\)return kalshiGlance\(\);/);
   assert.match(platform, /request\('\/weather'\)/, 'the Kalshi glance reads the server-cached weather desk');
-  assert.match(platform, /title:'Kalshi · paper bots'/, 'the Kalshi glance leads with the paper bots');
-  assert.ok(platform.includes('weather + BTC paper bots (simulated)'), 'and says they are simulated');
+  assert.match(platform, /title:'Kalshi overview'/, 'the Kalshi home covers the whole suite');
+  for (const title of ['Market universe', 'Separate paper books', 'Upcoming markets & activity', 'Data health', 'Weather preview']) assert.ok(platform.includes(title), title);
+  assert.ok(platform.includes('Each model keeps its own simulated funds and results.'), 'paper books remain independently labeled');
   for (const s of ["['kalshibots','Paper bots','BOT','dark','kalshi']", "['pmcopy','Copy trading','CPY','dark','sportsbook']", '<script src="/js/mpo-bots.js"></script>']) assert.ok(html.includes(s), s);
   assert.doesNotThrow(() => new vm.Script(read('public/js/mpo-bots.js'), { filename: 'mpo-bots.js' }));
   assert.match(dashJs, /portfolioSeries: compactSeries\(s\.portfolioSeries,1000,600\)\.map\(roundSeriesPoint\)/);
