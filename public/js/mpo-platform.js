@@ -19,60 +19,107 @@ window.MPOSPlatform = (() => {
     if(w.classList.contains('glance'))return id===host&&!window.MPOProgramActive?.(host);
     const pane=document.getElementById('body-'+id);return !!pane&&(!pane.classList.contains('tabpane')||pane.classList.contains('on'));
   }
+  function overviewVisible(){
+    if(ids.some(paneVisible))return true;
+    const money=document.querySelector('.window[data-app="money"]');return !!money&&!money.classList.contains('hidden');
+  }
   function platformGlance(id){
     const s=scoreboard?.summary||{},bad=diag?.sources?.filter(x=>!['CONNECTED','IDLE','DISABLED'].includes(x.status)).length||0;
     if(id==='command'&&typeof glance==='function')return commandGlance(bad);
-    if(id==='command')return `<div class="core-app">${window.mpoPumpProfitHTML?.(window.__MPO_PROFIT_CAPTURE)||''}${window.mpoWalletCrowdHTML?.(window.__MPO_WALLET_CROWD)||''}<div class="core-heading"><h2>COMMAND CENTER</h2><span class="mpo-badge">PAPER / RESEARCH</span></div><div class="core-lcd"><span>${scoreboard?.paperSummary?.beating||0} paper books beating baseline</span><span>${scoreboard?.paperSummary?.notBeating||0} paper books not beating</span><span>${scoreboard?.paperSummary?.notEnoughData||0} paper books awaiting evidence</span><span>${bad} data sources need attention</span></div><p class="core-muted">Open Advanced for market desks, diagnostics, Events, risk controls and research detail.</p></div>`;
+    if(id==='command')return `<div class="core-app"><div class="core-heading"><h2>COMMAND CENTER</h2><span class="mpo-badge">PAPER / RESEARCH</span></div>${commandOverview()}</div>`;
     if(id==='kalshi'&&typeof glance==='function')return kalshiGlance();
     return `<div class="core-app"><div class="core-heading"><h2>${escape(id==='kalshi'?'KALSHI':'POLYMARKET')}</h2><span class="mpo-badge">PAPER</span></div><p class="core-muted">Open Advanced for books, orders, depth and execution detail.</p></div>`;
   }
-  // Command Center Simple view (2026-10-02): is each paper book beating its own baseline? Hero = books beating /
-  // books with enough data; one row per scoreboard book plus the paper bots; the existing Pump profit and wallet
-  // crowd cards stay underneath.
-  function commandGlance(bad){
-    const ps=scoreboard?.paperSummary||{},beat=ps.beating||0,judged=beat+(ps.notBeating||0),rows=(scoreboard?.rows||[]).filter(r=>r.kind!=='lab').slice(0,8);
-    const amt=(v,u)=>v==null?'—':u==='SOL'?`${v>0?'+':v<0?'−':''}${Math.abs(v).toFixed(4)} SOL`:`${v>0?'+':v<0?'−':''}$${Math.abs(v).toFixed(2)}`;
-    const bots=window.MPOBots?.data,botRows=bots?[['Kalshi weather bot',bots.kalshi.weather],['Kalshi BTC bot',bots.kalshi.btc],['Polymarket copy bot',bots.polycopy]].map(([n,b])=>gRow(n,`paper · ${b.open.length} open · ${(b.stats.settled??b.stats.closed)||0} settled`,`$${b.equityUsd.toFixed(2)}`,b.lastError?'bad':b.settings.enabled?'ok':'warn')).join(''):'';
-    const list=`<div class="g-rows">${rows.map(r=>gRow(`${r.module} · ${r.book}`,`${r.closes} closes · beats baseline: ${String(r.beatsBaseline).toLowerCase()}`,amt(r.netPnl,r.unit),r.beatsBaseline==='YES'?'ok':r.beatsBaseline==='NO'?'bad':'warn')).join('')}${botRows}</div>`;
-    return glance({title:'Command Center',pill:bad?{label:`${bad} data source${bad===1?'':'s'} need attention`,tone:'warn'}:{label:'All data sources ok',tone:'ok'},
-      hero:scoreboard?`${beat} / ${judged}`:'—',heroSub:'paper books beating their own baseline (after fees)',heroText:false,
-      stats:[{label:'Beating',value:String(beat),tone:beat?'g-pos':''},{label:'Not beating',value:String(ps.notBeating||0),tone:ps.notBeating?'g-neg':''},{label:'Need more data',value:String(ps.notEnoughData||0)}],
-      visual:`<div class="g-scroll">${list}${window.mpoPumpProfitHTML?.(window.__MPO_PROFIT_CAPTURE)||''}${window.mpoWalletCrowdHTML?.(window.__MPO_WALLET_CROWD)||''}</div>`,foot:gFoot(['Advanced: market desks, diagnostics, events, risk controls'])});
+  const overviewArray=v=>Array.isArray(v)?v:[];
+  const overviewNumber=v=>v==null||v===''||typeof v==='boolean'||!Number.isFinite(Number(v))?null:Number(v);
+  const overviewCount=v=>overviewNumber(v)==null?'Unknown':String(overviewNumber(v));
+  const overviewMoney=(v,unit='USD')=>overviewNumber(v)==null?'Unknown':currencyAmount(overviewNumber(v),unit);
+  const overviewNav=(id,label,detail=false)=>`<button class="btn" type="button" data-overview-open="${escape(id)}"${detail?' data-overview-detail="true"':''}>${escape(label)}</button>`;
+  const overviewCard=(title,body,nav='')=>`<section class="overview-card"><div class="overview-head"><h3>${escape(title)}</h3></div>${body}${nav?`<div class="overview-nav">${nav}</div>`:''}</section>`;
+  const overviewLine=(title,note,value='')=>`<li><div><b>${escape(title)}</b><small>${escape(note)}</small></div>${value?`<span>${escape(value)}</span>`:''}</li>`;
+  function overviewModules(){
+    const modules=[['trade','Pump.fun',/^Pump|Solana/i,['solana']],['robinhood','Robinhood',/^Robinhood/i,['robinhood','robinhood-equities']],['predictionmarkets','Polymarket',/^Polymarket/i,['polymarket','polymarket-us']],['kalshi','Kalshi',/^Kalshi/i,['kalshi']],['evolution','Research & Lab',/^Evolution Lab|Market Lab/i,['market-lab','arbitrage']]];
+    const capabilities=overviewArray(snapshot?.capabilities?.rows||snapshot?.capabilities);
+    return modules.map(([id,label,match,keys])=>{
+      const rows=overviewArray(scoreboard?.rows).filter(r=>match.test(String(r.module||''))),caps=capabilities.filter(c=>keys.includes(c.id));
+      const stale=rows.filter(r=>['STALE','UNREADABLE','ERROR'].includes(r.freshness?.status)).length;
+      const note=rows.length?`${rows.length} reported ${id==='evolution'?'research lanes':'books'} · ${rows.filter(r=>r.beatsBaseline==='YES').length} beating baseline${stale?` · ${stale} stale`:''}`:'Results not reported';
+      const decisions=[...new Set(caps.map(c=>typeof c.decision==='string'?c.decision:c.decision?.state).filter(Boolean))];
+      const body=`<p class="overview-note">${escape(note)}</p><ul class="overview-list">${rows.slice(0,2).map(r=>overviewLine(r.book||r.module,`${r.kind==='lab'?'RESEARCH':r.mode||'UNKNOWN MODE'} · ${overviewCount(r.closes)} closes · ${r.freshness?.status||'freshness unknown'}`,overviewNumber(r.netPnl)==null?'Unknown':sbAmount(overviewNumber(r.netPnl),r.unit))).join('')}${!rows.length?overviewLine('Evidence',decisions.join(' · ')||'Open the desk to inspect data and paper readiness.'):''}</ul>`;
+      return overviewCard(label,body,overviewNav(id,'Open '+label));
+    }).join('');
   }
-  // Kalshi Simple view: the weather desk at a glance. Each city's next undecided daily-high market as a
-  // bucket distribution (Kalshi mids) with the NWS forecast bucket outlined, plus the forecast − market gap.
+  function overviewAttention(){
+    const issues=[];
+    if(snapshot?.risk?.halted)issues.push(['Paper execution paused','The persistent stop is active. Review existing orders and risk controls.']);
+    if(error||scoreboardError)issues.push(['Refresh unavailable',error||scoreboardError]);
+    for(const s of overviewArray(diag?.sources).filter(s=>!['CONNECTED','IDLE','DISABLED'].includes(s.status)))issues.push([s.id,s.lastError||s.note||s.status||'Status unknown']);
+    for(const m of overviewArray(snapshot?.legacy?.mirror).filter(m=>m.status!=='RECONCILED'))issues.push([m.source+' mirror',m.status+' · inspect the source book before trusting mirrored cash']);
+    for(const r of overviewArray(scoreboard?.rows).filter(r=>['STALE','UNREADABLE','ERROR'].includes(r.freshness?.status)))issues.push([r.module+' / '+r.book,r.freshness.status]);
+    const bots=window.MPOBots?.data;for(const [label,b] of [['Kalshi weather',bots?.kalshi?.weather],['Kalshi NWS control',bots?.kalshi?.['weather-nws']],['Kalshi BTC',bots?.kalshi?.btc],['Polymarket copy',bots?.polycopy],['Kalshi copy mirror',bots?.mirror],['Variant farm',bots?.farm]])if(b?.lastError||b?.error)issues.push([label,b.lastError||b.error]);
+    if(snapshot?.journalError)issues.push(['Journal',snapshot.journalError]);
+    const body=issues.length?`<ul class="overview-list">${issues.slice(0,5).map(([title,note])=>overviewLine(title,note)).join('')}</ul>${issues.length>5?`<p class="overview-note">${issues.length-5} more items in detailed diagnostics.</p>`:''}`:`<p class="overview-note">${overviewArray(diag?.sources).length?'No active source warnings reported.':'Source health has not been reported yet.'}</p>`;
+    return overviewCard('Needs attention',body,overviewNav('risk','Risk controls')+overviewNav('command','Detailed diagnostics',true));
+  }
+  function overviewBooks(){
+    const books=overviewArray(snapshot?.legacy?.books).filter(b=>b.mode==='PAPER').map(b=>({label:b.label||b.source,note:`${b.status||'status unknown'} · ${overviewCount(b.openPositions)} open`,value:overviewMoney(b.cash,b.currency||'UNKNOWN UNIT')+' cash'}));
+    // Current source books and core mirrors are alternative views of the same cash, never additive.
+    for(const a of overviewArray(snapshot?.portfolio?.accounts).filter(a=>!String(a.account||'').startsWith('legacy-'))){books.push({label:`${a.venue||'Core'} / ${a.account||'paper account'}`,note:`PAPER · ${Array.isArray(a.positions)?a.positions.length:'Unknown'} open · ${a.currency||'unit unknown'}`,value:overviewMoney(a.cash,a.currency||'UNKNOWN UNIT')+' cash'});}
+    const data=window.MPOBots?.data;
+    for(const [label,b] of [['Kalshi weather',data?.kalshi?.weather],['Kalshi NWS control',data?.kalshi?.['weather-nws']],['Kalshi BTC',data?.kalshi?.btc],['Polymarket copy',data?.polycopy],['Kalshi copy mirror',data?.mirror]])if(b)books.push({label,note:`PAPER · ${Array.isArray(b.open)?b.open.length:'Unknown'} open · ${b.settings?.enabled===true?'enabled':b.settings?.enabled===false?'paused':'state unknown'}`,value:overviewMoney(b.equityUsd)+' modeled equity'});
+    return overviewCard('Independent paper books',books.length?`<ul class="overview-list">${books.map(b=>overviewLine(b.label,b.note,b.value)).join('')}</ul><p class="overview-note">Original units and source books stay separate. Cash and modeled equity are different measures.</p>`:'<p class="overview-note">Paper balances have not been reported yet.</p>',overviewNav('money','Paper accounts'));
+  }
+  function commandOverview(){
+    const proposals=overviewArray(snapshot?.proposals).filter(p=>!['FILLED','REJECTED','CANCELED','CANCELLED','EXPIRED'].includes(p.status)),caps=overviewArray(snapshot?.capabilities?.rows||snapshot?.capabilities);
+    const sources=overviewArray(diag?.sources),known=sources.filter(s=>['CONNECTED','IDLE'].includes(s.status)),rows=overviewArray(scoreboard?.rows),labs=rows.filter(r=>r.kind==='lab');
+    const research=overviewArray(intelligence?.research).filter(r=>r.status==='NEEDS_EVIDENCE');
+    const recent=overviewArray(snapshot?.ledger).slice(0,3);
+    const activity=`<ul class="overview-list">${overviewLine('Core order proposals',Array.isArray(snapshot?.proposals)?`${proposals.length} pending or under review`:'Not reported')}${recent.map(r=>overviewLine(`${r.mode||'UNKNOWN MODE'} · ${r.venue||'venue unknown'} · ${r.kind||'activity'}`,when(r.at),overviewMoney(r.gross,r.currency||'UNKNOWN UNIT'))).join('')}</ul>`;
+    const evidence=`<ul class="overview-list">${overviewLine('Research lanes',scoreboard?`${labs.length} reported · research results do not grant trading authority`:'Results not reported · research results do not grant trading authority')}${overviewLine('Paper evidence',caps.length?`${caps.filter(c=>c.evidenceReady===true).length} capability checks ready · applied strategy is checked separately`:'Readiness not reported')}${research.slice(0,2).map(r=>overviewLine(r.module||'Research',r.nextTest||r.reason||'More observations needed')).join('')}</ul>`;
+    return `<div class="mpo-overview"><p class="overview-note">See what each trading module is observing, how its paper books are doing and which research or data issues need attention. Open a desk to investigate or use its controls.</p><div class="overview-grid">${overviewModules()}${overviewAttention()}${overviewBooks()}${overviewCard('Open activity',activity,overviewNav('journal','Journal'))}${overviewCard('Research & qualification',evidence,overviewNav('evolution','Evolution Lab')+overviewNav('marketlab','Market Lab'))}${overviewCard('Data health',`<ul class="overview-list">${overviewLine('Sources',diag?`${known.length} connected or idle / ${sources.length} reported`:'Not reported')}${overviewLine('Latest platform snapshot',when(snapshot?.at))}${overviewLine('Market coverage',snapshot?`${contracts.length} loaded listings across venues · partial snapshot`:'Not reported')}${overviewLine('Live core',snapshot?.executionModes?.liveCore||'Status not reported')}</ul>`,overviewNav('wire','Wire')+overviewNav('macro','Macro'))}</div></div>`;
+  }
+  function commandGlance(bad){
+    const ps=scoreboard?.paperSummary,beat=overviewNumber(ps?.beating),notBeat=overviewNumber(ps?.notBeating),judged=beat==null||notBeat==null?null:beat+notBeat;
+    return glance({title:'Command Center',pill:bad?{label:`${bad} sources need attention`,tone:'warn'}:diag?{label:'Paper · research',tone:''}:{label:'Health not reported',tone:'warn'},
+      hero:judged==null?'—':`${beat} / ${judged}`,heroSub:'paper books beating their own baseline · suite overview',heroText:false,
+      stats:[{label:'Beating',value:overviewCount(beat),tone:beat>0?'g-pos':''},{label:'Not beating',value:overviewCount(notBeat),tone:notBeat>0?'g-neg':''},{label:'Need more data',value:overviewCount(ps?.notEnoughData)}],
+      visual:`<div class="g-scroll">${commandOverview()}</div>`,foot:gFoot(['Open a desk to inspect its data, paper book and controls','Balances remain in their original currencies'])});
+  }
+  // Weather is one preview in the wider Kalshi overview; the existing Weather desk retains its detail.
   // Data is GET /api/platform/weather (server-cached); fetched at most every 10 minutes while this glance shows.
   let kalshiWx=null,kalshiWxAt=0,kalshiWxBusy=false,kalshiWxError='';
   function loadKalshiWx(){
     if(kalshiWxBusy||Date.now()-kalshiWxAt<(kalshiWx?600000:60000))return;kalshiWxBusy=true;kalshiWxAt=Date.now();
     request('/weather').then(v=>{kalshiWx=v;kalshiWxError='';}).catch(e=>{kalshiWxError=e.message;}).finally(()=>{kalshiWxBusy=false;draw('kalshi');});
   }
-  // One row for the forward-test farm (src/botFarm.js): how many variants, how many bets settled, who leads.
-  function farmRow(farm,money){
-    if(!farm?.variants?.length)return '';const settled=farm.variants.reduce((a,v)=>a+v.settled,0),best=farm.variants.slice().sort((a,b)=>b.pnlUsd-a.pnlUsd)[0];
-    return gRow('Variant farm',`${farm.variants.length} paper variants · ${settled} settled · ${settled?'leader: '+best.label:'no results yet'}`,settled?money(best.pnlUsd):'—',settled?'ok':'warn');
+  function kalshiOverview(){
+    const loaded=[...new Map([...overviewArray(contracts).filter(c=>c.provider==='kalshi'),...states.kalshi.rows].map(c=>[c.id||c.sourceId,c])).values()];
+    const categories=new Map();for(const c of loaded){const name=c.data?.category||'Uncategorized';categories.set(name,(categories.get(name)||0)+1);}
+    const cats=[...categories].sort((a,b)=>b[1]-a[1]);
+    const coverage=overviewCard('Market universe',`<ul class="overview-list">${overviewLine('Loaded Kalshi listings',snapshot?`${loaded.length} cached listings · ${cats.length} observed categories`:'Coverage not reported')}${cats.slice(0,4).map(([name,n])=>overviewLine(name,'Among loaded listings',String(n))).join('')}</ul><p class="overview-note">This is a partial public-data snapshot. Load or search active markets in Advanced to explore the venue.</p>`,overviewNav('kalshi','Market desk',true)+overviewNav('macro','Macro events'));
+    const data=window.MPOBots?.data;
+    const books=[['Weather model',data?.kalshi?.weather],['NWS forecast control',data?.kalshi?.['weather-nws']],['Bitcoin range model',data?.kalshi?.btc],['Copy mirror',data?.mirror]];
+    const bookLines=books.map(([label,b])=>overviewLine(label,b?`PAPER · ${b.settings?.enabled===true?'enabled':b.settings?.enabled===false?'paused':'state unknown'} · ${Array.isArray(b.open)?b.open.length:'Unknown'} open · ${overviewCount(b.stats?.settled??b.stats?.closed)} settled${b.lastError?' · '+b.lastError:''}`:'Paper book not reported',b?overviewMoney(b.equityUsd)+' modeled equity':'Unknown')).join('');
+    const paper=overviewCard('Separate paper books',`<ul class="overview-list">${bookLines}</ul><p class="overview-note">Each model keeps its own simulated funds and results. Compare evidence before changing settings.</p>`,overviewNav('kalshibots','Paper bots')+overviewNav('pmcopy','Copy research'));
+    const farm=data?.farm,variants=overviewArray(farm?.variants),positive=variants.filter(v=>String(v.verdict?.text||'').startsWith('making money'));
+    const researchRows=overviewArray(scoreboard?.rows).filter(r=>/^Kalshi|Evolution Lab/i.test(String(r.module||''))&&r.kind==='lab');
+    const research=overviewCard('Farm & qualification',`<ul class="overview-list">${overviewLine('Forward variant farm',farm?`${variants.length} independent PAPER variants · ${overviewCount(farm.minSettled)} settled bets required for a verdict`:'Farm snapshot not reported')}${overviewLine('Profitability evidence',farm?`${positive.length} positive reported farm verdicts · a per-bet P/L test, not full strategy qualification`:'Not reported')}${overviewLine('Historical research',scoreboard?`${researchRows.length} reported lanes · diagnostic results require prospective validation`:'Results not reported')}</ul><p class="overview-note">A farm result or model forecast alone does not grant live trading authority.</p>`,overviewNav('kalshibots','Farm evidence')+overviewNav('evolution','Evolution Lab'));
+    const soon=loaded.map(c=>({c,at:new Date(c.data?.expiresAt).getTime()})).filter(x=>Number.isFinite(x.at)&&x.at>Date.now()).sort((a,b)=>a.at-b.at).slice(0,3);
+    const activity=overviewCard('Upcoming markets & activity',`<ul class="overview-list">${soon.length?soon.map(({c,at})=>overviewLine(c.data?.title||c.sourceId||'Market',`${c.data?.category||'Category unknown'} · closes ${when(at)}`)).join(''):overviewLine('Upcoming closes','No upcoming closes in the loaded snapshot')}${overviewLine('Core paper proposals',Array.isArray(snapshot?.proposals)?String(snapshot.proposals.filter(p=>p.payload?.venue==='kalshi'&&!['FILLED','REJECTED','CANCELED','CANCELLED','EXPIRED'].includes(p.status)).length)+' pending or under review':'Not reported')}</ul>`,overviewNav('kalshi','Inspect markets',true)+overviewNav('journal','Journal'));
+    const provider=overviewArray(snapshot?.providers).find(p=>p.id==='kalshi'),health=overviewArray(diag?.sources).filter(s=>/kalshi|weather|botfarm/i.test(String(s.id||'')));
+    const status=overviewCard('Data health',`<ul class="overview-list">${overviewLine('Kalshi provider',provider?.status||'Status not reported',provider?.lastSuccess?when(provider.lastSuccess):'')}${health.slice(0,3).map(s=>overviewLine(s.id,s.status||'Unknown',s.lastError||'')).join('')}${overviewLine('Core execution',snapshot?.executionModes?.kalshi||'Status not reported')}${overviewLine('Paper snapshot',data?when(data.at):'Not reported')}</ul>`,overviewNav('command','Detailed diagnostics',true));
+    const weatherRows=overviewArray(kalshiWx?.cities).map(c=>{const m=overviewArray(c.markets).find(m=>m.closeAt>Date.now()&&overviewArray(m.buckets).length&&Math.max(...m.buckets.map(b=>overviewNumber(b.p)??0))<0.9);return m?{c,m}:null;}).filter(Boolean).slice(0,3);
+    const degree=v=>overviewNumber(v)==null?'Unknown':Number(v).toFixed(1)+'°F';
+    const weather=overviewCard('Weather preview',weatherRows.length?`<ul class="overview-list">${weatherRows.map(({c,m})=>overviewLine(c.label||c.id,`${m.date||'Date unknown'} · NWS ${degree(m.nwsHigh)} · market ${degree(m.expectedHigh)}`,overviewNumber(m.gap)==null?'Unknown gap':`${m.gap>0?'+':''}${Number(m.gap).toFixed(1)}°F gap`)).join('')}</ul><p class="overview-note">Forecast gaps are context. Tradable asks, fees and observed depth are checked by the paper bots.</p>`:`<p class="overview-note">${escape(kalshiWxError?'Weather preview unavailable: '+kalshiWxError:kalshiWx?'No upcoming weather markets in this snapshot.':'Weather preview is loading.')}</p>`,overviewNav('weather','Weather desk'));
+    return `<div class="mpo-overview"><p class="overview-note">Explore Kalshi event markets and observed probabilities, then compare the weather, Bitcoin and copy models in their separate paper books. Follow current activity and research before opening a detailed desk.</p><div class="overview-grid">${coverage}${paper}${research}${activity}${status}${weather}</div></div>`;
   }
   function kalshiGlance(){
     loadKalshiWx();
-    const deg=v=>v==null?'—':Math.round(Number(v)*10)/10+'°';
-    const rows=(kalshiWx?.cities||[]).map(c=>{const m=(c.markets||[]).find(m=>m.closeAt>Date.now()&&Math.max(...m.buckets.map(b=>b.p))<0.9);return m?{c,m}:null;}).filter(Boolean);
-    const gaps=rows.filter(r=>Number.isFinite(r.m.gap)).sort((a,b)=>Math.abs(b.m.gap)-Math.abs(a.m.gap)),top=gaps[0];
-    const inBucket=(b,v)=>v!=null&&(b.lo==null||v>=b.lo)&&(b.hi==null||v<=b.hi);
-    const dateLabel=d=>{const t=new Date(d+'T12:00:00');return Number.isFinite(t.getTime())?t.toLocaleDateString([],{month:'short',day:'numeric'}):d||'';};
-    const list=rows.length?`<div class="g-wx">${rows.map(({c,m})=>{const hi=Math.max(...m.buckets.map(b=>b.p),0.01);
-      return `<div class="g-wx-row"><span class="g-wx-city">${escape(c.label)}<small>${escape(dateLabel(m.date))}</small></span><span class="g-wx-dist" title="Kalshi bucket prices; outlined bucket holds the NWS forecast">${m.buckets.map(b=>`<i class="${inBucket(b,m.nwsHigh)?'nws':''}" style="--p:${Math.max(4,Math.round(b.p/hi*100))}%" title="${escape(b.lo==null?'≤'+b.hi:b.hi==null?b.lo+'+':b.lo+'–'+b.hi)}°F · ${Math.round(b.p*100)}¢"></i>`).join('')}</span><span class="g-wx-fig">NWS ${deg(m.nwsHigh)} · mkt ${deg(m.expectedHigh)}${Number.isFinite(m.gap)?` <b class="${Math.abs(m.gap)>=2?(m.gap>0?'g-pos':'g-neg'):''}">${m.gap>0?'+':m.gap<0?'−':''}${Math.abs(m.gap).toFixed(1)}°</b>`:''}</span></div>`;}).join('')}</div>`
-      :`<div class="g-empty">${kalshiWxError?escape('Weather desk unavailable: '+kalshiWxError):'Loading NWS forecasts and Kalshi weather markets (first load can take a minute)…'}</div>`;
-    const next=rows.map(r=>r.m.closeAt).sort((a,b)=>a-b)[0];
-    // Paper bots (mpo-bots.js): hero is the combined weather + BTC paper equity; weather bars stay as the visual.
-    const bots=window.MPOBots?.data?.kalshi,w=bots?.weather,b=bots?.btc,on=w?.settings?.enabled||b?.settings?.enabled;
-    const eq=bots?w.equityUsd+b.equityUsd:null,start=bots?w.startUsd+b.startUsd:null,open=bots?w.open.length+b.open.length:null,settled=bots?w.stats.settled+b.stats.settled:0,wins=bots?w.stats.wins+b.stats.wins:0;
-    const money=v=>'$'+Number(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
-    const botRow=(name,x)=>x?gRow(name,`${x.settings.enabled?'on':'paused'} · ${x.open.length} open · ${x.stats.settled} settled${x.stats.brierModel!=null?` · model ${x.stats.brierModel<x.stats.brierMarket?'beats':'trails'} market`:''}`,`${money(x.equityUsd)}`,x.lastError?'bad':x.settings.enabled?'ok':'warn'):'';
-    return glance({title:'Kalshi · paper bots',pill:bots?{label:on?'Paper bots on':'Paper bots paused',tone:on?'ok':'warn'}:{label:'Paper',tone:''},
-      hero:eq!=null?money(eq):'—',
-      heroSub:eq!=null?`<span class="${eq>=start?'g-pos':'g-neg'}">${eq>=start?'+':'−'}${Math.abs((eq-start)/start*100).toFixed(2)}%</span> · weather + BTC paper bots (simulated)`:'Weather + BTC paper bots',
-      stats:[{label:'Open bets',value:open==null?'—':String(open)},{label:'Settled · won',value:bots?`${settled} · ${wins}`:'—'},{label:'Gaps ≥ 2°F',value:kalshiWx?String(gaps.filter(r=>Math.abs(r.m.gap)>=2).length):'—'}],
-      visual:`${bots?`<div class="g-rows">${botRow('Weather bot',w)}${botRow('BTC range bot',b)}${farmRow(window.MPOBots?.data?.farm,money)}</div>`:''}${list}`,foot:gFoot([top&&`biggest gap ${top.c.label} ${top.m.gap>0?'+':''}${top.m.gap}°F`,'bars = Kalshi prices per °F bucket','outlined = NWS forecast',next&&`next close ${new Date(next).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}`])});
+    const loaded=overviewArray(contracts).filter(c=>c.provider==='kalshi'),categories=new Set(loaded.map(c=>c.data?.category).filter(Boolean)),bots=window.MPOBots?.data?.kalshi;
+    const source=overviewArray(snapshot?.providers).find(p=>p.id==='kalshi');
+    return glance({title:'Kalshi overview',pill:{label:source?.status||'Health not reported',tone:source&&source.status==='CONNECTED'?'ok':'warn'},hero:snapshot?String(loaded.length):'—',heroSub:'loaded public listings · partial market coverage',
+      stats:[{label:'Categories',value:snapshot?String(categories.size):'Unknown'},{label:'Paper model books',value:bots?String(Object.keys(bots).length):'Unknown'},{label:'Core mode',value:snapshot?.executionModes?.kalshi||'Unknown'}],
+      visual:`<div class="g-scroll">${kalshiOverview()}</div>`,foot:gFoot(['Markets · paper bots · copy mirror · research','Original books remain separate · Advanced opens depth and controls'])});
   }
   const button=(action,label,extra='')=>`<button class="btn" data-core-action="${action}" ${extra} ${busy&&action!=='halt'?'disabled':''}>${label}</button>`;
   async function request(route,data){
@@ -125,19 +172,20 @@ window.MPOSPlatform = (() => {
     return `<h3>Marked paper equity <small>${escape(m.scope||'Scope unknown')} · ${m.consolidatedComplete?'all reported currencies included':'limited coverage'}</small></h3><div class="core-lcd"><span>PAPER equity ${num(m.equityUsd)}</span><span>PAPER cash ${num(m.cashUsd)}</span><span>PAPER unrealized P/L ${num(m.unrealizedPnlUsd)}</span><span>PAPER daily P/L ${num(m.dailyPnlUsd)}</span><span>PAPER high-water drawdown ${m.drawdownPct==null?'Unknown':Number(m.drawdownPct).toFixed(2)+'%'}</span></div><p class="core-muted">${escape(m.method||'Method unavailable')} · history begins ${when(m.historySince)}. Deposits and withdrawals are treated separately from performance.</p>${limitations.length?'<p class="core-error">Valuation incomplete: '+limitations.map(x=>escape([x.venue,x.account,x.instrumentId,x.reason].filter(Boolean).join(' / '))).join(' · ')+'</p>':''}${excluded.length?'<p class="core-notice">Excluded from USD totals: '+excluded.map(x=>escape([x.venue,x.account,x.currency,x.reason].filter(Boolean).join(' / '))).join(' · ')+'. No unverified currency conversion is applied.</p>':''}`;
   }
   function command(){
-    if(!snapshot)return '<p>Connecting to the common ledger…</p>';
-    const r=snapshot.risk,accounts=snapshot.portfolio.accounts;
-    const profitCard=window.mpoPumpProfitHTML?.(window.__MPO_PROFIT_CAPTURE,true)||'';
-    return `${profitCard}${window.mpoWalletCrowdHTML?.(window.__MPO_WALLET_CROWD,true)||''}<div class="core-heading"><span class="core-light ${String(r.state).toLowerCase()}"></span><h2>COMMAND CENTER</h2><span class="mpo-badge">CORE · PAPER</span></div>
-      <div class="core-risk"><strong>${r.state}</strong>${(r.stateReasons||[]).length&&!r.halted?`<span class="core-muted">${r.stateReasons.join(' · ')}</span>`:''}<span>${r.halted?'All further live submissions and core paper fills are stopped.': 'Core paper proposals are checked before every fill.'}</span>${button('halt','STOP ALL LIVE TRADING','class="core-stop"')}</div>
+    if(!snapshot)return `<div class="core-heading"><h2>COMMAND CENTER</h2><span class="mpo-badge">PAPER / RESEARCH</span></div>${commandOverview()}`;
+    const r=snapshot.risk||{},accounts=overviewArray(snapshot.portfolio?.accounts);
+    return `<div class="core-heading"><span class="core-light ${String(r.state||'unknown').toLowerCase()}"></span><h2>COMMAND CENTER</h2><span class="mpo-badge">CORE · PAPER</span></div>
+      ${commandOverview()}
+      <div class="core-risk"><strong>${escape(r.state||'Risk state unknown')}</strong>${(r.stateReasons||[]).length&&!r.halted?`<span class="core-muted">${escape(r.stateReasons.join(' · '))}</span>`:''}<span>${r.halted?'All further live submissions and core paper fills are stopped.': 'Core paper proposals are checked before every fill.'}</span>${button('halt','STOP ALL LIVE TRADING','class="core-stop"')}</div>
       <p class="core-muted">The stop persists across restarts. Orders already at a venue require reconciliation or cancellation in that program.</p>
       ${r.halted?button('resume','Resume core paper trading'):''}
       <div class="core-toolbar">${button('open-kalshi','Kalshi')}${button('open-poly','Polymarket')}${button('open-arbitrage','Arbitrage')}${button('refresh','Refresh')}</div>
       ${(snapshot.legacy?.mirror||[]).some(m=>m.status!=='RECONCILED')?'<p class="core-error">Ledger mirror needs attention: '+(snapshot.legacy.mirror.filter(m=>m.status!=='RECONCILED').map(m=>escape(m.source+' '+m.status)).join(' / '))+'. Trading books are separate; inspect Legacy reconciliation below.</p>':''}
-      ${missionCard()}
-      ${scoreboardCard()}
+      ${detailPanel('mission','Research attention and cross-venue opportunity memory',()=>missionCard())}
+      ${detailPanel('scoreboard','Full scoreboard and baseline comparisons',()=>scoreboardCard())}
+      ${detailPanel('pumpstudies','Pump.fun profit capture and wallet crowd studies',()=>(window.mpoPumpProfitHTML?.(window.__MPO_PROFIT_CAPTURE,true)||'')+(window.mpoWalletCrowdHTML?.(window.__MPO_WALLET_CROWD,true)||''))}
       ${detailPanel('events','Cross-market events and supporting evidence',()=>eventsCard())}
-      ${markedRiskCard(r.metrics)}
+      ${detailPanel('markedrisk','Marked paper valuation and coverage',()=>markedRiskCard(r.metrics))}
       ${snapshot.practiceMarkSync?`<p class="core-muted">Practice valuation: ${escape(snapshot.practiceMarkSync.status)} / ${snapshot.practiceMarkSync.marks} observed-depth marks. Source: cached public Coinbase quotes with practice fee/slippage assumptions, not Robinhood execution. ${(snapshot.practiceMarkSync.issues||[]).map(i=>escape(i.reason)).join(' / ')}</p>`:''}
       ${detailPanel('capabilities','Module readiness and evidence coverage',()=>capabilityCard(snapshot.capabilities))}
       ${detailPanel("accounts","Paper accounts and historical mirrors",()=>`      <h3>Ledger accounts <small>PAPER simulated funds · P/L below is PAPER</small></h3>
@@ -160,7 +208,7 @@ window.MPOSPlatform = (() => {
       ${detailPanel('diagnostics','Detailed source diagnostics',()=>diagnosticsCard())}
       ${detailPanel("proposals","Order proposals and decisions",()=>`      <h3>Order proposals</h3>${table(['Time','Venue / outcome','Mode','Status','Risk decision'],snapshot.proposals.map(p=>`<tr><td>${when(p.created_at)}</td><td>${escape(p.payload.venue)} / ${escape(p.payload.outcome)}</td><td>${escape(p.payload.mode)}</td><td>${escape(p.status)}</td><td>${escape(p.decision.reasons.join(', ')||p.decision.state)}</td></tr>`).join(''))}
 `)}
-      <details><summary>Risk limits / diagnostics</summary><form data-core-form="limits" class="core-limit-grid">${Object.entries(r.limits).map(([k,v])=>`<label>${escape(k)}<input name="${escape(k)}" type="number" min="0.001" step="any" value="${v}" required></label>`).join('')}<button class="btn" type="submit">Save limits</button></form><p>Database ${snapshot.database.status}; ${snapshot.database.ledgerEntries} ledger entries; event queue ${snapshot.eventBus.queueDepth}; dropped ${snapshot.eventBus.dropped}; listener errors ${snapshot.eventBus.listenerErrors}.</p></details>
+      <details><summary>Risk limits / diagnostics</summary><form data-core-form="limits" class="core-limit-grid">${Object.entries(r.limits||{}).map(([k,v])=>`<label>${escape(k)}<input name="${escape(k)}" type="number" min="0.001" step="any" value="${v}" required></label>`).join('')}<button class="btn" type="submit">Save limits</button></form><p>Database ${escape(snapshot.database?.status||'Unknown')}; ${overviewCount(snapshot.database?.ledgerEntries)} ledger entries; event queue ${overviewCount(snapshot.eventBus?.queueDepth)}; dropped ${overviewCount(snapshot.eventBus?.dropped)}; listener errors ${overviewCount(snapshot.eventBus?.listenerErrors)}.</p></details>
       ${detailPanel("ledger","Recent ledger / original currencies",()=>`      <h3>Recent ledger <small>Mode is explicit on every row</small></h3>${table(['Time','Mode','Venue','Kind','Quantity','Gross','Fee'],snapshot.ledger.slice(0,30).map(e=>`<tr><td>${when(e.at)}</td><td><b>${escape(e.mode)}</b></td><td>${escape(e.venue)}</td><td>${escape(e.kind)}</td><td>${escape(e.quantity)}</td><td>${currencyAmount(e.gross,e.currency)}</td><td>${currencyAmount(e.fee,e.currency)}</td></tr>`).join(''))}`)}
 `;
   }
@@ -274,7 +322,7 @@ window.MPOSPlatform = (() => {
       <div class="core-toolbar">${['ALL','MACRO','SPORTS','WEATHER','CORPORATE'].map(k=>`<button class="btn ${eventKind===k?'on':''}" type="button" data-core-action="event-kind" data-kind="${k}">${k}${k!=='ALL'&&events.counts?` <small>${events.counts[k]??0}</small>`:''}</button>`).join('')}</div><div class="event-list">${(events.pages||[]).filter(p=>eventKind==='ALL'||p.kind===eventKind).map(card).join('')||'<p class="core-muted">No upcoming events with Kalshi ladders.</p>'}</div>${(events.errors||[]).length?`<p class="core-muted">${events.errors.map(escape).join(' · ')}</p>`:''}`;
   }
   let refreshing=null;
-  function refresh(){if(refreshing)return refreshing;refreshing=(async()=>{const [s,e,d,i]=await Promise.all([request('/status'),request('/entities?kind=Contract'),request('/diagnostics').catch(()=>null),request('/intelligence').catch(e=>({lastError:e.message})),refreshScoreboard()]);intelligence=i;snapshot=s;contracts=e.entities;diag=d;error='';loadEvents();render();})().finally(()=>{refreshing=null});return refreshing;}
+  function refresh(){if(refreshing)return refreshing;refreshing=(async()=>{const [s,e,d,i]=await Promise.all([request('/status'),request('/entities?kind=Contract'),request('/diagnostics').catch(()=>null),request('/intelligence').catch(e=>({lastError:e.message})),refreshScoreboard()]);intelligence=i;snapshot=s;contracts=overviewArray(e.entities);diag=d;error='';loadEvents();render();if(typeof CustomEvent==='function')globalThis.dispatchEvent?.(new CustomEvent('mpo:overview-data'));})().finally(()=>{refreshing=null});return refreshing;}
   async function action(fn){if(busy)return;busy=true;error='';render();try{await fn();await refresh();}catch(e){error=e.message;}finally{busy=false;render();}}
   function install(api){
     hostApi=api;
@@ -314,7 +362,9 @@ window.MPOSPlatform = (() => {
       });
     });
     action(refresh);
-    setInterval(()=>{if(!document.hidden&&!busy&&ids.some(paneVisible))refresh().catch(e=>{error=e.message;render();});},10000);
+    setInterval(()=>{if(!document.hidden&&!busy&&overviewVisible())refresh().catch(e=>{error=e.message;render();});},10000);
   }
+  Object.defineProperty(render,'overview',{get:()=>({snapshot,diag,scoreboard,contracts})});
   return {install,render};
 })();
+Object.defineProperty(window.MPOSPlatform,'overview',{get:()=>window.MPOSPlatform.render.overview});
