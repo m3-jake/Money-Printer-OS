@@ -7,3 +7,4 @@ node_modules/
 __pycache__/
 .build-version
 .build-commit
+web-demo/dist/
