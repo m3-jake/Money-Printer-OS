@@ -351,7 +351,7 @@ test('live visuals: one animation engine, served read-only from /js, used by Pol
   const win = { matchMedia: () => ({ matches: false }), devicePixelRatio: 1, addEventListener(){} };
   const sandbox = { window: win, document: { hidden: false, querySelectorAll: () => [], addEventListener(){} }, performance: { now: () => 0 }, requestAnimationFrame: f => frames.push(f), console };
   vm.runInNewContext(viz, sandbox, { filename: 'mpo-viz.js' });
-  assert.deepEqual([...win.MPOViz.types].sort(), ['bubbles', 'edge', 'funnel', 'gauge', 'hist', 'lanes', 'lines', 'pulse', 'scatter', 'ticker']);
+  assert.deepEqual([...win.MPOViz.types].sort(), ['bars', 'bubbles', 'edge', 'funnel', 'gauge', 'hist', 'lanes', 'lines', 'pulse', 'scatter', 'ticker']);
   assert.match(win.MPOViz.canvas('k', 50, '<t>'), /data-viz="k"[^>]*height:50px/);
   assert.doesNotMatch(win.MPOViz.canvas('k', 50, '<t>'), /<t>/, 'titles are escaped');
   assert.equal(JSON.stringify(win.MPOViz.beat('b', 5)), '[5]'); assert.equal(JSON.stringify(win.MPOViz.beat('b', 5)), '[5]', 'same beat not repeated');
@@ -429,7 +429,7 @@ test('glance design: every window opens as one calm card, full detail is an opti
   assert.match(html, /if\(!w\|\|w\.classList\.contains\('hidden'\)\|\|w\.classList\.contains\('glance'\)\)return false;/, 'detail renderers skip glance windows');
   for (const id of ['sportsbook', 'journal']) assert.match(html, new RegExp(`windowShown\\('${id}'\\)\\)refresh`), `${id} data keeps flowing for its glance`);
   assert.match(html, /windowShown\('robinhood'\)\|\|windowShown\('money'\)\)\)refreshRobinhood\(\)/, 'Robinhood data refreshes for its suite and Money overview');
-  assert.match(html, /gRow\('Stocks & ETFs',[^\n]*gRow\('Practice',/, 'Robinhood glance carries the stocks & ETFs and practice lines');
+  assert.match(html, /homeMetric\('Stocks & ETFs',[^\n]*homeMetric\('Practice',/, 'Robinhood glance carries the stocks & ETFs and practice books');
   assert.match(html, /setGlance\('robinhood',glance\(\{title:'Robinhood · paper only'/);
   assert.match(glanceCss, /\.window\.glance > \.body,\s*\.window\.glance > \.win-tabs \{ display: none; \}/);
   assert.match(glanceCss, /\.glancepane \{[^}]*container-type: inline-size/);

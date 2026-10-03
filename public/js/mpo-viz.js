@@ -136,7 +136,7 @@
       let connected=false,lastKnown=-1;
       x.beginPath(); for (let i = 0; i < upto; i++) { const value=known(pts[i]);if(value==null){connected=false;continue;}const X = px(i), Y = py(value); connected ? x.lineTo(X, Y) : x.moveTo(X, Y);connected=true;lastKnown=i; }
       x.strokeStyle = sr.color || C.green; x.lineWidth = 2 * dpr; x.stroke();
-      if(lastKnown>=0)glowDot(x, px(lastKnown), py(Number(pts[lastKnown])), 3 * dpr, sr.color || C.green, (d.observationOnly||reduce()?6:6+5*Math.sin(t*5+si))*dpr);
+      if(lastKnown>=0)glowDot(x, px(lastKnown), py(Number(pts[lastKnown])), 3 * dpr, sr.color || C.green, (!reduce()&&(d.live||!d.observationOnly)?6+5*Math.sin(t*5+si):6)*dpr);
       const latest=known(pts.at(-1));if(d.legend!==false)label(x, dpr, `${sr.label} ${latest==null?'unavailable':(d.unit||'')+latest.toFixed(2)}`, L + 4 * dpr + si * 120 * dpr, H - 3 * dpr, sr.color || C.green, 9);
     });
     if(startAt!=null&&d.legend===false){label(x,dpr,new Date(startAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}),L,H-2*dpr,C.dim,9);label(x,dpr,new Date(endAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}),R,H-2*dpr,C.dim,9,'right');}
@@ -304,6 +304,10 @@
   // ------------------------------------------------------------------ loop
   // Static charts draw only when data/layout changes. Motion charts run at <=15 fps and only while visible.
   const MOTION_TYPES = new Set(['pulse','ticker','edge','bubbles']);
+  // Presentation motion is separate from data: a ticker scrolls known text and a
+  // live trace pulses its final marker; neither changes a price or invents a point.
+  const presentationMotion = spec => spec?.type==='ticker'&&spec.data?.items?.length>0 || spec?.type==='lines'&&spec.data?.live===true&&spec.data?.series?.some(s=>s.points?.some(v=>known(v)!=null));
+  const continuousMotion = spec => presentationMotion(spec) || MOTION_TYPES.has(spec?.type)&&!spec?.data?.observationOnly;
   let last = performance.now(), lastDraw = 0, raf = 0, dirty = true;
   const DRAWN = new WeakSet();
   let settleUntil = 0; // eased static charts (gauge, funnel, hist, lanes) keep drawing briefly after a change
@@ -318,7 +322,7 @@
     if (document.hidden) { last = now; return; }
     const canvases=[...document.querySelectorAll('canvas[data-viz]')].filter(visible);
     if(!canvases.length){last=now;return}
-    const moving=!reduce()&&canvases.some(c=>{const spec=REG.get(c.dataset.viz);return MOTION_TYPES.has(spec?.type)&&!spec?.data?.observationOnly;});
+    const moving=!reduce()&&canvases.some(c=>continuousMotion(REG.get(c.dataset.viz)));
     const freshCanvas=canvases.some(c=>!DRAWN.has(c)||c.width!==Math.round(c.clientWidth*Math.min(2,window.devicePixelRatio||1))||c.height!==Math.round(c.clientHeight*Math.min(2,window.devicePixelRatio||1)));
     if(dirty)settleUntil=reduce()?now:now+1500;
     const settling=now<settleUntil;
@@ -333,7 +337,7 @@
       // 2026-10-02 lag pass: a motion frame used to clear and redraw every visible chart. A static chart
       // now redraws only for 1.5 s after data/layout changed (so eased values settle), when its canvas element
       // is new (panel re-render) or when it resized.
-      if (!dirty && !settling && (!MOTION_TYPES.has(spec.type)||spec.data?.observationOnly) && DRAWN.has(c) && c.width === W && c.height === H) continue;
+      if (!dirty && !settling && !continuousMotion(spec) && DRAWN.has(c) && c.width === W && c.height === H) continue;
       DRAWN.add(c);
       if (c.width !== W) c.width = W; if (c.height !== H) c.height = H;
       const x = c.getContext('2d'); x.clearRect(0, 0, W, H);
@@ -387,7 +391,7 @@
     observe,
     samples,
     history(key,options={}){
-      const data={...samples(key),...options,observationOnly:true};delete data.height;delete data.title;
+      const data={...samples(key),live:true,...options,observationOnly:true};delete data.height;delete data.title;
       set(key,'lines',data);return this.canvas(key,options.height||150,options.title||'Observed history');
     },
     canvas(key, height, title) {

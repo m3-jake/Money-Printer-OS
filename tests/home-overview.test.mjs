@@ -142,7 +142,8 @@ test('Command Center starts with unknown balances and evidence, not zero or heal
   const p = platformHarness();
   const card = p.commandGlance(0), html = card.visual;
   assert.equal(card.hero, null);
-  assert.deepEqual(Array.from(card.stats, s => [s.label, s.value]), [['Trading suites', '5'], ['Paper books', 'Unknown'], ['Paper evidence', 'Unknown']]);
+  assert.match(html, /Paper books<\/label><b>Unknown<\/b>/);
+  assert.match(html, /Awaiting evidence<\/label><b>Unknown<\/b>/);
   assert.match(card.pill.label, /not reported/i);
   assert.match(html, /Paper balances have not been reported/);
   assert.doesNotMatch(html, /\$0(?:\.00)?|All data sources ok|All systems normal/);
@@ -170,7 +171,8 @@ test('Command Center uses separate real source books, original units and unreada
   }, { kalshi: { weather: { equityUsd: null, open: [], settings: { enabled: true } }, btc: { equityUsd: 9.25, open: [], settings: { enabled: false } } } });
   const card = p.commandGlance(1), html = card.visual;
   assert.equal(card.hero, null);
-  assert.deepEqual(Array.from(card.stats, s => s.value), ['5', '3', '1 need more data']);
+  assert.match(html, /Paper books<\/label><b>3<\/b>/);
+  assert.match(html, /Awaiting evidence<\/label><b>1<\/b>/);
   for (const text of ['+0.2200 SOL', '−$2.10', '0.42 SOL cash', 'Unknown cash', 'Unknown modeled equity', '$9.25 modeled equity', 'Paper execution paused', 'MISMATCH', 'UNREADABLE']) assert.ok(html.includes(text), text);
   assert.match(html, /weather &lt;upstream&gt;/);
   assert.match(html, /offline &amp; retrying/);
@@ -278,7 +280,9 @@ test('Kalshi opens a whole-suite overview with missing balances and coverage lef
   const p = platformHarness();
   const card = p.kalshiGlance(), html = card.visual;
   assert.equal(card.hero, null);
-  assert.deepEqual(Array.from(card.stats, s => s.value), ['Unknown', 'Unknown', 'Unknown']);
+  assert.match(html, /Public listings<\/label><b>Unknown<\/b>/);
+  assert.match(html, /Model books<\/label><b>Unknown<\/b>/);
+  assert.match(html, /Variants<\/label><b>Unknown<\/b>/);
   for (const label of ['Market universe', 'Separate paper books', 'Farm &amp; qualification', 'Upcoming markets &amp; activity', 'Data health', 'Weather preview']) assert.ok(html.includes(label), label);
   assert.match(html, /Coverage not reported/);
   assert.match(html, /Paper book not reported/);
@@ -303,7 +307,9 @@ test('Kalshi renders supported farm evidence, partial venue coverage and indepen
   farm: { minSettled: 30, variants: [{ settled: 40, pnlUsd: 5, verdict: { t: 2.5, text: 'making money (t 2.5)' } }] } });
   const card = p.kalshiGlance(), html = card.visual;
   assert.equal(card.hero, null);
-  assert.deepEqual(Array.from(card.stats, s => [s.label, s.value]), [['Loaded listings', '2'], ['Categories', '2'], ['Paper model books', '3']]);
+  assert.match(html, /Public listings<\/label><b>2<\/b>/);
+  assert.match(html, /Model books<\/label><b>3<\/b>/);
+  assert.match(html, /Variants<\/label><b>1<\/b>/);
   assert.equal(card.pill.label, 'STALE');
   for (const text of ['$12.25 modeled equity', '$25 modeled equity', '$11 modeled equity', 'Unknown modeled equity', 'Recovery required', 'Weather', 'Crypto', '1 independent PAPER variants', '30 settled bets required', 'NWS Unknown', 'Unknown gap']) assert.ok(html.includes(text), text);
   assert.match(html, /positive|making money|per-bet P\/L/i);
@@ -441,12 +447,14 @@ test('Command Center reads paper book counts from the real scoreboard contract a
   assert.equal(board.paperSummary.books, 1);
   assert.equal(board.rows.length, 4, 'one paper source and three Lab research rows');
   const card = platformHarness({ scoreboard: board }).commandGlance(0);
-  assert.equal(card.stats[1].value, '1');
-  assert.equal(card.stats[2].value, '1 need more data');
+  assert.match(card.visual, /Paper books<\/label><b>1<\/b>/);
+  assert.match(card.visual, /Awaiting evidence<\/label><b>1<\/b>/);
   const missing = platformHarness({ scoreboard: { paperSummary: { books: null, notEnoughData: null }, rows: [] } }).commandGlance(0);
-  assert.deepEqual(Array.from(missing.stats, s => s.value), ['5', 'Unknown', 'Unknown']);
+  assert.match(missing.visual, /Paper books<\/label><b>Unknown<\/b>/);
+  assert.match(missing.visual, /Awaiting evidence<\/label><b>Unknown<\/b>/);
   const empty = platformHarness({ scoreboard: buildScoreboard({}) }).commandGlance(0);
-  assert.deepEqual(Array.from(empty.stats, s => s.value), ['5', '0', '0 need more data'], 'a reported empty scoreboard is a known zero');
+  assert.match(empty.visual, /Paper books<\/label><b>0<\/b>/, 'a reported empty scoreboard is a known zero');
+  assert.match(empty.visual, /Awaiting evidence<\/label><b>0<\/b>/);
 });
 
 test('Command Center reports existing Kalshi models and copy state before baseline results exist', () => {

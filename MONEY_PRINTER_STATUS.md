@@ -1,8 +1,8 @@
 # Money Printer OS: status ledger
 
-## Current entry point — 2026-10-03 alpha.83 / Lab alpha.20
+## Current entry point — 2026-10-03 alpha.84 / Lab alpha.21
 
-The current source pair is Money Printer OS `0.5.0-alpha.83` and Evolution Lab `0.1.0-alpha.20`.
+The current source pair is Money Printer OS `0.5.0-alpha.84` and Evolution Lab `0.1.0-alpha.21`.
 This completes the interrupted Claude audit implementation in `W:/mpo-accounts-views` and
 `W:/lab-workbench`. Installation is established by matching `PAIRED-RELEASE.json` receipts,
 fresh archive hashes and the running apps' exact build commits. A package version alone is not
@@ -11,7 +11,7 @@ and PAPER-only runtime checks. Existing user data, books, P/L, credentials and j
 
 ### Completed source behavior
 
-- Module home pages explain their entire suite and show coverage, separate books, research and
+- Module home pages lead with animated charts and observed numbers across the entire suite, coverage, separate books, research and
   operating state. Command Center brings the modules together, Money Printer OS explains its
   features and workflow, and explicit links open detailed desks. Visible overviews share bounded
   cache refreshes; unknown balances are not displayed as zero or combined across currencies.
@@ -34,6 +34,10 @@ and PAPER-only runtime checks. Existing user data, books, P/L, credentials and j
   and game date disambiguate targets; stale/future observations and corrupt accounts refuse entry.
   Fees fit inside the stake, failed lookups retain queued work, settlements persist coherently, and
   a running book refuses reset. The existing Polymarket copy bot stays separate.
+- The Lab opens on CPU/RAM/GPU history and six platform pipelines. Shared CPU leases adapt to
+  memory and measured external CPU demand; independent jobs share paced downloads and cached
+  corpora. Larger scoring batches use persistent workers, small batches stay serial, and eligible
+  pre-holdout matrices can use parity-checked CUDA diagnostics. Qualification stays unchanged.
 - Raw collection runs at furnace-free rates and only the focused window uses glass blur. All
   existing Simple program cards, web-demo assets and account integration are retained.
 
@@ -294,7 +298,7 @@ animated graphs, and a rolling cash-register / slot-machine effect when major nu
 - **Evolution Lab** lives in a separate repo, `money-printer-evolution-lab`, and is the shared research brain for every module: Solana (labLoop/BEAST), plus parallel `module-robinhood` and `module-polymarket` workers (`src/moduleResearch.js`). Valid module ids come from its `src/researchModules.js`. It writes `<trader data>/lab-link/modules/<id>.json` and paper-only `<id>-champion.json`. It is NOT the dropped "agent lab" harness.
 - **Web demo (2026-10-02):** `web-demo/` + `scripts/web-demo/` build a static, browser-only copy of the HUD for a website. `demo-shim.js` answers `/api/*` from a recorded PAPER session (sandboxed engine, scrubbed env, no keys or user data), and refuses every write. Each page load is a new session: a 1 SOL book run by the Lab champion copied in from `lab-link/` at recording time, played for ~30 min from its opening frame. Published to Cloudflare Pages (`money-printer`, moneyprinter.bangbowbing.net). See `web-demo/README.md`; covered by `test:web-demo`.
 - **HUD boot and logo (2026-10-02):** the boot overlay is a Win98-style log-on over open sky. OK, Enter or 6 idle seconds pull the camera back to the hill and fire `mpo:logon`, which shows the welcome and the grabbable money shower (`welcomeShower()`). The corner logo (`initLogoStretch()`) stretches on drag, slingshots on release, glides to a stop and fades back home after 3.5 s idle; its shine lives in the same `.logo-skin`.
-- **Tests:** 144 suites in `tests/` across 35 targets, run by `npm run test:all` (`test:wiring` fails first if a suite becomes unreachable). Alpha.83 adds audit, copy-lifecycle, and module-home regressions. The 20 Robinhood real-money order-path tests remain explicitly skipped because this paper-only build refuses that dispatch; active safety tests still pin the live boundary and outbound audit. Full-suite results are recorded separately from suite reachability.
+- **Tests:** 145 suites in `tests/` across 35 targets, run by `npm run test:all` (`test:wiring` fails first if a suite becomes unreachable). Alpha.84 adds observed-chart history, motion, and data-boundary regressions. The 20 Robinhood real-money order-path tests remain explicitly skipped because this paper-only build refuses that dispatch; active safety tests still pin the live boundary and outbound audit. Full-suite results are recorded separately from suite reachability.
 
 ## Confirmed working (2026-09-25)
 

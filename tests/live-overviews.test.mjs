@@ -81,6 +81,15 @@ test('normal-motion charts ease new observations then stop instead of manufactur
   h.viz.set('plot','gauge',{value:50});h.frame(1800);assert.equal(h.clears(),draws);
   h.viz.set('plot','gauge',{value:60});h.frame(1900);assert.equal(h.clears(),draws+1);
 });
+test('a live history animates only its marker while source values stay identical',()=>{
+  const h=harness({reduced:false});h.viz.observe('plot',{at:999000,series:[{id:'paper',unit:'USD',value:2}]});h.viz.history('plot');
+  const before=plain(h.viz.samples('plot'));h.frame(10);h.frame(1700);h.frame(1900);
+  assert.ok(h.frames.length>0);assert.deepEqual(plain(h.viz.samples('plot')),before);
+  h.document.hidden=true;h.frame(2100);assert.equal(h.frames.length,0);
+});
+test('known tickers continue scrolling and reduced motion freezes their presentation',()=>{
+  for(const reduced of [false,true]){const h=harness({reduced});h.viz.set('plot','ticker',{items:[{text:'BTC $100',color:'#fff'}]});h.frame(10);h.frame(1700);h.frame(1900);assert.equal(h.frames.length>0,!reduced);}
+});
 
 test('offscreen and background canvases pause, then paint their actual data when visible', () => {
   const h=harness();h.canvas.getBoundingClientRect=()=>({top:900,left:0,bottom:1100,right:400});

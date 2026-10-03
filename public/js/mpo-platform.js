@@ -84,7 +84,7 @@ window.MPOSPlatform = (() => {
   const plotAt=v=>{const n=overviewNumber(v)??Date.parse(v);return Number.isFinite(n)&&n>0&&n<=Date.now()?n:null;};
   const liveMetric=(label,value,note='')=>`<div class="g-tile live-metric"><label>${escape(label)}</label><b>${escape(value)}</b><small>${escape(note)}</small></div>`;
   const chartMarkup=(key,type,data,title,height=170)=>{
-    window.MPOViz?.set(key,type,{...data,observationOnly:true});
+    window.MPOViz?.set(key,type,{live:type==='lines',...data,observationOnly:true});
     return window.MPOViz?.canvas(key,height,title)||`<div class="g-empty">${escape(title)} · chart renderer loading</div>`;
   };
   const plotPanel=(title,chart,note='',main=false)=>`<section class="live-chart ${main?'live-main-chart':''}"><h3>${escape(title)}</h3>${chart}${note?`<p class="overview-note">${escape(note)}</p>`:''}</section>`;
@@ -106,16 +106,16 @@ window.MPOSPlatform = (() => {
     const sources=overviewArray(diag?.sources),jobs=Object.values(window.MPOBots?.data?.lab?.jobs||{}),ledger=overviewArray(snapshot?.ledger),beats=ledger.map(r=>plotAt(r.at)).filter(v=>v!=null).sort((a,b)=>a-b);
     const health=sources.length?[...new Set(sources.map(s=>s.status||'UNKNOWN'))].slice(0,8).map(label=>({label,value:sources.filter(s=>(s.status||'UNKNOWN')===label).length})):[];
     const lab=jobs.length?[{label:'Completed',value:jobs.filter(j=>j.ok===true).length},{label:'Failed',value:jobs.filter(j=>j.ok===false).length},{label:'Unreported',value:jobs.filter(j=>j.ok==null).length}]:[];
-    const metrics=liveMetric('Paper books',overviewCount(scoreboard?.paperSummary?.books),'independent accounts')+liveMetric('Loaded markets',snapshot?String(contracts.length):'Unknown','partial cached coverage')+liveMetric('Logical CPU cores',overviewCount(diag?.process?.cpuCount),'reported by host')+liveMetric('Engine RAM',overviewNumber(diag?.process?.rssMb)==null?'Unknown':diag.process.rssMb+' MB','process resident memory');
+    const metrics=liveMetric('Paper books',overviewCount(scoreboard?.paperSummary?.books),'independent accounts')+liveMetric('Loaded markets',snapshot?String(contracts.length):'Unknown','partial cached coverage')+liveMetric('Awaiting evidence',overviewCount(scoreboard?.paperSummary?.notEnoughData),'paper books need more data')+liveMetric('Engine RAM',overviewNumber(diag?.process?.rssMb)==null?'Unknown':diag.process.rssMb+' MB','process resident memory');
     const nav=[['trade','Pump.fun'],['robinhood','Robinhood'],['sportsbook','Polymarket'],['kalshi','Kalshi'],['evolution','Evolution Lab']].map(([id,label])=>overviewNav(id,label)).join('');
     const plots=plotPanel('Dollar paper books',commandResultPlot('USD'),'Observed scoreboard updates · each book keeps its own line',true)+plotPanel('Solana paper books',commandResultPlot('SOL'),'SOL stays separate from dollars')+plotPanel('Market probabilities',chartMarkup('command-probabilities','hist',probabilityHistogram(contracts),'Observed YES price distribution'),'Number of priced listings per 10-point range · partial snapshot')+plotPanel('Recorded activity',chartMarkup('command-activity','pulse',{beats,at:snapshot?.at,spanMs:300000,label:'Core ledger events',empty:'Waiting for ledger events'},'Recorded paper ledger activity'),'Spikes mark actual ledger timestamps')+plotPanel('Feed health',chartMarkup('command-source-health','funnel',{stages:health},'Reported source states'),'Observed provider state counts')+plotPanel('Research health',chartMarkup('command-research-health','funnel',{stages:lab},'Workbench job receipts'),'Completed job receipts · research never authorizes a trade');
-    return `<div class="mpo-overview live-overview"><div class="live-metrics">${metrics}</div><nav class="overview-nav">${nav}</nav><div class="live-chart-grid">${plots}</div><details class="overview-help"><summary>Suite guide, books, and source detail</summary>${commandReportOverview()}</details></div>`;
+    return `<div class="mpo-overview live-overview"><div class="live-metrics">${metrics}</div><div class="live-chart-grid">${plots}</div><nav class="overview-nav">${nav}</nav><details class="overview-help"><summary>Suite guide, books, and source detail</summary>${commandReportOverview()}</details></div>`;
   }
   function commandGlance(bad){
     const ps=scoreboard?.paperSummary,need=overviewNumber(ps?.notEnoughData);
     return glance({title:'Command Center',pill:bad?{label:`${bad} sources need attention`,tone:'warn'}:diag?{label:'Paper · research',tone:''}:{label:'Health not reported',tone:'warn'},
       hero:null,
-      stats:[{label:'Trading suites',value:'5'},{label:'Paper books',value:overviewCount(ps?.books)},{label:'Paper evidence',value:need==null?'Unknown':`${need} need more data`}],
+      stats:[],
       visual:`<div class="g-scroll">${commandOverview()}</div>`,foot:gFoot(['Open a desk to inspect its data, paper book and controls','Balances remain in their original currencies'])});
   }
   // Weather is one preview in the wider Kalshi overview; the existing Weather desk retains its detail.
@@ -168,14 +168,14 @@ window.MPOSPlatform = (() => {
     const scores=[['Weather',data?.kalshi?.weather],['Control',data?.kalshi?.['weather-nws']],['BTC',data?.kalshi?.btc]].filter(([,b])=>overviewNumber(b?.stats?.brierMarket)!=null&&overviewNumber(b?.stats?.brierModel)!=null&&b.stats.settled>0).map(([label,b])=>({label,x:b.stats.brierMarket,y:b.stats.brierModel,n:b.stats.settled,color:b.stats.brierModel<=b.stats.brierMarket?'#39ff68':'#ff5b70'}));
     const farm=variants.slice().sort((a,b)=>(b.settled||0)-(a.settled||0)).slice(0,6).map(v=>({id:v.id,label:v.label,value:overviewNumber(v.pnlUsd)}));
     const plots=plotPanel('Paper book equity',kalshiEquityPlot(),'Settled-event equity and the latest modeled mark · no combined balance',true)+weather+plotPanel('Forward variants',chartMarkup('kalshi-forward-results','bars',{rows:farm,unit:' USD'},'Recorded farm net after modeled costs'),'Independent variants · most settled first · no result grants trading authority')+plotPanel('Forecast scoring',chartMarkup('kalshi-model-scores','scatter',{points:scores,lo:0,hi:1,xLabel:'market Brier →',yLabel:'model',empty:'Waiting for settled model scores'},'Model vs market probability error'),'Lower error is better · bubbles reflect settled sample size')+plotPanel('Market universe',chartMarkup('kalshi-public-probabilities','hist',probabilityHistogram(loaded),'Observed YES price distribution'),'Cached priced listings per range · browse the full venue in Market desk');
-    return `<div class="mpo-overview live-overview"><div class="live-metrics">${metrics}</div><nav class="overview-nav">${nav}</nav><div class="live-chart-grid">${plots}</div><details class="overview-help"><summary>Books, forecasts, and research detail</summary>${kalshiReportOverview()}</details></div>`;
+    return `<div class="mpo-overview live-overview"><div class="live-metrics">${metrics}</div><div class="live-chart-grid">${plots}</div><nav class="overview-nav">${nav}</nav><details class="overview-help"><summary>Books, forecasts, and research detail</summary>${kalshiReportOverview()}</details></div>`;
   }
   function kalshiGlance(){
     loadKalshiWx();
     const loaded=overviewArray(contracts).filter(c=>c.provider==='kalshi'),categories=new Set(loaded.map(c=>c.data?.category).filter(Boolean)),bots=window.MPOBots?.data?.kalshi;
     const source=overviewArray(snapshot?.providers).find(p=>p.id==='kalshi');
     return glance({title:'Kalshi overview',pill:{label:source?.status||'Health not reported',tone:source&&source.status==='CONNECTED'?'ok':'warn'},hero:null,
-      stats:[{label:'Loaded listings',value:snapshot?String(loaded.length):'Unknown'},{label:'Categories',value:snapshot&&categories.size?String(categories.size):'Unknown'},{label:'Paper model books',value:bots?String(Object.keys(bots).length):'Unknown'}],
+      stats:[],
       visual:`<div class="g-scroll">${kalshiOverview()}</div>`,foot:gFoot(['Markets · paper bots · copy mirror · research',`Core mode ${snapshot?.executionModes?.kalshi||'unknown'} · books remain separate · Advanced opens depth and controls`])});
   }
   const button=(action,label,extra='')=>`<button class="btn" data-core-action="${action}" ${extra} ${busy&&action!=='halt'?'disabled':''}>${label}</button>`;

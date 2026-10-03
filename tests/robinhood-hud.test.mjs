@@ -74,9 +74,9 @@ test('multi-asset suite: crypto views keep their parts, stocks & ETFs and practi
  assert.match(panel,/Date\.now\(\)-rhEqAt<60000/,'equities polled at most once a minute');
  assert.match(panel,/rhPrompt\('RESET PRACTICE'/,'practice reset needs a typed phrase');
  assert.doesNotMatch(panel,/\/api\/robinhood-equities'[^)]*method/,'the stocks lane is never POSTed');
- assert.match(html,/overviewSection\('What the books are waiting for'[^\n]+rhWhyRows\(r\)/,'the suite home explains why each book trades or waits');assert.match(html,/gRow\('Stocks & ETFs',/);assert.match(html,/gRow\('Practice',/,'the suite home shows the practice line');
+ assert.match(html,/rhWhyRows\(r\)/,'the suite home explains why each book trades or waits');assert.match(html,/homeMetric\('Stocks & ETFs',/);assert.match(html,/homeMetric\('Practice',/,'the suite home shows the practice book');
  assert.match(html,/rhEq\?\.data\?\.status,rhEq\?\.book\?\.equityUsd,r\.practice\?\.equityUsd/,'glance re-renders when the suite changes');
- assert.match(html,/overviewRHNav\(\[\['paper','Trades and autopilot'\],\['charts','Price and equity charts'\]\]\)/,'the suite home links to its detailed charts');
+ assert.match(html,/overviewRHNav\(\[\['paper','Crypto trades'\],\['charts','Charts'\]/,'the suite home links to its detailed charts');
 });
 const suiteCtx=()=>{const ctx=vm.createContext({document:{getElementById:()=>null},window:{innerWidth:1200},polyEscape:s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])),money:n=>'$'+Number(n).toFixed(2),fmt:(n,d)=>Number(n).toFixed(d)});vm.runInContext(panel,ctx);return ctx};
 test('readiness text is honest about fees, data and the unwired Agentic MCP',()=>{
