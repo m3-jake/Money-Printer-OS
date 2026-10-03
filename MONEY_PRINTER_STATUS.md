@@ -16,10 +16,13 @@ and PAPER-only runtime checks. Existing user data, books, P/L, credentials and j
   round-trip costs over a longer observed lookback. Daily paper sleeves conserve every starting
   cent, and qualification requires prospective venue entry/exit quotes. Candle and late fills
   remain diagnostic. The Simple view explains the cost wall and waiting conditions.
-- The Lab uses bounded worker replay, forecast calibration, BTC study, farm review and proposal
+- The Lab uses bounded worker replay, forecast calibration, BTC study, weekly top-k momentum
+  rotation research, farm review and proposal
   publication. Historical weather replay is diagnostic and negative; no candle result is promoted
   as forward executable evidence. Weather feedback requires fresh Lab timestamps, supported
   models, bounded parameters, an improved held-out score and complete ensemble forecasts.
+  Rotation reports insufficient common history; BTC replay lacks settled validation events and
+  executable depth/fill receipts. Those studies remain research-only.
 - Pump.fun has a separate $25 scored-wallet copy paper book: prior profitable round trips, profit
   without the best trip, observed SOL/USD funding, exact-size native/Jupiter quotes, modeled
   slippage/network fees, reserve and exposure limits. Missing quotes never create fills or closes.

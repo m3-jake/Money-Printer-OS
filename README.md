@@ -77,6 +77,8 @@ the Lab more useful observations; the strategy still refuses moves that cannot c
 costs. Exploration remains separate from qualification. Practice uses a cost-aware entry threshold
 and a longer observed lookback. Daily-book qualification requires prospective venue entry and exit
 quotes; historical candle fills remain diagnostic.
+Weekly top-k momentum rotation is implemented as research, currently blocked by insufficient
+common daily history. BTC tape replay also awaits settled validation events and execution evidence.
 
 Kalshi weather and BTC bots, their forward variant farm, and the Polymarket leader copy bot keep
 separate paper books. The new Kalshi mirror binds game-winner copies to market identity and game
