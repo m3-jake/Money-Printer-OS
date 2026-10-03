@@ -43,6 +43,6 @@
       visual: `<div class="g-rows g-scroll">${top.map(i => gRow(i.title, `${i.source} · ${ago(i.at)}`, String(i.importance), i.importance >= 70 ? 'warn' : 'ok')).join('') || '<div class="g-empty">Quiet wire.</div>'}</div>`,
       foot: gFoot(['most important first', 'importance is rule-based', 'Advanced: search, filters, related markets']) });
   }
-  addEventListener('DOMContentLoaded', () => window.MPOProgramGlance?.register('wire', { render: glanceCard, sig: () => [stamp, error, busy] }));
+  globalThis.addEventListener?.('DOMContentLoaded', () => window.MPOProgramGlance?.register('wire', { render: glanceCard, sig: () => [stamp, error, busy] }));
   window.MPOWire = { render() { draw(); refresh(); } };
 })();

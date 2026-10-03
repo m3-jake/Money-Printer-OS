@@ -62,6 +62,6 @@
       visual: `<div class="g-rows g-scroll">${ind.map(i => { const chg = i.last && i.prev ? i.last.value - i.prev.value : null; return gRow(i.label, `FRED ${i.fred}${i.last?.date ? ' · ' + i.last.date : ''}`, `${fmt(i.last?.value, i.unit)}${chg === null ? '' : ` <span class="${chg > 0 ? 'g-pos' : chg < 0 ? 'g-neg' : ''}">${chg > 0 ? '▲' : chg < 0 ? '▼' : '='}</span>`}`, i.error ? 'bad' : 'ok'); }).join('')}</div>`,
       foot: gFoot(['Kalshi prices are markets, not a model', 'Advanced: release ladders, as-of history']) });
   }
-  addEventListener('DOMContentLoaded', () => window.MPOProgramGlance?.register('macro', { render: glanceCard, sig: () => [stamp, error, busy] }));
+  globalThis.addEventListener?.('DOMContentLoaded', () => window.MPOProgramGlance?.register('macro', { render: glanceCard, sig: () => [stamp, error, busy] }));
   window.MPOMacro = { render() { draw(); refresh(); } };
 })();

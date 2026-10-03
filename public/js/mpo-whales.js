@@ -77,6 +77,6 @@
       visual: `<div class="g-rows g-scroll">${flow.slice(0, 12).map(f => gRow(`${f.side} ${f.symbol || String(f.mint || '').slice(0, 6)}`, `${f.label || String(f.wallet || '').slice(0, 6) + '…'} · ${when(f.ts)}`, f.sol.toFixed(2) + ' SOL', /buy/i.test(f.side) ? 'ok' : 'bad')).join('') || `<div class="g-empty">${data.available?.events ? 'No swaps above this size.' : 'No indexed swaps yet (the wallet indexer needs a Helius key).'}</div>`}</div>`,
       foot: gFoot(['observations, not signals', 'Advanced: token graphs, wallets']) });
   }
-  addEventListener('DOMContentLoaded', () => window.MPOProgramGlance?.register('whales', { render: glanceCard, sig: () => [stamp, error] }));
+  globalThis.addEventListener?.('DOMContentLoaded', () => window.MPOProgramGlance?.register('whales', { render: glanceCard, sig: () => [stamp, error] }));
   window.MPOWhales = { render() { draw(); refresh(); } };
 })();

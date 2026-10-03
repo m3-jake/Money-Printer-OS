@@ -61,6 +61,32 @@ built, signed or installed in this pass. Version `0.5.0-alpha.71`.
   existing data collection and coverage for weather/BTC/copy bot inputs and settlements; then
   compare a small set of paper strategies using forward results and a clear daily progress view.
 
+## Batch PF-5 (2026-10-03, Claude): a Simple view for every program, and a glass fix, alpha.82
+
+bing: "every single program should have advanced and simple views that are good and sort of reflect the way that
+pump.fun's is good".
+
+- **Program strip.** Every tabbed window's Simple view starts with a strip of its programs, for example Command
+  Center: Command, Arbitrage, Stocks, Market Lab, Macro, EDGAR, Weather, Sports, Wire.
+  - Picking a program shows its own Simple card. Opening a program from Start keeps Simple mode; before, it forced
+    Advanced.
+  - Cards register with `window.MPOProgramGlance.register(id, {render, sig})`. Modules load data while their card
+    shows, through `MPOProgramVisible(id)`.
+- **27 program cards**, all on the Pump.fun pattern: a hero number, three readouts, a live list or graph, and a short
+  footer.
+
+  | Window | Programs |
+  | --- | --- |
+  | Command Center | Weather, Sports, Wire, Macro, Stocks, EDGAR, Market Lab, Arbitrage |
+  | Pump.fun | Evolution Lab (Research Workbench jobs), Wallet Intel, Risk Radar, Archive, Control Bay, Whale Watch, Lab Monitor |
+  | Polymarket | Markets, Positions, History, Performance, Copy trading |
+  | Kalshi | Paper bots (the $25 wallet, three bots, curves, the farm's leader, the Lab review) |
+  | System | Network, Live log, Updater, Settings |
+
+- **Glass fix (shipped broken in alpha.81).** A Simple-mode window also carries the class `.glance`. The glass rule
+  that clears the contents' background therefore stripped the window's own glass fill. Windows are now excluded.
+- The web demo is rebuilt from the alpha.81 recording; the API is unchanged.
+
 ## Batch PF-4 (2026-10-03, Claude): $25 wallets, bot tape + variant farm, Lab Research Workbench, glass UI, accounts, alpha.81
 
 bing asked:
@@ -256,7 +282,7 @@ animated graphs, and a rolling cash-register / slot-machine effect when major nu
 - **Evolution Lab** lives in a separate repo, `money-printer-evolution-lab`, and is the shared research brain for every module: Solana (labLoop/BEAST), plus parallel `module-robinhood` and `module-polymarket` workers (`src/moduleResearch.js`). Valid module ids come from its `src/researchModules.js`. It writes `<trader data>/lab-link/modules/<id>.json` and paper-only `<id>-champion.json`. It is NOT the dropped "agent lab" harness.
 - **Web demo (2026-10-02):** `web-demo/` + `scripts/web-demo/` build a static, browser-only copy of the HUD for a website. `demo-shim.js` answers `/api/*` from a recorded PAPER session (sandboxed engine, scrubbed env, no keys or user data), and refuses every write. Each page load is a new session: a 1 SOL book run by the Lab champion copied in from `lab-link/` at recording time, played for ~30 min from its opening frame. Published to Cloudflare Pages (`money-printer`, moneyprinter.bangbowbing.net). See `web-demo/README.md`; covered by `test:web-demo`.
 - **HUD boot and logo (2026-10-02):** the boot overlay is a Win98-style log-on over open sky. OK, Enter or 6 idle seconds pull the camera back to the hill and fire `mpo:logon`, which shows the welcome and the grabbable money shower (`welcomeShower()`). The corner logo (`initLogoStretch()`) stretches on drag, slingshots on release, glides to a stop and fades back home after 3.5 s idle; its shine lives in the same `.logo-skin`.
-- **Tests:** 140 suites in `tests/` across 35 targets, run by `npm run test:all` (`test:wiring` fails first if a suite becomes unreachable). **Green as of 2026-10-03 (alpha.81):** the 20 Robinhood real-money order-path tests are skipped with a stated reason (this paper-only build refuses that dispatch by design; re-enable them for the live phase), and the two safety tests (live-gate boundary, outbound audit) now pin the stricter lock. Everything is mocked and uses temp dirs.
+- **Tests:** 140 suites in `tests/` across 35 targets, run by `npm run test:all` (`test:wiring` fails first if a suite becomes unreachable). **Green as of 2026-10-03 (alpha.82):** the 20 Robinhood real-money order-path tests are skipped with a stated reason (this paper-only build refuses that dispatch by design; re-enable them for the live phase), and the two safety tests (live-gate boundary, outbound audit) now pin the stricter lock. Everything is mocked and uses temp dirs.
 
 ## Confirmed working (2026-09-25)
 

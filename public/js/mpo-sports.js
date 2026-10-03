@@ -45,6 +45,6 @@
       visual: `<div class="g-rows g-scroll">${ranked.slice(0, 12).map(e => { const g = gapOf(e); return gRow(`${e.participants[0]} vs ${e.participants[1]}`, `${e.sport} · ${score(e)}`, g == null ? '' : (g * 100).toFixed(1) + ' pts', e.live ? 'ok' : null); }).join('') || '<div class="g-empty">No sports events right now.</div>'}</div>`,
       foot: gFoot([(data.feeds || []).map(f => `${f.sport} ${String(f.status).toLowerCase()}`).join(' · '), 'pts = Kalshi vs Polymarket gap, not an arbitrage']) });
   }
-  addEventListener('DOMContentLoaded', () => window.MPOProgramGlance?.register('sports', { render: glanceCard, sig: () => [stamp, error, busy] }));
+  globalThis.addEventListener?.('DOMContentLoaded', () => window.MPOProgramGlance?.register('sports', { render: glanceCard, sig: () => [stamp, error, busy] }));
   window.MPOSports = { render() { draw(); refresh(); } };
 })();

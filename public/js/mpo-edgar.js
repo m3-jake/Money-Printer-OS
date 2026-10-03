@@ -57,7 +57,7 @@
         : `<div class="g-empty">${escape(status?.note || 'Set SEC_USER_AGENT="Your Name you@example.com" to read EDGAR.')}</div>`,
       foot: gFoot(['SEC EDGAR', 'Advanced: company search, Form 4 insider facts']) });
   }
-  addEventListener('DOMContentLoaded', () => window.MPOProgramGlance?.register('edgar', { render: glanceCard, sig: () => [stamp, error, status?.status, form] }));
+  globalThis.addEventListener?.('DOMContentLoaded', () => window.MPOProgramGlance?.register('edgar', { render: glanceCard, sig: () => [stamp, error, status?.status, form] }));
   window.MPOEdgar = { render() {
     const card = window.MPOProgramVisible?.('edgar');
     if ((visible() || card) && !status && !busy) act(async () => {});

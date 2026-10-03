@@ -43,6 +43,6 @@
       visual: `<div class="g-rows g-scroll">${rows.map(({ c, m }) => gRow(c.label, `${m.date || ''} · NWS ${deg(m.nwsHigh)} · market ${deg(m.expectedHigh)}`, `<span class="${m.gap > 0 ? 'g-pos' : m.gap < 0 ? 'g-neg' : ''}">${m.gap > 0 ? '+' : ''}${m.gap}°</span>`, Math.abs(m.gap) >= 2 ? 'warn' : 'ok')).join('') || '<div class="g-empty">No open Kalshi weather markets.</div>'}</div>`,
       foot: gFoot(['NWS ' + (data.nws?.status || '—'), 'refreshes every 10 min', 'a gap is a question, not a signal']) });
   }
-  addEventListener('DOMContentLoaded', () => window.MPOProgramGlance?.register('weather', { render: glanceCard, sig: () => [stamp, error, busy] }));
+  globalThis.addEventListener?.('DOMContentLoaded', () => window.MPOProgramGlance?.register('weather', { render: glanceCard, sig: () => [stamp, error, busy] }));
   window.MPOWeather = { render() { draw(); refresh(); } };
 })();

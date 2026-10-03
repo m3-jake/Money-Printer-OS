@@ -114,6 +114,6 @@
       visual: `<div class="g-rows g-scroll">${runs.slice(0, 10).map(r => gRow(`${r.strategy} · ${r.key}`, `${r.records} records · buy and hold ${pct(r.result?.buyHoldPct)}`, `<span class="${r.result?.returnPct > 0 ? 'g-pos' : r.result?.returnPct < 0 ? 'g-neg' : ''}">${pct(r.result?.returnPct)}</span>`, r.result?.returnPct > (r.result?.buyHoldPct ?? 0) ? 'ok' : 'warn')).join('') || '<div class="g-empty">No strategy runs yet.</div>'}</div>`,
       foot: gFoot(['replays recorded data only', 'past runs are not forward results']) });
   }
-  addEventListener('DOMContentLoaded', () => window.MPOProgramGlance?.register('marketlab', { render: glanceCard, sig: () => [stamp, error, runs.length] }));
+  globalThis.addEventListener?.('DOMContentLoaded', () => window.MPOProgramGlance?.register('marketlab', { render: glanceCard, sig: () => [stamp, error, runs.length] }));
   window.MPOMarketLab = { render() { if (!visible() && window.MPOProgramVisible?.('marketlab') && !sources && !busy && Date.now() >= loadAfter) { busy = true; load().finally(() => { busy = false; stamp++; }); } if (!visible()) return; if (!sources && !busy && Date.now() >= loadAfter) { busy = true; load().finally(() => { busy = false; stamp++; draw(true); }); } draw(); } };
 })();

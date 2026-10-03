@@ -108,6 +108,6 @@
       visual: `<div class="g-rows g-scroll">${watch.map(sym => { const x = q[sym] || {}, chg = x.last && x.prevClose ? (x.last / x.prevClose - 1) * 100 : null, held = pos.find(p => p.symbol === sym); return gRow(sym, held ? `holding ${held.qty} · ${usd(held.marketValue)}` : 'watching', `${x.last ? usd(x.last) : '—'}${chg === null ? '' : ` <span class="${chg > 0 ? 'g-pos' : chg < 0 ? 'g-neg' : ''}">${chg > 0 ? '+' : ''}${chg.toFixed(2)}%</span>`}`, chg === null ? null : chg >= 0 ? 'ok' : 'bad'); }).join('')}</div>`,
       foot: gFoot([se.date && 'session ' + se.date, 'paper fills', 'Advanced: orders, charts, funding']) });
   }
-  addEventListener('DOMContentLoaded', () => window.MPOProgramGlance?.register('stocks', { render: glanceCard, sig: () => [stamp, loadError, status?.account?.equity] }));
+  globalThis.addEventListener?.('DOMContentLoaded', () => window.MPOProgramGlance?.register('stocks', { render: glanceCard, sig: () => [stamp, loadError, status?.account?.equity] }));
   window.MPOStocks = { render() { draw(); refresh(); } };
 })();

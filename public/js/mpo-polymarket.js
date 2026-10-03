@@ -102,7 +102,7 @@
         foot: gFoot([p.sampleNote || 'small samples swing widely', 'Advanced: calibration by fill price']) });
     },
   };
-  addEventListener('DOMContentLoaded', () => { for (const id of IDS) window.MPOProgramGlance?.register(id, { render: CARDS[id], sig: () => [stamp, error] }); });
+  globalThis.addEventListener?.('DOMContentLoaded', () => { for (const id of IDS) window.MPOProgramGlance?.register(id, { render: CARDS[id], sig: () => [stamp, error] }); });
   function render() { IDS.forEach(draw); refresh(); }
   setInterval(() => { if (!document.hidden) refresh(); }, 10000);
   window.MPOPolymarket = { render, refresh: () => refresh(true) };

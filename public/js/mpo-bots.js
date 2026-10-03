@@ -143,6 +143,6 @@
       visual: `${window.MPOViz ? `<div class="g-fill">${MPOViz.canvas('copy-g', 90, 'paper equity after each closed copy')}</div>` : ''}<div class="g-rows g-scroll">${(b.byLeader.length ? b.byLeader.map(r => gRow(r.leader, `${r.copies} copies · ${r.settled} closed`, `<span class="${r.pnlUsd >= 0 ? 'g-pos' : 'g-neg'}">${usd(r.pnlUsd)}</span>`, r.pnlUsd >= 0 ? 'ok' : 'bad')) : b.follows.map(f => gRow(f.name, `followed ${when(f.followedAt)} · rank #${f.rank}`, '', 'ok'))).join('') || '<div class="g-empty">No leaders followed yet.</div>'}</div>`,
       foot: gFoot(['only trades made after following', 'Advanced: copies, decisions, settings']) });
   }
-  addEventListener('DOMContentLoaded', () => { window.MPOProgramGlance?.register('kalshibots', { render: botsCard, sig: () => [data?.at, error] }); window.MPOProgramGlance?.register('pmcopy', { render: copyCard, sig: () => [data?.at, error] }); });
+  globalThis.addEventListener?.('DOMContentLoaded', () => { window.MPOProgramGlance?.register('kalshibots', { render: botsCard, sig: () => [data?.at, error] }); window.MPOProgramGlance?.register('pmcopy', { render: copyCard, sig: () => [data?.at, error] }); });
   window.MPOBots = { render() { draw(); load(); }, get data() { return data; }, load };
 })();

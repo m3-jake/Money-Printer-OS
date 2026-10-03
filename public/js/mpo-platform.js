@@ -223,8 +223,8 @@ window.MPOSPlatform = (() => {
       visual:`<div class="g-rows g-scroll">${poly.slice(0,14).map(c=>{const m=mid(c);return gRow(c.data?.title||c.sourceId,c.data?.category||'polymarket',m==null?'—':Math.round(m*100)+'¢','ok')}).join('')||'<div class="g-empty">No Polymarket contracts loaded yet.</div>'}</div>`,
       foot:gFoot(['Advanced: search, order books, details'])});
   }
-  addEventListener('DOMContentLoaded',()=>window.MPOProgramGlance?.register('predictionmarkets',{render:marketsGlance,sig:()=>[contracts.length,error]}));
-  addEventListener('DOMContentLoaded',()=>window.MPOProgramGlance?.register('arbitrage',{render:arbGlance,sig:()=>[contracts.length,candidates?.pairs?.length,error]}));
+  globalThis.addEventListener?.('DOMContentLoaded',()=>window.MPOProgramGlance?.register('predictionmarkets',{render:marketsGlance,sig:()=>[contracts.length,error]}));
+  globalThis.addEventListener?.('DOMContentLoaded',()=>window.MPOProgramGlance?.register('arbitrage',{render:arbGlance,sig:()=>[contracts.length,candidates?.pairs?.length,error]}));
   function render(){
     ids.forEach(draw);
     if(window.MPOProgramVisible?.('arbitrage')&&!busy&&Date.now()-arbScanAt>600000){arbScanAt=Date.now();request('/arbitrage/candidates').then(v=>{candidates=v;}).catch(e=>{error=e.message;});}
