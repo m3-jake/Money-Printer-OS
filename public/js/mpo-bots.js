@@ -44,10 +44,16 @@
       <details><summary>Recent decisions (why it bet or skipped)</summary>${table(['When', 'Market', 'Action', 'Model p', 'Price', 'Edge', 'Why'], b.decisions.map(d => `<tr><td>${when(d.at)}</td><td>${escape(d.label || d.event || '')}</td><td>${escape(d.action)} ${escape(d.side || '')}</td><td>${d.pModel != null ? (d.pModel * 100).toFixed(0) + '%' : ''}</td><td>${d.price ?? ''}</td><td>${d.edge ?? ''}</td><td>${escape(d.reason || '')}</td></tr>`).join(''), 'No decisions yet.')}</details>
       ${controls(id, b)}</section>`;
   }
+  // Weather calibration (src/weatherCalibration.js): per city and lead, the fitted bias/sigma and the held-out check.
+  function calibrationView(c) {
+    if (!c) return '<p class="core-muted">Forecast calibration runs a few seconds after start, then daily.</p>';
+    const cell = L => !L ? '—' : `${L.use ? '<b>calibrated</b>' : 'default'} · bias ${L.params.bias > 0 ? '+' : ''}${L.params.bias}°F · σ ${L.params.sd}°F${L.heldOut ? ` · held-out log score ${L.heldOut.calibrated} vs ${L.heldOut.default}` : ''}`;
+    return `<details><summary>Forecast calibration (${Object.values(c.cities).filter(x => x.leads?.[0]?.use || x.leads?.[1]?.use).length} of ${Object.keys(c.cities).length} cities calibrated · refit ${ago(c.at)})</summary><p class="core-muted">${escape(c.source)}. A city/lead uses its fitted bias and σ only if that beat the default on the last 30 held-out days; otherwise the bot uses the NWS forecast with default settings.</p>${table(['City', 'Days', 'Same-day forecast', 'Day-before forecast'], Object.values(c.cities).map(x => `<tr><td>${escape(x.label)}</td><td>${x.error ? escape(x.error) : x.days}</td><td>${cell(x.leads?.[0])}</td><td>${cell(x.leads?.[1])}</td></tr>`).join(''), 'No calibration yet.')}</details>`;
+  }
   function kalshiView() {
     if (!data) return `<p>${escape(error || 'Loading paper bots…')}</p>`;
     const k = data.kalshi;
-    return `<p class="core-notice">Paper only. The weather bot turns the National Weather Service forecast into odds for each temperature bucket; the BTC bot prices Kalshi's Bitcoin range and above/below markets from Coinbase spot and recent volatility. Both buy only when their odds beat the ask after Kalshi's fee, fill against the live order book, and settle on Kalshi's own result. The Brier scores say whether the model is actually better than the market (lower is better).</p>${msg ? `<p role="status">${escape(msg)}</p>` : ''}${kalshiBot('weather', k.weather)}${kalshiBot('btc', k.btc)}`;
+    return `<p class="core-notice">Paper only. The weather bot turns the National Weather Service forecast into odds for each temperature bucket; the BTC bot prices Kalshi's Bitcoin range and above/below markets from Coinbase spot and recent volatility. Both buy only when their odds beat the ask after Kalshi's fee, fill against the live order book, and settle on Kalshi's own result. The Brier scores say whether the model is actually better than the market (lower is better).</p>${msg ? `<p role="status">${escape(msg)}</p>` : ''}${kalshiBot('weather', k.weather)}${calibrationView(data.calibration)}${kalshiBot('btc', k.btc)}`;
   }
   function copyView() {
     if (!data) return `<p>${escape(error || 'Loading copy bot…')}</p>`;

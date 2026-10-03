@@ -40,6 +40,7 @@ import updateChannel from '../desktop/update-channel.cjs';
 import { handlePlatformRequest, localMutationAllowed } from './core/http.js';
 import { KalshiPaperBots, KALSHI_BOT_IDS } from './kalshiBots.js';
 import { PolymarketCopyPaper } from './polymarketCopy.js';
+import { WeatherCalibrator } from './weatherCalibration.js';
 import { marketPlatform, closeMarketPlatform } from './core/platform.js';
 import { practiceSnapshot,loadPracticeBook } from './robinhoodPractice.js';
 import { comboPerformance } from './core/comboPerformance.js';
@@ -54,7 +55,7 @@ const packageMeta = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 
 const MAX_BODY = 32 * 1024;
 const DATA_DIR = path.resolve(process.env.MONEY_PRINTER_DATA_DIR || path.join(ROOT,'data'));
 let paperBots = null;
-function paperBotsView(){ if(!paperBots) return {ok:false,error:'Paper bots not started'}; return {ok:true,at:Date.now(),mode:'PAPER',kalshi:paperBots.kalshi.snapshots(),polycopy:paperBots.copy.snapshot()}; }
+function paperBotsView(){ if(!paperBots) return {ok:false,error:'Paper bots not started'}; return {ok:true,at:Date.now(),mode:'PAPER',kalshi:paperBots.kalshi.snapshots(),polycopy:paperBots.copy.snapshot(),calibration:paperBots.calibration.snapshot()}; }
 const UPDATE_STATUS_FILE = path.join(DATA_DIR,'update-status.json');
 const UPDATE_REQUEST_FILE = path.join(DATA_DIR,'update-request.json');
 // Desktop-shell preferences (read by desktop/main.cjs every ~1 s): background operation,
@@ -473,10 +474,13 @@ export function startDashboard() {
   const syncLab=()=>{try{marketPlatform().syncLab();}catch{}try{marketPlatform().syncLegacyLedger();}catch{}try{marketPlatform().publishPredictionHandoff();}catch{}};syncLab();const labSyncTimer=setInterval(syncLab,60_000);labSyncTimer.unref();
   // Paper bots (2026-10-02): Kalshi weather every 10 min, Kalshi BTC every 3 min, Polymarket copy every minute.
   // PAPER ONLY, no order code. Off under node --test (NODE_TEST_CONTEXT) or with MPO_PAPER_BOTS=false.
-  paperBots={kalshi:new KalshiPaperBots({dataDir:DATA_DIR,kalshi:()=>marketPlatform().providers.providers.get('kalshi')||null,weather:()=>marketPlatform().weatherSnapshot()}),copy:new PolymarketCopyPaper({dataDir:DATA_DIR})};
+  const calibration=new WeatherCalibrator({dataDir:DATA_DIR});
+  paperBots={calibration,kalshi:new KalshiPaperBots({dataDir:DATA_DIR,calibration,kalshi:()=>marketPlatform().providers.providers.get('kalshi')||null,weather:()=>marketPlatform().weatherSnapshot()}),copy:new PolymarketCopyPaper({dataDir:DATA_DIR})};
   const botTimers=[];
   if(process.env.MPO_PAPER_BOTS!=='false'&&!process.env.NODE_TEST_CONTEXT){const every=(ms,first,fn)=>{const t=setTimeout(()=>{fn().catch(()=>{});const i=setInterval(()=>fn().catch(()=>{}),ms);i.unref();botTimers.push(i)},first);t.unref();botTimers.push(t)};
-    every(600_000,20_000,()=>paperBots.kalshi.run('weather'));every(180_000,150_000,()=>paperBots.kalshi.run('btc'));every(60_000,50_000,()=>paperBots.copy.run());}
+    every(600_000,20_000,()=>paperBots.kalshi.run('weather'));every(180_000,150_000,()=>paperBots.kalshi.run('btc'));every(60_000,50_000,()=>paperBots.copy.run());
+    // Weather calibration refits once a day (and at start when missing or older than 20 h).
+    every(86_400_000,(calibration.state&&Date.now()-calibration.state.at<20*3600e3)?86_400_000:10_000,()=>calibration.run());}
   let intelligenceBusy=false,intelligenceClosed=false;
   const observePaper=async()=>{if(intelligenceBusy)return;intelligenceBusy=true;try{const {readScoreboard}=await import('./scoreboard.js');const board=await readScoreboard();if(!intelligenceClosed){marketPlatform().intelligence.observe(board);marketPlatform().intelligenceError=null;}}catch(e){if(!intelligenceClosed)marketPlatform().intelligenceError=String(e.message).slice(0,200);}finally{intelligenceBusy=false;}};
   const intelligenceTimer=setInterval(observePaper,60_000);intelligenceTimer.unref();observePaper();

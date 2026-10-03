@@ -85,3 +85,29 @@ test('copy bot follows a point-in-time leaderboard and copies only trades made a
   assert.equal(s.open.length, 0); assert.equal(s.history[0].status, 'RESOLVED'); assert.ok(s.stats.pnlUsd > 0);
   assert.deepEqual(walkBuy([{ price: '0.5', size: '4' }, { price: '0.6', size: '100' }], 5, 0.55), [{ price: 0.5, quantity: 4 }]);
 });
+
+test('weather calibration: fitted bias/sigma are used only when they beat the default on held-out days', async () => {
+  const { dailyMax, fit, calibrateCity, dateOfTicker } = await import('../src/weatherCalibration.js');
+  assert.equal(dateOfTicker('KXHIGHNY-26OCT01'), '2026-10-01');
+  assert.deepEqual(dailyMax(['2026-10-01T10:00', '2026-10-01T15:00', '2026-10-02T14:00'], [60, 71.5, null]), { '2026-10-01': 71.5 });
+  assert.equal(fit([1, 2]), null, 'too little history is not a fit');
+  // A forecast that runs 3 °F cold with ~1 °F noise: calibration must find +3 and win the held-out check.
+  const noise = i => [0.8, -0.6, 0.3, -1.1, 0.9, -0.2, 0.5, -0.7][i % 8];
+  const rows = Array.from({ length: 80 }, (_, i) => { const actual = 70 + (i % 9); return { date: `d${String(i).padStart(3, '0')}`, actual, f: [actual - 3 + noise(i), actual - 3 + noise(i + 3)] }; });
+  const c = calibrateCity(rows);
+  assert.equal(c[0].use, true); assert.ok(Math.abs(c[0].params.bias - 3) < 0.3); assert.ok(c[0].heldOut.calibrated > c[0].heldOut.default);
+  // An unbiased, noisier forecast keeps the default when the fit does not help on held-out days.
+  const flat = rows.map((r, i) => ({ ...r, f: [r.actual + (i % 2 ? 4 : -4), null] })), d = calibrateCity(flat);
+  assert.equal(d[1].use, false); assert.match(d[1].reason, /not enough history/);
+});
+
+test('the weather bot prices with the calibrated model when one is available', async () => {
+  const dir = tmp(), now = Date.UTC(2026, 9, 3, 12), closeAt = now + 10 * 3600e3, desk = weatherDesk(closeAt);
+  desk.cities[0].id = 'NYC'; desk.cities[0].markets[0].nwsHigh = null; // no NWS forecast: only the calibrated model can price it
+  const calibration = { model: async () => ({ mu: 70.6, sigma: 1.2, forecast: 69, lead: 1, source: 'open-meteo + calibration' }) };
+  const bots = new KalshiPaperBots({ dataDir: dir, calibration, kalshi: () => fakeKalshi({ value: null }), weather: async () => desk, now: () => now });
+  bots.configure('weather', { maxDisagreement: 0.6, minEdge: 0.03 });
+  const s = await bots.run('weather');
+  assert.equal(s.open.length, 1); assert.equal(s.open[0].context.model, 'open-meteo + calibration'); assert.equal(s.open[0].context.sigma, 1.32, 'sigma × calibrationSafety 1.1');
+  assert.match(s.lastNote, /1 on the calibrated model/);
+});

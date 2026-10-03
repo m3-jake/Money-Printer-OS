@@ -21,10 +21,10 @@ import { takerFee } from './core/fees.js';
 export const KALSHI_BOT_IDS = Object.freeze(['weather', 'btc']);
 const SCHEMA = 'mpo.kalshi-paper-bots.v1';
 const DEFAULTS = Object.freeze({
-  weather: { enabled: true, startUsd: 500, stakeUsd: 10, maxOpen: 10, minEdge: 0.07, maxDisagreement: 0.2, minPrice: 0.05, maxPrice: 0.92, biasF: 0, sigmaBaseF: 1.6, sigmaPerDayF: 1.0, minHoursToClose: 1 },
+  weather: { enabled: true, useCalibration: true, calibrationSafety: 1.1, startUsd: 500, stakeUsd: 10, maxOpen: 10, minEdge: 0.07, maxDisagreement: 0.2, minPrice: 0.05, maxPrice: 0.92, biasF: 0, sigmaBaseF: 1.6, sigmaPerDayF: 1.0, minHoursToClose: 1 },
   btc: { enabled: true, startUsd: 500, stakeUsd: 10, maxOpen: 4, minEdge: 0.06, maxDisagreement: 0.2, minPrice: 0.05, maxPrice: 0.92, volMultiple: 1.25, minHoursToClose: 0.5, maxHoursToClose: 30 },
 });
-const LIMITS = { maxDisagreement: [0.02, 1], stakeUsd: [1, 250], maxOpen: [1, 50], minEdge: [0.01, 0.5], minPrice: [0.01, 0.5], maxPrice: [0.5, 0.99], biasF: [-10, 10], sigmaBaseF: [0.5, 8], sigmaPerDayF: [0, 5], volMultiple: [0.5, 4], startUsd: [10, 100000], minHoursToClose: [0, 48], maxHoursToClose: [1, 240] };
+const LIMITS = { calibrationSafety: [1, 3], maxDisagreement: [0.02, 1], stakeUsd: [1, 250], maxOpen: [1, 50], minEdge: [0.01, 0.5], minPrice: [0.01, 0.5], maxPrice: [0.5, 0.99], biasF: [-10, 10], sigmaBaseF: [0.5, 8], sigmaPerDayF: [0, 5], volMultiple: [0.5, 4], startUsd: [10, 100000], minHoursToClose: [0, 48], maxHoursToClose: [1, 240] };
 const BTC_SERIES = ['KXBTCD', 'KXBTC'];
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 // Kalshi rate-limits bursts; every bot call is paced and a RATE_LIMITED answer is retried twice with backoff.
@@ -93,7 +93,7 @@ function sanitize(id, patch = {}) {
   const out = {};
   for (const [k, v] of Object.entries(patch)) {
     if (!(k in DEFAULTS[id])) continue;
-    if (k === 'enabled') { out.enabled = !!v; continue; }
+    if (k === 'enabled' || k === 'useCalibration') { out[k] = v === true || v === 'true' || v === 1 || v === '1'; continue; }
     const n = Number(v); if (!Number.isFinite(n)) throw new Error(`${k} must be a number`);
     const [a, b] = LIMITS[k] || [-Infinity, Infinity]; if (n < a || n > b) throw new Error(`${k} must be between ${a} and ${b}`);
     out[k] = n;
@@ -102,8 +102,8 @@ function sanitize(id, patch = {}) {
 }
 
 export class KalshiPaperBots {
-  constructor({ dataDir, kalshi = () => null, weather = async () => null, fetchImpl = globalThis.fetch, now = () => Date.now() } = {}) {
-    this.file = path.join(dataDir, 'kalshi-paper-bots.json'); this.kalshi = kalshi; this.weather = weather; this.fetch = fetchImpl; this.now = now; this.busy = new Set();
+  constructor({ dataDir, kalshi = () => null, weather = async () => null, calibration = null, fetchImpl = globalThis.fetch, now = () => Date.now() } = {}) {
+    this.file = path.join(dataDir, 'kalshi-paper-bots.json'); this.kalshi = kalshi; this.weather = weather; this.calibration = calibration; this.fetch = fetchImpl; this.now = now; this.busy = new Set();
     this.recoveryError = null; this.state = this.load();
   }
   load() {
@@ -164,10 +164,15 @@ export class KalshiPaperBots {
     const s = b.settings, wx = await this.weather(); if (!wx) throw new Error('weather desk unavailable');
     const now = this.now(), held = new Set(b.open.map(p => p.eventTicker));
     const cands = []; let disagreements = 0;
+    let calibrated = 0;
     for (const c of wx.cities || []) for (const m of c.markets || []) {
-      if (m.nwsHigh == null || held.has(m.eventTicker)) continue;
+      if (held.has(m.eventTicker)) continue;
       const hours = (m.closeAt - now) / 3600e3; if (!(hours >= s.minHoursToClose)) continue;
-      const sigma = s.sigmaBaseF + s.sigmaPerDayF * Math.max(0, hours) / 24, mu = m.nwsHigh + s.biasF;
+      // Calibrated Open-Meteo model when this city/lead beat the default on held-out days (weatherCalibration.js);
+      // otherwise the NWS forecast with the default bias and sigma.
+      const cm = s.useCalibration && this.calibration ? await this.calibration.model(c.id, m.date).catch(() => null) : null;
+      if (!cm && m.nwsHigh == null) continue;
+      const sigma = cm ? cm.sigma * s.calibrationSafety : s.sigmaBaseF + s.sigmaPerDayF * Math.max(0, hours) / 24, mu = cm ? cm.mu : m.nwsHigh + s.biasF; if (cm) calibrated++;
       let best = null;
       for (const bk of m.buckets || []) {
         if (bk.yesAsk == null || bk.noAsk == null) continue;
@@ -175,7 +180,7 @@ export class KalshiPaperBots {
         if (sc?.disagree) { disagreements++; continue; }
         if (sc && (!best || sc.edge > best.edge)) best = { ...sc, bk };
       }
-      if (best) cands.push({ ...best, city: c.label, m, mu, sigma });
+      if (best) cands.push({ ...best, city: c.label, m, mu, sigma, cm });
     }
     cands.sort((a, b2) => b2.edge - a.edge);
     let entered = 0;
@@ -183,9 +188,9 @@ export class KalshiPaperBots {
       const label = `${x.city} ${x.m.date} ${x.bk.lo === -Infinity ? '≤' + x.bk.hi : x.bk.hi === Infinity ? x.bk.lo + '+' : x.bk.lo + '–' + x.bk.hi}°F`;
       if (x.edge < s.minEdge) { this.decide(b, { event: x.m.eventTicker, label, side: x.side, action: 'SKIP', pModel: round(x.pModel, 3), price: x.ask, edge: round(x.edge, 3), reason: `best edge ${round(x.edge, 3)} < ${s.minEdge}` }); continue; }
       if (b.open.length >= s.maxOpen) { this.decide(b, { event: x.m.eventTicker, label, action: 'SKIP', reason: 'max open bets' }); break; }
-      if (await this.enter(b, k, { ticker: x.bk.sourceId, eventTicker: x.m.eventTicker, title: x.m.title, label, side: x.side, pModel: x.pModel, qty: x.qty, closeAt: x.bk.closeAt || x.m.closeAt, feeModel: x.bk.feeModel, marketAsk: x.ask, context: { nwsHigh: x.m.nwsHigh, mu: round(x.mu, 2), sigma: round(x.sigma, 2), marketExpected: x.m.expectedHigh } })) entered++;
+      if (await this.enter(b, k, { ticker: x.bk.sourceId, eventTicker: x.m.eventTicker, title: x.m.title, label, side: x.side, pModel: x.pModel, qty: x.qty, closeAt: x.bk.closeAt || x.m.closeAt, feeModel: x.bk.feeModel, marketAsk: x.ask, context: { nwsHigh: x.m.nwsHigh, model: x.cm ? x.cm.source : 'nws + default', forecast: x.cm?.forecast ?? x.m.nwsHigh, lead: x.cm?.lead ?? null, mu: round(x.mu, 2), sigma: round(x.sigma, 2), marketExpected: x.m.expectedHigh } })) entered++;
     }
-    b.lastNote = `${cands.length} events scored, ${entered} entered, ${disagreements} buckets skipped (model vs market gap > ${s.maxDisagreement})`;
+    b.lastNote = `${cands.length} events scored (${calibrated} on the calibrated model), ${entered} entered, ${disagreements} buckets skipped (model vs market gap > ${s.maxDisagreement})`;
   }
 
   async runBtc(b, k) {
