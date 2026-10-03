@@ -83,7 +83,7 @@
     "test:pump-profit": "node --test tests/pump-profit-policy.test.mjs tests/pump-profit-runtime.test.mjs tests/pump-paper-shared.test.mjs",
     "test:paper-completion": "node --test tests/aggressive-paper-profile.test.mjs tests/aggressive-sizing.test.mjs tests/analytics.test.mjs tests/arbitrage-poller.test.mjs tests/arbitrage.test.mjs tests/kalshi-demo.test.mjs tests/onchain-flow.test.mjs tests/paper-qualification.test.mjs tests/paper-routing.test.mjs tests/polymarket-us-categories.test.mjs tests/polymarket-us-singles-paper.test.mjs tests/portfolio-risk.test.mjs tests/pumpfun-native-paper.test.mjs tests/pumpfun-sniper.test.mjs tests/regime-routing.test.mjs tests/robinhood-equities-paper-adapter.test.mjs tests/shadow-collector.test.mjs tests/shadow-live.test.mjs tests/wallet-tracker-copy.test.mjs tests/paper-completion-regression.test.mjs",
     "test:wallet-crowd": "node --test tests/wallet-crowd.test.mjs tests/wallet-crowd-runtime.test.mjs",
-    "test:paper-potential": "node --test tests/paper-potential-runtime.test.mjs tests/paper-potential-lifecycles.test.mjs tests/copy-pipeline.test.mjs tests/disclosure-equity-research.test.mjs tests/robinhood-external-features.test.mjs"
+    "test:paper-potential": "node --test tests/paper-potential-runtime.test.mjs tests/paper-potential-lifecycles.test.mjs tests/copy-pipeline.test.mjs tests/disclosure-equity-research.test.mjs tests/robinhood-external-features.test.mjs tests/request-deadlines.test.mjs"
   },
   "optionalDependencies": {
     "utf-8-validate": "5.0.10"

@@ -1,4 +1,5 @@
 import {apiProviderFromUrl,recordApiRequest,recordApiCacheHit,recordApiCoalescedHit,recordApiCapReject,recordApiFailure,admitApiSpend,recordApiSpendCapReject,recordApiRoiGuardReject} from './apiUnitEconomics.js';
+import { awaitAbortable } from './requestAbort.js';
 
 // Coalesce reads, cancel timed-out transports and respect upstream retry windows.
 // Cache timestamps belong to the fetched data, never to the consumer's read.
@@ -12,7 +13,7 @@ export function createMarketRequester({fetcher=(...args)=>globalThis.fetch(...ar
     if(signal?.aborted)throw signal.reason instanceof Error?signal.reason:new Error(`${label}: aborted`);
     const ts=now(),cached=cache.get(url),provider=apiProviderFromUrl(url);
     if(cached&&ts-cached.fetchedAt<ttlMs){stats.cacheHits++;recordApiCacheHit(provider,{costPerRequestUsd,purpose});return cached;}
-    if(pending.has(url)){stats.coalescedHits++;recordApiCoalescedHit(provider,{costPerRequestUsd,purpose});return pending.get(url);}
+    if(pending.has(url)){stats.coalescedHits++;recordApiCoalescedHit(provider,{costPerRequestUsd,purpose});return awaitAbortable(pending.get(url),signal);}
     const host=new URL(url).host;
     const state=hosts.get(host)||{retryAt:0,failures:0,window:[]};
     hosts.set(host,state);
@@ -31,7 +32,7 @@ export function createMarketRequester({fetcher=(...args)=>globalThis.fetch(...ar
       if(signal)signal.addEventListener('abort',onCallerAbort,{once:true});
       const timer=setTimeout(()=>controller.abort(),timeoutMs);
       try{
-        const response=await fetcher(url,{headers,signal:controller.signal});
+        const response=await awaitAbortable(fetcher(url,{headers,signal:controller.signal}),controller.signal);
         if(!response.ok){
           stats.failures++;recordApiFailure(provider);
           if(response.status===429){
@@ -45,7 +46,8 @@ export function createMarketRequester({fetcher=(...args)=>globalThis.fetch(...ar
           }
           throw new Error(`${label}: HTTP ${response.status}`);
         }
-        const data=await response.json();
+        const data=await awaitAbortable(response.json(),controller.signal);
+        if(controller.signal.aborted)throw controller.signal.reason;
         if(state.retryAt<=now())state.failures=0;
         const result={data,fetchedAt:now(),latencyMs:now()-ts};
         cache.delete(url);cache.set(url,result);

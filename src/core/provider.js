@@ -1,4 +1,5 @@
 import { finite } from './model.js';
+import { awaitAbortable } from '../requestAbort.js';
 
 export class ProviderError extends Error { constructor(code,message){super(message);this.code=code;} }
 export class JsonProvider {
@@ -15,19 +16,22 @@ export class JsonProvider {
     this.lastRequest=now;
     const request=(async()=>{
       this.health.requests++;
+      const controller=new AbortController();
+      const timer=setTimeout(()=>controller.abort(new ProviderError('TIMEOUT',`${this.id}: request deadline exceeded`)),this.timeoutMs);
       try{
-        const r=await this.fetch(key,{headers:{accept:'application/json',...headers},signal:AbortSignal.timeout(this.timeoutMs)});
+        const r=await awaitAbortable(this.fetch(key,{headers:{accept:'application/json',...headers},signal:controller.signal}),controller.signal);
         if(!r.ok){
           if(r.status===429){const h=r.headers?.get?.('retry-after'),seconds=finite(h);this.health.backoffUntil=Date.now()+Math.min(300000,Math.max(1000,seconds!==null?seconds*1000:30000));throw new ProviderError('RATE_LIMITED',`${this.id}: rate limited`);}
           throw new ProviderError([401,403].includes(r.status)?'AUTH_ERROR':'HTTP_ERROR',`${this.id}: HTTP ${r.status}`);
         }
-        let data;try{data=await r.json();}catch{throw new ProviderError('MALFORMED_DATA',`${this.id}: invalid JSON response`);}
+        let data;try{data=await awaitAbortable(r.json(),controller.signal);}catch(e){if(controller.signal.aborted)throw controller.signal.reason;throw new ProviderError('MALFORMED_DATA',`${this.id}: invalid JSON response`);}
+        if(controller.signal.aborted)throw controller.signal.reason;
         if(!data||typeof data!=='object')throw new ProviderError('MALFORMED_DATA',`${this.id}: expected structured data`);
         this.health={...this.health,status:'CONNECTED',lastSuccess:Date.now(),lastError:null,latencyMs:Date.now()-now};
         this.cache.set(key,{at:Date.now(),data});if(this.cache.size>200)this.cache.delete(this.cache.keys().next().value);
         return this.copy(this.cache.get(key));
       }catch(e){this.health.status=e.code==='AUTH_ERROR'?'AUTH ERROR':e.code==='RATE_LIMITED'?'DEGRADED':'DISCONNECTED';this.health.lastError=e.code||'NETWORK_ERROR';throw e;}
-      finally{this.inflight.delete(key);}
+      finally{clearTimeout(timer);this.inflight.delete(key);}
     })();this.inflight.set(key,request);return request;
   }
   status(now=Date.now()){return {...this.health,status:this.health.status==='CONNECTED'&&now-this.health.lastSuccess>60000?'STALE':this.health.status,id:this.id,websocket:'UNAVAILABLE',queueDepth:this.inflight.size};}
