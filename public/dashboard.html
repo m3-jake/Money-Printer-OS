@@ -361,6 +361,14 @@ function fitWindow(w){
  const scrollDesk=!!pane.querySelector('.core-app,.mpo-overview,.command-brain');
  w.querySelectorAll('.tabpane,.body,.glancepane').forEach(p=>{if(p!==pane)p.style.zoom=p.style.width=p.style.height=p.style.overflow=''});
  pane.style.zoom=pane.style.width=pane.style.height=pane.style.overflow='';
+ const brain=pane.querySelector('.command-brain');
+ if(brain&&brain.parentElement.classList.contains('g-scroll')){
+  const box=brain.parentElement;brain.style.zoom='';brain.style.width='';
+  const W=box.clientWidth,H=box.clientHeight;if(W<40||H<40)return;
+  let z=textScale();
+  for(let i=0;i<5;i++){brain.style.zoom=z;brain.style.width=(W/z)+'px';const height=brain.getBoundingClientRect().height;if(fitOff.has(w.dataset.app)||height<=H+1||z<=.85)break;z=Math.max(.85,z*H/height);}
+  fitBadge(w,fitOff.has(w.dataset.app)?null:z);box.style.overflow='auto';return;
+ }
  // Fit off: actual size at the chosen text size, scrolling if it does not fit.
  if(fitOff.has(w.dataset.app)||scrollDesk){const z=textScale(),W=pane.offsetWidth,H=pane.offsetHeight;if(z!==1&&W>=40&&H>=40){pane.style.zoom=z;pane.style.width=(W/z)+'px';pane.style.height=(H/z)+'px';pane.style.overflow='auto'}fitZoom.delete(pane.id);fitBadge(w,null);if(scrollDesk){const button=w.querySelector('[data-act=fit]');if(button)button.title='This desk uses readable text and scrolling. Text size is set in Settings.'}if(w.classList.contains('glance')&&w.dataset.app==='trade')drawGlanceChart();return}
  const W=pane.offsetWidth,H=pane.offsetHeight;if(W<40||H<40)return;

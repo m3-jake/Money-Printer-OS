@@ -1,0 +1,47 @@
+✔ coordinated command view preserves unknowns, escapes leaders and keeps readable scrolling (33.8798ms)
+✔ two overview graphs map all quotes and independent paper books with exact price inspection (6.2262ms)
+✔ overview consumers load bot data without opening either bot detail pane (11.4513ms)
+✔ closed desktops and background tabs do not fetch bots; visible Lab does (4.3616ms)
+✔ slow bot refreshes and forced refreshes share one in-flight request (1.4386ms)
+✔ a failed refresh preserves the last real snapshot and releases the request lock (2.0407ms)
+✔ an action followed by refresh cannot reuse a snapshot started before the action (12.1184ms)
+✔ Command Center starts with unknown balances and evidence, not zero or healthy claims (7.9648ms)
+✔ Command Center uses separate real source books, original units and unreadable diagnostics (15.8221ms)
+✔ Money Printer OS overview covers the suites, operating tools and evidence workflow (7.1523ms)
+✔ native module overviews preserve unavailable balances and provide valid drill-downs (5.6449ms)
+✔ Polymarket shows verified real cash separately and hides unverified balance values (6.5976ms)
+✔ Robinhood retains every independent book and keeps real account cash off the paper overview (2.6086ms)
+✔ Kalshi opens a whole-suite overview with missing balances and coverage left unknown (3.7251ms)
+✔ Kalshi renders supported farm evidence, partial venue coverage and independent paper balances (4.4782ms)
+✔ Pump.fun labels the scanner mode and the separate copy paper book without adding their equity (2.601ms)
+✔ overview navigation opens child programs in Advanced and keeps host homes in Simple (36.162ms)
+✔ Robinhood overview links select and persist the intended section with only necessary GET loaders (17.9273ms)
+✔ overview navigation ignores invalid destinations and never treats inherited names as Robinhood sections (11.9671ms)
+✔ same-host detail buttons emit the explicit dataset instead of linking back to the overview (3.424ms)
+✔ Money alone keeps platform and scoreboard snapshots flowing without a detail window (11.0561ms)
+✔ Command Center reads paper book counts from the real scoreboard contract and excludes research lanes (8.6314ms)
+✔ Command Center reports existing Kalshi models and copy state before baseline results exist (3.0033ms)
+✔ Kalshi upcoming activity uses trading close time, labels expiration fallback and excludes closed markets (2.4808ms)
+✔ dashboard inline script still parses after alpha52 UI reconciliation (9.5163ms)
+✔ money rain requires known positive paper equity and never defaults start SOL (3.2356ms)
+✔ realized and combo bursts still require actual positive P&L (0.362ms)
+✔ fire/blaze is absent from normal terminal renderer (1.3954ms)
+✔ Experiment Monitor renderer binds policy, champion, promotion, and live leaderboard columns (0.7483ms)
+✔ Journal is a desktop host using project-journal data, not a Trade tab (0.7672ms)
+✔ a rect on the second monitor at x=-1800 is kept (2.8553ms)
+✔ x=5000 centres on primary (1.4941ms)
+✔ second monitor unplugged centres on primary and keeps maximized (0.3628ms)
+✔ oversize rect is clamped to the work area and min size is enforced (0.325ms)
+✔ the minimized -32000 rect is rejected (0.2676ms)
+✔ corrupt JSON loads as null, which validates to the default (0.3748ms)
+✔ captureState uses getNormalBounds (0.3604ms)
+✔ debounced saver coalesces and flush runs immediately (0.4311ms)
+✔ saveState writes a tmp file then renames it (0.5604ms)
+ℹ tests 39
+ℹ suites 0
+ℹ pass 39
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 401.9379
