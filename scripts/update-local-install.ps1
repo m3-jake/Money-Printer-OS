@@ -169,13 +169,18 @@ try {
 # 4. Relaunch and prove both halves of the pair are healthy before declaring success.
 function Wait-Health($url, $seconds = 35) {
   $deadline = (Get-Date).AddSeconds($seconds)
+  $lastStatus = 'no response'
   while ((Get-Date) -lt $deadline) {
     try {
       $h = Invoke-RestMethod -Uri $url -TimeoutSec 2
-      if ($h.ok -eq $true -and ((-not $h.PSObject.Properties['health']) -or $h.health -in @('HEALTHY','DEGRADED'))) { return $h }
-    } catch {}
+      $lastStatus = "ok=$($h.ok), health=$($h.health)"
+      # CAUTION is a successful application health response with ordinary WARN diagnostics.
+      # DEGRADED and STALLED must still fail, even if a malformed response claims ok=true.
+      if ($h.ok -eq $true -and ((-not $h.PSObject.Properties['health']) -or $h.health -in @('HEALTHY','CAUTION'))) { return $h }
+    } catch { $lastStatus = $_.Exception.Message }
     Start-Sleep -Milliseconds 500
   }
+  Say "Health probe failed for ${url}: $lastStatus" Yellow
   return $null
 }
 function Wait-Json($url, $seconds = 35) {

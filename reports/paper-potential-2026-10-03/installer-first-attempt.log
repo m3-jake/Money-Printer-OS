@@ -1,0 +1,133 @@
+﻿Money Printer local update  20261003-133625
+Build folder: C:\Users\jakem\Desktop\Money Printer OS\update-20261003-133625
+
+== Fetching latest Money Printer OS source
+From https://github.com/m3-jake/Money-Printer-OS
+ * branch            main       -> FETCH_HEAD
+Evolution Lab has no origin remote; using the clean local commit on master.
+
+== Building Money Printer OS
+commit a57ae9136b7ec06ede34bd1811b51b231b49c93b
+release 0.5.0-alpha.89+windows.a57ae91
+work C:\Users\jakem\AppData\Local\Temp\mpo-win-a57ae91-CdkCGZ
+out C:\Users\jakem\Desktop\Money Printer OS\update-20261003-133625\mpo
+{
+  "releaseId": "0.5.0-alpha.89+windows.a57ae91",
+  "sourceCommit": "a57ae9136b7ec06ede34bd1811b51b231b49c93b",
+  "sourceFingerprint": "51943529a6b9c6174fe67dc6067bdbed57fcaf97edc29a72fb42bd4253faa79c",
+  "packageVersion": "0.5.0-alpha.89",
+  "electronVersion": "38.8.6",
+  "createdAt": "2026-10-03T17:36:27Z",
+  "builtOn": "WITCHDOCTOR",
+  "sha256": "c135046ea30be3d66b4ee2aa4932d1da3d67c09cfaee4801207cf946a1a866a9",
+  "bytes": 93378995,
+  "entries": 8058,
+  "nativeModules": [],
+  "stagedFiles": 7346
+}
+(node:69140) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+== Boot-testing the new Money Printer OS build
+{
+  "ran": true,
+  "asar": "C:\\Users\\jakem\\Desktop\\Money Printer OS\\update-20261003-133625\\mpo\\app.asar",
+  "binary": "installed Electron runtime (ELECTRON_RUN_AS_NODE=1)",
+  "exe": "C:\\Users\\jakem\\AppData\\Local\\Programs\\money-printer-os\\Money Printer OS.exe",
+  "mode": "paper",
+  "dashboardOnly": true,
+  "port": 18792,
+  "pid": 46388,
+  "dashboardStatus": 200,
+  "healthStatus": 200,
+  "healthOk": true,
+  "health": "STARTING",
+  "build": {
+    "version": "0.5.0-alpha.89",
+    "productName": "Money Printer OS",
+    "provenance": {
+      "schema": "mpo.build-provenance.v1",
+      "packageVersion": "0.5.0-alpha.89",
+      "sourceCommit": "a57ae9136b7ec06ede34bd1811b51b231b49c93b",
+      "sourceDirty": false,
+      "sourceFingerprint": "51943529a6b9c6174fe67dc6067bdbed57fcaf97edc29a72fb42bd4253faa79c",
+      "packaged": true,
+      "releaseId": "0.5.0-alpha.89+windows.a57ae91",
+      "markerVersion": "0.5.0-alpha.89",
+      "markerCommit": "a57ae9136b7ec06ede34bd1811b51b231b49c93b",
+      "markerMatchesPackage": true,
+      "runtime": {
+        "node": "22.22.0",
+        "electron": "38.8.6",
+        "platform": "win32",
+        "arch": "x64",
+        "pid": 46388
+      },
+      "evaluator": {
+        "version": "market-replay.v2",
+        "sha256": "ff04565befc90ad2a09c0bf77be3020dcd9c2354153af34f9227d22721f47507"
+      },
+      "compatibility": {
+        "labStatus": "mpo.lab-status.v1",
+        "moduleChampion": "mpo.lab-module-champion.v1",
+        "fitness": "mpo.fitness-ledger.v1",
+        "compute": "mpo.compute-budget.v1",
+        "prediction": "mpo.prediction-episodes.v1",
+        "robinhood": "robinhood-backtest.v2",
+        "equities": "equities-close-next-open-v2"
+      },
+      "limitations": []
+    }
+  },
+  "isolatedDataDir": "temp dir (deleted)",
+  "success": true,
+  "log": "C:\\Users\\jakem\\Desktop\\Money Printer OS\\update-20261003-133625\\mpo\\windows-engine-smoke.log",
+  "at": "2026-10-03T17:37:38.080Z"
+}
+
+== Building Evolution Lab
+app.asar: 121 files, 1.0 MB
+  sha256: c5981e7ffc0a1562221cd6969e896ed536d6ae688e32b834b67ebad348fec25e
+  verified: all 121 files round-trip
+wrote C:\Users\jakem\Desktop\Money Printer OS\update-20261003-133625\lab\app.asar
+
+== Boot-testing the new Evolution Lab archive
+{
+  "success": true,
+  "receipt": "C:\\Users\\jakem\\Desktop\\Money Printer OS\\update-20261003-133625\\lab\\WINDOWS-ENGINE-SMOKE.json",
+  "version": "0.1.0-alpha.25",
+  "commit": "2ab61c1883cc86bd2231e8e3d346fbf571f46c14",
+  "checks": {
+    "receiptPresent": true,
+    "archiveHash": true,
+    "health": true,
+    "version": true,
+    "commit": true,
+    "fingerprint": true,
+    "cleanSource": true,
+    "paperOnly": true,
+    "dashboard": true,
+    "compatibility": true
+  }
+}
+Release pair: MPO 0.5.0-alpha.89 @ a57ae91 + Lab 0.1.0-alpha.25 @ 2ab61c1
+
+== Stopping the running apps
+Stopping Money Printer OS...
+Money Printer OS did not exit cleanly; forcing the remaining process tree.
+Stopping Money Printer Evolution Lab...
+Paper data backup: C:\Users\jakem\Desktop\Money Printer OS\update-20261003-133625\paper-data-backup
+
+== Installing paired release
+Money Printer OS installed (sha256 C135046EA30B...). Backup: C:\Users\jakem\AppData\Local\Programs\money-printer-os\resources\app.asar.backup-20261003-133625
+Evolution Lab installed (sha256 C5981E7FFC0A...). Backup: C:\Users\jakem\AppData\Local\Programs\money-printer-evolution-lab\resources\app.asar.backup-20261003-133625
+
+== Starting and verifying paired release
+Money Printer OS health endpoint did not recover
+Stopping Money Printer OS...
+Money Printer OS did not exit cleanly; forcing the remaining process tree.
+Stopping Money Printer Evolution Lab...
+Money Printer Evolution Lab did not exit cleanly; forcing the remaining process tree.
+Rolling back the pair: Money Printer OS health endpoint did not recover
+FAILED: new pair failed post-install verification; previous pair restored and relaunched
+Nothing installed was changed unless noted above. Log: C:\Users\jakem\Desktop\Money Printer OS\update-20261003-133625\update.log
