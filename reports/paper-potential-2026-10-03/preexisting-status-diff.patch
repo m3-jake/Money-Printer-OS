@@ -1,0 +1,74 @@
+diff --git a/MONEY_PRINTER_STATUS.md b/MONEY_PRINTER_STATUS.md
+index 4082758..68d56f7 100644
+--- a/MONEY_PRINTER_STATUS.md
++++ b/MONEY_PRINTER_STATUS.md
+@@ -1,10 +1,10 @@
+ # Money Printer OS: status ledger
+ 
+-## Current entry point — 2026-10-03 alpha.87 / Lab alpha.23 (installed); improvement run in progress
++## Current entry point — 2026-10-03 alpha.89 / Lab alpha.25 (installed); improvement run complete except D2
+ 
+-The installed pair is Money Printer OS `0.5.0-alpha.87` @ `1524483` and Evolution Lab `0.1.0-alpha.23` @ `b81b655`
+-(release R-87 below). Open from the run: A8 (Codex, uncommitted in both repos at release time), C5, all of phase B,
+-D1, D2.
++The installed pair is Money Printer OS `0.5.0-alpha.89` and Evolution Lab `0.1.0-alpha.25` (release R-89 below; exact
++commits in `.agent-state/RELEASE_STATUS.md`). Run items A1–A8, B1–B5, C1–C5, D1 and D3 are done; D2 (HUD script split)
++moved two windows out and continues next run. Batches are PF-9 onward, newest first; older history is in docs/history/.
+ The improvement run briefed in `docs/prompts/NEXT-RUN-2026-10-03.md` is under way; its batches are PF-9 onward
+ below, newest first. Source past the installed commit is not installed until the next paired release.
+ The paragraphs below describe the alpha.84 audit pair and stay true unless a later batch says otherwise.
+@@ -64,6 +64,54 @@ Architecture, active work and release evidence live in `.agent-state/PROJECT_STA
+ ledger is `AUDIT.md` and `docs/history/PROGRESS-remediation-2026-09.md`. Later sections below are historical unless dated
+ as the current release. Last updated: 2026-10-03.
+ 
++## Release R-89 (2026-10-03, Claude): alpha.89 / Lab alpha.25 — the end of the improvement run
++
++**What changed in how the books trade (whole run):** the Kalshi BTC bot runs model revision 2 (vol × 1.0, no
++longshots under 15¢ without a 15¢ edge) and is judged only on its own bets; every Kalshi bot and farm variant stands
++down to observe-only when its probabilities are worse than the market's; Robinhood exploration probes all 8 taped coins
++on a schedule, practice watches all 8 with a 1×-cost entry, and the daily book has a walk-forward shadow; the Kalshi
++mirror watches 16 sports-leaderboard wallets and matches Kalshi games directly; Pump.fun is parked at a 20 s cadence
++with risk lookups off the cycle and unknown risk not tradable; the Lab explores on idle cores (validation only).
++
++**Measured (live, same method before and after):**
++
++| Measure | Before (09:20–10:53) | After (11:08–12:12) |
++| --- | --- | --- |
++| Pump.fun risk step / cycle | 2,122 ms / 3,240 ms | 4–5 ms / 1,987–4,424 ms |
++| /api/health p50 / p95 | 325 / 1,354 ms | 65 / 355 ms |
++| Collector / engine CPU (% of one core) | 31.9 / 40.1 | 20.8 / 24.0 |
++| Lab processes / Lab CPU (% of machine) | 8 / 2.2% | 6 / 7.3% (234% of one core; 216 standing units, 86,400 weather variants tried, validation only) |
++| Scoreboard | 15 rows, 1 "beating" (retired furnace row), Kalshi and copy books missing | 32 rows, every book once, 0 beating |
++| Ledger | 218 KB | 22 KB |
++| dashboard.html | 2,233 lines | 1,692 lines |
++| Trader tests / Lab tests | 1,261 / 396 | 1,298 / 333 (14 furnace test files archived with the furnace) |
++
++**Books at 12:10:** Kalshi weather and NWS bots 10 open each and the 7 weather farm variants 12–17 open each (they
++settle on tomorrow's report); BTC bot trading again (2 open, skipping edges under 6¢); BTC farm v100 +$1.05 over 12;
++Robinhood exploration 3 probes open (close within 4 h), practice waiting for a 1% move, strategy book held by its
++qualification vol gate; daily book 1 mark (decides at 00:00 UTC); Polymarket copy −$156.98 over 65 closes, new copies
++paused since it fell 15% from peak (now 38%); Kalshi mirror 0 so far (every leader buy since the change was on markets
++Kalshi does not list); Polymarket US shadows 205–362 settled.
++
++**Pump.fun FAIR book reset at 11:17:41 (not by this run):** a `paper-reset` action with 0.25 SOL came through the
++action queue (the HUD/API reset path) and replaced the FAIR book (222 closes, −0.17 SOL at 11:20). The earlier books
++remain in the core ledger as `solana-paper` epochs (legacy-4: 1,107 ledger closes, realized −0.26 SOL). Nothing was
++restored; listed under Needs bing.
++
++**D2 (partial):** the Robinhood window (`public/js/mpo-robinhood-panel.js`, which replaced the inline copy and its sync
++gate) and the Polymarket window (`public/js/mpo-polymarket-window.js`) load as classic scripts at the exact position
++their code used to occupy, so execution order and scope are unchanged. Verified in the browser against recorded
++signatures (ids, headings, buttons, global function count) in Simple and Advanced, no console errors. The rest of the
++inline script is shared glance/overview helpers used by several windows; split those next run.
++
++**Mirror (follow-up to PF-20):** watches 16 sports leaders instead of 8 and tops up when fewer are watched. In its first
++25 minutes it checked 265 leader buys and matched none: all were on markets Kalshi does not list (Spanish second
++division, Uruguayan soccer, ATP challengers), correctly refused.
++
++**Needs bing:** whether to keep or undo the 11:17 Pump.fun reset; the Polymarket copy bot's sticky drawdown pause and
++its $500 bank (vs $25); approval for the retention dry run (`reports/RETENTION-DRY-RUN-2026-10-03.json`); a phone
++alert channel; an Alpaca key; `SEC_USER_AGENT`; the bangbowbing hub deploy; a new Polymarket US API key.
++
+ ## Batch PF-22 (2026-10-03, Claude): the Lab's phase B and C5 (Lab repo, logged here)
+ 
+ - **B1, one pipeline** (Lab `0fd6b3f`): `src/workbenchDaemon.js` now also runs the module research scheduler

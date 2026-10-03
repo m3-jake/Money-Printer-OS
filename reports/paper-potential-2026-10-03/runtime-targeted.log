@@ -1,0 +1,15 @@
+bigint: Failed to load bindings, pure JS will be used (try npm run rebuild?)
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+✔ steady preserves fast paper lanes and cannot enable real orders (1.6611ms)
+✔ exploratory admission checks identities, frozen window and authority without qualification bypass (1.5212ms)
+✔ admitted books freeze params and capital; changing proposal does not reset prior outcomes (18.9467ms)
+✔ prospective collector retains separate exact-depth receipts and settles without backfilling (31.9593ms)
+✔ exploratory Pump cohorts do not alter the qualified wallet gate or share cash (7.0329ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1371.2315

@@ -1,0 +1,31 @@
+bigint: Failed to load bindings, pure JS will be used (try npm run rebuild?)
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+✔ exact-size RH estimates reject either invalid quote leg and retain greater observed fees (1.5679ms)
+✔ US singles read exact best-level capacity and reject crossed or mismatched books (1.5389ms)
+✔ steady preserves fast paper lanes and cannot enable real orders (0.2149ms)
+✔ exploratory admission checks identities, frozen window and authority without qualification bypass (1.0971ms)
+✔ admitted books freeze params and capital; changing proposal does not reset prior outcomes (10.348ms)
+✔ prospective collector retains separate exact-depth receipts and settles without backfilling (17.8134ms)
+✔ exploratory Pump cohorts do not alter the qualified wallet gate or share cash (3.1029ms)
+[MPOS][MODE] Robinhood=PAPER | P&L=PAPER | live code enabled=false | real-host POSTs code-locked
+[MPOS][MODE] Robinhood=PAPER | P&L=PAPER | live code enabled=false | real-host POSTs code-locked
+﹣ place -> reconcile (mark) -> sell -> CLOSED books fee-aware P/L, cooldown and keeps open+history count (2.2848ms) # needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.
+﹣ limit buy rests as SUBMITTED, is cancelled by reconcile after ENTRY_TTL and moves to CANCELLED only once verified (0.1607ms) # needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.
+﹣ never-received rows survive lagging listings and fail only after 3 successful listings over 10 minutes; auth errors never transition (0.1297ms) # needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.
+﹣ cancel works without arm and changes status only via reconcile; cancel-all reports per entry (0.1336ms) # needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.
+﹣ cancelled or failed sell returns the entry to OPEN with no P/L (0.1413ms) # needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.
+﹣ real autopilot round trip: breakout entry placedBy autopilot, take-profit exit, cooldown; snapshot signal is LONG while open (0.1172ms) # needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.
+✔ primary symbol weighting in pickCandidates is backwards compatible and ranks BTC first on equal raw scores (1.5139ms)
+✔ primary order multiplier is capped by maxOrderUsd and by 2.0; default universe is BTC,ETH,SOL with BTC first (7.2539ms)
+✔ snapshot: pinned key list, signal enum values, never throws on a dead feed, masks the account (56.5747ms)
+✔ paper loop records source, cost and rejection across restart when there is no trade (33.8582ms)
+✔ configure validates the key, writes USER_ROOT/.env with mode 0600 and disarms (62.0114ms)
+✔ startRobinhoodLoops returns the unref timer when autostart is on and null when off; paper practice never writes a real order (18.9624ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 6
+ℹ todo 0
+ℹ duration_ms 1700.7731

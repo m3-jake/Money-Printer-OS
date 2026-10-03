@@ -1,0 +1,25 @@
+✔ all requested asset classes share proposals and decisions with actual IDs, without implicit FX (3.2582ms)
+✔ regime snapshots include every class and preserve unknown observations; automatic strategies are gated (0.6698ms)
+✔ Kalshi and Polymarket paper placements persist their central proposal IDs and route records (34.0013ms)
+bigint: Failed to load bindings, pure JS will be used (try npm run rebuild?)
+✔ qualification uses a prior fresh card and cannot be carried by the best winning trip (2.2622ms)
+✔ live mode and old signals make no quote calls; unqualified wallets remain waiting (14.0787ms)
+✔ cash starts at $25 using fresh observed SOL FX, and never funds from stale FX (13.7676ms)
+✔ new leader buys fill exact raw quantities, charge both quote costs, and persist duplicate protection (19.5818ms)
+✔ missing, stale, non-executable and expensive quotes never debit cash or create a fill (27.2072ms)
+✔ unavailable exits preserve held tokens and cash even beyond max hold, then close at the next real quote (23.1443ms)
+✔ serialized simultaneous buys obey the cap and preserve reserve cash (12.3138ms)
+✔ corrupt saved accounts fail closed and retain their bytes (6.6405ms)
+✔ persisted risk, balances, duplicate positions and future marks cannot fabricate an account (22.6585ms)
+✔ native quotes must match an unsigned unsubmitted paper plan for the requested asset and side (26.0855ms)
+✔ quote delays recheck source age and paused engines never fetch a quote (4.8311ms)
+✔ journal failures cannot reverse a completed fill, while failed persistence never reports a fill (15.5113ms)
+✔ copy scoreboard uses only recorded after-cost closes and cash baseline (12.7545ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1005.385

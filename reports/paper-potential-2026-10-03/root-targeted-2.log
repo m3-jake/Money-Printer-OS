@@ -1,0 +1,43 @@
+✔ recurring public-book scan creates a funded paper pair and settles both observed outcomes (16.0272ms)
+✔ unverified settlement terms are recorded but cannot create an arbitrage fill (4.3401ms)
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+✔ prediction evaluator uses a future offer and retains capital until observed settlement (1.4955ms)
+✔ unobserved outcomes, changed rules, wrong venue, unknown fees and event duplicates cannot qualify (0.4141ms)
+✔ unsupported Kalshi history remains waiting and fixed policy results are stored append-only (11.7997ms)
+✔ cross-venue quote is conditional and includes failed-leg loss even when rules match (1.2289ms)
+✔ every settlement-relevant field invalidates a prior contract attestation (0.8913ms)
+bigint: Failed to load bindings, pure JS will be used (try npm run rebuild?)
+✔ qualification uses a prior fresh card and cannot be carried by the best winning trip (2.3379ms)
+✔ live mode and old signals make no quote calls; unqualified wallets remain waiting (11.9791ms)
+✔ cash starts at $25 using fresh observed SOL FX, and never funds from stale FX (12.9947ms)
+✔ new leader buys fill exact raw quantities, charge both quote costs, and persist duplicate protection (18.3761ms)
+✔ missing, stale, non-executable and expensive quotes never debit cash or create a fill (26.948ms)
+✔ unavailable exits preserve held tokens and cash even beyond max hold, then close at the next real quote (21.7208ms)
+✔ serialized simultaneous buys obey the cap and preserve reserve cash (12.1764ms)
+✔ corrupt saved accounts fail closed and retain their bytes (6.9539ms)
+✔ persisted risk, balances, duplicate positions and future marks cannot fabricate an account (25.6051ms)
+✔ native quotes must match an unsigned unsubmitted paper plan for the requested asset and side (32.573ms)
+✔ quote delays recheck source age and paused engines never fetch a quote (5.9088ms)
+✔ journal failures cannot reverse a completed fill, while failed persistence never reports a fill (20.0564ms)
+✔ copy scoreboard uses only recorded after-cost closes and cash baseline (17.6036ms)
+bigint: Failed to load bindings, pure JS will be used (try npm run rebuild?)
+ALERT: EXIT TP -1.4% · stale-purge
+ALERT: EXIT TP -50.8% · stop-loss
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+MONEY PRINTER ENGINE 12.6 // PAPER // COLD 0 // 0 TRACKED // 0 HELD // 85ms
+trade-path: mpo-trade-path-X3Fk9m left under C:\Users\jakem\AppData\Local\Temp — EPERM (a handle outside the platform's close seam survived)
+✔ exec #5: the trade path is reachable from a test — cycle, enter and updatePositions are exported (1.3261ms)
+✔ a paper entry driven in-process debits cash by basis + fee and books the entry fee as realized loss (17.0319ms)
+✔ a duplicate entry for the same mint is refused by the brain, not only by the caller (5.5564ms)
+✔ the exit ladder reaches stale-purge through the real close path: position gone, cash up, cooldown set (19.0871ms)
+✔ a stop-loss fires when the mark collapses but the tick did not jump, and the loss is booked (10.9084ms)
+✔ one full cycle runs in-process against the stubbed market and persists its counters (139.8152ms)
+✔ the trade path reaches only the hosts this stub knows about (coupling is measured, not assumed) (1.1537ms)
+ℹ tests 27
+ℹ suites 0
+ℹ pass 27
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1797.2257

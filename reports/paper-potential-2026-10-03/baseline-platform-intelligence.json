@@ -1,0 +1,731 @@
+{
+  "ok": true,
+  "scope": "Local paper evidence triage; recommendations do not change strategies",
+  "research": [
+    {
+      "id": "pumpfun-fair",
+      "module": "Pump.fun",
+      "book": "FAIR paper",
+      "at": 1791046669143,
+      "evidence": {
+        "closes": 51,
+        "net": -0.007698,
+        "withoutBest": -0.018792,
+        "freshness": "FRESH",
+        "recoveryRequired": false
+      },
+      "reason": "Paper outcomes or data-quality state changed",
+      "priority": 70,
+      "status": "NEEDS_EVIDENCE",
+      "findings": [
+        "Negative net expectancy: compare friction and entry selection on unseen data"
+      ],
+      "nextTest": "Negative net expectancy: compare friction and entry selection on unseen data",
+      "cost": {
+        "modelCalls": 0,
+        "tokens": 0
+      },
+      "executionAuthority": false
+    },
+    {
+      "id": "polymarket-shadow-late",
+      "module": "Polymarket US",
+      "book": "Shadow combos · LATE",
+      "at": 1791045949067,
+      "evidence": {
+        "closes": 363,
+        "net": -37.68,
+        "withoutBest": -42.12,
+        "freshness": "FRESH",
+        "recoveryRequired": false
+      },
+      "reason": "Paper outcomes or data-quality state changed",
+      "priority": 70,
+      "status": "NEEDS_EVIDENCE",
+      "findings": [
+        "Negative net expectancy: compare friction and entry selection on unseen data"
+      ],
+      "nextTest": "Negative net expectancy: compare friction and entry selection on unseen data",
+      "cost": {
+        "modelCalls": 0,
+        "tokens": 0
+      },
+      "executionAuthority": false
+    },
+    {
+      "id": "polymarket-shadow-near_end",
+      "module": "Polymarket US",
+      "book": "Shadow combos · NEAR_END",
+      "at": 1791044508250,
+      "evidence": {
+        "closes": 207,
+        "net": -32.55,
+        "withoutBest": -35.95,
+        "freshness": "FRESH",
+        "recoveryRequired": false
+      },
+      "reason": "Paper outcomes or data-quality state changed",
+      "priority": 70,
+      "status": "NEEDS_EVIDENCE",
+      "findings": [
+        "Negative net expectancy: compare friction and entry selection on unseen data"
+      ],
+      "nextTest": "Negative net expectancy: compare friction and entry selection on unseen data",
+      "cost": {
+        "modelCalls": 0,
+        "tokens": 0
+      },
+      "executionAuthority": false
+    },
+    {
+      "id": "polymarket-shadow-any_live",
+      "module": "Polymarket US",
+      "book": "Shadow combos · ANY_LIVE",
+      "at": 1791044508250,
+      "evidence": {
+        "closes": 206,
+        "net": -1.23,
+        "withoutBest": -5.57,
+        "freshness": "FRESH",
+        "recoveryRequired": false
+      },
+      "reason": "Paper outcomes or data-quality state changed",
+      "priority": 70,
+      "status": "NEEDS_EVIDENCE",
+      "findings": [
+        "Negative net expectancy: compare friction and entry selection on unseen data"
+      ],
+      "nextTest": "Negative net expectancy: compare friction and entry selection on unseen data",
+      "cost": {
+        "modelCalls": 0,
+        "tokens": 0
+      },
+      "executionAuthority": false
+    },
+    {
+      "id": "polymarket-copy",
+      "module": "Polymarket copy",
+      "book": "Copy bot (polymarket.com leaders)",
+      "at": 1791044328233,
+      "evidence": {
+        "closes": 68,
+        "net": -152.816,
+        "withoutBest": -192.416,
+        "freshness": "FRESH",
+        "recoveryRequired": false
+      },
+      "reason": "Paper outcomes or data-quality state changed",
+      "priority": 70,
+      "status": "NEEDS_EVIDENCE",
+      "findings": [
+        "Negative net expectancy: compare friction and entry selection on unseen data"
+      ],
+      "nextTest": "Negative net expectancy: compare friction and entry selection on unseen data",
+      "cost": {
+        "modelCalls": 0,
+        "tokens": 0
+      },
+      "executionAuthority": false
+    },
+    {
+      "id": "kalshi-farm-btc-v100",
+      "module": "Kalshi farm",
+      "book": "BTC · vol × 1.0",
+      "at": 1791042582522,
+      "evidence": {
+        "closes": 12,
+        "net": 1.05,
+        "withoutBest": -0.15,
+        "freshness": "FRESH",
+        "recoveryRequired": false
+      },
+      "reason": "Paper outcomes or data-quality state changed",
+      "priority": 70,
+      "status": "NEEDS_EVIDENCE",
+      "findings": [
+        "Result depends on one trade: collect independent forward outcomes"
+      ],
+      "nextTest": "Result depends on one trade: collect independent forward outcomes",
+      "cost": {
+        "modelCalls": 0,
+        "tokens": 0
+      },
+      "executionAuthority": false
+    },
+    {
+      "id": "kalshi-farm-wx-cal-e04",
+      "module": "Kalshi farm",
+      "book": "Weather · calibrated · edge ≥ 4¢",
+      "at": 1791042582522,
+      "evidence": {
+        "closes": 0,
+        "net": 0,
+        "withoutBest": null,
+        "freshness": "FRESH",
+        "recoveryRequired": false
+      },
+      "reason": "Paper outcomes or data-quality state changed",
+      "priority": 20,
+      "status": "MONITORING",
+      "findings": [],
+      "nextTest": "Continue forward observation; no strategy change justified by this audit",
+      "cost": {
+        "modelCalls": 0,
+        "tokens": 0
+      },
+      "executionAuthority": false
+    },
+    {
+      "id": "kalshi-farm-wx-cal-e07",
+      "module": "Kalshi farm",
+      "book": "Weather · calibrated · live settings",
+      "at": 1791042582522,
+      "evidence": {
+        "closes": 0,
+        "net": 0,
+        "withoutBest": null,
+        "freshness": "FRESH",
+        "recoveryRequired": false
+      },
+      "reason": "Paper outcomes or data-quality state changed",
+      "priority": 20,
+      "status": "MONITORING",
+      "findings": [],
+      "nextTest": "Continue forward observation; no strategy change justified by this audit",
+      "cost": {
+        "modelCalls": 0,
+        "tokens": 0
+      },
+      "executionAuthority": false
+    },
+    {
+      "id": "kalshi-farm-wx-cal-e10",
+      "module": "Kalshi farm",
+      "book": "Weather · calibrated · edge ≥ 10¢",
+      "at": 1791042582522,
+      "evidence": {
+        "closes": 0,
+        "net": 0,
+        "withoutBest": null,
+        "freshness": "FRESH",
+        "recoveryRequired": false
+      },
+      "reason": "Paper outcomes or data-quality state changed",
+      "priority": 20,
+      "status": "MONITORING",
+      "findings": [],
+      "nextTest": "Continue forward observation; no strategy change justified by this audit",
+      "cost": {
+        "modelCalls": 0,
+        "tokens": 0
+      },
+      "executionAuthority": false
+    },
+    {
+      "id": "kalshi-farm-wx-cal-wide",
+      "module": "Kalshi farm",
+      "book": "Weather · calibrated · σ × 1.4",
+      "at": 1791042582522,
+      "evidence": {
+        "closes": 0,
+        "net": 0,
+        "withoutBest": null,
+        "freshness": "FRESH",
+        "recoveryRequired": false
+      },
+      "reason": "Paper outcomes or data-quality state changed",
+      "priority": 20,
+      "status": "MONITORING",
+      "findings": [],
+      "nextTest": "Continue forward observation; no strategy change justified by this audit",
+      "cost": {
+        "modelCalls": 0,
+        "tokens": 0
+      },
+      "executionAuthority": false
+    },
+    {
+      "id": "kalshi-farm-wx-cal-tight",
+      "module": "Kalshi farm",
+      "book": "Weather · calibrated · model gap ≤ 10¢",
+      "at": 1791042582522,
+      "evidence": {
+        "closes": 0,
+        "net": 0,
+        "withoutBest": null,
+        "freshness": "FRESH",
+        "recoveryRequired": false
+      },
+      "reason": "Paper outcomes or data-quality state changed",
+      "priority": 20,
+      "status": "MONITORING",
+      "findings": [],
+      "nextTest": "Continue forward observation; no strategy change justified by this audit",
+      "cost": {
+        "modelCalls": 0,
+        "tokens": 0
+      },
+      "executionAuthority": false
+    },
+    {
+      "id": "kalshi-farm-wx-nws-e04",
+      "module": "Kalshi farm",
+      "book": "Weather · NWS only · edge ≥ 4¢",
+      "at": 1791042582522,
+      "evidence": {
+        "closes": 0,
+        "net": 0,
+        "withoutBest": null,
+        "freshness": "FRESH",
+        "recoveryRequired": false
+      },
+      "reason": "Paper outcomes or data-quality state changed",
+      "priority": 20,
+      "status": "MONITORING",
+      "findings": [],
+      "nextTest": "Continue forward observation; no strategy change justified by this audit",
+      "cost": {
+        "modelCalls": 0,
+        "tokens": 0
+      },
+      "executionAuthority": false
+    },
+    {
+      "id": "kalshi-farm-wx-nws-e10",
+      "module": "Kalshi farm",
+      "book": "Weather · NWS only · edge ≥ 10¢",
+      "at": 1791042582522,
+      "evidence": {
+        "closes": 0,
+        "net": 0,
+        "withoutBest": null,
+        "freshness": "FRESH",
+        "recoveryRequired": false
+      },
+      "reason": "Paper outcomes or data-quality state changed",
+      "priority": 20,
+      "status": "MONITORING",
+      "findings": [],
+      "nextTest": "Continue forward observation; no strategy change justified by this audit",
+      "cost": {
+        "modelCalls": 0,
+        "tokens": 0
+      },
+      "executionAuthority": false
+    },
+    {
+      "id": "kalshi-farm-btc-v125-e04",
+      "module": "Kalshi farm",
+      "book": "BTC · vol × 1.25 · edge ≥ 4¢",
+      "at": 1791042582522,
+      "evidence": {
+        "closes": 18,
+        "net": -10.57,
+        "withoutBest": -12.56,
+        "freshness": "FRESH",
+        "recoveryRequired": false
+      },
+      "reason": "Paper outcomes or data-quality state changed",
+      "priority": 20,
+      "status": "MONITORING",
+      "findings": [],
+      "nextTest": "Continue forward observation; no strategy change justified by this audit",
+      "cost": {
+        "modelCalls": 0,
+        "tokens": 0
+      },
+      "executionAuthority": false
+    },
+    {
+      "id": "kalshi-farm-btc-v150",
+      "module": "Kalshi farm",
+      "book": "BTC · vol × 1.5",
+      "at": 1791042582522,
+      "evidence": {
+        "closes": 14,
+        "net": -10.53,
+        "withoutBest": -10.95,
+        "freshness": "FRESH",
+        "recoveryRequired": false
+      },
+      "reason": "Paper outcomes or data-quality state changed",
+      "priority": 20,
+      "status": "MONITORING",
+      "findings": [],
+      "nextTest": "Continue forward observation; no strategy change justified by this audit",
+      "cost": {
+        "modelCalls": 0,
+        "tokens": 0
+      },
+      "executionAuthority": false
+    },
+    {
+      "id": "kalshi-farm-btc-v200",
+      "module": "Kalshi farm",
+      "book": "BTC · vol × 2.0",
+      "at": 1791042582522,
+      "evidence": {
+        "closes": 11,
+        "net": -10.29,
+        "withoutBest": -9.63,
+        "freshness": "FRESH",
+        "recoveryRequired": false
+      },
+      "reason": "Paper outcomes or data-quality state changed",
+      "priority": 20,
+      "status": "MONITORING",
+      "findings": [],
+      "nextTest": "Continue forward observation; no strategy change justified by this audit",
+      "cost": {
+        "modelCalls": 0,
+        "tokens": 0
+      },
+      "executionAuthority": false
+    },
+    {
+      "id": "kalshi-farm-btc-live-r2",
+      "module": "Kalshi farm",
+      "book": "BTC · live model r2 (vol × 1.0, no longshots under 15¢)",
+      "at": 1791042582522,
+      "evidence": {
+        "closes": 0,
+        "net": 0,
+        "withoutBest": null,
+        "freshness": "FRESH",
+        "recoveryRequired": false
+      },
+      "reason": "Paper outcomes or data-quality state changed",
+      "priority": 20,
+      "status": "MONITORING",
+      "findings": [],
+      "nextTest": "Continue forward observation; no strategy change justified by this audit",
+      "cost": {
+        "modelCalls": 0,
+        "tokens": 0
+      },
+      "executionAuthority": false
+    },
+    {
+      "id": "robinhood-daily-shadow",
+      "module": "Robinhood crypto",
+      "book": "Walk-forward shadow · NOT QUALIFIED",
+      "at": 1791040214053,
+      "evidence": {
+        "closes": 0,
+        "net": 0,
+        "withoutBest": null,
+        "freshness": "FRESH",
+        "recoveryRequired": false
+      },
+      "reason": "First observed paper book",
+      "priority": 20,
+      "status": "MONITORING",
+      "findings": [],
+      "nextTest": "Continue forward observation; no strategy change justified by this audit",
+      "cost": {
+        "modelCalls": 0,
+        "tokens": 0
+      },
+      "executionAuthority": false
+    },
+    {
+      "id": "robinhood-daily",
+      "module": "Robinhood crypto",
+      "book": "Daily-bar paper · Lab default family (not qualified)",
+      "at": 1791040156834,
+      "evidence": {
+        "closes": 1,
+        "net": -0.01,
+        "withoutBest": 0,
+        "freshness": "FRESH",
+        "recoveryRequired": false
+      },
+      "reason": "First observed paper book",
+      "priority": 20,
+      "status": "MONITORING",
+      "findings": [],
+      "nextTest": "Continue forward observation; no strategy change justified by this audit",
+      "cost": {
+        "modelCalls": 0,
+        "tokens": 0
+      },
+      "executionAuthority": false
+    },
+    {
+      "id": "kalshi-bot-weather",
+      "module": "Kalshi bots",
+      "book": "Weather bot (calibrated)",
+      "at": 1791040156834,
+      "evidence": {
+        "closes": 0,
+        "net": 0,
+        "withoutBest": null,
+        "freshness": "FRESH",
+        "recoveryRequired": false
+      },
+      "reason": "First observed paper book",
+      "priority": 20,
+      "status": "MONITORING",
+      "findings": [],
+      "nextTest": "Continue forward observation; no strategy change justified by this audit",
+      "cost": {
+        "modelCalls": 0,
+        "tokens": 0
+      },
+      "executionAuthority": false
+    },
+    {
+      "id": "kalshi-bot-weather-nws",
+      "module": "Kalshi bots",
+      "book": "Weather bot (NWS-only control)",
+      "at": 1791040156834,
+      "evidence": {
+        "closes": 0,
+        "net": 0,
+        "withoutBest": null,
+        "freshness": "FRESH",
+        "recoveryRequired": false
+      },
+      "reason": "First observed paper book",
+      "priority": 20,
+      "status": "MONITORING",
+      "findings": [],
+      "nextTest": "Continue forward observation; no strategy change justified by this audit",
+      "cost": {
+        "modelCalls": 0,
+        "tokens": 0
+      },
+      "executionAuthority": false
+    },
+    {
+      "id": "kalshi-bot-btc",
+      "module": "Kalshi bots",
+      "book": "BTC range bot",
+      "at": 1791040156834,
+      "evidence": {
+        "closes": 13,
+        "net": -10.64,
+        "withoutBest": -11.11,
+        "freshness": "FRESH",
+        "recoveryRequired": false
+      },
+      "reason": "First observed paper book",
+      "priority": 20,
+      "status": "MONITORING",
+      "findings": [],
+      "nextTest": "Continue forward observation; no strategy change justified by this audit",
+      "cost": {
+        "modelCalls": 0,
+        "tokens": 0
+      },
+      "executionAuthority": false
+    },
+    {
+      "id": "kalshi-mirror",
+      "module": "Kalshi mirror",
+      "book": "Copy of Polymarket leaders (game winners)",
+      "at": 1791040156834,
+      "evidence": {
+        "closes": 0,
+        "net": 0,
+        "withoutBest": null,
+        "freshness": "FRESH",
+        "recoveryRequired": false
+      },
+      "reason": "First observed paper book",
+      "priority": 20,
+      "status": "MONITORING",
+      "findings": [],
+      "nextTest": "Continue forward observation; no strategy change justified by this audit",
+      "cost": {
+        "modelCalls": 0,
+        "tokens": 0
+      },
+      "executionAuthority": false
+    },
+    {
+      "id": "robinhood-strategy",
+      "module": "Robinhood crypto",
+      "book": "Strategy paper",
+      "at": 1791038649696,
+      "evidence": {
+        "closes": 0,
+        "net": 0,
+        "withoutBest": null,
+        "freshness": "FRESH",
+        "recoveryRequired": false
+      },
+      "reason": "Paper outcomes or data-quality state changed",
+      "priority": 20,
+      "status": "MONITORING",
+      "findings": [],
+      "nextTest": "Continue forward observation; no strategy change justified by this audit",
+      "cost": {
+        "modelCalls": 0,
+        "tokens": 0
+      },
+      "executionAuthority": false
+    },
+    {
+      "id": "robinhood-exploration",
+      "module": "Robinhood crypto",
+      "book": "Exploration paper",
+      "at": 1791038649696,
+      "evidence": {
+        "closes": 0,
+        "net": 0,
+        "withoutBest": null,
+        "freshness": "FRESH",
+        "recoveryRequired": false
+      },
+      "reason": "Paper outcomes or data-quality state changed",
+      "priority": 20,
+      "status": "MONITORING",
+      "findings": [],
+      "nextTest": "Continue forward observation; no strategy change justified by this audit",
+      "cost": {
+        "modelCalls": 0,
+        "tokens": 0
+      },
+      "executionAuthority": false
+    },
+    {
+      "id": "robinhood-practice",
+      "module": "Robinhood crypto",
+      "book": "Practice paper",
+      "at": 1791038649696,
+      "evidence": {
+        "closes": 0,
+        "net": 0,
+        "withoutBest": null,
+        "freshness": "FRESH",
+        "recoveryRequired": false
+      },
+      "reason": "Paper outcomes or data-quality state changed",
+      "priority": 20,
+      "status": "MONITORING",
+      "findings": [],
+      "nextTest": "Continue forward observation; no strategy change justified by this audit",
+      "cost": {
+        "modelCalls": 0,
+        "tokens": 0
+      },
+      "executionAuthority": false
+    },
+    {
+      "id": "pumpfun-copy",
+      "module": "Pump.fun",
+      "book": "Scored-wallet copy paper",
+      "at": 1791020989459,
+      "evidence": {
+        "closes": 0,
+        "net": 0,
+        "withoutBest": null,
+        "freshness": "FRESH",
+        "recoveryRequired": false
+      },
+      "reason": "Paper outcomes or data-quality state changed",
+      "priority": 20,
+      "status": "MONITORING",
+      "findings": [],
+      "nextTest": "Continue forward observation; no strategy change justified by this audit",
+      "cost": {
+        "modelCalls": 0,
+        "tokens": 0
+      },
+      "executionAuthority": false
+    },
+    {
+      "id": "robinhood-equities",
+      "module": "Robinhood equities",
+      "book": "Tactical ETF (50% SPY 200d trend + 50% dual-momentum top 3) paper",
+      "at": 1791004536244,
+      "evidence": {
+        "closes": 1,
+        "net": 0,
+        "withoutBest": 0,
+        "freshness": "FRESH",
+        "recoveryRequired": false
+      },
+      "reason": "Paper outcomes or data-quality state changed",
+      "priority": 20,
+      "status": "MONITORING",
+      "findings": [],
+      "nextTest": "Continue forward observation; no strategy change justified by this audit",
+      "cost": {
+        "modelCalls": 0,
+        "tokens": 0
+      },
+      "executionAuthority": false
+    },
+    {
+      "id": "pumpfun-sprint",
+      "module": "Pump.fun",
+      "book": "SPRINT paper",
+      "at": 1790582361156,
+      "evidence": {
+        "closes": 0,
+        "net": 0,
+        "withoutBest": null,
+        "freshness": "IDLE",
+        "recoveryRequired": false
+      },
+      "reason": "First observed paper book",
+      "priority": 20,
+      "status": "MONITORING",
+      "findings": [],
+      "nextTest": "Continue forward observation; no strategy change justified by this audit",
+      "cost": {
+        "modelCalls": 0,
+        "tokens": 0
+      },
+      "executionAuthority": false
+    },
+    {
+      "id": "platform-stocks-paper",
+      "module": "stocks-paper",
+      "book": "Core ledger paper fills",
+      "at": 1790582361156,
+      "evidence": {
+        "closes": 0,
+        "net": 0,
+        "withoutBest": null,
+        "freshness": "FRESH",
+        "recoveryRequired": false
+      },
+      "reason": "First observed paper book",
+      "priority": 20,
+      "status": "MONITORING",
+      "findings": [],
+      "nextTest": "Continue forward observation; no strategy change justified by this audit",
+      "cost": {
+        "modelCalls": 0,
+        "tokens": 0
+      },
+      "executionAuthority": false
+    }
+  ],
+  "opportunities": [],
+  "recentRuns": 2000,
+  "modelCalls": 0,
+  "budget": {
+    "paidModelsEnabled": false,
+    "mode": "ZERO_CREDIT_BUILD",
+    "scope": "Optional SEC model adapter / UTC day; paid execution is build-locked",
+    "limits": {
+      "calls": 0,
+      "tokens": 0
+    },
+    "calls": 0,
+    "reservedTokens": 0,
+    "uncertain": 0,
+    "actualTokens": 0
+  },
+  "cache": {
+    "entries": 0,
+    "reused": 0,
+    "paidModelsEnabled": false,
+    "mode": "ZERO_CREDIT_BUILD"
+  },
+  "lastError": null
+}

@@ -8,6 +8,7 @@ import { PublicKey } from '@solana/web3.js';
 import { createNativePaperAdapter } from './pumpfunNativePaper.js';
 import { walletScorecardView, isWalletAddress, MIN_GRADED_ROUND_TRIPS } from './walletScorecard.js';
 import { writeFileAtomicSync } from './atomicRename.js';
+import { assertPaperPrimaryAvailable,markPaperInitialized } from './paperBookStore.js';
 
 export const PUMP_COPY_SCHEMA = 'mpo.pumpfun-copy-paper.v1';
 export const PUMP_COPY_DEFAULTS = Object.freeze({ startUsd: 25, stakeUsd: 2.5, minTrips: MIN_GRADED_ROUND_TRIPS,
@@ -62,7 +63,7 @@ export function createPumpfunCopyPaper({ dataDir = process.env.MONEY_PRINTER_DAT
       .map(w=>({...w,scorecardAsOf:at,qualificationStage:'EXPLORATORY'}));
   }
   function read() {
-    if (!fs.existsSync(file)) return freshBook();
+    if (!assertPaperPrimaryAvailable(file)) return freshBook();
     if (fs.statSync(file).size > 64 * 1024 * 1024) throw new Error('Pump copy account exceeds its read budget; existing bytes preserved');
     const b = JSON.parse(fs.readFileSync(file, 'utf8'));
     if(experiment&&(b.experiment?.id!==experiment.id||b.experiment?.policy!==experiment.policy))throw new Error('Pump experiment identity mismatch; existing bytes preserved');
@@ -91,13 +92,13 @@ export function createPumpfunCopyPaper({ dataDir = process.env.MONEY_PRINTER_DAT
         || !timestamp(b.fundedAt,t) || !finiteNumber(b.fundingSolUsd) || b.fundingSolUsd <= 0 || Math.abs(b.startSol - b.startUsd / b.fundingSolUsd) > 1e-10
         || !finiteNumber(b.solUsd) || b.solUsd <= 0 || !timestamp(b.fxAt,t)
         || Math.abs(b.cashSol + b.open.reduce((sum,p) => sum + p.costSol,0) - b.startSol - b.realizedPnlSol) > 1e-8
-        || b.history.length < 1000 && Math.abs(b.realizedPnlSol - b.history.reduce((sum,p) => sum + p.pnlSol,0)) > 1e-8)
+        || Math.abs(b.realizedPnlSol - b.history.reduce((sum,p) => sum + p.pnlSol,0)) > 1e-8)
       || !funded && (b.cashSol !== null || b.open.length || b.history.length || b.realizedPnlSol !== 0 || [b.fundedAt,b.fundingSolUsd,b.solUsd,b.fxAt].some(x => x !== null))) {
       throw new Error('Invalid Pump copy paper account; existing bytes preserved');
     }
-    return b;
+    markPaperInitialized(file);return b;
   }
-  const write = b => writeFileAtomicSync(file, JSON.stringify(b, null, 2));
+  const write = b => {assertPaperPrimaryAvailable(file);writeFileAtomicSync(file, JSON.stringify(b, null, 2));markPaperInitialized(file);};
   function serialize(fn) {
     if (pending >= 8) return Promise.resolve({ accepted: false, reason: 'paper-copy-queue-full', ordersSubmitted: 0 });
     pending++; const result = queue.then(fn); queue = result.catch(() => {}).finally(() => pending--); return result;

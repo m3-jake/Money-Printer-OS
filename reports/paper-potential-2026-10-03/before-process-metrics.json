@@ -1,0 +1,53 @@
+﻿{
+    "schema":  "mpo.paper-process-metrics.v1",
+    "tag":  "before",
+    "sampleSeconds":  20.52048,
+    "logicalProcessors":  32,
+    "startedAt":  "2026-10-03T17:19:22.1941935Z",
+    "endedAt":  "2026-10-03T17:19:42.7146735Z",
+    "apps":  [
+                 {
+                     "app":  "Money Printer OS",
+                     "processes":  7,
+                     "cpuMachinePct":  2.15,
+                     "workingSetBytes":  1586339840,
+                     "privateBytes":  1738723328
+                 },
+                 {
+                     "app":  "Money Printer Evolution Lab",
+                     "processes":  6,
+                     "cpuMachinePct":  8.36,
+                     "workingSetBytes":  816832512,
+                     "privateBytes":  941457408
+                 }
+             ],
+    "diskBefore":  [
+                       {
+                           "root":  "C:\\Users\\jakem\\AppData\\Roaming\\Money Printer OS\\data",
+                           "files":  336,
+                           "bytes":  10198667154
+                       },
+                       {
+                           "root":  "C:\\Users\\jakem\\AppData\\Roaming\\Money Printer Evolution Lab\\data",
+                           "files":  3972,
+                           "bytes":  114993364
+                       }
+                   ],
+    "diskAfter":  [
+                      {
+                          "root":  "C:\\Users\\jakem\\AppData\\Roaming\\Money Printer OS\\data",
+                          "files":  336,
+                          "bytes":  10198845843
+                      },
+                      {
+                          "root":  "C:\\Users\\jakem\\AppData\\Roaming\\Money Printer Evolution Lab\\data",
+                          "files":  3972,
+                          "bytes":  114992978
+                      }
+                  ],
+    "limitations":  [
+                        "Process CPU is measured over this short window, not long-run utilization",
+                        "Build/test processes are excluded; other machine work still affects latency",
+                        "Working sets can contain shared pages"
+                    ]
+}

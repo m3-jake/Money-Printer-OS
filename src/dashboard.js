@@ -507,8 +507,9 @@ export function startDashboard() {
   // Each paper venue has its own timer, run budget and stall watchdog (src/venueLoop.js, run C2): a venue whose run
   // hangs is reported STALLED in /api/health and never holds up another venue or the HUD.
   if(process.env.MPO_PAPER_BOTS!=='false'&&!process.env.NODE_TEST_CONTEXT){const v=venueLoops,disclosureQuoteAdapter=createDisclosureEquityQuoteAdapter();
+    if(!fs.existsSync(SINGLE_PAPER_FILE)&&!fs.existsSync(SINGLE_PAPER_FILE+'.verified.json')&&!fs.existsSync(SINGLE_PAPER_FILE+'.initialized.json'))resetPaperSingles({startUsd:25});
     v.add('kalshi-evidence',{everyMs:30_000,firstMs:35_000,run:()=>marketPlatform().capturePredictionEvidence()});
-    v.add('robinhood-external-paper',{everyMs:15_000,firstMs:50_000,run:()=>{const features=robinhoodExternalFlow();return tickRobinhoodExternalBooks({dataDir:DATA_DIR,features,momentum:robinhoodExternalMomentum(),supportedSymbols:features.supportedSymbols||[],quoteFn:robinhoodDailyQuote,enabled:cfg.mode==='paper'&&!loadStateCached().paused});}});
+    v.add('robinhood-external-paper',{everyMs:15_000,firstMs:50_000,run:()=>{const features=robinhoodExternalFlow(),s=loadStateCached();return tickRobinhoodExternalBooks({dataDir:DATA_DIR,features,momentum:robinhoodExternalMomentum(),supportedSymbols:features.supportedSymbols||[],quoteFn:robinhoodDailyQuote,enabled:cfg.mode==='paper'&&!s.system?.paused&&!s.system?.killSwitch});}});
     v.add('us-singles-settlement',{everyMs:60_000,firstMs:25_000,run:()=>fs.existsSync(SINGLE_PAPER_FILE)?settlePaperSingles({}):null});
     v.add('disclosure-paper',{everyMs:300_000,firstMs:40_000,run:async()=>{
       const platform=marketPlatform(),configured=platform.edgar.status().status!=='NOT CONFIGURED';

@@ -1,0 +1,32 @@
+bigint: Failed to load bindings, pure JS will be used (try npm run rebuild?)
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+✔ exact-size RH estimates reject either invalid quote leg and retain greater observed fees (1.2375ms)
+✔ US singles read exact best-level capacity and reject crossed or mismatched books (1.45ms)
+✔ steady preserves fast paper lanes and cannot enable real orders (0.2095ms)
+✔ exploratory admission checks identities, frozen window and authority without qualification bypass (0.856ms)
+✔ admitted books freeze params and capital; changing proposal does not reset prior outcomes (11.0012ms)
+✔ prospective collector retains separate exact-depth receipts and settles without backfilling (18.5952ms)
+✔ exploratory Pump cohorts do not alter the qualified wallet gate or share cash (3.8529ms)
+✔ walk-forward shadow has a separate bank, shares bars and never qualifies or repeats a daily decision (100.0499ms)
+✔ Lab signal parity: the executor rule reproduces the Lab replay trades for every family (18.7996ms)
+✔ strategy source: the Lab proposal only when championState clears it for paper and its params are in bounds (1.7347ms)
+✔ controller: prospective Robinhood quotes fill multi-day holds at any hour without historical late fills (109.7451ms)
+✔ controller: decision is durable and missing quote waits until a supported executable quote arrives (42.6363ms)
+✔ forward daily rejects historical opens, stale or missing-depth quotes and floors actual lots (61.655ms)
+✔ observed 2% quote fees constrain forward entries, exits and holding baseline above the fixed floor (43.5454ms)
+✔ controller: switches to a cleared Lab proposal and labels it (31.3902ms)
+✔ qualification: minimum trades and days over a long window, beats cash and buy-and-hold, drawdown and profit factor (5.3803ms)
+✔ book: corrupt file forces recovery and is never overwritten; reset needs the typed phrase (20.1474ms)
+✔ paper only: the daily book imports no transport, signer or order path (1.6276ms)
+✔ HUD: daily tab and the small daily-verdict line (9.0498ms)
+✔ native flow requires attributable swap legs and preserves feature identity (7.5794ms)
+✔ three isolated paper ablations require delayed quote and supervise paused exits with corruption isolated (456.3007ms)
+✔ Pump profit discovery books remain separate and unobserved exposure unavailable (3.2947ms)
+ℹ tests 22
+ℹ suites 0
+ℹ pass 22
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1648.466

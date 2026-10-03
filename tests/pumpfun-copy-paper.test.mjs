@@ -38,6 +38,14 @@ test('qualification uses a prior fresh card and cannot be carried by the best wi
   assert.deepEqual(qualifiedPumpCopyWallets({ ...card, asOf: NOW + 1 }, { asOf: NOW }), []);
   assert.deepEqual(qualifiedPumpCopyWallets(card, { asOf: NOW + PUMP_COPY_DEFAULTS.maxScorecardAgeMs }), []);
 });
+test('deleting an initialized Pump book cannot replenish its paper capital',async t=>{
+ const {book,context}=fixture(t);await book.maintain({...context(),mode:'paper'});
+ assert.ok(fs.existsSync(book.file+'.initialized.json'));
+ fs.unlinkSync(book.file);
+ assert.throws(()=>book.view(),/Previously initialized paper primary is missing/);
+ await assert.rejects(book.maintain({...context(),mode:'paper'}),/Previously initialized paper primary is missing/);
+ assert.equal(fs.existsSync(book.file),false);
+});
 
 test('live mode and old signals make no quote calls; unqualified wallets remain waiting', async t => {
   const { book, state, context } = fixture(t);

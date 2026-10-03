@@ -109,6 +109,7 @@ export function dailyExecutionQuoteFromEstimates({symbol,quantity,increment,asks
  const ask=exact(asks),bid=exact(bids);
  const freshLeg=r=>r&&Number.isFinite(r.at)&&r.at>=eligibleAt&&r.at<=receivedAt&&receivedAt-r.at<=30000;
  if(!(quantity>0)||!(increment>0)||!freshLeg(ask)||!freshLeg(bid)||!(ask.ask>0)||!(bid.bid>0)||ask.ask<bid.bid)return null;
+ if([ask,bid].some(r=>r.feeRatio!=null&&(!Number.isFinite(r.feeRatio)||r.feeRatio<0||r.feeRatio>=.25)||r.estFee!=null&&(!Number.isFinite(r.estFee)||r.estFee<0)))return null;
  const ratios=[accountFeeRatio,ask.feeRatio,bid.feeRatio,ask.estFee/(quantity*ask.ask),bid.estFee/(quantity*bid.bid)].filter(v=>typeof v==='number'&&Number.isFinite(v)&&v>=0&&v<.25);
  const feeRatio=Math.max(.0095,...ratios);
  return {symbol,bid:bid.bid,ask:ask.ask,at:Math.min(ask.at,bid.at),source:'robinhood-v2',supported:true,quantityStep:increment,askSize:ask.quantity,bidSize:bid.quantity,executableQuantity:Math.min(ask.quantity,bid.quantity),feeRatio,executionModel:'robinhood-exact-size-estimated-price.v1'};

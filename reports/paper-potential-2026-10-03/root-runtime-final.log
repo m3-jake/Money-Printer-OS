@@ -1,0 +1,41 @@
+bigint: Failed to load bindings, pure JS will be used (try npm run rebuild?)
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+✔ US singles read exact best-level capacity and reject crossed or mismatched books (3.3268ms)
+✔ steady preserves fast paper lanes and cannot enable real orders (0.3038ms)
+✔ exploratory admission checks identities, frozen window and authority without qualification bypass (1.2382ms)
+✔ admitted books freeze params and capital; changing proposal does not reset prior outcomes (14.517ms)
+✔ prospective collector retains separate exact-depth receipts and settles without backfilling (24.6545ms)
+✔ exploratory Pump cohorts do not alter the qualified wallet gate or share cash (3.6295ms)
+[MPOS][MODE] Robinhood=PAPER | P&L=PAPER | live code enabled=false | real-host POSTs code-locked
+[MPOS][MODE] Robinhood=PAPER | P&L=PAPER | live code enabled=false | real-host POSTs code-locked
+﹣ place -> reconcile (mark) -> sell -> CLOSED books fee-aware P/L, cooldown and keeps open+history count (1.9977ms) # needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.
+﹣ limit buy rests as SUBMITTED, is cancelled by reconcile after ENTRY_TTL and moves to CANCELLED only once verified (0.1444ms) # needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.
+﹣ never-received rows survive lagging listings and fail only after 3 successful listings over 10 minutes; auth errors never transition (0.1134ms) # needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.
+﹣ cancel works without arm and changes status only via reconcile; cancel-all reports per entry (0.1676ms) # needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.
+﹣ cancelled or failed sell returns the entry to OPEN with no P/L (0.1237ms) # needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.
+﹣ real autopilot round trip: breakout entry placedBy autopilot, take-profit exit, cooldown; snapshot signal is LONG while open (0.3214ms) # needs real-money Robinhood dispatch; this paper-only build refuses it by design (PAPER_ONLY_BUILD). Re-enable for the live phase.
+✔ primary symbol weighting in pickCandidates is backwards compatible and ranks BTC first on equal raw scores (1.366ms)
+✔ primary order multiplier is capped by maxOrderUsd and by 2.0; default universe is BTC,ETH,SOL with BTC first (6.6416ms)
+✔ snapshot: pinned key list, signal enum values, never throws on a dead feed, masks the account (47.5023ms)
+✔ paper loop records source, cost and rejection across restart when there is no trade (31.3508ms)
+✔ configure validates the key, writes USER_ROOT/.env with mode 0600 and disarms (74.0402ms)
+✔ startRobinhoodLoops returns the unref timer when autostart is on and null when off; paper practice never writes a real order (24.904ms)
+✔ walk-forward shadow has a separate bank, shares bars and never qualifies or repeats a daily decision (65.0926ms)
+✔ Lab signal parity: the executor rule reproduces the Lab replay trades for every family (10.9796ms)
+✔ strategy source: the Lab proposal only when championState clears it for paper and its params are in bounds (1.1645ms)
+✔ controller: prospective Robinhood quotes fill multi-day holds at any hour without historical late fills (85.4396ms)
+✔ controller: decision is durable and missing quote waits until a supported executable quote arrives (34.7611ms)
+✔ forward daily rejects historical opens, stale or missing-depth quotes and floors actual lots (52.673ms)
+✔ controller: switches to a cleared Lab proposal and labels it (22.563ms)
+✔ qualification: minimum trades and days over a long window, beats cash and buy-and-hold, drawdown and profit factor (3.4694ms)
+✔ book: corrupt file forces recovery and is never overwritten; reset needs the typed phrase (17.651ms)
+✔ paper only: the daily book imports no transport, signer or order path (1.7048ms)
+✔ HUD: daily tab and the small daily-verdict line (5.6805ms)
+ℹ tests 29
+ℹ suites 0
+ℹ pass 23
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 6
+ℹ todo 0
+ℹ duration_ms 1460.1637

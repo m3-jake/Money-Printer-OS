@@ -1,0 +1,98 @@
+✔ recurring public-book scan creates a funded paper pair and settles both observed outcomes (18.1073ms)
+✔ unverified settlement terms are recorded but cannot create an arbitrage fill (4.6567ms)
+✔ probability models are calibrated distributions (2.4012ms)
+✔ sides are scored after the taker fee, and large model/market gaps are refused (1.5309ms)
+✔ weather bot enters at the live book, settles from the market result and scores model vs market (501.0852ms)
+✔ an unreadable book is never overwritten; reset needs the typed phrase (10.3017ms)
+✔ copy bot follows a point-in-time leaderboard and copies only trades made after following (46.3117ms)
+✔ weather calibration: fitted bias/sigma are used only when they beat the default on held-out days (8.4452ms)
+✔ the weather bot prices with the calibrated model when one is available (164.2195ms)
+✔ the weather-nws control arm never uses the calibration, so the A/B compares only the forecast model (170.5054ms)
+✔ the bot tape appends one JSON line per row, gzips finished days and drops days past keepDays (17.9044ms)
+✔ the variant farm prices the live bots' frame, fills at ask + slippage, settles once per ticker and tapes it (515.8194ms)
+✔ Kalshi books on the old $500 defaults move once to the $25 wallet ($12.50 per bot); the old file is kept (8.7778ms)
+✔ the farm runs Evolution Lab proposals only when they are well formed and inside the bounds; a withdrawn one keeps its book (4.9007ms)
+✔ the weather calibrator uses the Evolution Lab's best model when it beats this calibration on held-out days (4.1715ms)
+✔ the Kalshi mirror copies a leader's game-winner buy onto Kalshi at Kalshi's price, and refuses anything else (820.2352ms)
+✔ model guard: no verdict under 10 settled bets; stands down when the model is worse than the market; window is the latest 20 (1.117ms)
+✔ model guard compares unrounded scores even when the displayed scores tie (0.3168ms)
+✔ longshot guard: a side under 15 cents needs a 15-cent edge; dearer sides are unaffected (0.3798ms)
+✔ a saved BTC book moves to model revision 2 once: settings change, history stays, the change is logged (10.5079ms)
+✔ a bot whose model is worse than the market stands down: no cash is used, bets are observed and settle, and it can earn its way back (179.1586ms)
+✔ farm variants started on the revision-1 BTC model keep it; the live r2 model runs as its own variant (0.7094ms)
+✔ farm shares its 30-bet standard and retires losing variants without erasing their evidence (23.9705ms)
+✔ copy drawdown pause stops new buys but preserves cash, history and exit monitoring (2.6691ms)
+✔ a farm variant whose model is worse than the market records observe-only bets, without cash, until it earns its way back (163.1228ms)
+✔ a new BTC model revision is judged only on its own bets, not the previous model's (1.2598ms)
+✔ the mirror matches a Kalshi game by date and both teams when the board has no Polymarket contract; team codes match Kalshi sides (1.4154ms)
+✖ the mirror watches sports-leaderboard wallets and queues only their buys made after it started watching (8.4042ms)
+✔ the bots price with the shared kalshiModel the Lab replays (run B4) (1.144ms)
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+✔ prediction evaluator uses a future offer and retains capital until observed settlement (3.3637ms)
+✔ unobserved outcomes, changed rules, wrong venue, unknown fees and event duplicates cannot qualify (1.288ms)
+✔ unsupported Kalshi history remains waiting and fixed policy results are stored append-only (16.2269ms)
+✔ cross-venue quote is conditional and includes failed-leg loss even when rules match (1.5245ms)
+✔ every settlement-relevant field invalidates a prior contract attestation (1.1229ms)
+bigint: Failed to load bindings, pure JS will be used (try npm run rebuild?)
+✔ qualification uses a prior fresh card and cannot be carried by the best winning trip (2.2225ms)
+✔ live mode and old signals make no quote calls; unqualified wallets remain waiting (13.1959ms)
+✔ cash starts at $25 using fresh observed SOL FX, and never funds from stale FX (13.1179ms)
+✔ new leader buys fill exact raw quantities, charge both quote costs, and persist duplicate protection (16.6475ms)
+✔ missing, stale, non-executable and expensive quotes never debit cash or create a fill (24.5137ms)
+✔ unavailable exits preserve held tokens and cash even beyond max hold, then close at the next real quote (23.1018ms)
+✔ serialized simultaneous buys obey the cap and preserve reserve cash (13.8284ms)
+✔ corrupt saved accounts fail closed and retain their bytes (6.8875ms)
+✔ persisted risk, balances, duplicate positions and future marks cannot fabricate an account (26.0812ms)
+✔ native quotes must match an unsigned unsubmitted paper plan for the requested asset and side (32.6726ms)
+✔ quote delays recheck source age and paused engines never fetch a quote (5.8854ms)
+✔ journal failures cannot reverse a completed fill, while failed persistence never reports a fill (19.2161ms)
+✔ copy scoreboard uses only recorded after-cost closes and cash baseline (14.1849ms)
+file:///W:/money-printer-os/src/dashboard.js:40
+import { pumpfunPaperLane } from './pumpfunPaper.js';
+         ^^^^^^^^^^^^^^^^
+
+SyntaxError: Identifier 'pumpfunPaperLane' has already been declared
+    at compileSourceTextModule (node:internal/modules/esm/utils:318:16)
+    at ModuleLoader.moduleStrategy (node:internal/modules/esm/translators:90:18)
+    at #translate (node:internal/modules/esm/loader:435:20)
+    at afterLoad (node:internal/modules/esm/loader:491:29)
+    at ModuleLoader.loadAndTranslate (node:internal/modules/esm/loader:496:12)
+    at #getOrCreateModuleJobAfterResolve (node:internal/modules/esm/loader:549:36)
+    at afterResolve (node:internal/modules/esm/loader:597:52)
+    at ModuleLoader.getOrCreateModuleJob (node:internal/modules/esm/loader:603:12)
+    at ModuleJob.syncLink (node:internal/modules/esm/module_job:163:33)
+    at ModuleJob.link (node:internal/modules/esm/module_job:253:17)
+
+Node.js v24.16.0
+✖ tests\trade-path.test.mjs (561.2015ms)
+ℹ tests 48
+ℹ suites 0
+ℹ pass 46
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2881.0465
+
+✖ failing tests:
+
+test at tests\paper-bots.test.mjs:395:1
+✖ the mirror watches sports-leaderboard wallets and queues only their buys made after it started watching (8.4042ms)
+  AssertionError [ERR_ASSERTION]: paced: at most every 5 minutes
+  
+  2 !== 0
+  
+      at TestContext.<anonymous> (file:///W:/money-printer-os/tests/paper-bots.test.mjs:403:27)
+      at async Test.run (node:internal/test_runner/test:1313:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:897:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 2,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests\trade-path.test.mjs:1:1
+✖ tests\trade-path.test.mjs (561.2015ms)
+  'test failed'

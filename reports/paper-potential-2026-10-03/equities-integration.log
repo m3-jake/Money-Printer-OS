@@ -1,0 +1,15 @@
+✔ bars: weekday bars before the calendar start are kept; weekends and dates past the table are not (3.7534ms)
+✔ refresh: asks Alpaca for at least 6 years, keeps the old bars and hands them to the Lab in lab-link (936.9083ms)
+✔ strategy: month-ends before the calendar come from the data, so the older history is usable (47.3892ms)
+✔ Lab champion: applied only when cleared for paper, for this strategy, in bounds and with the trader hash (63.7154ms)
+✔ controller: a cleared policy persists after Lab withdraws the proposal; fresh books use defaults (5032.0687ms)
+✔ consumer independently verifies prospective metrics, cost binding, trials, timing and safety flags (111.6769ms)
+✔ actual sibling Lab freeze, prospective evaluator and publisher satisfy the consumer contract (55.9633ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6592.8883

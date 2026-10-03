@@ -1,0 +1,14 @@
+✔ practice accumulates observed moves and refuses churn below its full cost wall (61.0354ms)
+✔ daily allocations conserve a $25 bankroll across eight or three sleeves (0.7451ms)
+✔ daily candle-derived wins cannot qualify as prospective execution evidence (2.2771ms)
+✔ sports provider retains Polymarket execution identity separately from titles (2.2238ms)
+✔ daily orders wait for a post-decision observed quote while the open window remains (21.4284ms)
+✔ farm proposal admission rejects legacy, stale, and diagnostic evidence (0.8726ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 313.3587

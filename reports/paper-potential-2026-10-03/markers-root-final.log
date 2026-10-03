@@ -1,0 +1,31 @@
+bigint: Failed to load bindings, pure JS will be used (try npm run rebuild?)
+[MPOS][MODE] Kalshi=PAPER | Polymarket(core)=PAPER | core LIVE execution=LOCKED
+✔ exact-size RH estimates reject either invalid quote leg and retain greater observed fees (2.3068ms)
+✔ US singles read exact best-level capacity and reject crossed or mismatched books (1.7632ms)
+✔ steady preserves fast paper lanes and cannot enable real orders (0.253ms)
+✔ exploratory admission checks identities, frozen window and authority without qualification bypass (0.95ms)
+✔ admitted books freeze params and capital; changing proposal does not reset prior outcomes (10.3181ms)
+✔ prospective collector retains separate exact-depth receipts and settles without backfilling (21.3852ms)
+✔ exploratory Pump cohorts do not alter the qualified wallet gate or share cash (4.2712ms)
+bigint: Failed to load bindings, pure JS will be used (try npm run rebuild?)
+✔ qualification uses a prior fresh card and cannot be carried by the best winning trip (2.3976ms)
+✔ live mode and old signals make no quote calls; unqualified wallets remain waiting (17.259ms)
+✔ cash starts at $25 using fresh observed SOL FX, and never funds from stale FX (21.8874ms)
+✔ new leader buys fill exact raw quantities, charge both quote costs, and persist duplicate protection (25.7396ms)
+✔ missing, stale, non-executable and expensive quotes never debit cash or create a fill (43.4681ms)
+✔ unavailable exits preserve held tokens and cash even beyond max hold, then close at the next real quote (28.1833ms)
+✔ serialized simultaneous buys obey the cap and preserve reserve cash (13.5393ms)
+✔ corrupt saved accounts fail closed and retain their bytes (6.3343ms)
+✔ persisted risk, balances, duplicate positions and future marks cannot fabricate an account (26.4101ms)
+✔ native quotes must match an unsigned unsubmitted paper plan for the requested asset and side (45.1581ms)
+✔ quote delays recheck source age and paused engines never fetch a quote (9.4273ms)
+✔ journal failures cannot reverse a completed fill, while failed persistence never reports a fill (22.5771ms)
+✔ copy scoreboard uses only recorded after-cost closes and cash baseline (21.9368ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1143.5228
