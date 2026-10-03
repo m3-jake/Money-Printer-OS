@@ -50,7 +50,10 @@ test('the build is static: shim first, relative asset paths, /api/ left for the 
     assert.ok(!/["'`(]\/(assets|js|css)\//.test(fs.readFileSync(path.join(out, dir, f), 'utf8')), `${dir}/${f} has no absolute asset paths`);
   assert.ok(html.includes("'/api/state'"), 'API calls stay absolute');
   assert.ok(html.includes('href="quant-research.html"'));
-  assert.ok(html.includes('href="mobile.css"') && html.includes('src="mobile.js"'), 'phone layout and tap handling are bundled');
+  const version = html.match(/href="mobile\.css\?v=([a-f0-9]{12})"/)?.[1];
+  assert.ok(version, 'phone layout is bundled with a versioned URL');
+  for (const asset of ['css/mpo-mac.css', 'mobile.js', 'demo-shim.js', 'demo-data.js'])
+    assert.ok(html.includes(`${asset}?v=${version}`), `${asset} refreshes when the demo changes`);
   assert.ok(fs.existsSync(path.join(out, 'mobile.css')) && fs.existsSync(path.join(out, 'mobile.js')));
 });
 
