@@ -28,9 +28,23 @@
   const root = () => document.getElementById('body-sports');
   const visible = () => { const w = win(), r = root(); return !!(w && r && r.classList.contains('on') && !w.classList.contains('hidden') && !w.classList.contains('glance')); };
   function draw(force = false) { const r = root(); if (!visible() || (!force && drawn === r.id + ':' + stamp)) return; drawn = r.id + ':' + stamp; const top = r.scrollTop; r.innerHTML = `<div class="core-app sports-app">${error ? `<p class="core-error" role="alert">${escape(error)}</p>` : ''}${view()}</div>`; r.scrollTop = top; }
-  async function refresh() { if (busy || !visible() || Date.now() - lastFetch < 60000) return; busy = true; lastFetch = Date.now(); stamp++; draw(true); try { data = await api('/sports'); error = ''; } catch (e) { error = e.message; lastFetch = 0; } finally { busy = false; stamp++; draw(true); } }
+  async function refresh() { if (busy || !(visible() || window.MPOProgramVisible?.('sports')) || Date.now() - lastFetch < 60000) return; busy = true; lastFetch = Date.now(); stamp++; draw(true); try { data = await api('/sports'); error = ''; } catch (e) { error = e.message; lastFetch = 0; } finally { busy = false; stamp++; draw(true); } }
   document.addEventListener('click', e => { const b = e.target.closest('[data-sp-filter]'); if (!b || !root()?.contains(b)) return; filter = b.dataset.spFilter; stamp++; draw(true); });
   document.addEventListener('change', e => { const t = e.target.closest('[data-sp-toggle]'); if (!t || !root()?.contains(t)) return; if (t.dataset.spToggle === 'cross') cross = t.checked; if (t.dataset.spToggle === 'live') liveOnly = t.checked; if (t.dataset.spToggle === 'fast') fast = t.checked; stamp++; draw(true); });
   setInterval(() => { if (!document.hidden) refresh(); }, 15000);
+  // Simple view: live games, events listed on both venues and the widest Kalshi–Polymarket gaps.
+  function glanceCard() {
+    if (!data) return glance({ title: 'Sports · one event, many markets', pill: { label: error ? 'Unavailable' : 'Loading', tone: error ? 'bad' : 'warn' }, hero: null, visual: `<div class="g-empty">${escape(error || 'Loading sports markets and live feeds…')}</div>` });
+    const gapOf = e => { const w = e.winner || [], a = w[0]?.venues || {}, b = w[1]?.venues || {}; return a.kalshi !== undefined && a.polymarket !== undefined ? Math.abs(a.kalshi - a.polymarket) : b.kalshi !== undefined && (b.polymarket ?? b.polymarketComplement) !== undefined ? Math.abs(b.kalshi - (b.polymarket ?? b.polymarketComplement)) : null; };
+    const ev = data.events || [], live = ev.filter(e => e.live), both = ev.filter(e => e.venues.length > 1);
+    const ranked = ev.slice().sort((a, b) => Number(!!b.live) - Number(!!a.live) || (gapOf(b) ?? -1) - (gapOf(a) ?? -1));
+    const score = e => e.live ? `${e.live.state || 'live'}${e.live.score?.[0] != null ? ' ' + (e.live.orientation === 'SWAPPED' ? e.live.score[1] + '–' + e.live.score[0] : e.live.score[0] + '–' + e.live.score[1]) : ''}` : e.day || '';
+    return glance({ title: 'Sports · one event, many markets', pill: live.length ? { label: `${live.length} live`, tone: 'ok' } : { label: 'No live games', tone: '' },
+      hero: String(live.length), heroUnit: 'live', heroSub: `${ev.length} events · ${both.length} on both Kalshi and Polymarket`,
+      stats: [{ label: 'Events', value: String(ev.length) }, { label: 'Both venues', value: String(both.length) }, { label: 'Fast-settling', value: String(ev.filter(e => e.fastSettling).length) }],
+      visual: `<div class="g-rows g-scroll">${ranked.slice(0, 12).map(e => { const g = gapOf(e); return gRow(`${e.participants[0]} vs ${e.participants[1]}`, `${e.sport} · ${score(e)}`, g == null ? '' : (g * 100).toFixed(1) + ' pts', e.live ? 'ok' : null); }).join('') || '<div class="g-empty">No sports events right now.</div>'}</div>`,
+      foot: gFoot([(data.feeds || []).map(f => `${f.sport} ${String(f.status).toLowerCase()}`).join(' · '), 'pts = Kalshi vs Polymarket gap, not an arbitrage']) });
+  }
+  addEventListener('DOMContentLoaded', () => window.MPOProgramGlance?.register('sports', { render: glanceCard, sig: () => [stamp, error, busy] }));
   window.MPOSports = { render() { draw(); refresh(); } };
 })();

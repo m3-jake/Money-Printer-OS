@@ -29,7 +29,20 @@
   const root = () => document.getElementById('body-weather');
   const visible = () => { const w = win(), r = root(); return !!(w && r && r.classList.contains('on') && !w.classList.contains('hidden') && !w.classList.contains('glance')); };
   function draw(force = false) { const r = root(); if (!visible() || (!force && drawn === r.id + ':' + stamp)) return; drawn = r.id + ':' + stamp; const top = r.scrollTop; r.innerHTML = `<div class="core-app wx-app">${error ? `<p class="core-error" role="alert">${escape(error)}</p>` : ''}${view()}</div>`; r.scrollTop = top; }
-  async function refresh() { if (busy || !visible() || Date.now() - lastFetch < 600000) return; busy = true; lastFetch = Date.now(); stamp++; draw(true); try { data = await api('/weather'); error = ''; } catch (e) { error = e.message; lastFetch = 0; } finally { busy = false; stamp++; draw(true); } }
+  async function refresh() { if (busy || !(visible() || window.MPOProgramVisible?.('weather')) || Date.now() - lastFetch < 600000) return; busy = true; lastFetch = Date.now(); stamp++; draw(true); try { data = await api('/weather'); error = ''; } catch (e) { error = e.message; lastFetch = 0; } finally { busy = false; stamp++; draw(true); } }
   document.addEventListener('click', e => { const b = e.target.closest('[data-wx-filter]'); if (!b || !root()?.contains(b)) return; filter = b.dataset.wxFilter; stamp++; draw(true); });
+  // Simple view: the biggest NWS-forecast-vs-market gap, alerts, and every city's market at a glance.
+  function glanceCard() {
+    if (!data) return glance({ title: 'Weather · NWS vs Kalshi', pill: { label: error ? 'Unavailable' : 'Loading', tone: error ? 'bad' : 'warn' }, hero: null, visual: `<div class="g-empty">${escape(error || 'Loading NWS forecasts, alerts and Kalshi weather markets…')}</div>` });
+    const deg = v => v == null ? '—' : Math.round(v * 10) / 10 + '°';
+    const rows = data.cities.flatMap(c => (c.markets || []).filter(m => m.gap != null).map(m => ({ c, m })));
+    const top = rows.slice().sort((a, b) => Math.abs(b.m.gap) - Math.abs(a.m.gap))[0], big = rows.filter(r => Math.abs(r.m.gap) >= 2).length, alerts = (data.alerts || []).length;
+    return glance({ title: 'Weather · NWS vs Kalshi', pill: alerts ? { label: `${alerts} severe alert${alerts === 1 ? '' : 's'}`, tone: 'warn' } : { label: 'No severe alerts', tone: 'ok' },
+      hero: top ? `${top.m.gap > 0 ? '+' : '−'}${Math.abs(top.m.gap).toFixed(1)}<small>°F</small>` : '—', heroSub: top ? `${escape(top.c.label)}: NWS ${deg(top.m.nwsHigh)} vs market ${deg(top.m.expectedHigh)} · biggest forecast − market gap` : 'Forecast − market gap',
+      stats: [{ label: 'Open markets', value: String(rows.length) }, { label: 'Gaps ≥ 2°F', value: String(big), tone: big ? 'g-pos' : '' }, { label: 'Tropical storms', value: String((data.storms || []).length) }],
+      visual: `<div class="g-rows g-scroll">${rows.map(({ c, m }) => gRow(c.label, `${m.date || ''} · NWS ${deg(m.nwsHigh)} · market ${deg(m.expectedHigh)}`, `<span class="${m.gap > 0 ? 'g-pos' : m.gap < 0 ? 'g-neg' : ''}">${m.gap > 0 ? '+' : ''}${m.gap}°</span>`, Math.abs(m.gap) >= 2 ? 'warn' : 'ok')).join('') || '<div class="g-empty">No open Kalshi weather markets.</div>'}</div>`,
+      foot: gFoot(['NWS ' + (data.nws?.status || '—'), 'refreshes every 10 min', 'a gap is a question, not a signal']) });
+  }
+  addEventListener('DOMContentLoaded', () => window.MPOProgramGlance?.register('weather', { render: glanceCard, sig: () => [stamp, error, busy] }));
   window.MPOWeather = { render() { draw(); refresh(); } };
 })();

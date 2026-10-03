@@ -40,7 +40,7 @@
     r.scrollTop = top;
   }
   async function refresh() {
-    if (busy || !visible() || Date.now() - lastFetch < 600000) return;
+    if (busy || !(visible() || window.MPOProgramVisible?.('macro')) || Date.now() - lastFetch < 600000) return;
     busy = true; lastFetch = Date.now(); stamp++; draw(true);
     try { data = await api('/macro'); error = ''; } catch (e) { error = e.message; lastFetch = 0; } finally { busy = false; stamp++; draw(true); }
   }
@@ -50,5 +50,18 @@
     try { asof = await api(`/macro/asof?id=${encodeURIComponent(i.id)}&asOf=${new Date(i.asOf).getTime()}`); error = ''; } catch (err) { error = err.message; }
     stamp++; draw(true);
   });
+  // Simple view: the next official release Kalshi is trading, and every indicator's latest print.
+  function glanceCard() {
+    if (!data) return glance({ title: 'Macro · FRED + Kalshi', pill: { label: error ? 'Unavailable' : 'Loading', tone: error ? 'bad' : 'warn' }, hero: null, visual: `<div class="g-empty">${escape(error || 'Loading FRED and Kalshi (first load takes a few seconds)…')}</div>` });
+    const next = (data.calendar || []).filter(c => c.closeAt > Date.now()).sort((a, b) => a.closeAt - b.closeAt)[0];
+    const until = t => { const h = (t - Date.now()) / 3600e3; return h < 1 ? Math.round(h * 60) + ' min' : h < 48 ? Math.round(h) + ' h' : Math.round(h / 24) + ' days'; };
+    const ind = data.indicators || [];
+    return glance({ title: 'Macro · FRED + Kalshi', pill: { label: data.vintageMode ? 'FRED vintages' : 'FRED latest', tone: data.fred?.status === 'OK' || data.fred?.status === 'CONNECTED' ? 'ok' : '' },
+      hero: next ? escape(next.label) : '—', heroText: true, heroSub: next ? `next release Kalshi trades · closes in ${until(next.closeAt)} (${when(next.closeAt)})` : 'No upcoming release on Kalshi',
+      stats: [{ label: 'Indicators', value: String(ind.length) }, { label: 'Upcoming releases', value: String((data.calendar || []).length) }, { label: 'FRED', value: escape(String(data.fred?.status || '—')) }],
+      visual: `<div class="g-rows g-scroll">${ind.map(i => { const chg = i.last && i.prev ? i.last.value - i.prev.value : null; return gRow(i.label, `FRED ${i.fred}${i.last?.date ? ' · ' + i.last.date : ''}`, `${fmt(i.last?.value, i.unit)}${chg === null ? '' : ` <span class="${chg > 0 ? 'g-pos' : chg < 0 ? 'g-neg' : ''}">${chg > 0 ? '▲' : chg < 0 ? '▼' : '='}</span>`}`, i.error ? 'bad' : 'ok'); }).join('')}</div>`,
+      foot: gFoot(['Kalshi prices are markets, not a model', 'Advanced: release ladders, as-of history']) });
+  }
+  addEventListener('DOMContentLoaded', () => window.MPOProgramGlance?.register('macro', { render: glanceCard, sig: () => [stamp, error, busy] }));
   window.MPOMacro = { render() { draw(); refresh(); } };
 })();

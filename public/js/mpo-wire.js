@@ -26,10 +26,23 @@
   const root = () => document.getElementById('body-wire');
   const visible = () => { const w = win(), r = root(); return !!(w && r && r.classList.contains('on') && !w.classList.contains('hidden') && !w.classList.contains('glance')); };
   function draw(force = false) { const r = root(); if (!visible() || (!force && drawn === r.id + ':' + stamp)) return; if (!force && r.contains(document.activeElement) && document.activeElement.matches('input,select')) return; drawn = r.id + ':' + stamp; const top = r.scrollTop; r.innerHTML = `<div class="core-app wire-app">${error ? `<p class="core-error" role="alert">${escape(error)}</p>` : ''}${view()}</div>`; r.scrollTop = top; }
-  async function refresh() { if (busy || !visible() || Date.now() - lastFetch < 30000) return; busy = true; lastFetch = Date.now(); stamp++; draw(true); try { data = await api('/wire'); error = ''; } catch (e) { error = e.message; lastFetch = 0; } finally { busy = false; stamp++; draw(); } }
+  async function refresh() { if (busy || !(visible() || window.MPOProgramVisible?.('wire')) || Date.now() - lastFetch < 30000) return; busy = true; lastFetch = Date.now(); stamp++; draw(true); try { data = await api('/wire'); error = ''; } catch (e) { error = e.message; lastFetch = 0; } finally { busy = false; stamp++; draw(); } }
   document.addEventListener('click', e => { const b = e.target.closest('[data-wire-filter]'); if (!b || !root()?.contains(b)) return; filter = b.dataset.wireFilter; stamp++; draw(true); });
   document.addEventListener('change', e => { if (!root()?.contains(e.target)) return; if (e.target.matches('[data-wire-sort]')) { sort = e.target.value; stamp++; draw(true); } });
   document.addEventListener('input', e => { if (!root()?.contains(e.target) || !e.target.matches('[data-wire-q]')) return; q = e.target.value; const pos = e.target.selectionStart; stamp++; draw(true); const el = root().querySelector('[data-wire-q]'); if (el) { el.focus(); el.setSelectionRange(pos, pos); } });
   setInterval(() => { if (!document.hidden) refresh(); }, 10000);
+  // Simple view: what moved in the last hour, the most important items, feed health.
+  function glanceCard() {
+    if (!data) return glance({ title: 'Wire · live event terminal', pill: { label: error ? 'Unavailable' : 'Loading', tone: error ? 'bad' : 'warn' }, hero: null, visual: `<div class="g-empty">${escape(error || 'Loading the wire…')}</div>` });
+    const items = data.items || [], hour = items.filter(i => Date.now() - i.at < 3600e3), hot = items.filter(i => i.importance >= 70), feeds = data.feeds || [], ok = feeds.filter(f => /ok|live|connected/i.test(String(f.status))).length;
+    const ago = t => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'now' : m < 90 ? m + ' min ago' : Math.round(m / 60) + ' h ago'; };
+    const top = items.slice().sort((a, b) => b.importance - a.importance || b.at - a.at).slice(0, 10);
+    return glance({ title: 'Wire · live event terminal', pill: ok === feeds.length ? { label: 'All feeds up', tone: 'ok' } : { label: `${feeds.length - ok} feed${feeds.length - ok === 1 ? '' : 's'} down`, tone: 'warn' },
+      hero: String(hour.length), heroUnit: 'items / hour', heroSub: items[0] ? 'Newest: ' + escape(items[0].title).slice(0, 90) : 'No items yet',
+      stats: [{ label: 'Items', value: String(items.length) }, { label: 'High importance', value: String(hot.length), tone: hot.length ? 'g-pos' : '' }, { label: 'Feeds up', value: `${ok}/${feeds.length}` }],
+      visual: `<div class="g-rows g-scroll">${top.map(i => gRow(i.title, `${i.source} · ${ago(i.at)}`, String(i.importance), i.importance >= 70 ? 'warn' : 'ok')).join('') || '<div class="g-empty">Quiet wire.</div>'}</div>`,
+      foot: gFoot(['most important first', 'importance is rule-based', 'Advanced: search, filters, related markets']) });
+  }
+  addEventListener('DOMContentLoaded', () => window.MPOProgramGlance?.register('wire', { render: glanceCard, sig: () => [stamp, error, busy] }));
   window.MPOWire = { render() { draw(); refresh(); } };
 })();
