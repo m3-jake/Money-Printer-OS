@@ -1,0 +1,247 @@
+[
+  {
+    "target": "test:paired-safety",
+    "exitCode": 0,
+    "signal": null,
+    "error": null,
+    "durationMs": 315
+  },
+  {
+    "target": "test:recovery",
+    "exitCode": 0,
+    "signal": null,
+    "error": null,
+    "durationMs": 2337
+  },
+  {
+    "target": "test:discovery",
+    "exitCode": 0,
+    "signal": null,
+    "error": null,
+    "durationMs": 641
+  },
+  {
+    "target": "test:solana",
+    "exitCode": 0,
+    "signal": null,
+    "error": null,
+    "durationMs": 5665
+  },
+  {
+    "target": "test:turnover",
+    "exitCode": 0,
+    "signal": null,
+    "error": null,
+    "durationMs": 560
+  },
+  {
+    "target": "test:updater",
+    "exitCode": 0,
+    "signal": null,
+    "error": null,
+    "durationMs": 1855
+  },
+  {
+    "target": "test:execution",
+    "exitCode": 0,
+    "signal": null,
+    "error": null,
+    "durationMs": 608
+  },
+  {
+    "target": "test:unit-economics",
+    "exitCode": 0,
+    "signal": null,
+    "error": null,
+    "durationMs": 536
+  },
+  {
+    "target": "test:settlement",
+    "exitCode": 0,
+    "signal": null,
+    "error": null,
+    "durationMs": 518
+  },
+  {
+    "target": "test:polymarket-us",
+    "exitCode": 0,
+    "signal": null,
+    "error": null,
+    "durationMs": 661
+  },
+  {
+    "target": "test:combos",
+    "exitCode": 0,
+    "signal": null,
+    "error": null,
+    "durationMs": 4536
+  },
+  {
+    "target": "test:edge-robustness",
+    "exitCode": 0,
+    "signal": null,
+    "error": null,
+    "durationMs": 409
+  },
+  {
+    "target": "test:accounting",
+    "exitCode": 0,
+    "signal": null,
+    "error": null,
+    "durationMs": 927
+  },
+  {
+    "target": "test:replay",
+    "exitCode": 0,
+    "signal": null,
+    "error": null,
+    "durationMs": 1287
+  },
+  {
+    "target": "test:experiments",
+    "exitCode": 0,
+    "signal": null,
+    "error": null,
+    "durationMs": 292
+  },
+  {
+    "target": "test:research",
+    "exitCode": 0,
+    "signal": null,
+    "error": null,
+    "durationMs": 2248
+  },
+  {
+    "target": "test:evidence",
+    "exitCode": 0,
+    "signal": null,
+    "error": null,
+    "durationMs": 753
+  },
+  {
+    "target": "test:poly-research-eval",
+    "exitCode": 0,
+    "signal": null,
+    "error": null,
+    "durationMs": 671
+  },
+  {
+    "target": "test:evolution",
+    "exitCode": 0,
+    "signal": null,
+    "error": null,
+    "durationMs": 989
+  },
+  {
+    "target": "test:lab-link",
+    "exitCode": 0,
+    "signal": null,
+    "error": null,
+    "durationMs": 1016
+  },
+  {
+    "target": "test:visual",
+    "exitCode": 0,
+    "signal": null,
+    "error": null,
+    "durationMs": 3040
+  },
+  {
+    "target": "test:release-gate",
+    "exitCode": 0,
+    "signal": null,
+    "error": null,
+    "durationMs": 966
+  },
+  {
+    "target": "test:latency",
+    "exitCode": 0,
+    "signal": null,
+    "error": null,
+    "durationMs": 263
+  },
+  {
+    "target": "test:robinhood",
+    "exitCode": 0,
+    "signal": null,
+    "error": null,
+    "durationMs": 4762
+  },
+  {
+    "target": "test:robinhood-equities",
+    "exitCode": 0,
+    "signal": null,
+    "error": null,
+    "durationMs": 4552
+  },
+  {
+    "target": "test:lane-contracts",
+    "exitCode": 0,
+    "signal": null,
+    "error": null,
+    "durationMs": 7015
+  },
+  {
+    "target": "test:fitness",
+    "exitCode": 0,
+    "signal": null,
+    "error": null,
+    "durationMs": 1401
+  },
+  {
+    "target": "test:unattended",
+    "exitCode": 0,
+    "signal": null,
+    "error": null,
+    "durationMs": 3548
+  },
+  {
+    "target": "test:upgrade",
+    "exitCode": 0,
+    "signal": null,
+    "error": null,
+    "durationMs": 2520
+  },
+  {
+    "target": "test:pump-profit",
+    "exitCode": 0,
+    "signal": null,
+    "error": null,
+    "durationMs": 1268
+  },
+  {
+    "target": "test:paper-completion",
+    "exitCode": 0,
+    "signal": null,
+    "error": null,
+    "durationMs": 2504
+  },
+  {
+    "target": "test:wallet-crowd",
+    "exitCode": 0,
+    "signal": null,
+    "error": null,
+    "durationMs": 774
+  },
+  {
+    "target": "test:paper-bots",
+    "exitCode": 0,
+    "signal": null,
+    "error": null,
+    "durationMs": 3192
+  },
+  {
+    "target": "test:web-demo",
+    "exitCode": 0,
+    "signal": null,
+    "error": null,
+    "durationMs": 5724
+  },
+  {
+    "target": "test:paper-potential",
+    "exitCode": 0,
+    "signal": null,
+    "error": null,
+    "durationMs": 2923
+  }
+]

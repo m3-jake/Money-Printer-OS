@@ -1,0 +1,273 @@
+{
+  "at": "2026-10-03T22:15:09.040Z",
+  "command": "npm audit --json",
+  "exitCode": 1,
+  "metadata": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 0,
+      "moderate": 7,
+      "high": 8,
+      "critical": 0,
+      "total": 15
+    },
+    "dependencies": {
+      "prod": 109,
+      "dev": 0,
+      "optional": 5,
+      "peer": 2,
+      "peerOptional": 0,
+      "total": 115
+    }
+  },
+  "advisories": [
+    {
+      "name": "@coral-xyz/anchor",
+      "severity": "high",
+      "isDirect": false,
+      "range": "*",
+      "fixAvailable": {
+        "name": "@pump-fun/pump-sdk",
+        "version": "1.1.0",
+        "isSemVerMajor": true
+      },
+      "via": [
+        "@coral-xyz/borsh",
+        "@solana/web3.js",
+        "toml"
+      ]
+    },
+    {
+      "name": "@coral-xyz/borsh",
+      "severity": "moderate",
+      "isDirect": false,
+      "range": "*",
+      "fixAvailable": true,
+      "via": [
+        "@solana/web3.js"
+      ]
+    },
+    {
+      "name": "@pump-fun/agent-payments-sdk",
+      "severity": "high",
+      "isDirect": false,
+      "range": ">=1.0.0",
+      "fixAvailable": {
+        "name": "@pump-fun/pump-sdk",
+        "version": "1.1.0",
+        "isSemVerMajor": true
+      },
+      "via": [
+        "@coral-xyz/anchor",
+        "@solana/spl-token",
+        "@solana/web3.js"
+      ]
+    },
+    {
+      "name": "@pump-fun/pump-sdk",
+      "severity": "high",
+      "isDirect": true,
+      "range": ">=1.2.0-devnet.1",
+      "fixAvailable": {
+        "name": "@pump-fun/pump-sdk",
+        "version": "1.1.0",
+        "isSemVerMajor": true
+      },
+      "via": [
+        "@coral-xyz/anchor",
+        "@pump-fun/agent-payments-sdk",
+        "@pump-fun/pump-swap-sdk",
+        "@solana/spl-token",
+        "@solana/web3.js"
+      ]
+    },
+    {
+      "name": "@pump-fun/pump-swap-sdk",
+      "severity": "high",
+      "isDirect": false,
+      "range": "<=0.0.1-local.8 || >=1.1.1",
+      "fixAvailable": true,
+      "via": [
+        "@coral-xyz/anchor",
+        "@solana/spl-token",
+        "@solana/web3.js"
+      ]
+    },
+    {
+      "name": "@solana/buffer-layout-utils",
+      "severity": "high",
+      "isDirect": false,
+      "range": "*",
+      "fixAvailable": {
+        "name": "@pump-fun/pump-sdk",
+        "version": "1.1.0",
+        "isSemVerMajor": true
+      },
+      "via": [
+        "@solana/web3.js",
+        "bigint-buffer"
+      ]
+    },
+    {
+      "name": "@solana/spl-token",
+      "severity": "high",
+      "isDirect": false,
+      "range": "*",
+      "fixAvailable": {
+        "name": "@pump-fun/pump-sdk",
+        "version": "1.1.0",
+        "isSemVerMajor": true
+      },
+      "via": [
+        "@solana/buffer-layout-utils",
+        "@solana/spl-token-group",
+        "@solana/spl-token-metadata",
+        "@solana/web3.js"
+      ]
+    },
+    {
+      "name": "@solana/spl-token-group",
+      "severity": "moderate",
+      "isDirect": false,
+      "range": "*",
+      "fixAvailable": {
+        "name": "@pump-fun/pump-sdk",
+        "version": "1.1.0",
+        "isSemVerMajor": true
+      },
+      "via": [
+        "@solana/web3.js"
+      ]
+    },
+    {
+      "name": "@solana/spl-token-metadata",
+      "severity": "moderate",
+      "isDirect": false,
+      "range": "*",
+      "fixAvailable": {
+        "name": "@pump-fun/pump-sdk",
+        "version": "1.1.0",
+        "isSemVerMajor": true
+      },
+      "via": [
+        "@solana/web3.js"
+      ]
+    },
+    {
+      "name": "@solana/web3.js",
+      "severity": "moderate",
+      "isDirect": true,
+      "range": "<=0.0.0-pr-29130 || 0.0.4 - 1.99.0",
+      "fixAvailable": {
+        "name": "@solana/web3.js",
+        "version": "3.0.0",
+        "isSemVerMajor": true
+      },
+      "via": [
+        "jayson"
+      ]
+    },
+    {
+      "name": "bigint-buffer",
+      "severity": "high",
+      "isDirect": false,
+      "range": "*",
+      "fixAvailable": {
+        "name": "@pump-fun/pump-sdk",
+        "version": "1.1.0",
+        "isSemVerMajor": true
+      },
+      "via": [
+        {
+          "name": "bigint-buffer",
+          "title": "bigint-buffer Vulnerable to Buffer Overflow via toBigIntLE() Function",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-3gc7-fjrx-p6mg",
+          "range": "<=1.1.5"
+        }
+      ]
+    },
+    {
+      "name": "jayson",
+      "severity": "moderate",
+      "isDirect": false,
+      "range": "2.0.6 - 4.3.0",
+      "fixAvailable": {
+        "name": "@solana/web3.js",
+        "version": "3.0.0",
+        "isSemVerMajor": true
+      },
+      "via": [
+        "stream-json",
+        "uuid"
+      ]
+    },
+    {
+      "name": "stream-json",
+      "severity": "moderate",
+      "isDirect": false,
+      "range": "<=3.4.0",
+      "fixAvailable": {
+        "name": "@solana/web3.js",
+        "version": "3.0.0",
+        "isSemVerMajor": true
+      },
+      "via": [
+        {
+          "name": "stream-json",
+          "title": "stream-json: pick/ignore/filter/replace filters are O(depth²) on nested input — small crafted JSON blocks the event loop for seconds→minutes (DoS)",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-528h-pc64-c93x",
+          "range": "<=3.4.0"
+        }
+      ]
+    },
+    {
+      "name": "toml",
+      "severity": "high",
+      "isDirect": false,
+      "range": "<=4.1.2",
+      "fixAvailable": {
+        "name": "@pump-fun/pump-sdk",
+        "version": "1.1.0",
+        "isSemVerMajor": true
+      },
+      "via": [
+        {
+          "name": "toml",
+          "title": "toml-node: Uncontrolled Recursion",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-82x6-q7mm-w9cf",
+          "range": "<4.2.0"
+        },
+        {
+          "name": "toml",
+          "title": "toml-node: Prototype Pollution Leads to `Object.prototype` Corruption via `__proto__` Key-Path Desynchronization",
+          "severity": "high",
+          "url": "https://github.com/advisories/GHSA-v5mp-jgw5-2x6j",
+          "range": "<4.1.2"
+        }
+      ]
+    },
+    {
+      "name": "uuid",
+      "severity": "moderate",
+      "isDirect": false,
+      "range": "<11.1.1",
+      "fixAvailable": {
+        "name": "@solana/web3.js",
+        "version": "3.0.0",
+        "isSemVerMajor": true
+      },
+      "via": [
+        {
+          "name": "uuid",
+          "title": "uuid: Missing buffer bounds check in v3/v5/v6 when buf is provided",
+          "severity": "moderate",
+          "url": "https://github.com/advisories/GHSA-w5hq-g745-h8pq",
+          "range": "<11.1.1"
+        }
+      ]
+    }
+  ]
+}

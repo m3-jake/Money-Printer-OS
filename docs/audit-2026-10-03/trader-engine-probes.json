@@ -1,0 +1,31 @@
+{
+  "standaloneLiveBoundary": {
+    "dispatch": "ALLOWED_WITH_NO_LEDGER",
+    "submitted": false,
+    "networkCalls": 0
+  },
+  "perfectCorrelation": {
+    "totalExposureSol": 8,
+    "effectiveExposureSol": 2,
+    "averageCorrelation": 0,
+    "allowed": true,
+    "capSol": 5
+  },
+  "arrivalTime": {
+    "asOf": 5000,
+    "firstObservedAt": 9000,
+    "countedRoundTrips": 1,
+    "countedPnlSol": 1
+  },
+  "corruptSpendLedger": {
+    "dailyCap": 5,
+    "permittedCredits": 10,
+    "retainedCredits": 5,
+    "first": {
+      "ok": true
+    },
+    "second": {
+      "ok": true
+    }
+  }
+}

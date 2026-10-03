@@ -1,0 +1,207 @@
+{
+  "at": "2026-10-03T22:22:25.943Z",
+  "queriedRepository": "m3-jake/Money-Printer-OS",
+  "latestRuns": [
+    {
+      "name": "Release build",
+      "event": "push",
+      "status": "completed",
+      "conclusion": "skipped",
+      "headSha": "b36527bc0b3dac00dcb630cd75873176bdffc142",
+      "url": "https://github.com/m3-jake/Money-Printer-OS/actions/runs/37156851885",
+      "createdAt": "2026-10-03T21:58:17Z"
+    },
+    {
+      "name": "CI",
+      "event": "push",
+      "status": "completed",
+      "conclusion": "failure",
+      "headSha": "b36527bc0b3dac00dcb630cd75873176bdffc142",
+      "url": "https://github.com/m3-jake/Money-Printer-OS/actions/runs/37156851855",
+      "createdAt": "2026-10-03T21:58:17Z"
+    },
+    {
+      "name": "CI",
+      "event": "push",
+      "status": "completed",
+      "conclusion": "failure",
+      "headSha": "03a8c03a25efe88129862e38ae6b981aaf6d7f42",
+      "url": "https://github.com/m3-jake/Money-Printer-OS/actions/runs/37156730642",
+      "createdAt": "2026-10-03T21:56:12Z"
+    },
+    {
+      "name": "Deploy web demo",
+      "event": "push",
+      "status": "completed",
+      "conclusion": "success",
+      "headSha": "03a8c03a25efe88129862e38ae6b981aaf6d7f42",
+      "url": "https://github.com/m3-jake/Money-Printer-OS/actions/runs/37156730616",
+      "createdAt": "2026-10-03T21:56:12Z"
+    },
+    {
+      "name": "Release build",
+      "event": "push",
+      "status": "completed",
+      "conclusion": "skipped",
+      "headSha": "03a8c03a25efe88129862e38ae6b981aaf6d7f42",
+      "url": "https://github.com/m3-jake/Money-Printer-OS/actions/runs/37156730612",
+      "createdAt": "2026-10-03T21:56:12Z"
+    }
+  ],
+  "ciJobs": [
+    {
+      "name": "test (node 22)",
+      "status": "completed",
+      "conclusion": "failure",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Isolate app data dir",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/setup-node@v4",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/setup-python@v5",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Install Pillow",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Install dependencies",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Test suite",
+          "status": "completed",
+          "conclusion": "failure"
+        },
+        {
+          "name": "Self-test",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Doctor (offline)",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Post Run actions/setup-python@v5",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Post Run actions/setup-node@v4",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "name": "test (node 24)",
+      "status": "completed",
+      "conclusion": "failure",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Isolate app data dir",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/setup-node@v4",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/setup-python@v5",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Install Pillow",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Install dependencies",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Test suite",
+          "status": "completed",
+          "conclusion": "failure"
+        },
+        {
+          "name": "Self-test",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Doctor (offline)",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Post Run actions/setup-python@v5",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Post Run actions/setup-node@v4",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    }
+  ]
+}

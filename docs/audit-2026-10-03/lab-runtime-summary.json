@@ -1,0 +1,238 @@
+{
+  "at": 1791065668400,
+  "build": {
+    "schema": "mpo.lab-build.v1",
+    "packageVersion": "0.1.0-alpha.28",
+    "commit": "9cfaa899b4d6a95d7d753314652b481d7d12dd46",
+    "sourceDirty": false,
+    "sourceFingerprint": "5efebab84f39bb11038591633f3f311577166c421733654e1ac0f09d3a3af4a3",
+    "builtAt": "2026-10-03T20:22:56Z",
+    "toolchain": {
+      "node": "v24.16.0",
+      "platform": "win32",
+      "arch": "x64",
+      "electron": "supplied by existing installed runtime; archive build does not replace runtime"
+    },
+    "compatibility": {
+      "labLink": "mpo.lab-status.v1",
+      "modules": "mpo.lab-module-research.v1",
+      "sharedCompute": "mpo.compute-budget.v1",
+      "prediction": "mpo.prediction-episodes.v1"
+    }
+  },
+  "legacyStatus": "RETIRED",
+  "schedulerPolicy": {
+    "profile": "MAX_RESEARCH",
+    "profiles": {
+      "MAX_RESEARCH": {
+        "concurrent": 32,
+        "cpuShare": 0.95,
+        "description": "Use available research capacity continuously, with shared trader/desktop headroom and evidence-aware backoff."
+      },
+      "FAST_PAPER_STEADY": {
+        "concurrent": 2,
+        "cpuShare": 0.15,
+        "description": "Fast paper capture with small fresh-evidence research batches and desktop headroom."
+      },
+      "BURST_RESEARCH": {
+        "concurrent": 8,
+        "cpuShare": 0.7,
+        "description": "Bounded intensive local research; no recurring paid models."
+      },
+      "balanced": {
+        "concurrent": 6,
+        "cpuShare": 0.5,
+        "description": "Fair ready-module admission with half the logical CPUs reserved for the desktop and trader."
+      },
+      "research": {
+        "concurrent": 8,
+        "cpuShare": 0.7,
+        "description": "Parallel cached research, retaining desktop headroom and one shared CPU budget."
+      },
+      "overnight": {
+        "concurrent": 12,
+        "cpuShare": 0.8,
+        "description": "Use idle CPU and RAM for fresh evidence; pressure still stops new admission."
+      }
+    }
+  },
+  "scheduler": {
+    "resources": {
+      "concurrent": 19,
+      "maxSlots": 19,
+      "configuredSlots": 28,
+      "externalCpuPct": 29.1,
+      "cpuLimited": true,
+      "downshifted": false,
+      "reason": "shared CPU budget exhausted"
+    },
+    "profile": "MAX_RESEARCH",
+    "completed": 27280
+  },
+  "modules": {
+    "robinhood-equities": {
+      "status": "RUNNING",
+      "phase": "NO_EDGE",
+      "lastRunAt": 1791064383270,
+      "lastCompletedAt": 1791059267544,
+      "paperPromotionAllowed": false,
+      "blockers": [
+        "execution cost assumptions are not verified by the trader",
+        "walk-forward selection Sharpe 1.44 does not beat the defaults' 1.8",
+        "deflated Sharpe 0.312 < 0.95 over 129 candidates (543 walk-forward sessions)"
+      ],
+      "trials": 129,
+      "trialsTotal": null,
+      "holdoutProgress": null,
+      "dailyPhase": null,
+      "equitiesAlignment": {
+        "rule": "CONTIGUOUS_COMPLETE_SUFFIX",
+        "excludedThrough": "2021-10-12",
+        "excludedSpySessions": 307,
+        "missingSessions": {
+          "BIL": [
+            "2020-10-29",
+            "2020-11-12",
+            "2020-12-17",
+            "2021-01-20",
+            "2021-03-16",
+            "2021-04-05",
+            "2021-05-21",
+            "2021-06-16",
+            "2021-06-18",
+            "2021-07-22",
+            "2021-08-10",
+            "2021-08-30",
+            "2021-09-15",
+            "2021-10-12"
+          ],
+          "DBC": [
+            "2020-09-22"
+          ]
+        },
+        "availability": {
+          "BIL": {
+            "firstBar": "2020-07-27",
+            "beforeFirstAvailableBar": 0,
+            "listingInceptionVerified": false,
+            "providerGaps": [
+              "2020-10-29",
+              "2020-11-12",
+              "2020-12-17",
+              "2021-01-20",
+              "2021-03-16",
+              "2021-04-05",
+              "2021-05-21",
+              "2021-06-16",
+              "2021-06-18",
+              "2021-07-22",
+              "2021-08-10",
+              "2021-08-30",
+              "2021-09-15",
+              "2021-10-12"
+            ]
+          },
+          "DBC": {
+            "firstBar": "2020-07-27",
+            "beforeFirstAvailableBar": 0,
+            "listingInceptionVerified": false,
+            "providerGaps": [
+              "2020-09-22"
+            ]
+          }
+        },
+        "limitingSymbol": "BIL",
+        "note": "Original cache preserved; no prices filled. All warm-up and frozen evaluation gates apply to the retained complete sessions."
+      },
+      "candidateNet": null,
+      "closedOutcomes": null,
+      "refusalCount": 1
+    },
+    "robinhood": {
+      "status": "RUNNING",
+      "phase": "SEARCHING",
+      "lastRunAt": 1791065584924,
+      "lastCompletedAt": null,
+      "paperPromotionAllowed": false,
+      "blockers": [
+        "holdout closes 0/20, accumulating; performance sealed until consumption",
+        "BTC-USD vol gate: p95 expected move 1.29% < required 3.01% (ratio 0.429)",
+        "ETH-USD vol gate: p95 expected move 1.58% < required 3.01% (ratio 0.525)",
+        "ADA-USD vol gate: p95 expected move 1.40% < required 3.03% (ratio 0.462)",
+        "AVAX-USD vol gate: p95 expected move 1.78% < required 3.01% (ratio 0.591)",
+        "DOGE-USD vol gate: p95 expected move 0.92% < required 3.00% (ratio 0.307)",
+        "LINK-USD vol gate: p95 expected move 1.26% < required 3.01% (ratio 0.419)",
+        "SOL-USD vol gate: p95 expected move 2.15% < required 3.00% (ratio 0.717)",
+        "XRP-USD vol gate: p95 expected move 0.82% < required 3.00% (ratio 0.274)"
+      ],
+      "trials": null,
+      "trialsTotal": 65902,
+      "holdoutProgress": {
+        "phase": "ACCUMULATING",
+        "freezeAt": 1791040247303,
+        "through": 1791065456166,
+        "closes": 0,
+        "required": 20,
+        "rows": 11730,
+        "reason": "holdout closes 0/20, accumulating; performance sealed until consumption"
+      },
+      "dailyPhase": "NO_EDGE",
+      "equitiesAlignment": null,
+      "candidateNet": null,
+      "closedOutcomes": null,
+      "refusalCount": 1
+    },
+    "kalshi": {
+      "status": "WAITING_FOR_DATA",
+      "phase": "WAITING_FOR_DATA",
+      "lastRunAt": 1791065585740,
+      "lastCompletedAt": 1791065585740,
+      "paperPromotionAllowed": false,
+      "blockers": [
+        "Historical fixed-policy replay is exploratory; untouched and prospective evidence required",
+        "Observed offers do not prove fills or future depth",
+        "Settlement costs and capital duration beyond observed outcomes need venue verification"
+      ],
+      "trials": null,
+      "trialsTotal": null,
+      "holdoutProgress": null,
+      "dailyPhase": null,
+      "equitiesAlignment": null,
+      "candidateNet": null,
+      "closedOutcomes": 0,
+      "refusalCount": 100
+    },
+    "polymarket-combo": {
+      "status": "RUNNING",
+      "phase": "NO_EDGE",
+      "lastRunAt": 1791065588698,
+      "lastCompletedAt": 1791065588698,
+      "paperPromotionAllowed": false,
+      "blockers": null,
+      "trials": 120,
+      "trialsTotal": null,
+      "holdoutProgress": null,
+      "dailyPhase": null,
+      "equitiesAlignment": null,
+      "candidateNet": null,
+      "closedOutcomes": null,
+      "refusalCount": 1
+    },
+    "polymarket": {
+      "status": "RUNNING",
+      "phase": "NO_EDGE",
+      "lastRunAt": 1791059259131,
+      "lastCompletedAt": 1790985624250,
+      "paperPromotionAllowed": false,
+      "blockers": null,
+      "trials": 2023,
+      "trialsTotal": null,
+      "holdoutProgress": null,
+      "dailyPhase": null,
+      "equitiesAlignment": null,
+      "candidateNet": -1.1023733289168194,
+      "closedOutcomes": null,
+      "refusalCount": 1
+    }
+  }
+}

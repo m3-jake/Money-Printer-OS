@@ -1,0 +1,173 @@
+{
+  "at": 1791065719336,
+  "standing": {
+    "schema": "mpo.lab-standing-queue.v1",
+    "recoveryRequired": false,
+    "recoveryReason": null,
+    "qualificationEffect": "NONE",
+    "window": "validation only; the holdout is never read",
+    "families": {
+      "weather": {
+        "units": 1198,
+        "trials": 478000,
+        "best": {
+          "v": {
+            "calibrationSafety": 1.57,
+            "minEdge": 0.02,
+            "maxDisagreement": 0.13,
+            "longshotPrice": 0.15,
+            "longshotMinEdge": 0.11
+          },
+          "validationN": 33,
+          "validationMeanPerBet": 0.37,
+          "unit": 1163,
+          "corpusHash": "2b83ec29d17e30a42f941d0d5307310c5be848c0d619824b631f1ea12ce6150d"
+        },
+        "corpusHash": "2b83ec29d17e30a42f941d0d5307310c5be848c0d619824b631f1ea12ce6150d",
+        "corpusBudget": 20000,
+        "corpusTrials": 20000,
+        "lastAt": 1791065178436,
+        "lastMs": 2210,
+        "lastNote": "unchanged corpus exploration budget exhausted; waiting for new independent observations"
+      },
+      "btc": {
+        "units": 0,
+        "trials": 0,
+        "best": null,
+        "corpusTrials": 0,
+        "lastAt": 1791065674798,
+        "lastMs": null,
+        "lastNote": "no validation events yet (1 independent settlement day; validation needs at least 3)"
+      }
+    },
+    "note": "Bounded distinct validation variants per corpus; qualification remains unchanged. Frozen exploratory nominations are separate from qualified proposals."
+  },
+  "activeJobs": [
+    "tape-audit"
+  ],
+  "copyReplay": {
+    "distinctSnapshotDays": 1,
+    "blockers": [
+      "Historical leader-policy comparisons require 14 distinct dated snapshots",
+      "Receipt-backed observed paper outcomes are not counterfactual fills for alternate leaders"
+    ],
+    "executableReceipts": 42,
+    "phase": "RESEARCH_ONLY",
+    "closedOutcomes": 10
+  },
+  "weatherProspective": {
+    "all": {
+      "n": 0,
+      "independentDates": 0
+    },
+    "note": "provenance receipts are accumulating; no bound event has settled yet",
+    "counts": {
+      "tapeRows": 93,
+      "provenanceRows": 11,
+      "legacyRowsIgnored": 82,
+      "bindingRejected": 0,
+      "bindingUnknown": 0,
+      "unsettled": 20,
+      "noForecast": 0,
+      "availabilityRejected": 0,
+      "revisionsSeen": 80,
+      "samples": 0
+    }
+  },
+  "jobs": {
+    "tape-audit": {
+      "ok": true,
+      "error": null,
+      "lastRunAt": 1791065690324,
+      "ms": 352,
+      "runs": 265,
+      "running": false,
+      "startedAt": 1791065689972,
+      "everyMin": 1
+    },
+    "farm-review": {
+      "ok": true,
+      "error": null,
+      "lastRunAt": 1791065674099,
+      "ms": 7195,
+      "runs": 64,
+      "running": false,
+      "startedAt": 1791065666904,
+      "cpuFingerprint": "774801e203512f52cc4e1f21fefb306a772a511267287cf71092ab80dd37059a2026-10[]",
+      "skippedUnchanged": false,
+      "everyMin": 5
+    },
+    "btc-vol": {
+      "ok": true,
+      "error": null,
+      "lastRunAt": 1791047948426,
+      "ms": 4569,
+      "runs": 3,
+      "running": false,
+      "startedAt": 1791047943857,
+      "everyMin": 360
+    },
+    "btc-replay": {
+      "ok": true,
+      "error": null,
+      "lastRunAt": 1791052231209,
+      "ms": 627,
+      "runs": 3,
+      "running": false,
+      "startedAt": 1791052230582,
+      "cpuFingerprint": "04d7986ff96e04ab09ffeb53f9a348ab8b44f9a1f10a80c6150223a507fd1d3330f3d3e1e70d3de637451d9fc9436d7090027abbd2b6edfca3fca0588e04102c",
+      "skippedUnchanged": false,
+      "everyMin": 360
+    },
+    "weather-models": {
+      "ok": true,
+      "error": null,
+      "lastRunAt": 1791004708248,
+      "ms": 18283,
+      "runs": 1,
+      "everyMin": 1440
+    },
+    "leaderboards": {
+      "ok": true,
+      "error": null,
+      "lastRunAt": 1791065572763,
+      "ms": 708,
+      "runs": 15,
+      "running": false,
+      "startedAt": 1791065572055,
+      "everyMin": 15
+    },
+    "leader-replay": {
+      "running": false,
+      "startedAt": 1791065680981,
+      "error": null,
+      "cpuFingerprint": "d51c143df00eb54488455c036a07452b65525ca5e2b755a17f959aa16711aa21",
+      "skippedUnchanged": true,
+      "ok": true,
+      "lastRunAt": 1791065681939,
+      "ms": 958,
+      "runs": 190,
+      "everyMin": 1
+    },
+    "weather-replay": {
+      "ok": true,
+      "error": null,
+      "lastRunAt": 1791009940191,
+      "ms": 1004866,
+      "runs": 1,
+      "everyMin": 1440
+    },
+    "weather-prospective": {
+      "running": false,
+      "startedAt": 1791065272943,
+      "error": null,
+      "inputKey": "c5a7e208cd4a35902567848c26ba5c3c9d6a5a3e21c474fc771f9e2f8f7f4efa:4b09a1cac96aa0dc",
+      "skippedUnchanged": false,
+      "ok": true,
+      "lastRunAt": 1791065273509,
+      "ms": 566,
+      "runs": 11,
+      "everyMin": 10
+    }
+  }
+}

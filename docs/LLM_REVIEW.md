@@ -1,5 +1,7 @@
 # Money Printer OS and Evolution Lab review
 
+Fresh follow-up: read `docs/audit-2026-10-03/README.md` and its `NEXT-BEST-STEPS.md` implementation prompt first. The October 3 evening audit includes fresh tests, current aggregate runtime evidence and reproducible accounting/admission/storage counterexamples. The current trader full command fails a documentation-count gate; all remaining wired groups pass when run separately. Lab's fresh full suite passes 365 tests. The historical release evidence below remains evidence of that release, not a claim that the current CI is green.
+
 Review both repositories together:
 
 - Trader: https://github.com/m3-jake/Money-Printer-OS

@@ -1,0 +1,44 @@
+{
+  "synthetic": true,
+  "qualificationEffect": "NONE",
+  "robinhoodOutstandingLoss": {
+    "gatePass": true,
+    "gateRealizedPnl": 20,
+    "openPositions": 1,
+    "terminalCash": 995,
+    "illustrativeLiquidationValue": 0.05,
+    "liquidationNetPnl": -4.9500000000000455,
+    "gateHasDrawdown": false
+  },
+  "robinhoodCapital": {
+    "declaredStartUsd": 1000,
+    "symbolCount": 8,
+    "totalReplayCash": 8000
+  },
+  "sealedWindowReuse": {
+    "firstConsumed": true,
+    "secondCandidateConsumed": false,
+    "secondCandidateReturnedReceiptCandidate": "candidate-a",
+    "secondCandidateReturnedAuditCount": 1,
+    "changedDatasetSameDatesConsumed": true
+  },
+  "dailyHistoricalQualification": {
+    "phase": "PAPER_REVIEW_READY",
+    "paperPromotionAllowed": true,
+    "traderExecutable": true,
+    "holdoutFrom": "2023-03-20",
+    "holdoutTo": "2024-03-18",
+    "allDatesBeforeAudit": true,
+    "frozenCandidateRecorded": false,
+    "accessReceiptRecorded": false,
+    "repeatProducesSamePaperProposal": true
+  },
+  "weatherStake": {
+    "declaredStakeUsd": 1,
+    "modeledAskAfterSlip": 0.25,
+    "quantity": 4,
+    "modeledSpendUsd": 1.06,
+    "pnl": 2.94,
+    "researchOnly": true
+  }
+}

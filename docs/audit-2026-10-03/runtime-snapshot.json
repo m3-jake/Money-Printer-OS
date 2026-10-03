@@ -1,0 +1,3192 @@
+{
+  "at": "2026-10-03T22:17:00.984Z",
+  "kind": "read-only aggregate snapshot; changing runtime, not a benchmark",
+  "traderBuild": {
+    "version": "0.5.0-alpha.93",
+    "productName": "Money Printer OS",
+    "provenance": {
+      "schema": "mpo.build-provenance.v1",
+      "packageVersion": "0.5.0-alpha.93",
+      "sourceCommit": "89fa8d7764a315fae8503e20aac07261a62ffd6a",
+      "sourceDirty": false,
+      "sourceFingerprint": "a5c5e0d573bd7b01a886fea9efcbc4b20a63d96473ae44f44d795657665c5a45",
+      "packaged": true,
+      "releaseId": "0.5.0-alpha.93+windows.89fa8d7",
+      "markerVersion": "0.5.0-alpha.93",
+      "markerCommit": "89fa8d7764a315fae8503e20aac07261a62ffd6a",
+      "markerMatchesPackage": true,
+      "runtime": {
+        "node": "22.22.0",
+        "electron": "38.8.6",
+        "platform": "win32",
+        "arch": "x64",
+        "pid": 5988
+      },
+      "evaluator": {
+        "version": "market-replay.v2",
+        "sha256": "ff04565befc90ad2a09c0bf77be3020dcd9c2354153af34f9227d22721f47507"
+      },
+      "compatibility": {
+        "labStatus": "mpo.lab-status.v1",
+        "moduleChampion": "mpo.lab-module-champion.v1",
+        "fitness": "mpo.fitness-ledger.v1",
+        "compute": "mpo.compute-budget.v1",
+        "prediction": "mpo.prediction-episodes.v1",
+        "robinhood": "robinhood-backtest.v2",
+        "equities": "equities-close-next-open-v2"
+      },
+      "limitations": []
+    }
+  },
+  "health": {
+    "ok": true,
+    "health": "HEALTHY",
+    "stalledVenues": [
+      "pumpfun-copy-exits"
+    ],
+    "venues": {
+      "copy-leader-discovery": {
+        "state": "OK",
+        "everyMs": 900000,
+        "stallMs": 60000,
+        "runs": 2,
+        "errors": 0,
+        "stalls": 0,
+        "skipped": 0,
+        "lastRunAt": 1791065271488,
+        "lastOkAt": 1791065271488,
+        "lastMs": 1189,
+        "p95Ms": 6411,
+        "runningForMs": null,
+        "lastStall": null,
+        "lastError": null
+      },
+      "kalshi-evidence": {
+        "state": "RUNNING",
+        "everyMs": 30000,
+        "stallMs": 60000,
+        "runs": 49,
+        "errors": 0,
+        "stalls": 0,
+        "skipped": 0,
+        "lastRunAt": 1791065791558,
+        "lastOkAt": 1791065791558,
+        "lastMs": 1907,
+        "p95Ms": 14588,
+        "runningForMs": 1529,
+        "lastStall": null,
+        "lastError": null
+      },
+      "robinhood-external-paper": {
+        "state": "OK",
+        "everyMs": 15000,
+        "stallMs": 60000,
+        "runs": 94,
+        "errors": 0,
+        "stalls": 0,
+        "skipped": 0,
+        "lastRunAt": 1791065808206,
+        "lastOkAt": 1791065808206,
+        "lastMs": 55,
+        "p95Ms": 227,
+        "runningForMs": null,
+        "lastStall": null,
+        "lastError": null
+      },
+      "us-singles-settlement": {
+        "state": "OK",
+        "everyMs": 60000,
+        "stallMs": 120000,
+        "runs": 25,
+        "errors": 0,
+        "stalls": 0,
+        "skipped": 0,
+        "lastRunAt": 1791065810996,
+        "lastOkAt": 1791065810996,
+        "lastMs": 118,
+        "p95Ms": 2204,
+        "runningForMs": null,
+        "lastStall": null,
+        "lastError": null
+      },
+      "disclosure-paper": {
+        "state": "OK",
+        "everyMs": 300000,
+        "stallMs": 600000,
+        "runs": 5,
+        "errors": 0,
+        "stalls": 0,
+        "skipped": 0,
+        "lastRunAt": 1791065570421,
+        "lastOkAt": 1791065570421,
+        "lastMs": 23,
+        "p95Ms": 56,
+        "runningForMs": null,
+        "lastStall": null,
+        "lastError": null
+      },
+      "edgar-13f-research": {
+        "state": "OK",
+        "everyMs": 21600000,
+        "stallMs": 43200000,
+        "runs": 1,
+        "errors": 0,
+        "stalls": 0,
+        "skipped": 0,
+        "lastRunAt": 1791064391645,
+        "lastOkAt": 1791064391645,
+        "lastMs": 1,
+        "p95Ms": 1,
+        "runningForMs": null,
+        "lastStall": null,
+        "lastError": null
+      },
+      "arbitrage-paper": {
+        "state": "OK",
+        "everyMs": 60000,
+        "stallMs": 120000,
+        "runs": 25,
+        "errors": 0,
+        "stalls": 0,
+        "skipped": 0,
+        "lastRunAt": 1791065817154,
+        "lastOkAt": 1791065817154,
+        "lastMs": 5996,
+        "p95Ms": 28423,
+        "runningForMs": null,
+        "lastStall": null,
+        "lastError": null
+      },
+      "pumpfun-native-exits": {
+        "state": "OK",
+        "everyMs": 10000,
+        "stallMs": 60000,
+        "runs": 141,
+        "errors": 0,
+        "stalls": 0,
+        "skipped": 0,
+        "lastRunAt": 1791065819695,
+        "lastOkAt": 1791065819695,
+        "lastMs": 0,
+        "p95Ms": 1,
+        "runningForMs": null,
+        "lastStall": null,
+        "lastError": null
+      },
+      "pumpfun-copy-exits": {
+        "state": "STALLED",
+        "everyMs": 10000,
+        "stallMs": 60000,
+        "runs": 81,
+        "errors": 0,
+        "stalls": 1,
+        "skipped": 60,
+        "lastRunAt": 1791065199554,
+        "lastOkAt": 1791065199554,
+        "lastMs": 6,
+        "p95Ms": 7102,
+        "runningForMs": 610567,
+        "lastStall": {
+          "at": 1791065279914,
+          "afterMs": 69295
+        },
+        "lastError": "run has not finished after 69 s; this venue waits for it, the others keep running"
+      },
+      "kalshi-weather": {
+        "state": "OK",
+        "everyMs": 600000,
+        "stallMs": 1200000,
+        "runs": 3,
+        "errors": 0,
+        "stalls": 0,
+        "skipped": 0,
+        "lastRunAt": 1791065577039,
+        "lastOkAt": 1791065577039,
+        "lastMs": 7714,
+        "p95Ms": 88856,
+        "runningForMs": null,
+        "lastStall": null,
+        "lastError": null
+      },
+      "kalshi-weather-nws": {
+        "state": "OK",
+        "everyMs": 600000,
+        "stallMs": 1200000,
+        "runs": 3,
+        "errors": 0,
+        "stalls": 0,
+        "skipped": 0,
+        "lastRunAt": 1791065618237,
+        "lastOkAt": 1791065618237,
+        "lastMs": 5107,
+        "p95Ms": 45036,
+        "runningForMs": null,
+        "lastStall": null,
+        "lastError": null
+      },
+      "kalshi-btc": {
+        "state": "OK",
+        "everyMs": 180000,
+        "stallMs": 360000,
+        "runs": 8,
+        "errors": 0,
+        "stalls": 0,
+        "skipped": 0,
+        "lastRunAt": 1791065737350,
+        "lastOkAt": 1791065737350,
+        "lastMs": 4027,
+        "p95Ms": 15262,
+        "runningForMs": null,
+        "lastStall": null,
+        "lastError": null
+      },
+      "kalshi-farm-weather": {
+        "state": "OK",
+        "everyMs": 600000,
+        "stallMs": 1200000,
+        "runs": 3,
+        "errors": 0,
+        "stalls": 0,
+        "skipped": 0,
+        "lastRunAt": 1791065672841,
+        "lastOkAt": 1791065672841,
+        "lastMs": 8,
+        "p95Ms": 4425,
+        "runningForMs": null,
+        "lastStall": null,
+        "lastError": null
+      },
+      "kalshi-farm-btc": {
+        "state": "OK",
+        "everyMs": 180000,
+        "stallMs": 360000,
+        "runs": 8,
+        "errors": 0,
+        "stalls": 0,
+        "skipped": 0,
+        "lastRunAt": 1791065756958,
+        "lastOkAt": 1791065756958,
+        "lastMs": 11,
+        "p95Ms": 4855,
+        "runningForMs": null,
+        "lastStall": null,
+        "lastError": null
+      },
+      "polymarket-copy": {
+        "state": "OK",
+        "everyMs": 15000,
+        "stallMs": 60000,
+        "runs": 96,
+        "errors": 0,
+        "stalls": 0,
+        "skipped": 0,
+        "lastRunAt": 1791065820083,
+        "lastOkAt": 1791065820083,
+        "lastMs": 168,
+        "p95Ms": 12324,
+        "runningForMs": null,
+        "lastStall": null,
+        "lastError": null
+      },
+      "polymarket-copy-settlement": {
+        "state": "OK",
+        "everyMs": 60000,
+        "stallMs": 120000,
+        "runs": 25,
+        "errors": 0,
+        "stalls": 0,
+        "skipped": 0,
+        "lastRunAt": 1791065813280,
+        "lastOkAt": 1791065813280,
+        "lastMs": 2403,
+        "p95Ms": 14530,
+        "runningForMs": null,
+        "lastStall": null,
+        "lastError": null
+      },
+      "copy-explore-direct": {
+        "state": "OK",
+        "everyMs": 15000,
+        "stallMs": 60000,
+        "runs": 95,
+        "errors": 0,
+        "stalls": 0,
+        "skipped": 0,
+        "lastRunAt": 1791065807086,
+        "lastOkAt": 1791065807086,
+        "lastMs": 42,
+        "p95Ms": 2383,
+        "runningForMs": null,
+        "lastStall": null,
+        "lastError": null
+      },
+      "copy-settle-direct": {
+        "state": "OK",
+        "everyMs": 60000,
+        "stallMs": 120000,
+        "runs": 25,
+        "errors": 0,
+        "stalls": 0,
+        "skipped": 0,
+        "lastRunAt": 1791065812630,
+        "lastOkAt": 1791065812630,
+        "lastMs": 1750,
+        "p95Ms": 14565,
+        "runningForMs": null,
+        "lastStall": null,
+        "lastError": null
+      },
+      "copy-explore-liquidity-scaled": {
+        "state": "OK",
+        "everyMs": 15000,
+        "stallMs": 60000,
+        "runs": 95,
+        "errors": 0,
+        "stalls": 0,
+        "skipped": 0,
+        "lastRunAt": 1791065807131,
+        "lastOkAt": 1791065807131,
+        "lastMs": 45,
+        "p95Ms": 2383,
+        "runningForMs": null,
+        "lastStall": null,
+        "lastError": null
+      },
+      "copy-settle-liquidity-scaled": {
+        "state": "OK",
+        "everyMs": 60000,
+        "stallMs": 120000,
+        "runs": 25,
+        "errors": 0,
+        "stalls": 0,
+        "skipped": 0,
+        "lastRunAt": 1791065813150,
+        "lastOkAt": 1791065813150,
+        "lastMs": 2270,
+        "p95Ms": 14633,
+        "runningForMs": null,
+        "lastStall": null,
+        "lastError": null
+      },
+      "copy-explore-random-eligible": {
+        "state": "OK",
+        "everyMs": 15000,
+        "stallMs": 60000,
+        "runs": 95,
+        "errors": 0,
+        "stalls": 0,
+        "skipped": 0,
+        "lastRunAt": 1791065808314,
+        "lastOkAt": 1791065808314,
+        "lastMs": 38,
+        "p95Ms": 1027,
+        "runningForMs": null,
+        "lastStall": null,
+        "lastError": null
+      },
+      "copy-settle-random-eligible": {
+        "state": "OK",
+        "everyMs": 60000,
+        "stallMs": 120000,
+        "runs": 25,
+        "errors": 0,
+        "stalls": 0,
+        "skipped": 0,
+        "lastRunAt": 1791065812542,
+        "lastOkAt": 1791065812542,
+        "lastMs": 1662,
+        "p95Ms": 14659,
+        "runningForMs": null,
+        "lastStall": null,
+        "lastError": null
+      },
+      "copy-explore-no-trade": {
+        "state": "OK",
+        "everyMs": 15000,
+        "stallMs": 60000,
+        "runs": 95,
+        "errors": 0,
+        "stalls": 0,
+        "skipped": 0,
+        "lastRunAt": 1791065808358,
+        "lastOkAt": 1791065808358,
+        "lastMs": 43,
+        "p95Ms": 2395,
+        "runningForMs": null,
+        "lastStall": null,
+        "lastError": null
+      },
+      "copy-settle-no-trade": {
+        "state": "OK",
+        "everyMs": 60000,
+        "stallMs": 120000,
+        "runs": 25,
+        "errors": 0,
+        "stalls": 0,
+        "skipped": 0,
+        "lastRunAt": 1791065810910,
+        "lastOkAt": 1791065810910,
+        "lastMs": 29,
+        "p95Ms": 111,
+        "runningForMs": null,
+        "lastStall": null,
+        "lastError": null
+      },
+      "copy-explore-category-specialist": {
+        "state": "OK",
+        "everyMs": 15000,
+        "stallMs": 60000,
+        "runs": 95,
+        "errors": 0,
+        "stalls": 0,
+        "skipped": 0,
+        "lastRunAt": 1791065812447,
+        "lastOkAt": 1791065812447,
+        "lastMs": 32,
+        "p95Ms": 997,
+        "runningForMs": null,
+        "lastStall": null,
+        "lastError": null
+      },
+      "copy-settle-category-specialist": {
+        "state": "OK",
+        "everyMs": 60000,
+        "stallMs": 120000,
+        "runs": 25,
+        "errors": 0,
+        "stalls": 0,
+        "skipped": 0,
+        "lastRunAt": 1791065811021,
+        "lastOkAt": 1791065811021,
+        "lastMs": 24,
+        "p95Ms": 62,
+        "runningForMs": null,
+        "lastStall": null,
+        "lastError": null
+      },
+      "copy-explore-momentum-confirmed": {
+        "state": "OK",
+        "everyMs": 15000,
+        "stallMs": 60000,
+        "runs": 95,
+        "errors": 0,
+        "stalls": 0,
+        "skipped": 0,
+        "lastRunAt": 1791065818808,
+        "lastOkAt": 1791065818808,
+        "lastMs": 37,
+        "p95Ms": 6778,
+        "runningForMs": null,
+        "lastStall": null,
+        "lastError": null
+      },
+      "copy-settle-momentum-confirmed": {
+        "state": "OK",
+        "everyMs": 60000,
+        "stallMs": 120000,
+        "runs": 25,
+        "errors": 0,
+        "stalls": 0,
+        "skipped": 0,
+        "lastRunAt": 1791065811368,
+        "lastOkAt": 1791065811368,
+        "lastMs": 304,
+        "p95Ms": 7866,
+        "runningForMs": null,
+        "lastStall": null,
+        "lastError": null
+      },
+      "copy-explore-fade": {
+        "state": "OK",
+        "everyMs": 15000,
+        "stallMs": 60000,
+        "runs": 95,
+        "errors": 0,
+        "stalls": 0,
+        "skipped": 0,
+        "lastRunAt": 1791065819905,
+        "lastOkAt": 1791065819905,
+        "lastMs": 26,
+        "p95Ms": 4401,
+        "runningForMs": null,
+        "lastStall": null,
+        "lastError": null
+      },
+      "copy-settle-fade": {
+        "state": "OK",
+        "everyMs": 60000,
+        "stallMs": 120000,
+        "runs": 25,
+        "errors": 0,
+        "stalls": 0,
+        "skipped": 0,
+        "lastRunAt": 1791065811097,
+        "lastOkAt": 1791065811097,
+        "lastMs": 32,
+        "p95Ms": 89,
+        "runningForMs": null,
+        "lastStall": null,
+        "lastError": null
+      },
+      "kalshi-mirror": {
+        "state": "OK",
+        "everyMs": 30000,
+        "stallMs": 60000,
+        "runs": 49,
+        "errors": 0,
+        "stalls": 0,
+        "skipped": 0,
+        "lastRunAt": 1791065820184,
+        "lastOkAt": 1791065820184,
+        "lastMs": 541,
+        "p95Ms": 12878,
+        "runningForMs": null,
+        "lastStall": null,
+        "lastError": null
+      },
+      "kalshi-mirror-settlement": {
+        "state": "OK",
+        "everyMs": 60000,
+        "stallMs": 120000,
+        "runs": 25,
+        "errors": 0,
+        "stalls": 0,
+        "skipped": 0,
+        "lastRunAt": 1791065812638,
+        "lastOkAt": 1791065812638,
+        "lastMs": 1574,
+        "p95Ms": 9892,
+        "runningForMs": null,
+        "lastStall": null,
+        "lastError": null
+      },
+      "weather-calibration": {
+        "state": "WAITING",
+        "everyMs": 86400000,
+        "stallMs": 1800000,
+        "runs": 0,
+        "errors": 0,
+        "stalls": 0,
+        "skipped": 0,
+        "lastRunAt": null,
+        "lastOkAt": null,
+        "lastMs": null,
+        "p95Ms": null,
+        "runningForMs": null,
+        "lastStall": null,
+        "lastError": null
+      }
+    },
+    "switches": {
+      "labLink": {
+        "enabled": true,
+        "connected": true,
+        "paperPromotionAllowed": false
+      },
+      "robinhoodAutostart": true,
+      "paperOnlyBuild": true,
+      "realEnabled": false,
+      "sessionArmed": false,
+      "liveExecution": "manual",
+      "liveActivationAllowed": false,
+      "automaticLivePromotionAllowed": false
+    }
+  },
+  "profiles": {
+    "trader": "MAX_RESEARCH",
+    "lab": "MAX_RESEARCH"
+  },
+  "scoreboard": {
+    "summary": {
+      "rows": 92,
+      "beating": 0,
+      "notBeating": 7,
+      "notEnoughData": 85,
+      "outlierDriven": 7,
+      "stale": 5
+    },
+    "paperSummary": {
+      "books": 90,
+      "beating": 0,
+      "notBeating": 6,
+      "notEnoughData": 84,
+      "researchRowsExcluded": 2
+    },
+    "errors": [],
+    "rows": [
+      {
+        "id": "pumpfun-fair",
+        "module": "Pump.fun",
+        "book": "FAIR paper",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 0,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "0 of 20 closes",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "IDLE",
+          "at": null,
+          "ageMs": null,
+          "maxAgeMs": 300000,
+          "source": "last close (profile not active)"
+        }
+      },
+      {
+        "id": "pumpfun-sprint",
+        "module": "Pump.fun",
+        "book": "SPRINT paper",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 1,
+        "netPnl": -0.014073,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "1 of 20 closes",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "IDLE",
+          "at": 1791059331582,
+          "ageMs": 6489668,
+          "maxAgeMs": 300000,
+          "source": "last close (profile not active)"
+        }
+      },
+      {
+        "id": "pumpfun-other",
+        "module": "Pump.fun",
+        "book": "Other profiles",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 54,
+        "netPnl": -0.132359,
+        "beatsBaseline": "NO",
+        "reason": "net is not above the baseline",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "STALE",
+          "at": 1791065502209,
+          "ageMs": 319041,
+          "maxAgeMs": 300000,
+          "source": "last close"
+        }
+      },
+      {
+        "id": "pumpfun-copy",
+        "module": "Pump.fun",
+        "book": "Scored-wallet copy paper",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 0,
+        "open": 0,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "0 of 20 closes",
+        "status": "WAITING_FOR_WALLET_EVIDENCE",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "STALE",
+          "at": 1791065210623,
+          "ageMs": 610627,
+          "maxAgeMs": 300000,
+          "source": "copy book maintenance"
+        }
+      },
+      {
+        "id": "robinhood-strategy",
+        "module": "Robinhood crypto",
+        "book": "Strategy paper",
+        "kind": "paper",
+        "unit": "USD",
+        "closes": 0,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "0 of 20 closes",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806997,
+          "ageMs": 14253,
+          "maxAgeMs": 300000,
+          "source": "Robinhood quote tape"
+        }
+      },
+      {
+        "id": "robinhood-exploration",
+        "module": "Robinhood crypto",
+        "book": "Exploration paper",
+        "kind": "paper",
+        "unit": "USD",
+        "closes": 3,
+        "netPnl": -0.116805,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "3 of 20 closes",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806997,
+          "ageMs": 14253,
+          "maxAgeMs": 300000,
+          "source": "Robinhood quote tape"
+        }
+      },
+      {
+        "id": "robinhood-practice",
+        "module": "Robinhood crypto",
+        "book": "Practice paper",
+        "kind": "paper",
+        "unit": "USD",
+        "closes": 0,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "0 of 20 closes",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806528,
+          "ageMs": 14722,
+          "maxAgeMs": 300000,
+          "source": "practice loop tick"
+        }
+      },
+      {
+        "id": "robinhood-daily",
+        "module": "Robinhood crypto",
+        "book": "Daily-bar paper · Lab default family (not qualified)",
+        "kind": "paper",
+        "unit": "USD",
+        "closes": 1,
+        "open": 3,
+        "netPnl": -0.01,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "1 of 20 closes",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065526556,
+          "ageMs": 294694,
+          "maxAgeMs": 129600000,
+          "source": "daily-bar loop"
+        }
+      },
+      {
+        "id": "robinhood-daily-shadow",
+        "module": "Robinhood crypto",
+        "book": "Walk-forward shadow · NOT QUALIFIED",
+        "kind": "paper",
+        "unit": "USD",
+        "closes": 0,
+        "open": 0,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "Shadow evidence never qualifies a strategy",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065526556,
+          "ageMs": 294694,
+          "maxAgeMs": 129600000,
+          "source": "daily-bar loop"
+        }
+      },
+      {
+        "id": "robinhood-equities",
+        "module": "Robinhood equities",
+        "book": "Tactical ETF (50% SPY 200d trend + 50% dual-momentum top 3) paper",
+        "kind": "paper",
+        "unit": "USD",
+        "closes": 1,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "1 of 20 closes",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791059265657,
+          "ageMs": 6555593,
+          "maxAgeMs": 129600000,
+          "source": "public end-of-day bars, not Robinhood quotes",
+          "latestBar": "2026-10-02"
+        }
+      },
+      {
+        "id": "polymarket-shadow-near_end",
+        "module": "Polymarket US",
+        "book": "Shadow combos · NEAR_END",
+        "kind": "shadow",
+        "unit": "USD",
+        "closes": 211,
+        "open": 1,
+        "netPnl": -38.17,
+        "beatsBaseline": "NO",
+        "reason": "net is not above the baseline",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065802586,
+          "ageMs": 18664,
+          "maxAgeMs": 1800000,
+          "source": "evidence scan"
+        }
+      },
+      {
+        "id": "polymarket-shadow-late",
+        "module": "Polymarket US",
+        "book": "Shadow combos · LATE",
+        "kind": "shadow",
+        "unit": "USD",
+        "closes": 370,
+        "open": 2,
+        "netPnl": -40.39,
+        "beatsBaseline": "NO",
+        "reason": "net is not above the baseline",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065802586,
+          "ageMs": 18664,
+          "maxAgeMs": 1800000,
+          "source": "evidence scan"
+        }
+      },
+      {
+        "id": "polymarket-shadow-any_live",
+        "module": "Polymarket US",
+        "book": "Shadow combos · ANY_LIVE",
+        "kind": "shadow",
+        "unit": "USD",
+        "closes": 208,
+        "open": 2,
+        "netPnl": 0.86,
+        "beatsBaseline": "NO",
+        "reason": "beats the baseline only because of its single best trade",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065802586,
+          "ageMs": 18664,
+          "maxAgeMs": 1800000,
+          "source": "evidence scan"
+        }
+      },
+      {
+        "id": "kalshi-bot-weather",
+        "module": "Kalshi bots",
+        "book": "Weather bot (calibrated)",
+        "kind": "paper",
+        "unit": "USD",
+        "closes": 0,
+        "open": 10,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "0 of 20 closes",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065577034,
+          "ageMs": 244216,
+          "maxAgeMs": 1800000,
+          "source": "bot run"
+        }
+      },
+      {
+        "id": "kalshi-bot-weather-nws",
+        "module": "Kalshi bots",
+        "book": "Weather bot (NWS-only control)",
+        "kind": "paper",
+        "unit": "USD",
+        "closes": 0,
+        "open": 10,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "0 of 20 closes",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065618233,
+          "ageMs": 203017,
+          "maxAgeMs": 1800000,
+          "source": "bot run"
+        }
+      },
+      {
+        "id": "kalshi-bot-btc",
+        "module": "Kalshi bots",
+        "book": "BTC range bot",
+        "kind": "paper",
+        "unit": "USD",
+        "closes": 15,
+        "open": 0,
+        "netPnl": -12.5,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "15 of 20 closes",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065737344,
+          "ageMs": 83906,
+          "maxAgeMs": 600000,
+          "source": "bot run"
+        }
+      },
+      {
+        "id": "kalshi-farm-wx-cal-e04",
+        "module": "Kalshi farm",
+        "book": "Weather · calibrated · edge ≥ 4¢",
+        "kind": "weather",
+        "unit": "USD",
+        "closes": 0,
+        "open": 17,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "0 of 30 closes",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065672833,
+          "ageMs": 148417,
+          "maxAgeMs": 1800000,
+          "source": "bot run"
+        }
+      },
+      {
+        "id": "kalshi-farm-wx-cal-e07",
+        "module": "Kalshi farm",
+        "book": "Weather · calibrated · live settings",
+        "kind": "weather",
+        "unit": "USD",
+        "closes": 0,
+        "open": 17,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "0 of 30 closes",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065672833,
+          "ageMs": 148417,
+          "maxAgeMs": 1800000,
+          "source": "bot run"
+        }
+      },
+      {
+        "id": "kalshi-farm-wx-cal-e10",
+        "module": "Kalshi farm",
+        "book": "Weather · calibrated · edge ≥ 10¢",
+        "kind": "weather",
+        "unit": "USD",
+        "closes": 0,
+        "open": 15,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "0 of 30 closes",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065672833,
+          "ageMs": 148417,
+          "maxAgeMs": 1800000,
+          "source": "bot run"
+        }
+      },
+      {
+        "id": "kalshi-farm-wx-cal-wide",
+        "module": "Kalshi farm",
+        "book": "Weather · calibrated · σ × 1.4",
+        "kind": "weather",
+        "unit": "USD",
+        "closes": 0,
+        "open": 17,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "0 of 30 closes",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065672833,
+          "ageMs": 148417,
+          "maxAgeMs": 1800000,
+          "source": "bot run"
+        }
+      },
+      {
+        "id": "kalshi-farm-wx-cal-tight",
+        "module": "Kalshi farm",
+        "book": "Weather · calibrated · model gap ≤ 10¢",
+        "kind": "weather",
+        "unit": "USD",
+        "closes": 0,
+        "open": 3,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "0 of 30 closes",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065672833,
+          "ageMs": 148417,
+          "maxAgeMs": 1800000,
+          "source": "bot run"
+        }
+      },
+      {
+        "id": "kalshi-farm-wx-nws-e04",
+        "module": "Kalshi farm",
+        "book": "Weather · NWS only · edge ≥ 4¢",
+        "kind": "weather",
+        "unit": "USD",
+        "closes": 0,
+        "open": 17,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "0 of 30 closes",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065672833,
+          "ageMs": 148417,
+          "maxAgeMs": 1800000,
+          "source": "bot run"
+        }
+      },
+      {
+        "id": "kalshi-farm-wx-nws-e10",
+        "module": "Kalshi farm",
+        "book": "Weather · NWS only · edge ≥ 10¢",
+        "kind": "weather",
+        "unit": "USD",
+        "closes": 0,
+        "open": 16,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "0 of 30 closes",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065672833,
+          "ageMs": 148417,
+          "maxAgeMs": 1800000,
+          "source": "bot run"
+        }
+      },
+      {
+        "id": "kalshi-farm-btc-v100",
+        "module": "Kalshi farm",
+        "book": "BTC · vol × 1.0",
+        "kind": "btc",
+        "unit": "USD",
+        "closes": 21,
+        "open": 0,
+        "netPnl": -4.91,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "21 of 30 closes",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065756947,
+          "ageMs": 64303,
+          "maxAgeMs": 600000,
+          "source": "bot run"
+        }
+      },
+      {
+        "id": "kalshi-farm-btc-v125-e04",
+        "module": "Kalshi farm",
+        "book": "BTC · vol × 1.25 · edge ≥ 4¢",
+        "kind": "btc",
+        "unit": "USD",
+        "closes": 20,
+        "open": 0,
+        "netPnl": -12.21,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "20 of 30 closes",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065756947,
+          "ageMs": 64303,
+          "maxAgeMs": 600000,
+          "source": "bot run"
+        }
+      },
+      {
+        "id": "kalshi-farm-btc-v150",
+        "module": "Kalshi farm",
+        "book": "BTC · vol × 1.5",
+        "kind": "btc",
+        "unit": "USD",
+        "closes": 16,
+        "open": 0,
+        "netPnl": -12.31,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "16 of 30 closes",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065756947,
+          "ageMs": 64303,
+          "maxAgeMs": 600000,
+          "source": "bot run"
+        }
+      },
+      {
+        "id": "kalshi-farm-btc-v200",
+        "module": "Kalshi farm",
+        "book": "BTC · vol × 2.0",
+        "kind": "btc",
+        "unit": "USD",
+        "closes": 13,
+        "open": 0,
+        "netPnl": -10.95,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "13 of 30 closes",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065756947,
+          "ageMs": 64303,
+          "maxAgeMs": 600000,
+          "source": "bot run"
+        }
+      },
+      {
+        "id": "kalshi-farm-btc-live-r2",
+        "module": "Kalshi farm",
+        "book": "BTC · live model r2 (vol × 1.0, no longshots under 15¢)",
+        "kind": "btc",
+        "unit": "USD",
+        "closes": 8,
+        "open": 0,
+        "netPnl": -0.62,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "8 of 30 closes",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065756947,
+          "ageMs": 64303,
+          "maxAgeMs": 600000,
+          "source": "bot run"
+        }
+      },
+      {
+        "id": "kalshi-farm-explore-f198605e5c641e7d614d",
+        "module": "Kalshi farm",
+        "book": "Lab exploratory kalshi-weather · Lab proposal · UNQUALIFIED EXPLORATION",
+        "kind": "weather",
+        "unit": "USD",
+        "closes": 0,
+        "open": 12,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "0 of 30 closes",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065672833,
+          "ageMs": 148417,
+          "maxAgeMs": 1800000,
+          "source": "bot run"
+        }
+      },
+      {
+        "id": "kalshi-farm-explore-342517c24862d98d080a",
+        "module": "Kalshi farm",
+        "book": "Lab exploratory kalshi-weather · Lab proposal · UNQUALIFIED EXPLORATION",
+        "kind": "weather",
+        "unit": "USD",
+        "closes": 0,
+        "open": 15,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "0 of 30 closes",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065672833,
+          "ageMs": 148417,
+          "maxAgeMs": 1800000,
+          "source": "bot run"
+        }
+      },
+      {
+        "id": "kalshi-mirror",
+        "module": "Kalshi mirror",
+        "book": "Copy of Polymarket leaders (game winners)",
+        "kind": "paper",
+        "unit": "USD",
+        "closes": 0,
+        "open": 3,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "0 of 20 closes",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065820175,
+          "ageMs": 1075,
+          "maxAgeMs": 600000,
+          "source": "bot run"
+        }
+      },
+      {
+        "id": "polymarket-copy",
+        "module": "Polymarket copy",
+        "book": "Copy bot (polymarket.com leaders)",
+        "kind": "paper",
+        "unit": "USD",
+        "closes": 78,
+        "open": 9,
+        "netPnl": -144.3675,
+        "beatsBaseline": "NO",
+        "reason": "net is not above the baseline",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065819927,
+          "ageMs": 1323,
+          "maxAgeMs": 600000,
+          "source": "bot run"
+        }
+      },
+      {
+        "id": "platform-stocks-paper",
+        "module": "Stocks (core ledger)",
+        "book": "Core ledger paper fills",
+        "kind": "paper",
+        "unit": "USD",
+        "closes": 0,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "0 of 20 closes",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065766813,
+          "ageMs": 54437,
+          "maxAgeMs": 604800000,
+          "source": "last ledger entry"
+        }
+      },
+      {
+        "id": "lab-robinhood",
+        "module": "Evolution Lab",
+        "book": "Robinhood crypto champion",
+        "kind": "lab",
+        "unit": "",
+        "closes": 0,
+        "netPnl": null,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "0 of 20 closes",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "IDLE",
+          "at": null,
+          "ageMs": null,
+          "maxAgeMs": 1800000,
+          "source": "Lab status"
+        }
+      },
+      {
+        "id": "lab-polymarket-combo",
+        "module": "Evolution Lab",
+        "book": "Polymarket combos champion",
+        "kind": "lab",
+        "unit": "%",
+        "closes": 193,
+        "netPnl": null,
+        "beatsBaseline": "NO",
+        "reason": "held-out result not above zero",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065805439,
+          "ageMs": 15811,
+          "maxAgeMs": 1800000,
+          "source": "Lab status"
+        }
+      },
+      {
+        "id": "polymarket-us-singles",
+        "module": "Polymarket US",
+        "book": "Singles paper",
+        "kind": "paper",
+        "unit": "USD",
+        "closes": 0,
+        "open": 0,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "cash plus executable exposure does not beat contributed capital",
+        "status": "COLLECTING",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065810879,
+          "ageMs": 10371,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "polymarket-us-combos",
+        "module": "Polymarket US",
+        "book": "Modeled joint combo paper",
+        "kind": "paper",
+        "unit": "USD",
+        "closes": 355,
+        "open": 0,
+        "netPnl": -98.76,
+        "beatsBaseline": "NO",
+        "reason": "cash plus executable exposure does not beat contributed capital",
+        "status": "COLLECTING",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "STALE",
+          "at": 1790840748183,
+          "ageMs": 225073067,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pumpfun-copy-emerging",
+        "module": "Pump.fun",
+        "book": "Emerging leaders · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 57,
+        "open": 2,
+        "netPnl": -0.077848,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "complete executable marks or capital history unavailable",
+        "status": "AWAITING_SETTLEMENT",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "STALE",
+          "at": 1791065189557,
+          "ageMs": 631693,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pumpfun-copy-consensus",
+        "module": "Pump.fun",
+        "book": "Independent consensus · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 0,
+        "open": 0,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "cash plus executable exposure does not beat contributed capital",
+        "status": "COLLECTING",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "STALE",
+          "at": 1791065210651,
+          "ageMs": 610599,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "equity-disclosure-paper",
+        "module": "Stocks",
+        "book": "Form 4 disclosure exploration",
+        "kind": "paper",
+        "unit": "USD",
+        "closes": 0,
+        "open": 0,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "cash plus executable exposure does not beat contributed capital",
+        "status": "SEC_USER_AGENT_REQUIRED",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065570398,
+          "ageMs": 250852,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "robinhood-external-momentum_only",
+        "module": "Robinhood external flow",
+        "book": "momentum_only · UNQUALIFIED $25 cohort",
+        "kind": "paper",
+        "unit": "USD",
+        "closes": 0,
+        "open": 0,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "cash plus executable exposure does not beat contributed capital",
+        "status": "WAITING_FOR_SIGNAL",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065808152,
+          "ageMs": 13098,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "robinhood-external-external_native_flow_only",
+        "module": "Robinhood external flow",
+        "book": "external_native_flow_only · UNQUALIFIED $25 cohort",
+        "kind": "paper",
+        "unit": "USD",
+        "closes": 0,
+        "open": 0,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "cash plus executable exposure does not beat contributed capital",
+        "status": "FRESH_POINT_IN_TIME_EXTERNAL_FEATURE_REQUIRED",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065808152,
+          "ageMs": 13098,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "robinhood-external-momentum_plus_external_native_flow",
+        "module": "Robinhood external flow",
+        "book": "momentum_plus_external_native_flow · UNQUALIFIED $25 cohort",
+        "kind": "paper",
+        "unit": "USD",
+        "closes": 0,
+        "open": 0,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "cash plus executable exposure does not beat contributed capital",
+        "status": "FRESH_POINT_IN_TIME_EXTERNAL_FEATURE_REQUIRED",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065808152,
+          "ageMs": 13098,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "polymarket-copy-direct",
+        "module": "Polymarket copy",
+        "book": "direct · UNQUALIFIED $25 cohort",
+        "kind": "paper",
+        "unit": "USD",
+        "closes": 4,
+        "open": 10,
+        "netPnl": 1.6009,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "complete executable marks or capital history unavailable",
+        "status": "AWAITING_SETTLEMENT",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065807047,
+          "ageMs": 14203,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "polymarket-copy-liquidity-scaled",
+        "module": "Polymarket copy",
+        "book": "liquidity-scaled · UNQUALIFIED $25 cohort",
+        "kind": "paper",
+        "unit": "USD",
+        "closes": 4,
+        "open": 10,
+        "netPnl": 1.6009,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "complete executable marks or capital history unavailable",
+        "status": "AWAITING_SETTLEMENT",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065807087,
+          "ageMs": 14163,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "polymarket-copy-random-eligible",
+        "module": "Polymarket copy",
+        "book": "random-eligible · UNQUALIFIED $25 cohort",
+        "kind": "paper",
+        "unit": "USD",
+        "closes": 2,
+        "open": 10,
+        "netPnl": -2,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "complete executable marks or capital history unavailable",
+        "status": "AWAITING_SETTLEMENT",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065808277,
+          "ageMs": 12973,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "polymarket-copy-no-trade",
+        "module": "Polymarket copy",
+        "book": "no-trade · UNQUALIFIED $25 cohort",
+        "kind": "paper",
+        "unit": "USD",
+        "closes": 0,
+        "open": 0,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "cash plus executable exposure does not beat contributed capital",
+        "status": "COLLECTING",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065808318,
+          "ageMs": 12932,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "polymarket-copy-crypto",
+        "module": "Polymarket copy",
+        "book": "CRYPTO category-specialist · UNQUALIFIED $25 cohort",
+        "kind": "paper",
+        "unit": "USD",
+        "closes": 0,
+        "open": 0,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "cash plus executable exposure does not beat contributed capital",
+        "status": "COLLECTING",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065812418,
+          "ageMs": 8832,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "polymarket-copy-momentum",
+        "module": "Polymarket copy",
+        "book": "momentum-confirmed · UNQUALIFIED $25 cohort",
+        "kind": "paper",
+        "unit": "USD",
+        "closes": 0,
+        "open": 2,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "complete executable marks or capital history unavailable",
+        "status": "EXPLORING",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065818772,
+          "ageMs": 2478,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "polymarket-copy-fade",
+        "module": "Polymarket copy",
+        "book": "fade · UNQUALIFIED $25 cohort",
+        "kind": "paper",
+        "unit": "USD",
+        "closes": 0,
+        "open": 0,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "cash plus executable exposure does not beat contributed capital",
+        "status": "COLLECTING",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065819880,
+          "ageMs": 1370,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pump-profit-active-BASELINE@0.6458866122014489",
+        "module": "Pump profit experiments",
+        "book": "active BASELINE@0.6458866122014489 · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 0,
+        "open": 0,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "cash plus executable exposure does not beat contributed capital",
+        "status": "BATCH_CLOSED_AWAITING_EVIDENCE_REVIEW",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806595,
+          "ageMs": 14655,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pump-profit-active-SIZE_1.25@0.6458866122014489",
+        "module": "Pump profit experiments",
+        "book": "active SIZE_1.25@0.6458866122014489 · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 0,
+        "open": 0,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "cash plus executable exposure does not beat contributed capital",
+        "status": "BATCH_CLOSED_AWAITING_EVIDENCE_REVIEW",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806595,
+          "ageMs": 14655,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pump-profit-active-SIZE_1.5@0.6458866122014489",
+        "module": "Pump profit experiments",
+        "book": "active SIZE_1.5@0.6458866122014489 · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 0,
+        "open": 0,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "cash plus executable exposure does not beat contributed capital",
+        "status": "BATCH_CLOSED_AWAITING_EVIDENCE_REVIEW",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806595,
+          "ageMs": 14655,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pump-profit-active-SIZE_2@0.6458866122014489",
+        "module": "Pump profit experiments",
+        "book": "active SIZE_2@0.6458866122014489 · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 0,
+        "open": 0,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "cash plus executable exposure does not beat contributed capital",
+        "status": "BATCH_CLOSED_AWAITING_EVIDENCE_REVIEW",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806595,
+          "ageMs": 14655,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pump-profit-active-EXIT_LATER_FIRST@0.6458866122014489",
+        "module": "Pump profit experiments",
+        "book": "active EXIT_LATER_FIRST@0.6458866122014489 · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 0,
+        "open": 0,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "cash plus executable exposure does not beat contributed capital",
+        "status": "BATCH_CLOSED_AWAITING_EVIDENCE_REVIEW",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806595,
+          "ageMs": 14655,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pump-profit-active-EXIT_SMALL_RUNNER@0.6458866122014489",
+        "module": "Pump profit experiments",
+        "book": "active EXIT_SMALL_RUNNER@0.6458866122014489 · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 0,
+        "open": 0,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "cash plus executable exposure does not beat contributed capital",
+        "status": "BATCH_CLOSED_AWAITING_EVIDENCE_REVIEW",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806595,
+          "ageMs": 14655,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pump-profit-active-EXIT_SIGNAL_STALL@0.6458866122014489",
+        "module": "Pump profit experiments",
+        "book": "active EXIT_SIGNAL_STALL@0.6458866122014489 · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 0,
+        "open": 0,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "cash plus executable exposure does not beat contributed capital",
+        "status": "BATCH_CLOSED_AWAITING_EVIDENCE_REVIEW",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806595,
+          "ageMs": 14655,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pump-profit-active-BASELINE@0.15",
+        "module": "Pump profit experiments",
+        "book": "active BASELINE@0.15 · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 0,
+        "open": 0,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "cash plus executable exposure does not beat contributed capital",
+        "status": "BATCH_CLOSED_AWAITING_EVIDENCE_REVIEW",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806595,
+          "ageMs": 14655,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pump-profit-active-SIZE_1.25@0.15",
+        "module": "Pump profit experiments",
+        "book": "active SIZE_1.25@0.15 · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 0,
+        "open": 0,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "cash plus executable exposure does not beat contributed capital",
+        "status": "BATCH_CLOSED_AWAITING_EVIDENCE_REVIEW",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806595,
+          "ageMs": 14655,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pump-profit-active-SIZE_1.5@0.15",
+        "module": "Pump profit experiments",
+        "book": "active SIZE_1.5@0.15 · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 0,
+        "open": 0,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "cash plus executable exposure does not beat contributed capital",
+        "status": "BATCH_CLOSED_AWAITING_EVIDENCE_REVIEW",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806595,
+          "ageMs": 14655,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pump-profit-active-SIZE_2@0.15",
+        "module": "Pump profit experiments",
+        "book": "active SIZE_2@0.15 · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 0,
+        "open": 0,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "cash plus executable exposure does not beat contributed capital",
+        "status": "BATCH_CLOSED_AWAITING_EVIDENCE_REVIEW",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806595,
+          "ageMs": 14655,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pump-profit-active-EXIT_LATER_FIRST@0.15",
+        "module": "Pump profit experiments",
+        "book": "active EXIT_LATER_FIRST@0.15 · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 0,
+        "open": 0,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "cash plus executable exposure does not beat contributed capital",
+        "status": "BATCH_CLOSED_AWAITING_EVIDENCE_REVIEW",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806595,
+          "ageMs": 14655,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pump-profit-active-EXIT_SMALL_RUNNER@0.15",
+        "module": "Pump profit experiments",
+        "book": "active EXIT_SMALL_RUNNER@0.15 · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 0,
+        "open": 0,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "cash plus executable exposure does not beat contributed capital",
+        "status": "BATCH_CLOSED_AWAITING_EVIDENCE_REVIEW",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806595,
+          "ageMs": 14655,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pump-profit-active-EXIT_SIGNAL_STALL@0.15",
+        "module": "Pump profit experiments",
+        "book": "active EXIT_SIGNAL_STALL@0.15 · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 0,
+        "open": 0,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "cash plus executable exposure does not beat contributed capital",
+        "status": "BATCH_CLOSED_AWAITING_EVIDENCE_REVIEW",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806595,
+          "ageMs": 14655,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pump-profit-active-BASELINE@0.25",
+        "module": "Pump profit experiments",
+        "book": "active BASELINE@0.25 · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 0,
+        "open": 0,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "cash plus executable exposure does not beat contributed capital",
+        "status": "BATCH_CLOSED_AWAITING_EVIDENCE_REVIEW",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806595,
+          "ageMs": 14655,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pump-profit-active-SIZE_1.25@0.25",
+        "module": "Pump profit experiments",
+        "book": "active SIZE_1.25@0.25 · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 0,
+        "open": 0,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "cash plus executable exposure does not beat contributed capital",
+        "status": "BATCH_CLOSED_AWAITING_EVIDENCE_REVIEW",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806595,
+          "ageMs": 14655,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pump-profit-active-SIZE_1.5@0.25",
+        "module": "Pump profit experiments",
+        "book": "active SIZE_1.5@0.25 · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 0,
+        "open": 0,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "cash plus executable exposure does not beat contributed capital",
+        "status": "BATCH_CLOSED_AWAITING_EVIDENCE_REVIEW",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806595,
+          "ageMs": 14655,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pump-profit-active-SIZE_2@0.25",
+        "module": "Pump profit experiments",
+        "book": "active SIZE_2@0.25 · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 0,
+        "open": 0,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "cash plus executable exposure does not beat contributed capital",
+        "status": "BATCH_CLOSED_AWAITING_EVIDENCE_REVIEW",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806595,
+          "ageMs": 14655,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pump-profit-active-EXIT_LATER_FIRST@0.25",
+        "module": "Pump profit experiments",
+        "book": "active EXIT_LATER_FIRST@0.25 · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 0,
+        "open": 0,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "cash plus executable exposure does not beat contributed capital",
+        "status": "BATCH_CLOSED_AWAITING_EVIDENCE_REVIEW",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806595,
+          "ageMs": 14655,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pump-profit-active-EXIT_SMALL_RUNNER@0.25",
+        "module": "Pump profit experiments",
+        "book": "active EXIT_SMALL_RUNNER@0.25 · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 0,
+        "open": 0,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "cash plus executable exposure does not beat contributed capital",
+        "status": "BATCH_CLOSED_AWAITING_EVIDENCE_REVIEW",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806595,
+          "ageMs": 14655,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pump-profit-active-EXIT_SIGNAL_STALL@0.25",
+        "module": "Pump profit experiments",
+        "book": "active EXIT_SIGNAL_STALL@0.25 · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 0,
+        "open": 0,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "cash plus executable exposure does not beat contributed capital",
+        "status": "BATCH_CLOSED_AWAITING_EVIDENCE_REVIEW",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806595,
+          "ageMs": 14655,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pump-profit-discovery-BASELINE@0.6458866122014489",
+        "module": "Pump profit experiments",
+        "book": "discovery BASELINE@0.6458866122014489 · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 12,
+        "open": 2,
+        "netPnl": 0.182958,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "complete executable marks or capital history unavailable",
+        "status": "BATCH_CLOSED_AWAITING_EVIDENCE_REVIEW",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806595,
+          "ageMs": 14655,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pump-profit-discovery-SIZE_1.25@0.6458866122014489",
+        "module": "Pump profit experiments",
+        "book": "discovery SIZE_1.25@0.6458866122014489 · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 5,
+        "open": 2,
+        "netPnl": 0.090567,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "complete executable marks or capital history unavailable",
+        "status": "BATCH_CLOSED_AWAITING_EVIDENCE_REVIEW",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806595,
+          "ageMs": 14655,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pump-profit-discovery-SIZE_1.5@0.6458866122014489",
+        "module": "Pump profit experiments",
+        "book": "discovery SIZE_1.5@0.6458866122014489 · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 1,
+        "open": 2,
+        "netPnl": -0.002264,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "complete executable marks or capital history unavailable",
+        "status": "BATCH_CLOSED_AWAITING_EVIDENCE_REVIEW",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806595,
+          "ageMs": 14655,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pump-profit-discovery-SIZE_2@0.6458866122014489",
+        "module": "Pump profit experiments",
+        "book": "discovery SIZE_2@0.6458866122014489 · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 0,
+        "open": 3,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "complete executable marks or capital history unavailable",
+        "status": "BATCH_CLOSED_AWAITING_EVIDENCE_REVIEW",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806595,
+          "ageMs": 14655,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pump-profit-discovery-EXIT_LATER_FIRST@0.6458866122014489",
+        "module": "Pump profit experiments",
+        "book": "discovery EXIT_LATER_FIRST@0.6458866122014489 · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 11,
+        "open": 3,
+        "netPnl": 0.043203,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "complete executable marks or capital history unavailable",
+        "status": "BATCH_CLOSED_AWAITING_EVIDENCE_REVIEW",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806595,
+          "ageMs": 14655,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pump-profit-discovery-EXIT_SMALL_RUNNER@0.6458866122014489",
+        "module": "Pump profit experiments",
+        "book": "discovery EXIT_SMALL_RUNNER@0.6458866122014489 · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 10,
+        "open": 4,
+        "netPnl": -0.003567,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "complete executable marks or capital history unavailable",
+        "status": "BATCH_CLOSED_AWAITING_EVIDENCE_REVIEW",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806595,
+          "ageMs": 14655,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pump-profit-discovery-EXIT_SIGNAL_STALL@0.6458866122014489",
+        "module": "Pump profit experiments",
+        "book": "discovery EXIT_SIGNAL_STALL@0.6458866122014489 · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 12,
+        "open": 2,
+        "netPnl": 0.183198,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "complete executable marks or capital history unavailable",
+        "status": "BATCH_CLOSED_AWAITING_EVIDENCE_REVIEW",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806595,
+          "ageMs": 14655,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pump-profit-discovery-BASELINE@0.15",
+        "module": "Pump profit experiments",
+        "book": "discovery BASELINE@0.15 · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 0,
+        "open": 1,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "complete executable marks or capital history unavailable",
+        "status": "BATCH_CLOSED_AWAITING_EVIDENCE_REVIEW",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806595,
+          "ageMs": 14655,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pump-profit-discovery-SIZE_1.25@0.15",
+        "module": "Pump profit experiments",
+        "book": "discovery SIZE_1.25@0.15 · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 0,
+        "open": 1,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "complete executable marks or capital history unavailable",
+        "status": "BATCH_CLOSED_AWAITING_EVIDENCE_REVIEW",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806595,
+          "ageMs": 14655,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pump-profit-discovery-SIZE_1.5@0.15",
+        "module": "Pump profit experiments",
+        "book": "discovery SIZE_1.5@0.15 · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 0,
+        "open": 1,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "complete executable marks or capital history unavailable",
+        "status": "BATCH_CLOSED_AWAITING_EVIDENCE_REVIEW",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806595,
+          "ageMs": 14655,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pump-profit-discovery-SIZE_2@0.15",
+        "module": "Pump profit experiments",
+        "book": "discovery SIZE_2@0.15 · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 0,
+        "open": 1,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "complete executable marks or capital history unavailable",
+        "status": "BATCH_CLOSED_AWAITING_EVIDENCE_REVIEW",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806595,
+          "ageMs": 14655,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pump-profit-discovery-EXIT_LATER_FIRST@0.15",
+        "module": "Pump profit experiments",
+        "book": "discovery EXIT_LATER_FIRST@0.15 · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 0,
+        "open": 1,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "complete executable marks or capital history unavailable",
+        "status": "BATCH_CLOSED_AWAITING_EVIDENCE_REVIEW",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806595,
+          "ageMs": 14655,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pump-profit-discovery-EXIT_SMALL_RUNNER@0.15",
+        "module": "Pump profit experiments",
+        "book": "discovery EXIT_SMALL_RUNNER@0.15 · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 0,
+        "open": 1,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "complete executable marks or capital history unavailable",
+        "status": "BATCH_CLOSED_AWAITING_EVIDENCE_REVIEW",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806595,
+          "ageMs": 14655,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pump-profit-discovery-EXIT_SIGNAL_STALL@0.15",
+        "module": "Pump profit experiments",
+        "book": "discovery EXIT_SIGNAL_STALL@0.15 · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 0,
+        "open": 1,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "complete executable marks or capital history unavailable",
+        "status": "BATCH_CLOSED_AWAITING_EVIDENCE_REVIEW",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806595,
+          "ageMs": 14655,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pump-profit-discovery-BASELINE@0.25",
+        "module": "Pump profit experiments",
+        "book": "discovery BASELINE@0.25 · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 0,
+        "open": 1,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "complete executable marks or capital history unavailable",
+        "status": "BATCH_CLOSED_AWAITING_EVIDENCE_REVIEW",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806595,
+          "ageMs": 14655,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pump-profit-discovery-SIZE_1.25@0.25",
+        "module": "Pump profit experiments",
+        "book": "discovery SIZE_1.25@0.25 · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 0,
+        "open": 1,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "complete executable marks or capital history unavailable",
+        "status": "BATCH_CLOSED_AWAITING_EVIDENCE_REVIEW",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806595,
+          "ageMs": 14655,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pump-profit-discovery-SIZE_1.5@0.25",
+        "module": "Pump profit experiments",
+        "book": "discovery SIZE_1.5@0.25 · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 0,
+        "open": 1,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "complete executable marks or capital history unavailable",
+        "status": "BATCH_CLOSED_AWAITING_EVIDENCE_REVIEW",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806595,
+          "ageMs": 14655,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pump-profit-discovery-SIZE_2@0.25",
+        "module": "Pump profit experiments",
+        "book": "discovery SIZE_2@0.25 · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 0,
+        "open": 1,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "complete executable marks or capital history unavailable",
+        "status": "BATCH_CLOSED_AWAITING_EVIDENCE_REVIEW",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806595,
+          "ageMs": 14655,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pump-profit-discovery-EXIT_LATER_FIRST@0.25",
+        "module": "Pump profit experiments",
+        "book": "discovery EXIT_LATER_FIRST@0.25 · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 0,
+        "open": 1,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "complete executable marks or capital history unavailable",
+        "status": "BATCH_CLOSED_AWAITING_EVIDENCE_REVIEW",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806595,
+          "ageMs": 14655,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pump-profit-discovery-EXIT_SMALL_RUNNER@0.25",
+        "module": "Pump profit experiments",
+        "book": "discovery EXIT_SMALL_RUNNER@0.25 · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 0,
+        "open": 1,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "complete executable marks or capital history unavailable",
+        "status": "BATCH_CLOSED_AWAITING_EVIDENCE_REVIEW",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806595,
+          "ageMs": 14655,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      },
+      {
+        "id": "pump-profit-discovery-EXIT_SIGNAL_STALL@0.25",
+        "module": "Pump profit experiments",
+        "book": "discovery EXIT_SIGNAL_STALL@0.25 · UNQUALIFIED",
+        "kind": "paper",
+        "unit": "SOL",
+        "closes": 0,
+        "open": 1,
+        "netPnl": 0,
+        "beatsBaseline": "NOT ENOUGH DATA",
+        "reason": "complete executable marks or capital history unavailable",
+        "status": "BATCH_CLOSED_AWAITING_EVIDENCE_REVIEW",
+        "measurementScope": "Closed outcomes only; drawdown excludes unrealized intraperiod marks",
+        "freshness": {
+          "status": "FRESH",
+          "at": 1791065806595,
+          "ageMs": 14655,
+          "maxAgeMs": 600000,
+          "source": "standalone paper journal"
+        }
+      }
+    ]
+  },
+  "robinhood": {
+    "strict": {
+      "cashUsd": 25,
+      "startUsd": 25,
+      "equityUsd": 25,
+      "unrealizedUsd": 0,
+      "stats": {
+        "closes": 0,
+        "won": 0,
+        "lost": 0,
+        "pnlUsd": 0,
+        "grossWinUsd": 0,
+        "grossLossUsd": 0,
+        "feesUsd": 0,
+        "hitRate": null,
+        "profitFactor": null,
+        "maxDrawdownUsd": 0
+      },
+      "paramsHash": "b32b46bc9e65",
+      "evaluations": {
+        "at": 1791065807193,
+        "paramsHash": "b32b46bc9e65",
+        "bySymbol": {
+          "BTC-USD": {
+            "at": 1791065807193,
+            "action": "REJECTED",
+            "reason": "lowVol",
+            "quoteSource": "v2",
+            "quoteAt": 1791065806997,
+            "quoteAgeMs": 196,
+            "bid": 84750,
+            "ask": 84754.73,
+            "feeRatio": 0.0095,
+            "spreadPct": 0.00005580965203739065,
+            "costPct": 0.02005580965203739,
+            "expectedMovePct": 0.004162177289664717,
+            "requiredMovePct": 0.030083714478056085,
+            "samples": 720
+          },
+          "ETH-USD": {
+            "at": 1791065807193,
+            "action": "REJECTED",
+            "reason": "lowVol",
+            "quoteSource": "v2",
+            "quoteAt": 1791065806997,
+            "quoteAgeMs": 196,
+            "bid": 2688,
+            "ask": 2688.24,
+            "feeRatio": 0.0095,
+            "spreadPct": 0.00008928172849418245,
+            "costPct": 0.020089281728494182,
+            "expectedMovePct": 0.00549965614851296,
+            "requiredMovePct": 0.030133922592741273,
+            "samples": 720
+          }
+        }
+      },
+      "qualification": {
+        "qualified": false,
+        "paramsHash": "b32b46bc9e65",
+        "closes": 0,
+        "hitRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "grossPnlUsd": 0,
+        "feesUsd": 0,
+        "feeDragPct": null,
+        "maxDrawdownUsd": 0,
+        "requiredHitRate": null,
+        "lastCloseAt": null,
+        "windowDays": 30,
+        "reasons": [
+          "closes 0 < 20"
+        ],
+        "at": 1791065822113
+      }
+    },
+    "exploration": {
+      "enabled": true,
+      "countsTowardQualification": false,
+      "stats": {
+        "closes": 3,
+        "won": 0,
+        "lost": 3,
+        "pnlUsd": -0.11680549927047723,
+        "grossWinUsd": 0,
+        "grossLossUsd": 0.11680549927047723,
+        "feesUsd": 0.11284780632379246,
+        "hitRate": 0,
+        "profitFactor": 0,
+        "maxDrawdownUsd": 0.11680549927047723
+      },
+      "equityUsd": 24.786689584692763
+    },
+    "keyValid": true,
+    "source": "robinhood"
+  },
+  "copy": {
+    "books": [
+      {
+        "id": "polymarket-global-incumbent",
+        "platform": "polymarket-global",
+        "unit": "USD",
+        "policy": "incumbent",
+        "paused": true,
+        "funnel": {
+          "candidates": 164,
+          "rejectedObservations": 8,
+          "observed": 250,
+          "eligible": 44,
+          "followed": 6,
+          "copied": 87,
+          "open": 9,
+          "exited": 78,
+          "evaluated": 78
+        },
+        "afterCost": {
+          "netPnl": -144.3675000000001,
+          "qualified": false,
+          "independentPositions": 78,
+          "unknownPnlSlices": 0
+        }
+      },
+      {
+        "id": "polycopy-crypto-v1",
+        "platform": "polymarket-global",
+        "unit": "USD",
+        "policy": "category-specialist",
+        "paused": false,
+        "funnel": {
+          "candidates": 164,
+          "rejectedObservations": 8,
+          "observed": 250,
+          "eligible": 46,
+          "followed": 3,
+          "copied": 0,
+          "open": 0,
+          "exited": 0,
+          "evaluated": 0
+        },
+        "afterCost": {
+          "netPnl": 0,
+          "qualified": false,
+          "independentPositions": 0,
+          "unknownPnlSlices": 0
+        }
+      },
+      {
+        "id": "polycopy-direct-v1",
+        "platform": "polymarket-global",
+        "unit": "USD",
+        "policy": "direct",
+        "paused": false,
+        "funnel": {
+          "candidates": 164,
+          "rejectedObservations": 8,
+          "observed": 250,
+          "eligible": 48,
+          "followed": 3,
+          "copied": 14,
+          "open": 10,
+          "exited": 4,
+          "evaluated": 4
+        },
+        "afterCost": {
+          "netPnl": 1.6009,
+          "qualified": false,
+          "independentPositions": 4,
+          "unknownPnlSlices": 0
+        }
+      },
+      {
+        "id": "polycopy-fade-v1",
+        "platform": "polymarket-global",
+        "unit": "USD",
+        "policy": "fade",
+        "paused": false,
+        "funnel": {
+          "candidates": 164,
+          "rejectedObservations": 8,
+          "observed": 250,
+          "eligible": 48,
+          "followed": 3,
+          "copied": 0,
+          "open": 0,
+          "exited": 0,
+          "evaluated": 0
+        },
+        "afterCost": {
+          "netPnl": 0,
+          "qualified": false,
+          "independentPositions": 0,
+          "unknownPnlSlices": 0
+        }
+      },
+      {
+        "id": "polycopy-liquidity-scaled-v1",
+        "platform": "polymarket-global",
+        "unit": "USD",
+        "policy": "liquidity-scaled",
+        "paused": false,
+        "funnel": {
+          "candidates": 164,
+          "rejectedObservations": 8,
+          "observed": 250,
+          "eligible": 48,
+          "followed": 3,
+          "copied": 14,
+          "open": 10,
+          "exited": 4,
+          "evaluated": 4
+        },
+        "afterCost": {
+          "netPnl": 1.6009,
+          "qualified": false,
+          "independentPositions": 4,
+          "unknownPnlSlices": 0
+        }
+      },
+      {
+        "id": "polycopy-momentum-v1",
+        "platform": "polymarket-global",
+        "unit": "USD",
+        "policy": "momentum-confirmed",
+        "paused": false,
+        "funnel": {
+          "candidates": 164,
+          "rejectedObservations": 8,
+          "observed": 250,
+          "eligible": 48,
+          "followed": 3,
+          "copied": 2,
+          "open": 2,
+          "exited": 0,
+          "evaluated": 0
+        },
+        "afterCost": {
+          "netPnl": 0,
+          "qualified": false,
+          "independentPositions": 0,
+          "unknownPnlSlices": 0
+        }
+      },
+      {
+        "id": "polycopy-no-trade-v1",
+        "platform": "polymarket-global",
+        "unit": "USD",
+        "policy": "no-trade",
+        "paused": false,
+        "funnel": {
+          "candidates": 164,
+          "rejectedObservations": 8,
+          "observed": 250,
+          "eligible": 48,
+          "followed": 3,
+          "copied": 0,
+          "open": 0,
+          "exited": 0,
+          "evaluated": 0
+        },
+        "afterCost": {
+          "netPnl": 0,
+          "qualified": false,
+          "independentPositions": 0,
+          "unknownPnlSlices": 0
+        }
+      },
+      {
+        "id": "polycopy-random-eligible-v1",
+        "platform": "polymarket-global",
+        "unit": "USD",
+        "policy": "random-eligible",
+        "paused": false,
+        "funnel": {
+          "candidates": 164,
+          "rejectedObservations": 8,
+          "observed": 250,
+          "eligible": 48,
+          "followed": 3,
+          "copied": 12,
+          "open": 10,
+          "exited": 2,
+          "evaluated": 2
+        },
+        "afterCost": {
+          "netPnl": -2,
+          "qualified": false,
+          "independentPositions": 2,
+          "unknownPnlSlices": 0
+        }
+      },
+      {
+        "id": "pumpfun-incumbent",
+        "platform": "pumpfun",
+        "unit": "SOL",
+        "policy": "strict-wallet-copy",
+        "paused": false,
+        "funnel": {
+          "candidates": 9824,
+          "rejectedObservations": null,
+          "observed": 13743,
+          "eligible": 0,
+          "followed": 0,
+          "copied": 0,
+          "open": 0,
+          "exited": 0,
+          "evaluated": 0
+        },
+        "afterCost": {
+          "netPnl": 0,
+          "qualified": false,
+          "independentPositions": 0,
+          "unknownPnlSlices": 0
+        }
+      },
+      {
+        "id": "pump-emerging-v1",
+        "platform": "pumpfun",
+        "unit": "SOL",
+        "policy": "emerging",
+        "paused": false,
+        "funnel": {
+          "candidates": 9824,
+          "rejectedObservations": null,
+          "observed": 13743,
+          "eligible": 56,
+          "followed": 8,
+          "copied": 59,
+          "open": 2,
+          "exited": 57,
+          "evaluated": 57
+        },
+        "afterCost": {
+          "netPnl": -0.07784831507000012,
+          "qualified": false,
+          "independentPositions": 57,
+          "unknownPnlSlices": 0
+        }
+      },
+      {
+        "id": "pump-consensus-v1",
+        "platform": "pumpfun",
+        "unit": "SOL",
+        "policy": "consensus",
+        "paused": false,
+        "funnel": {
+          "candidates": 9824,
+          "rejectedObservations": null,
+          "observed": 13743,
+          "eligible": 56,
+          "followed": 8,
+          "copied": 0,
+          "open": 0,
+          "exited": 0,
+          "evaluated": 0
+        },
+        "afterCost": {
+          "netPnl": 0,
+          "qualified": false,
+          "independentPositions": 0,
+          "unknownPnlSlices": 0
+        }
+      }
+    ],
+    "collection": {
+      "status": "PACING",
+      "dailyCredits": 7258,
+      "credits": 7040,
+      "remaining": 218,
+      "backlog": 1514,
+      "calls": 7040,
+      "eventsToday": 1368,
+      "trackedMints": 12,
+      "budgetSkips": 0,
+      "paceSkips": 2821
+    }
+  },
+  "pumpStudy": {
+    "state": "PAPER_ONLY",
+    "entryStreamState": "ACTIVE_POLICY_CHANGED_NO_NEW_BASELINE_OPPORTUNITIES",
+    "experimentPaused": false,
+    "baselineHash": "602fe9d6e922927adc631ea92a0144a8ad1294cf594de6447e7dabd124c41fb0",
+    "liveExecutionAllowed": false,
+    "paidApiCallsAllowed": false,
+    "evidenceNote": "Cash posting reconciliation is not proof of executable profit. Historical missing receipts remain missing. Experiment quotes are provisional, not transactions."
+  },
+  "coordinator": {
+    "summary": {
+      "doing": "Highest priority: Kalshi BTC ranges (RESEARCH). Research is requested or waiting for eligible evidence and Lab capacity.",
+      "why": "Historical fixed-policy replay is exploratory; untouched and prospective evidence required",
+      "next": "Lab evaluates new evidence when its input fingerprint changes",
+      "stages": {
+        "REPAIR": 0,
+        "COLLECT": 0,
+        "RESEARCH": 4,
+        "FREEZE": 1,
+        "ADMISSION": 0,
+        "EVALUATE": 2,
+        "DECIDE": 3
+      }
+    },
+    "executionAuthority": false,
+    "liveAuthority": false,
+    "modules": [
+      {
+        "id": "kalshi-btc",
+        "stage": "RESEARCH",
+        "priority": {
+          "score": 116.26,
+          "components": {
+            "base": 60,
+            "evidenceGain": 25,
+            "outcomeImprovement": 20,
+            "readiness": 11.25,
+            "aging": 0.01
+          }
+        },
+        "bottleneck": "Historical fixed-policy replay is exploratory; untouched and prospective evidence required",
+        "nextAction": "Lab evaluates new evidence when its input fingerprint changes",
+        "readiness": 0.75
+      },
+      {
+        "id": "robinhood-crypto",
+        "stage": "RESEARCH",
+        "priority": {
+          "score": 114.36,
+          "components": {
+            "base": 60,
+            "evidenceGain": 25,
+            "outcomeImprovement": 0,
+            "readiness": 7.5,
+            "aging": 21.86
+          }
+        },
+        "bottleneck": "holdout closes 0/20, accumulating; performance sealed until consumption",
+        "nextAction": "Lab evaluates new evidence when its input fingerprint changes",
+        "readiness": 0.5
+      },
+      {
+        "id": "robinhood-equities",
+        "stage": "RESEARCH",
+        "priority": {
+          "score": 107.63,
+          "components": {
+            "base": 55,
+            "evidenceGain": 25,
+            "outcomeImprovement": 0,
+            "readiness": 6,
+            "aging": 21.63
+          }
+        },
+        "bottleneck": "execution cost assumptions are not verified by the trader",
+        "nextAction": "Lab evaluates new evidence when its input fingerprint changes",
+        "readiness": 0.4
+      },
+      {
+        "id": "kalshi-weather",
+        "stage": "EVALUATE",
+        "priority": {
+          "score": 106.25,
+          "components": {
+            "base": 70,
+            "evidenceGain": 25,
+            "outcomeImprovement": 0,
+            "readiness": 11.25
+          }
+        },
+        "bottleneck": "Frozen exploratory books awaiting settled outcomes: kalshi-farm-explore-f198605e5c641e7d614d 0/30 settled outcomes; kalshi-farm-explore-342517c24862d98d080a 0/30 settled outcomes; 1 more frozen proposal(s) wait: lifetime exploratory budget reached (2 books, $50)",
+        "nextAction": "Keep collecting prospective settled outcomes; the evaluation window is fixed",
+        "readiness": 0.75
+      },
+      {
+        "id": "polymarket-copy",
+        "stage": "DECIDE",
+        "priority": {
+          "score": 95.77,
+          "components": {
+            "base": 50,
+            "evidenceGain": 25,
+            "outcomeImprovement": 5.77,
+            "readiness": 15
+          }
+        },
+        "bottleneck": "1 paper book(s) have enough outcomes for a recommendation",
+        "nextAction": "REJECT polymarket-copy (recommendation only; books and pauses are unchanged)",
+        "readiness": 1
+      },
+      {
+        "id": "pumpfun",
+        "stage": "DECIDE",
+        "priority": {
+          "score": 85,
+          "components": {
+            "base": 50,
+            "evidenceGain": 25,
+            "outcomeImprovement": 0,
+            "readiness": 10
+          }
+        },
+        "bottleneck": "1 paper book(s) have enough outcomes for a recommendation",
+        "nextAction": "REJECT pumpfun-other (recommendation only; books and pauses are unchanged)",
+        "readiness": 0.667
+      },
+      {
+        "id": "polymarket-us",
+        "stage": "FREEZE",
+        "priority": {
+          "score": 81.46,
+          "components": {
+            "base": 45,
+            "evidenceGain": 25,
+            "outcomeImprovement": 0,
+            "readiness": 11.25,
+            "aging": 0.21
+          }
+        },
+        "bottleneck": "Lab champion NEAR_END-0.85-2L-w3 is not admissible: provenance UNVERIFIED (PROVENANCE_UNAVAILABLE:EVALUATED_DATASET_NOT_FROZEN); stage NO_EDGE",
+        "nextAction": "Lab freezes a candidate with verified provenance (evaluator, dataset and output hashes) before any trader admission",
+        "readiness": 0.75
+      },
+      {
+        "id": "pump-wallet-copy",
+        "stage": "DECIDE",
+        "priority": {
+          "score": 65,
+          "components": {
+            "base": 35,
+            "evidenceGain": 15,
+            "outcomeImprovement": 0,
+            "readiness": 15
+          }
+        },
+        "bottleneck": "1 paper book(s) have enough outcomes for a recommendation",
+        "nextAction": "REJECT pumpfun-copy-emerging (recommendation only; books and pauses are unchanged)",
+        "readiness": 1
+      },
+      {
+        "id": "polymarket-clob",
+        "stage": "RESEARCH",
+        "priority": {
+          "score": 61.26,
+          "components": {
+            "base": 45,
+            "evidenceGain": 6.25,
+            "outcomeImprovement": 0,
+            "readiness": 10,
+            "aging": 0.01
+          }
+        },
+        "bottleneck": "Watching for a new completed Polymarket tape window.",
+        "nextAction": "Lab evaluates new evidence when its input fingerprint changes",
+        "readiness": 0.667
+      },
+      {
+        "id": "kalshi-mirror",
+        "stage": "EVALUATE",
+        "priority": {
+          "score": 60,
+          "components": {
+            "base": 40,
+            "evidenceGain": 10,
+            "outcomeImprovement": 0,
+            "readiness": 10
+          }
+        },
+        "bottleneck": "Collecting outcomes: 0 closed across 1 books (needs 20 per book)",
+        "nextAction": "Continue forward observation",
+        "readiness": 0.667
+      }
+    ]
+  },
+  "lab": {
+    "build": {
+      "schema": "mpo.lab-build.v1",
+      "packageVersion": "0.1.0-alpha.28",
+      "commit": "9cfaa899b4d6a95d7d753314652b481d7d12dd46",
+      "sourceDirty": false,
+      "sourceFingerprint": "5efebab84f39bb11038591633f3f311577166c421733654e1ac0f09d3a3af4a3",
+      "builtAt": "2026-10-03T20:22:56.000Z",
+      "toolchain": {
+        "node": "v24.16.0",
+        "platform": "win32",
+        "arch": "x64",
+        "electron": "supplied by existing installed runtime; archive build does not replace runtime"
+      },
+      "compatibility": {
+        "labLink": "mpo.lab-status.v1",
+        "modules": "mpo.lab-module-research.v1",
+        "sharedCompute": "mpo.compute-budget.v1",
+        "prediction": "mpo.prediction-episodes.v1"
+      }
+    },
+    "legacyStatus": "RETIRED",
+    "modules": [
+      {
+        "id": "kalshi",
+        "status": "WAITING_FOR_DATA",
+        "phase": "WAITING_FOR_DATA",
+        "paperPromotionAllowed": false,
+        "blockers": [
+          "Historical fixed-policy replay is exploratory; untouched and prospective evidence required",
+          "Observed offers do not prove fills or future depth",
+          "Settlement costs and capital duration beyond observed outcomes need venue verification"
+        ],
+        "note": "0 independent settled outcomes; 100 refused episodes. Historical exploration; prospective paper qualification remains blocked.",
+        "updatedAt": 1791065805458
+      },
+      {
+        "id": "robinhood",
+        "status": "RUNNING",
+        "phase": "SEARCHING",
+        "paperPromotionAllowed": false,
+        "blockers": [
+          "holdout closes 0/20, accumulating; performance sealed until consumption",
+          "BTC-USD vol gate: p95 expected move 1.29% < required 3.01% (ratio 0.429)",
+          "ETH-USD vol gate: p95 expected move 1.58% < required 3.01% (ratio 0.525)",
+          "ADA-USD vol gate: p95 expected move 1.40% < required 3.03% (ratio 0.462)",
+          "AVAX-USD vol gate: p95 expected move 1.78% < required 3.01% (ratio 0.591)",
+          "DOGE-USD vol gate: p95 expected move 0.93% < required 3.00% (ratio 0.309)",
+          "LINK-USD vol gate: p95 expected move 1.30% < required 3.01% (ratio 0.431)",
+          "SOL-USD vol gate: p95 expected move 2.15% < required 3.00% (ratio 0.717)",
+          "XRP-USD vol gate: p95 expected move 0.82% < required 3.00% (ratio 0.274)"
+        ],
+        "note": "Blocked: holdout closes 0/20, accumulating; performance sealed until consumption; BTC-USD vol gate: p95 expected move 1.29% < required 3.01% (ratio 0.429); ETH-USD vol gate: p95 expected move 1.58% < required 3.01% (ratio 0.525); ADA-USD vol gate: p95 expected move 1.40% < required 3.03% (ratio 0.462); AVAX-USD vol gate: p95 expected move 1.78% < required 3.01% (ratio 0.591); DOGE-USD vol gate: p95 expected move 0.93% < required 3.00% (ratio 0.309); LINK-USD vol gate: p95 expected move 1.30% < required 3.01% (ratio 0.431); SOL-USD vol gate: p95 expected move 2.15% < required 3.00% (ratio 0.717); XRP-USD vol gate: p95 expected move 0.82% < required 3.00% (ratio 0.274).",
+        "updatedAt": 1791065807598
+      },
+      {
+        "id": "robinhood-equities",
+        "status": "RUNNING",
+        "phase": "NO_EDGE",
+        "paperPromotionAllowed": false,
+        "blockers": [
+          "execution cost assumptions are not verified by the trader",
+          "walk-forward selection Sharpe 1.44 does not beat the defaults' 1.8",
+          "deflated Sharpe 0.312 < 0.95 over 129 candidates (543 walk-forward sessions)"
+        ],
+        "note": "Blocked: execution cost assumptions are not verified by the trader; walk-forward selection Sharpe 1.44 does not beat the defaults' 1.8; deflated Sharpe 0.312 < 0.95 over 129 candidates (543 walk-forward sessions).",
+        "updatedAt": 1791064383319
+      },
+      {
+        "id": "polymarket",
+        "status": "RUNNING",
+        "phase": "NO_EDGE",
+        "paperPromotionAllowed": false,
+        "note": "Watching for a new completed Polymarket tape window.",
+        "updatedAt": 1791059259140
+      },
+      {
+        "id": "polymarket-combo",
+        "status": "RUNNING",
+        "phase": "NO_EDGE",
+        "paperPromotionAllowed": false,
+        "note": "No new outcomes since the last pass.",
+        "updatedAt": 1791065805439
+      }
+    ],
+    "resources": {
+      "cpu": {
+        "logicalProcessors": 32,
+        "machinePct": 22.1,
+        "labPct": 6.8,
+        "machineFresh": true,
+        "labFresh": true
+      },
+      "memory": {
+        "totalMiB": 65455,
+        "freeMiB": 45619.2,
+        "usedPct": 30.3,
+        "labWorkingSetMiB": 1030.3
+      },
+      "gpuStatus": "SAMPLED"
+    },
+    "liveActivationAllowed": false,
+    "automaticLivePromotionAllowed": false
+  },
+  "responseMs": {
+    "health": 262,
+    "state": 177,
+    "scoreboard": 1035,
+    "robinhood": 1067,
+    "copyFunnel": 1322,
+    "coordinator": 1323,
+    "labState": 78
+  }
+}
