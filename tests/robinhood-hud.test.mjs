@@ -52,7 +52,7 @@ test('required controls, fieldsets and routes are present',()=>{
 test('desktop shell registers the window, keeps the layout version and leaves Polymarket modules alone',()=>{
  assert.match(html,/\['robinhood','Robinhood','RH','dark'\]/);assert.match(html,/robinhood:\{x:200,y:90,w:880,h:720\}/);
  assert.match(html,/LAYOUT_VERSION='2026-09-26-glance'/);assert.match(html,/DEFAULT_OPEN=\[\]/);
- assert.match(html,/const POLY_MODS=\['combos'\]/);assert.match(html,/windowShown\('robinhood'\)\|\|windowShown\('money'\)\)\)refreshRobinhood\(\)/);
+ assert.match(read('public/js/mpo-polymarket-window.js'),/const POLY_MODS=\['combos'\]/,'the Polymarket window code moved to its own file (run D2)');assert.match(html,/windowShown\('robinhood'\)\|\|windowShown\('money'\)\)\)refreshRobinhood\(\)/);
  assert.equal((html.match(/mpo-brand-title/g)||[]).length,1,'Updater retains its brand title while Money shares an overview');
 });
 test('automatic refresh never replaces a focused input or a typed secret',()=>{

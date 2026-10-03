@@ -8,7 +8,9 @@ import vm from 'node:vm';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = p => fs.readFileSync(path.join(root, p), 'utf8');
-const html = read('public/dashboard.html');
+// The HUD's code: the page plus the window files run D2 moved out of its inline script (they used to be inside it).
+const D2_WINDOW_FILES = ['public/js/mpo-polymarket-window.js'];
+const html = read('public/dashboard.html') + '\n' + D2_WINDOW_FILES.map(read).join('\n');
 const dashJs = read('src/dashboard.js');
 const us = read('src/polymarketUS.js');
 const combos = read('src/polymarketUSCombos.js');
