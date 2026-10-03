@@ -62,6 +62,26 @@ Architecture, active work and release evidence live in `.agent-state/PROJECT_STA
 ledger remains `AUDIT.md` and `PROGRESS.md`. Later sections below are historical unless dated
 as the current release. Last updated: 2026-10-03.
 
+## Batch PF-12 (2026-10-03, Codex): prospective sealed holdout (run item A4)
+
+The Lab no longer repeatedly cuts the newest 20% as its promotion holdout. A search winner freezes its
+parameter hash, timestamp and execution costs durably before receiving new tape. Search remains on pre-freeze
+data while the window accumulates. Incremental replay persists rolling indicator context, pending next-quote
+orders, positions, cash and per-symbol cursors. Only rows after the freeze and cursor are processed; repeated
+rows/restarts cannot create extra returns. Intermediate status shows closes/20 and hides returns. At the minimum,
+the window is consumed once, durably before publication; PF, positive after-cost P/L, venue share, incumbent
+gain and lifetime deflated-Sharpe gates still apply. A different candidate starts after the previous consumption
+high-water mark and the last paper decision. Unreadable persisted evidence refuses replacement.
+
+Shared implementation is trader-owned `robinhoodEvolve.js`, synced into the Lab; historical `holdoutGate`
+remains for legacy diagnostic callers. Tests prove incremental vs one-shot fill parity, accumulation over days,
+duplicate/restart invariance, one consumption and corrupt-evidence preservation. Lab lineage tests retain their
+unit coverage; the old immediate historical-promotion integration was replaced with the prospective contract.
+Targeted trader tests 13/13, Lab proposal/parity tests 7/7; full suites recorded on completion.
+
+A3 full validation: trader 1,250 pass / 20 skips; Lab 395 pass plus the added feedback test verified separately.
+Run checkpoint: A1–A4 source implemented; A3 forward observation pending release; A5 next; A5–D3 open.
+
 ## Batch PF-11 (2026-10-03, Codex): scheduled exploration (run item A3)
 
 Before: the exploration candidate list used saved BTC/ETH selections and the same low-vol refusal as strategy.

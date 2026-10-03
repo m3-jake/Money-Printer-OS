@@ -176,3 +176,24 @@ test('a fresh Evolution Lab Robinhood lane stands the trader\'s own automatic se
  write({module:'polymarket',status:'RUNNING',updatedAt:t});
  assert.equal(RH.labRobinhoodResearchActive(t),false,'another module\'s status is ignored');
 });
+// Prospective replay persists open positions, pending next-quote fills and row cursors.
+test('prospective holdout accumulates across days and restarts without consuming a decision row twice',()=>{
+ const params={...S.STRATEGY_DEFAULTS,warmupSamples:10,minSamples:10,lookbackSamples:5,emaFast:2,emaSlow:5,emaSlopeSamples:1,volWindow:5,costMultiple:0.1,breakoutBufferPct:0,maxHoldMin:1,cooldownWinMin:0,cooldownLossMin:0};
+ const t0=Date.UTC(2026,9,1),rows=[];
+ for(let i=0;i<400;i++){const mid=100*(1+i*0.002);rows.push({t:t0+i*15000,bid:mid,ask:mid*1.00001,src:'robinhood'})}
+ const frozen=E.freezeProspective(params,{'BTC-USD':rows.slice(0,20)},{now:rows[19].t,feeRatio:0,orderUsd:2,startUsd:25,cfg:{...E.evolveConfig(),holdoutMinCloses:100}});
+ const a=E.advanceProspective(frozen,{'BTC-USD':rows.slice(0,100)},{now:rows[99].t});
+ assert.equal(a.gate,null);assert.ok(a.window.closes.length>0);assert.equal(a.window.rows,80);
+ assert.ok(a.window.closes.every(c=>c.openedAt>frozen.freezeAt));
+ const restored=JSON.parse(JSON.stringify(a.window));
+ const duplicate=E.advanceProspective(restored,{'BTC-USD':[...rows.slice(0,100),rows[99]]},{now:rows[99].t});
+ assert.deepEqual(duplicate.window,a.window);
+ const b=E.advanceProspective(restored,{'BTC-USD':rows},{now:t0+864e5});
+ assert.equal(b.window.rows,380);assert.ok(b.window.closes.length>a.window.closes.length);
+ const one=E.advanceProspective(frozen,{'BTC-USD':rows},{now:t0+864e5});
+ assert.deepEqual(b.window.closes,one.window.closes,'chunk boundaries and restarts cannot change fills');
+ const low=E.freezeProspective(params,{'BTC-USD':rows.slice(0,20)},{now:rows[19].t,feeRatio:0,orderUsd:2,startUsd:25,cfg:{...E.evolveConfig(),holdoutMinCloses:20}});
+ const consumed=E.advanceProspective(low,{'BTC-USD':rows},{now:t0+864e5});
+ assert.ok(consumed.gate);assert.equal(consumed.window.consumed,true);
+ assert.equal(E.advanceProspective(consumed.window,{'BTC-USD':rows},{now:t0+2*864e5}).gate,null);
+});

@@ -25,7 +25,7 @@
     },
     "src/robinhoodEvolve.js": {
       "lab": "src/robinhoodEvolve.js",
-      "sha256": "6f5e3cdae443301fbddf89b2ea459948154cbf0cabfe747c9e2f2b7f328f424c"
+      "sha256": "b5b53ff04624e087f4f368a314cebb4f1994c7168a5c5353a8d37681ad3d3153"
     },
     "src/robinhoodEvidence.js": {
       "lab": "src/robinhoodEvidence.js",
@@ -69,7 +69,7 @@
     }
   },
   "syncedFrom": {
-    "traderCommit": "91fc38a",
-    "at": "2026-10-03T13:04:04.407Z"
+    "traderCommit": "46bf6a2",
+    "at": "2026-10-03T14:07:22.500Z"
   }
 }

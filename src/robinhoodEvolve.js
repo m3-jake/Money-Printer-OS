@@ -142,6 +142,62 @@ export function holdoutGate(params,holdout,{feeRatio=0.0095,orderUsd=25,startUsd
  if(!(pnl>0))reasons.push('holdout pnl <= 0');
  return {pass:!reasons.length,reasons,returns,closes,wins,hitRate:closes?wins/closes:null,profitFactor:Number.isFinite(profitFactor)?Math.round(profitFactor*1000)/1000:'infinity',pnlUsd:Math.round(pnl*100)/100,robinhoodShare:Math.round(robinhoodShare*1000)/1000,rows,through};
 }
+// Persist this object before reading post-freeze tape. Per-symbol cursors ensure every decision row is consumed once.
+export function freezeProspective(params,tapes,{now=Date.now(),feeRatio=0.0095,orderUsd=25,startUsd=1000,cfg=evolveConfig(),after=0}={}){
+ const p=S.normalizeParams(params),freezeAt=Math.max(now,after),symbols={};
+ for(const [symbol,rows] of Object.entries(tapes||{}))symbols[symbol]={through:freezeAt,warm:rows.filter(r=>r.t<=freezeAt).slice(-720),cash:startUsd,position:null,pending:null,cooldownUntil:0};
+ return {schema:'mpo.prospective-holdout.v1',params:p,paramsHash:S.paramsHash(p),freezeAt,feeRatio,orderUsd,startUsd,
+  minCloses:Math.max(20,cfg.holdoutMinCloses),minPF:Math.max(1.2,cfg.holdoutMinPF),requireRobinhoodQuotes:cfg.requireRobinhoodQuotes,
+  minRobinhoodShare:cfg.minRobinhoodShare,symbols,rows:0,venueRows:0,closes:[],consumed:false,evaluation:null};
+}
+export function advanceProspective(saved,tapes,{now=Date.now()}={}){
+ const w=structuredClone(saved);
+ if(w?.schema!=='mpo.prospective-holdout.v1')throw Error('Invalid prospective holdout');
+ if(w.consumed)return {window:w,gate:null,progress:{phase:'CONSUMED',closes:w.closes.length,required:w.minCloses}};
+ const p=w.params,fee=w.feeRatio,need=Math.max(p.warmupSamples,p.minSamples);
+ for(const [symbol,input] of Object.entries(tapes||{})){
+  const s=w.symbols[symbol]||=( {through:w.freezeAt,warm:[],cash:w.startUsd,position:null,pending:null,cooldownUntil:0} );
+  const rows=input.filter(r=>Number.isFinite(r.t)&&r.t>w.freezeAt&&r.t>s.through&&r.t<=now&&r.bid>0&&r.ask>=r.bid).sort((a,b)=>a.t-b.t);
+  for(const r of rows){
+   if(r.t<=s.through)continue;
+   s.through=r.t;s.warm.push(r);s.warm=s.warm.slice(-720);w.rows++;if(r.src==='robinhood')w.venueRows++;
+   if(s.pending){
+    if(s.pending.side==='SELL'&&s.position){
+     const fill=S.paperSellFill({qty:s.position.qty,bid:r.bid,ask:r.ask,feeRatio:fee,now:r.t,params:p});
+     if(fill.status!=='REJECTED'&&Number.isFinite(fill.proceedsUsd)){
+      const pnl=fill.proceedsUsd-s.position.costUsd;s.cash+=fill.proceedsUsd;
+      w.closes.push({symbol,openedAt:s.position.openedAt,closedAt:r.t,pnlUsd:pnl});
+      s.cooldownUntil=S.cooldownUntil({closedAt:r.t,pnlUsd:pnl},p);s.position=null;
+     }
+    }else if(s.pending.side==='BUY'&&!s.position){
+     const size=S.sizeOrder({orderUsd:w.orderUsd,ask:r.ask,pair:{assetIncrement:'0.00000001',minOrderAmountUsd:1},buyingPowerUsd:s.cash,maxOrderUsd:w.orderUsd,feeRatio:fee});
+     if(size.ok){const fill=S.paperBuyFill({qty:size.qty,bid:r.bid,ask:r.ask,feeRatio:fee,now:r.t,params:p});
+      if(fill.costUsd>0&&fill.costUsd<=s.cash&&fill.status!=='REJECTED'){s.cash-=fill.costUsd;s.position={qty:size.qty,...fill,...s.pending.signal,openedAt:r.t,peakBid:r.bid,trailStop:null}}
+     }
+    }
+    s.pending=null;continue;
+   }
+   if(s.warm.length<need)continue;
+   const f=S.computeFeatures(s.warm,p,r.t);
+   if(s.position){const exit=S.exitSignal(s.position,{bid:r.bid,features:f,now:r.t,feeRatio:fee,params:p});
+    s.position.peakBid=exit.peakBid;s.position.trailStop=exit.trailStop;if(exit.exit)s.pending={side:'SELL',at:r.t};
+   }else if(f.ok&&r.t>=s.cooldownUntil){const sig=S.entrySignal(f,{costPct:S.roundTripCost(fee,f.spreadPct||0,p),params:p});if(sig.enter)s.pending={side:'BUY',at:r.t,signal:sig}}
+  }
+ }
+ const n=w.closes.length,through=Math.max(w.freezeAt,...Object.values(w.symbols).map(s=>s.through));
+ const progress={phase:'ACCUMULATING',freezeAt:w.freezeAt,through,closes:n,required:w.minCloses,rows:w.rows,
+  reason:`holdout closes ${n}/${w.minCloses}, accumulating; performance sealed until consumption`};
+ if(n<w.minCloses)return {window:w,gate:null,progress};
+ const pnl=w.closes.reduce((s,c)=>s+c.pnlUsd,0),gw=w.closes.reduce((s,c)=>s+Math.max(0,c.pnlUsd),0),gl=w.closes.reduce((s,c)=>s+Math.max(0,-c.pnlUsd),0);
+ const pf=gl?gw/gl:gw?Infinity:0,share=w.rows?w.venueRows/w.rows:0,reasons=[];
+ if(pf<w.minPF)reasons.push(`holdout PF ${pf} < ${w.minPF}`);
+ if(!(pnl>0))reasons.push('holdout pnl <= 0');
+ if(w.requireRobinhoodQuotes&&share<w.minRobinhoodShare)reasons.push('insufficient Robinhood quotes');
+ const gate={pass:!reasons.length,reasons,closes:n,returns:w.closes.map(c=>c.pnlUsd/w.orderUsd*100),pnlUsd:pnl,
+  profitFactor:Number.isFinite(pf)?pf:'infinity',robinhoodShare:share,rows:w.rows,through,freezeAt:w.freezeAt,prospective:true,consumedOnce:true};
+ w.consumed=true;w.evaluation=gate;w.consumedAt=now;
+ return {window:w,gate,progress:{...progress,phase:'CONSUMED'}};
+}
 const yieldNow=()=>new Promise(r=>setImmediate(r));
 // The search. Evaluates the incumbent first, then up to `candidates` bounded mutations while inside `budgetMs`
 // (checked between candidates, with a macrotask yield so the loop tick stays responsive). Pure of fs/env except `cfg`.
