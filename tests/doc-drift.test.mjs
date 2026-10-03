@@ -125,15 +125,16 @@ const ENTRY_POINTS = ['.agent-state/CURRENT_TASKS.md', '.agent-state/PROJECT_STA
 const datesIn = doc => [...doc.matchAll(/20\d\d-\d\d-\d\d/g)].map(m => m[0]).sort();
 const newest = doc => datesIn(doc).at(-1);
 
+// Run D1 (2026-10-03): the ledger of record is MONEY_PRINTER_STATUS.md; the remediation PROGRESS ledger moved verbatim
+// to docs/history/. The rule is unchanged: the entry points route to the ledger of record and are not older than it.
 test('the agent-state entry points are not older than the record they describe', () => {
-  const ledger = read('PROGRESS.md');
-  assert.match(ledger, /^\*\*P\d+\.\d+ /m, 'PROGRESS.md no longer holds dated pass items, so the entry points route to nothing');
-  const newestLedger = newest(ledger);
-  assert.ok(newestLedger, 'PROGRESS.md carries no date for the pass it records');
+  assert.ok(fs.existsSync(path.join(root, 'docs/history/PROGRESS-remediation-2026-09.md')), 'the remediation ledger was moved, not lost');
+  const newestLedger = newest(sectionOf(status, '## Current entry point'));
+  assert.ok(newestLedger, 'the ledger entry point carries no date');
   for (const rel of ENTRY_POINTS) {
     assert.ok(fs.existsSync(path.join(root, rel)), `${rel} is gone — the entry point a session reads first moved`);
     const doc = read(rel);
-    assert.match(doc, /PROGRESS\.md/, `${rel} does not route the reader to the ledger of record`);
+    assert.match(doc, /MONEY_PRINTER_STATUS\.md/, `${rel} does not route the reader to the ledger of record`);
     assert.ok(newest(doc) >= newestLedger,
       `${rel} is older (${newest(doc)}) than the pass the ledger records (${newestLedger}) — a pass changed the tree and left the entry point silent`);
   }
