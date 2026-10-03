@@ -68,6 +68,7 @@ export function normalizePolymarket(raw,observedAt=Date.now()) {
   const named=outcomes.length===2&&!outcomes.some(v=>/^(yes|no)$/i.test(String(v)));
   let yes=outcomes.findIndex(v=>String(v).toLowerCase()==='yes'),no=outcomes.findIndex(v=>String(v).toLowerCase()==='no');if(named){yes=0;no=1;}
   return entity('Contract','polymarket',String(raw.id),{...ruleDefaults,venue:'polymarket',title:raw.question,sourceEventId:event?.id?String(event.id):null,eventId:event?.id?stableId('Event','polymarket',String(event.id)):null,
+    conditionId:raw.conditionId||null,slug:raw.slug||null,
     outcomeDefinition:raw.question,expiresAt:timestamp(raw.endDate),closeAt:timestamp(raw.endDate),resolutionSource:raw.resolutionSource||null,settlementRules:raw.description||null,
     status:raw.closed?'CLOSED':raw.active?'OPEN':'INACTIVE',category:raw.category||null,yesBid:probability(raw.bestBid),yesAsk:probability(raw.bestAsk),noBid:null,noAsk:null,
     impliedProbability:yes>=0?probability(prices[yes]):null,volume:finite(raw.volumeNum??raw.volume),liquidityUsd:finite(raw.liquidityNum??raw.liquidity),

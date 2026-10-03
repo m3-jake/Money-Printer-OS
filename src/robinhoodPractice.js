@@ -20,7 +20,7 @@ export const PRACTICE_DEFAULTS = Object.freeze({
   mode: 'PRACTICE', strategyMode: 'MOMENTUM', budgetUsd: 25, orderUsd: 5,
   symbols: ['BTC-USD', 'ETH-USD'], maxOpenPositions: 3, dailyLossCapUsd: 5,
   holdMinutes: 1440, stopPct: 0.02, takePct: 0.04, slippageBps: 8, feeBps: 95,
-  quoteMaxAgeMs: 30_000, entryMovePct: 0.01, autopilot: false,
+  quoteMaxAgeMs: 30_000, entryMovePct: 0.01, entryCostMultiple: 2, lookbackMinutes: 1440, autopilot: false,
 });
 const SYMBOL_RE = /^[A-Z0-9]{2,10}-USD$/;
 const QTY_STEP = 1e-6;
@@ -60,6 +60,8 @@ export function normalizePracticeSettings(patch = {}, base = PRACTICE_DEFAULTS) 
   positive('feeBps', 0, 2_500);
   positive('quoteMaxAgeMs', 1_000, 10 * 60_000); out.quoteMaxAgeMs = Math.round(out.quoteMaxAgeMs);
   positive('entryMovePct', 0, .25);
+  positive('entryCostMultiple', 0, 10);
+  positive('lookbackMinutes', 1, 1440);
   const pct = (key, fallback) => {
     const n = Number(src[key] ?? out[key]);
     out[key] = Number.isFinite(n) ? Math.max(0, Math.min(.95, n)) : fallback;
@@ -149,12 +151,16 @@ function sellFill({ position, quote, settings, now }) {
 function entrySignal(book, symbol, quote, settings, now) {
   // The cycle appends this tick to the tape before entries, so compare against the last point before now.
   const tape = book.telemetry.tape[symbol] || [];
-  const previous = tape.filter(x => x.at < now).at(-1)?.mid;
+  const previous = tape.find(x => x.at < now && x.at >= now - settings.lookbackMinutes * 60_000)?.mid;
   if (settings.mode === 'BUY_AND_HOLD' || settings.strategyMode === 'BUY_AND_HOLD') return { enter: true, reason: 'buy-and-hold' };
   if (previous === undefined) return { enter: false, reason: 'warmup: one prior observed quote required' };
   const move = ((quote.bid + quote.ask) / 2) / previous - 1;
-  if (settings.strategyMode === 'MEAN_REVERSION') return { enter: move <= -settings.entryMovePct, reason: move <= -settings.entryMovePct ? 'mean-reversion' : 'no-reversion' };
-  return { enter: move >= settings.entryMovePct, reason: move >= settings.entryMovePct ? 'momentum' : 'no-momentum' };
+  const spread = (quote.ask - quote.bid) / ((quote.ask + quote.bid) / 2);
+  const costFloor = settings.entryCostMultiple * (2 * (settings.feeBps + settings.slippageBps) / 10_000 + spread);
+  const threshold = Math.max(settings.entryMovePct, costFloor);
+  const eligible = settings.strategyMode === 'MEAN_REVERSION' ? move <= -threshold : move >= threshold;
+  return { enter: eligible, reason: eligible ? (settings.strategyMode === 'MEAN_REVERSION' ? 'mean-reversion' : 'momentum')
+    : Math.abs(move) < costFloor ? 'below-cost-wall' : settings.strategyMode === 'MEAN_REVERSION' ? 'no-reversion' : 'no-momentum' };
 }
 
 function closePosition(book, index, quote, reason, now) {
@@ -204,7 +210,8 @@ export async function runPracticeCycle({ dataDir, now = null, settings = null, f
     const q = quotes.get(symbol); t.candidatesChecked.push(symbol);
     if (!q) { addReject(t, 'no-quote'); continue; }
     if (!freshQuote(q, now, s.quoteMaxAgeMs)) { addReject(t, 'stale-quote'); continue; }
-    t.tape[symbol] = [...(t.tape[symbol] || []), { at: now, mid: r2((q.bid + q.ask) / 2), source: q.source }].slice(-720);
+    t.tape[symbol] = [...(t.tape[symbol] || []), { at: now, mid: (q.bid + q.ask) / 2, source: q.source }]
+      .filter(x => x.at >= now - s.lookbackMinutes * 60_000).slice(-5761);
   }
   const freshBySymbol = new Map(fresh.map(q => [q.symbol, q]));
   for (let i = book.positions.length - 1; i >= 0; i--) {

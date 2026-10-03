@@ -203,7 +203,7 @@ test('the weather calibrator uses the Evolution Lab\'s best model when it beats 
   const { WeatherCalibrator } = await import('../src/weatherCalibration.js');
   const dir = tmp(); fs.mkdirSync(path.join(dir, 'lab-link'));
   const now = Date.UTC(2026, 9, 3, 16), today = '2026-10-03', tomorrow = '2026-10-04';
-  fs.writeFileSync(path.join(dir, 'lab-link', 'workbench.json'), JSON.stringify({ schema: 'mpo.lab-workbench.v1', weather: { models: ['gfs_seamless', 'ecmwf_ifs025'], best: { NYC: [{ model: 'mean', bias: 1.5, sd: 1.2, use: true, heldOut: -1.6 }, { model: 'gfs_seamless', bias: 0, sd: 2, use: false, heldOut: -2.4 }] } } }));
+  fs.writeFileSync(path.join(dir, 'lab-link', 'workbench.json'), JSON.stringify({ schema: 'mpo.lab-workbench.v1', updatedAt: now, weather: { at: now, models: ['gfs_seamless', 'ecmwf_ifs025'], best: { NYC: [{ model: 'mean', bias: 1.5, sd: 1.2, use: true, heldOut: -1.6, default: -2.0 }, { model: 'gfs_seamless', bias: 0, sd: 2, use: false, heldOut: -2.4 }] } } }));
   let asked = '';
   const fetchImpl = async url => { asked = String(url); const time = [`${today}T12:00`, `${today}T15:00`, `${tomorrow}T15:00`]; return { ok: true, json: async () => ({ hourly: { time, temperature_2m_gfs_seamless: [70, 74, 80], temperature_2m_ecmwf_ifs025: [71, 76, 81] } }) }; };
   const cal = new WeatherCalibrator({ dataDir: dir, fetchImpl, now: () => now });

@@ -192,10 +192,11 @@ function openOf(store, symbol, day) {
 export function bookFile(dataDir) { return path.join(dataDir, 'robinhood-daily-paper.json'); }
 export function newDailyBook({ startUsd = DAILY_DEFAULTS.startUsd, symbols = DAILY_DEFAULTS.symbols, slipBps = DAILY_DEFAULTS.slipBps, now = Date.now() } = {}) {
   const list = [...new Set(symbols)].filter(s => SYMBOL_RE.test(s));
-  const alloc = r2(startUsd / Math.max(1, list.length));
+  if (!list.length || !Number.isFinite(startUsd) || startUsd <= 0) throw new Error('Daily paper book requires symbols and a positive bankroll');
+  const cents = Math.round(startUsd * 100), alloc = Math.floor(cents / list.length);
   return {
     schema: DAILY_BOOK_SCHEMA, version: 1, createdAt: now, startUsd, slipBps, symbols: list, execution: 'paper-only', liveEligible: false,
-    source: null, sleeves: Object.fromEntries(list.map(s => [s, { cashUsd: alloc, qty: 0, entry: null }])),
+    source: null, sleeves: Object.fromEntries(list.map((s, i) => [s, { cashUsd: (alloc + (i === list.length - 1 ? cents - alloc * list.length : 0)) / 100, qty: 0, entry: null }])),
     pending: [], lastDecidedDay: null, lastDecision: null, missedDays: 0, history: [], fills: [], equityDaily: [], bench: null, events: [],
     recoveryRequired: false, recoveryReason: null,
   };
@@ -249,7 +250,8 @@ function fillPending(book, store, { now, fee, quoteFn, quoteWindowMs }) {
     const inWindow = now - openMs <= quoteWindowMs;
     let price = null, priceSource = null;
     const q = inWindow && typeof quoteFn === 'function' ? quoteFn(order.symbol) : null;
-    if (q && Number.isFinite(q.bid) && q.bid > 0 && Number.isFinite(q.ask) && q.ask >= q.bid) {
+    if (q && Number.isFinite(q.bid) && q.bid > 0 && Number.isFinite(q.ask) && q.ask >= q.bid
+        && Number.isFinite(q.at) && q.at <= now && now - q.at <= 30_000 && q.at >= order.decidedAt) {
       price = order.side === 'buy' ? q.ask : q.bid; priceSource = q.source ? `robinhood-quote:${q.source}` : 'robinhood-quote';
     } else {
       const o = openOf(store, order.symbol, order.fillDay);
@@ -355,6 +357,8 @@ export function dailyQualification(book, { rules = DAILY_QUALIFICATION } = {}) {
     beatsBuyHold: bookRet !== null && benchRet !== null && bookRet > benchRet,
     drawdownVsBuyHold: win.length > 1 && bookDd <= benchDd,
     profitFactor: pf !== null && pf >= rules.minProfitFactor,
+    observedExecution: trades.length > 0 && trades.every(t => !t.late?.entry && !t.late?.exit
+      && String(t.priceSource?.entry || '').startsWith('robinhood-quote') && String(t.priceSource?.exit || '').startsWith('robinhood-quote')),
   };
   const reasons = [];
   if (!gates.runDays) reasons.push(`${runDays} of ${rules.minRunDays} paper days under ${hash || 'these params'}`);
@@ -363,6 +367,7 @@ export function dailyQualification(book, { rules = DAILY_QUALIFICATION } = {}) {
   if (!gates.beatsBuyHold) reasons.push(`return ${bookRet === null ? '--' : r2(bookRet) + '%'} does not beat buy-and-hold ${benchRet === null ? '--' : r2(benchRet) + '%'}`);
   if (!gates.drawdownVsBuyHold) reasons.push(`drawdown ${bookDd}% is deeper than buy-and-hold ${benchDd}%`);
   if (!gates.profitFactor) reasons.push(`profit factor ${pf === null ? '--' : pf === Infinity ? 'inf' : r2(pf)} < ${rules.minProfitFactor}`);
+  if (!gates.observedExecution) reasons.push('qualification requires prospectively observed entry and exit quotes; candle-open or late fills are diagnostic only');
   return {
     qualified: Object.values(gates).every(Boolean), gates, reasons, rules: { ...rules },
     metrics: { paramsHash: hash, from: win[0]?.d || null, to: last, runDays, closedTrades: trades.length, returnPct: bookRet === null ? null : r2(bookRet), buyHoldReturnPct: benchRet === null ? null : r2(benchRet), maxDrawdownPct: bookDd, buyHoldMaxDrawdownPct: benchDd, profitFactor: pf === Infinity ? 'infinity' : pf === null ? null : r2(pf) },

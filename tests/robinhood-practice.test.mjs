@@ -46,7 +46,7 @@ test('manual order and close pay spread, slippage and fees, and write only the p
 test('momentum autopilot warms up, ignores a flat tape and enters on a real move', async () => {
   const dir = tmp(), prices = { 'BTC-USD': 100000, 'ETH-USD': 4000 }, { fetchMarket } = feed(prices);
   try {
-    RP.configurePractice({ dataDir: dir, patch: { autopilot: true, strategyMode: 'MOMENTUM', entryMovePct: 0.002 } });
+    RP.configurePractice({ dataDir: dir, patch: { autopilot: true, strategyMode: 'MOMENTUM', entryMovePct: 0.002, feeBps: 0, slippageBps: 0 } });
     const t0 = Date.UTC(2026, 8, 26, 12);
     let snap = await RP.runPracticeCycle({ dataDir: dir, now: t0, fetchMarket });
     assert.equal(snap.positions.length, 0, 'first tick is warmup');
@@ -61,7 +61,7 @@ test('momentum autopilot warms up, ignores a flat tape and enters on a real move
 test('mean reversion does not fire on the spread alone', async () => {
   const dir = tmp(), prices = { 'BTC-USD': 100000 }, { fetchMarket } = feed(prices);
   try {
-    RP.configurePractice({ dataDir: dir, patch: { autopilot: true, strategyMode: 'MEAN_REVERSION', entryMovePct: 0.0001, symbols: ['BTC-USD'] } });
+    RP.configurePractice({ dataDir: dir, patch: { autopilot: true, strategyMode: 'MEAN_REVERSION', entryMovePct: 0.0001, feeBps: 0, slippageBps: 0, symbols: ['BTC-USD'] } });
     const t0 = Date.UTC(2026, 8, 26, 12);
     for (let i = 0; i < 3; i++) await RP.runPracticeCycle({ dataDir: dir, now: t0 + i * 15000, fetchMarket });
     assert.equal(RP.practiceSnapshot({ dataDir: dir }).positions.length, 0);

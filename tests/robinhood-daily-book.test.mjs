@@ -38,7 +38,7 @@ function coinbase(m, clock, calls = []) {
     return { ok: true, status: 200, json: async () => rows.map(b => [b.t / 1000, b.l, b.h, b.o, b.c, 1]) };
   };
 }
-const rhQuote = (bid, ask) => sym => sym === 'BTC-USD' ? { symbol: sym, bid, ask, at: Date.now(), source: 'v2' } : null;
+const rhQuote = (bid, ask, at) => sym => sym === 'BTC-USD' ? { symbol: sym, bid, ask, at, source: 'v2' } : null;
 
 test('Lab signal parity: the executor rule reproduces the Lab replay trades for every family', { skip: !fs.existsSync(path.resolve(process.env.MPO_LAB_SRC || 'W:/money-printer-evolution-lab/src', 'robinhoodDaily.js')) && 'Lab repo not found' }, async () => {
   const L = await import(pathToFileURL(path.resolve(process.env.MPO_LAB_SRC || 'W:/money-printer-evolution-lab/src', 'robinhoodDaily.js')).href);
@@ -88,7 +88,7 @@ test('controller: one decision per closed bar, next-open fill on a Robinhood quo
   for (let k = 1; k <= 5; k++) for (const s of ['ETH-USD', 'SOL-USD']) m[s].set(addDays(D0, k), { o: 100, h: 100.5, l: 99.5, c: 100 }); // candles appear only once their day starts
   let now = t0(addDays(D0, 1)) + 10 * 60_000; const calls = [], fetchFn = coinbase(m, () => now, calls);
   const run = (extra = {}) => D.runDailyOnce({ dataDir: dir, now, env: { ROBINHOOD_DAILY_SYMBOLS: SYMS.join(',') }, fetchFn, labDaily: null, ...extra });
-  let r = await run({ quoteFn: rhQuote(106.9, 107), feeRatio: 0.001 });
+  let r = await run({ quoteFn: rhQuote(106.9, 107, now), feeRatio: 0.001 });
   assert.ok(r.events.includes('DECIDED buy BTC-USD for the 2026-09-21 open'), r.events.join());
   assert.ok(r.events.some(e => e.startsWith('FILLED buy BTC-USD 2026-09-21 @ robinhood-quote:v2')), r.events.join());
   assert.equal(r.book.source.kind, 'lab-default'); assert.equal(r.book.lastDecidedDay, D0);
@@ -97,20 +97,20 @@ test('controller: one decision per closed bar, next-open fill on a Robinhood quo
   assert.ok(Math.abs(sl.qty - alloc * (1 - 0.0095) / (107 * 1.0005)) < 1e-9, 'ask + 5 bps slippage, 0.95% fee');
   assert.equal(sl.entry.late, false); assert.equal(r.book.lastDecision.bySymbol['ETH-USD'].action, 'HOLD');
   const fills = r.book.fills.length, nCalls = calls.length;
-  r = await run({ quoteFn: rhQuote(106.9, 107) });
+  r = await run({ quoteFn: rhQuote(106.9, 107, now) });
   assert.deepEqual(r.events.filter(e => /DECIDED|FILLED/.test(e)), [], 'a restart the same day never decides or fills again');
   assert.equal(r.book.fills.length, fills); assert.equal(calls.length, nCalls, 'fresh bar cache: no request');
   // Next closed bar: still above the band -> hold (multi-day).
   m['BTC-USD'].set(addDays(D0, 2), { o: 107, h: 107, l: 103, c: 104 });
   now = t0(addDays(D0, 2)) + 20 * 60_000;
-  r = await run({ quoteFn: rhQuote(106, 106.1) });
+  r = await run({ quoteFn: rhQuote(106, 106.1, now) });
   assert.equal(r.book.lastDecision.bySymbol['BTC-USD'].action, 'HOLD'); assert.ok(r.book.sleeves['BTC-USD'].qty > 0);
   // App off for two days; the crash bar decides SELL; the app returns at 10:00 UTC (outside the quote window).
   m['BTC-USD'].set(addDays(D0, 3), { o: 104, h: 104, l: 102, c: 103 });
   m['BTC-USD'].set(addDays(D0, 4), { o: 103, h: 103, l: 90, c: 90 });
   m['BTC-USD'].set(addDays(D0, 5), { o: 89, h: 90, l: 88, c: 89 });
   now = t0(addDays(D0, 5)) + 10 * 3600_000;
-  r = await run({ quoteFn: rhQuote(95, 95.1) });
+  r = await run({ quoteFn: rhQuote(95, 95.1, now) });
   assert.ok(r.events.includes('DECIDED sell BTC-USD for the 2026-09-25 open'), r.events.join());
   assert.equal(r.book.missedDays, 2, 'two closed bars were never decided after the fact');
   const trade = r.book.history[0];
@@ -119,7 +119,7 @@ test('controller: one decision per closed bar, next-open fill on a Robinhood quo
   const proceeds = sl.qty * 89 * (1 - 0.0005) * (1 - 0.0095);
   assert.ok(Math.abs(trade.proceedsUsd - Math.round(proceeds * 100) / 100) < 0.011); assert.ok(trade.pnlUsd < 0);
   assert.equal(r.book.sleeves['BTC-USD'].qty, 0);
-  r = await run({ quoteFn: rhQuote(95, 95.1) });
+  r = await run({ quoteFn: rhQuote(95, 95.1, now) });
   assert.equal(r.book.history.length, 1, 'restart never double-executes');
   const snap = D.dailySnapshot({ dataDir: dir, now, labDaily: null });
   assert.equal(snap.execution, 'paper-only'); assert.equal(snap.liveEligible, false); assert.equal(snap.qualification.liveEligible, false);
@@ -153,7 +153,8 @@ test('qualification: minimum trades and days over a long window, beats cash and 
   const hash = 'h1', b = D.newDailyBook({ now: 0 }); b.source = { paramsHash: hash };
   const days = 200, start = '2026-01-01';
   b.equityDaily = Array.from({ length: days }, (_, i) => ({ d: addDays(start, i), equityUsd: 1000 * (1 + 0.001 * i), benchUsd: 1000 * (1 + 0.0005 * i) - (i === 100 ? 60 : 0), paramsHash: hash }));
-  const trade = (i, pnl) => ({ symbol: 'BTC-USD', exitDay: addDays(start, 10 + i * 15), pnlUsd: pnl, paramsHash: hash });
+  const trade = (i, pnl) => ({ symbol: 'BTC-USD', exitDay: addDays(start, 10 + i * 15), pnlUsd: pnl, paramsHash: hash,
+    priceSource: { entry: 'robinhood-quote:v2', exit: 'robinhood-quote:v2' }, late: { entry: false, exit: false } });
   b.history = Array.from({ length: 12 }, (_, i) => trade(i, i % 3 ? 20 : -10));
   let q = D.dailyQualification(b);
   assert.equal(q.qualified, true, q.reasons.join('; ')); assert.equal(q.liveEligible, false); assert.equal(q.metrics.closedTrades, 12);

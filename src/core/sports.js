@@ -36,7 +36,9 @@ export function buildSportsEvents(contracts) {
     let ev = events.find(e => e.family === fam && e.day === t.day && sameTeams(e.participants, t.teams));
     if (!ev) { ev = { family: fam, sport, day: t.day, participants: [...t.teams], contracts: [], fastSettling: FAST_SETTLING.has(sport) }; events.push(ev); }
     else { if (sameName(ev.participants[0], t.teams[0])) ev.participants = [longer(ev.participants[0], t.teams[0]), longer(ev.participants[1], t.teams[1])]; else ev.participants = [longer(ev.participants[0], t.teams[1]), longer(ev.participants[1], t.teams[0])]; if (ev.sport !== sport && sport !== 'NCAA') ev.sport = sport; }
-    ev.contracts.push({ id: c.id, venue: c.provider, sourceId: c.sourceId, title: c.data.title, type: t.type, side: t.side, line: t.line, yesMeans: t.yesMeans, yesMid: mid(c.data), closeAt: c.data.closeAt ?? null });
+    ev.contracts.push({ id: c.id, venue: c.provider, sourceId: c.sourceId, title: c.data.title, type: t.type, side: t.side, line: t.line, yesMeans: t.yesMeans, yesMid: mid(c.data), closeAt: c.data.closeAt ?? null,
+      conditionId: c.data.conditionId ?? null, slug: c.data.slug ?? null,
+      tokenIds: c.data.tokenIds ?? [], yesToken: c.data.yesToken ?? null, noToken: c.data.noToken ?? null });
   }
   for (const ev of events) {
     ev.id = `${ev.family}:${ev.day}:${ev.participants.map(normName).sort().join('|')}`;
