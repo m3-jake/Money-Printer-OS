@@ -50,6 +50,8 @@ test('the build is static: shim first, relative asset paths, /api/ left for the 
     assert.ok(!/["'`(]\/(assets|js|css)\//.test(fs.readFileSync(path.join(out, dir, f), 'utf8')), `${dir}/${f} has no absolute asset paths`);
   assert.ok(html.includes("'/api/state'"), 'API calls stay absolute');
   assert.ok(html.includes('href="quant-research.html"'));
+  assert.ok(html.includes('href="mobile.css"') && html.includes('src="mobile.js"'), 'phone layout and tap handling are bundled');
+  assert.ok(fs.existsSync(path.join(out, 'mobile.css')) && fs.existsSync(path.join(out, 'mobile.js')));
 });
 
 test('recorded data is scrubbed of local paths and the git-history journal', () => {

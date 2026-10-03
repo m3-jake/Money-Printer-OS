@@ -30,6 +30,10 @@ const shimTags = '<script src="demo-data.js"></script>\n<script src="demo-shim.j
 const page = (file, edit) => {
   let html = relative(fs.readFileSync(path.join(PUBLIC, file), 'utf8'), '');
   html = edit(html).replace('<title>', shimTags + '<title>');
+  if (file === 'dashboard.html') {
+    html = html.replace('</head>', '<link rel="stylesheet" href="mobile.css">\n</head>');
+    html = html.replace('</body>', '<script src="mobile.js"></script>\n</body>');
+  }
   if (!html.includes(shimTags)) throw new Error(`${file}: no <title> to inject the demo shim before`);
   return html;
 };
@@ -44,6 +48,8 @@ for (const file of fs.readdirSync(path.join(OUT, 'css'))) {
   fs.writeFileSync(f, relative(fs.readFileSync(f, 'utf8'), '../'));
 }
 fs.copyFileSync(path.join(ROOT, 'web-demo', 'demo-shim.js'), path.join(OUT, 'demo-shim.js'));
+fs.copyFileSync(path.join(ROOT, 'web-demo', 'mobile.css'), path.join(OUT, 'mobile.css'));
+fs.copyFileSync(path.join(ROOT, 'web-demo', 'mobile.js'), path.join(OUT, 'mobile.js'));
 
 // Scrub machine paths and the user name out of every recorded body.
 const secrets = [ROOT, os.homedir(), os.tmpdir(), os.userInfo().username]

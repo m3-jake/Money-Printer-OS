@@ -1023,18 +1023,28 @@ img.bill.phys.grabbing { cursor: grabbing; z-index: 5; }
 /* Log-on screen (see boot() in dashboard.html). The camera starts zoomed into the sky above the hill and
    pulls back on log-on: far layers move least and near layers most, so the hill rises into view with
    depth. The desktop chrome waits out the camera move, then fades in. */
-.logon { width: 440px; text-align: left; }
-.logon-banner { display: flex; align-items: center; gap: 12px; padding: 10px 14px; margin: 2px 2px 0; background: linear-gradient(90deg, #0a246a, #3a6ea5 60%, #6eb7f5); border-bottom: 2px solid #404040; }
-.logon-banner .bootmark { width: 48px; height: 48px; margin: 0; image-rendering: auto; }
-.logon-banner .bootlogo { margin: 0; font-size: 24px; }
-.logon-body { padding: 12px 16px 14px; }
-.logon-body p { margin: 0 0 12px; }
-.logon-row { display: grid; grid-template-columns: 84px 1fr; align-items: center; margin: 6px 0; }
-.logon-field { display: block; height: 20px; line-height: 18px; padding: 0 4px; background: #fff; color: #000; border: 2px solid; border-color: #808080 #fff #fff #808080; box-shadow: inset 1px 1px 0 #404040; letter-spacing: .5px; cursor: default; }
-.logon .bootline { margin: 12px 0 4px; color: #000; }
-.logon .bootprog i { transition: width .85s linear; }
-.logon-buttons { display: flex; justify-content: flex-end; margin-top: 12px; }
-.logon-buttons .btn { min-width: 76px; }
+.logon { width: min(460px, calc(100vw - 24px)); text-align: left; box-shadow: 2px 2px 0 #000, 0 18px 48px #06163066; }
+.logon-banner { position: relative; display: flex; align-items: center; gap: 13px; min-height: 94px; padding: 12px 16px; margin: 2px 2px 0; overflow: hidden; background: radial-gradient(circle at 88% 0%, #70bfff66, transparent 40%), linear-gradient(115deg, #071b50, #184789 58%, #4286c4); border-bottom: 2px solid #404040; }
+.logon-banner::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(0deg, transparent 0 6px, #ffffff0b 6px 7px); }
+.logon-banner .bootmark { position: relative; z-index: 1; width: 64px; height: 64px; flex: 0 0 64px; margin: 0; image-rendering: auto; filter: drop-shadow(0 4px 5px #0008); }
+.logon-brand { position: relative; z-index: 1; min-width: 0; }
+.logon-banner .bootlogo { margin: 0; font-size: 24px; line-height: 1.05; }
+.logon-tagline { margin-top: 6px; color: #d7ecff; font: 11px var(--mpo-font-chrome); letter-spacing: .2px; }
+.logon-mode { position: absolute; z-index: 1; top: 9px; right: 9px; padding: 3px 5px; border: 1px solid #b7ff7488; color: #dbffb8; background: #0c2b2a99; font: bold 9px var(--mpo-font-chrome); letter-spacing: 1px; }
+.logon-body { padding: 16px 18px 15px; background: linear-gradient(#f3f3f3, #dcdcdc); }
+.logon-body p { margin: 0; }
+.logon-heading { color: #101e3b; font-size: 15px; font-weight: bold; }
+.logon-description { margin: 4px 0 14px !important; color: #424958; line-height: 1.35; }
+.logon-row { display: grid; grid-template-columns: 84px minmax(0, 1fr); align-items: center; margin: 6px 0; }
+.logon-field { display: block; height: 23px; line-height: 20px; padding: 0 6px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; background: #fff; color: #102039; border: 2px solid; border-color: #808080 #fff #fff #808080; box-shadow: inset 1px 1px 0 #404040; letter-spacing: .3px; cursor: default; }
+.logon-status { display: flex; align-items: center; gap: 7px; min-height: 24px; margin-top: 14px; }
+.logon-status-light { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; background: #57ac39; box-shadow: 0 0 0 2px #a3d79066, 0 0 8px #67d34a; }
+.logon .bootline { margin: 0; color: #26334f; font-weight: bold; }
+.logon .bootprog { height: 12px; padding: 2px; background: #fff; border: 2px inset #aaa; }
+.logon .bootprog i { background: repeating-linear-gradient(90deg, #167550 0 12px, #39b77f 12px 15px, #c5f5d2 15px 17px); transition: width .42s cubic-bezier(.2,.8,.2,1); }
+.logon-buttons { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 14px; }
+.logon-hint { color: #626672; font-size: 10px; }
+.logon-buttons .btn { min-width: 112px; font-weight: bold; }
 .desktop .wallpaper, .desktop .sky-clouds, .desktop .hill-foreground, .desktop .cloud-shadows, .desktop .grass-layer { transform-origin: 50% 0; transition: transform 2.8s cubic-bezier(.22,.7,.18,1); }
 .desktop.camera-sky .wallpaper { transform: scale(1.5); }
 .desktop.camera-sky .sky-clouds { transform: scale(2) translateY(-4%); }
