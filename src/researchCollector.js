@@ -11,15 +11,17 @@ const CURSOR_FILE=path.join(DATA_DIR,'research-evidence','collector-state.json')
 const STATUS_FILE=path.join(DATA_DIR,'research-capture-status.json');
 const LOCK_FILE=path.join(DATA_DIR,'research-evidence','collector.lock');
 const LOCK_STALE_MS=Math.max(10_000,Number(process.env.MPO_COLLECTOR_LOCK_STALE_MS||60_000));
-const SOLANA_MS=Math.max(500,Number(process.env.MPO_SOLANA_CAPTURE_MS||1000));
-const POLY_MS=Math.max(2000,Number(process.env.MPO_POLY_CAPTURE_MS||5000));
+// Defaults lowered 2026-10-03 (audit P4): the furnace that used 1 s Solana evidence is retired, and 5 s / 10-level
+// Polymarket depth was ~600 MB of JSON a day. The env settings restore the old rates.
+const SOLANA_MS=Math.max(500,Number(process.env.MPO_SOLANA_CAPTURE_MS||5000));
+const POLY_MS=Math.max(2000,Number(process.env.MPO_POLY_CAPTURE_MS||15000));
 const POLY_HEARTBEAT_MS=Math.max(POLY_MS,Number(process.env.MPO_POLY_HEARTBEAT_MS||30000));
 const MARKET_LIMIT=Math.max(5,Math.min(30,Number(process.env.MPO_POLY_CAPTURE_MARKETS||20)));
 const POLY_US_MS=Math.max(5000,Number(process.env.MPO_POLY_US_CAPTURE_MS||15000));
 const WALLET_MS=Math.max(5000,Number(process.env.MPO_WALLET_INDEX_MS||15000));
-const LEVELS=Math.max(3,Math.min(20,Number(process.env.MPO_POLY_CAPTURE_LEVELS||10)));
-const RAW_KEEP_DAYS=Math.max(3,Number(process.env.MPO_RAW_KEEP_DAYS||45));
-const RAW_BUDGET_BYTES=Math.max(256,Number(process.env.MPO_RAW_BUDGET_MB||20480))*1024*1024;
+const LEVELS=Math.max(3,Math.min(20,Number(process.env.MPO_POLY_CAPTURE_LEVELS||5)));
+const RAW_KEEP_DAYS=Math.max(3,Number(process.env.MPO_RAW_KEEP_DAYS||30));
+const RAW_BUDGET_BYTES=Math.max(256,Number(process.env.MPO_RAW_BUDGET_MB||8192))*1024*1024;
 const PRUNE_MS=60*60*1000;
 // Jupiter quote tape (public quote GETs only): every JUP_MS, up to JUP_TARGETS tokens, JUP_DAILY calls a UTC day.
 let profitQuoteApi=null,profitMarketApi=null,lastProfitQuoteAt=0,lastCrowdAt=0;
