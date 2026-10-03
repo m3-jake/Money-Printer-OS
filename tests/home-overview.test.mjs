@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import { buildScoreboard } from '../src/scoreboard.js';
 
 const read = file => fs.readFileSync(new URL('../' + file, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const botSource = read('public/js/mpo-bots.js');
@@ -140,17 +141,17 @@ function platformHarness(seed = {}, bots = null) {
 test('Command Center starts with unknown balances and evidence, not zero or healthy claims', () => {
   const p = platformHarness();
   const card = p.commandGlance(0), html = card.visual;
-  assert.equal(card.hero, '—');
-  assert.deepEqual(Array.from(card.stats, s => s.value), ['Unknown', 'Unknown', 'Unknown']);
+  assert.equal(card.hero, null);
+  assert.deepEqual(Array.from(card.stats, s => [s.label, s.value]), [['Trading suites', '5'], ['Paper books', 'Unknown'], ['Paper evidence', 'Unknown']]);
   assert.match(card.pill.label, /not reported/i);
   assert.match(html, /Paper balances have not been reported/);
   assert.doesNotMatch(html, /\$0(?:\.00)?|All data sources ok|All systems normal/);
-  assertNavigation(html, ['trade', 'robinhood', 'predictionmarkets', 'kalshi', 'evolution', 'money', 'journal']);
+  assertNavigation(html, ['trade', 'robinhood', 'sportsbook', 'kalshi', 'evolution', 'money', 'journal']);
 });
 
 test('Command Center uses separate real source books, original units and unreadable diagnostics', () => {
   const p = platformHarness({
-    scoreboard: { paperSummary: { beating: 2, notBeating: 4, notEnoughData: 3 }, rows: [
+    scoreboard: { paperSummary: { books: 3, beating: 1, notBeating: 1, notEnoughData: 1 }, rows: [
       { module: 'Pump.fun', book: 'strategy', mode: 'PAPER', unit: 'SOL', netPnl: 0.22, closes: 4, beatsBaseline: 'YES', freshness: { status: 'FRESH' } },
       { module: 'Robinhood crypto', book: 'strict', mode: 'PAPER', unit: 'USD', netPnl: -2.1, closes: 2, beatsBaseline: 'NO', freshness: { status: 'STALE' } },
       { module: 'Kalshi', book: 'weather', mode: 'PAPER', unit: 'USD', netPnl: null, closes: null, beatsBaseline: 'WAIT', freshness: { status: 'UNREADABLE' } },
@@ -168,7 +169,8 @@ test('Command Center uses separate real source books, original units and unreada
     }, diag: { sources: [{ id: 'weather <upstream>', status: 'ERROR', lastError: 'offline & retrying' }] },
   }, { kalshi: { weather: { equityUsd: null, open: [], settings: { enabled: true } }, btc: { equityUsd: 9.25, open: [], settings: { enabled: false } } } });
   const card = p.commandGlance(1), html = card.visual;
-  assert.equal(card.hero, '2 / 6');
+  assert.equal(card.hero, null);
+  assert.deepEqual(Array.from(card.stats, s => s.value), ['5', '3', '1 need more data']);
   for (const text of ['+0.2200 SOL', '−$2.10', '0.42 SOL cash', 'Unknown cash', 'Unknown modeled equity', '$9.25 modeled equity', 'Paper execution paused', 'MISMATCH', 'UNREADABLE']) assert.ok(html.includes(text), text);
   assert.match(html, /weather &lt;upstream&gt;/);
   assert.match(html, /offline &amp; retrying/);
@@ -408,7 +410,7 @@ test('Money alone keeps platform and scoreboard snapshots flowing without a deta
     CustomEvent: class { constructor(type) { this.type = type; } }, dispatchEvent: e => events.push(e.type),
     fetch: async (url, options) => {
       assert.notEqual(options?.method, 'POST'); requests.push(url);
-      const body = url.includes('/scoreboard') ? { rows: [] } : url.includes('/entities') ? { entities: [] } : url.endsWith('/status') ? { at: ++snapshots } : {};
+      const body = url.includes('/scoreboard') ? { rows: [] } : url.includes('/entities') ? { entities: [{ id: url.includes('provider=kalshi') ? 'k1' : 'p1', provider: url.includes('provider=kalshi') ? 'kalshi' : 'polymarket' }] } : url.endsWith('/status') ? { at: ++snapshots } : {};
       return { ok: true, json: async () => body };
     },
   });
@@ -417,15 +419,62 @@ test('Money alone keeps platform and scoreboard snapshots flowing without a deta
   await new Promise(setImmediate);
   const initial = window.MPOSPlatform.overview.snapshot.at, initialRequests = requests.length, initialEvents = events.length;
   assert.ok(initial > 0, 'the platform is available before any detail page opens');
-  assert.ok(initialRequests >= 5);
+  assert.ok(initialRequests >= 6);
+  assert.deepEqual(Array.from(window.MPOSPlatform.overview.contracts, c => c.provider).sort(), ['kalshi', 'polymarket']);
   assert.equal(Object.getOwnPropertyDescriptor(window.MPOSPlatform, 'overview').set, undefined);
   timers[0](); timers[0]();
   await new Promise(setImmediate);
   assert.equal(window.MPOSPlatform.overview.snapshot.at, initial + 1);
-  assert.equal(requests.length, initialRequests + 5, 'concurrent paints share a single platform refresh');
+  assert.equal(requests.length, initialRequests + 6, 'concurrent paints share a single platform refresh');
   assert.equal(requests.slice(initialRequests).filter(url => url === '/api/scoreboard').length, 1);
+  assert.ok(requests.slice(initialRequests).includes('/api/platform/entities?kind=Contract&provider=kalshi'));
+  assert.ok(requests.slice(initialRequests).includes('/api/platform/entities?kind=Contract&provider=polymarket'));
   assert.equal(events.length, initialEvents + 1);
   assert.ok(events.every(type => type === 'mpo:overview-data'));
   document.hidden = true; timers[0]();
-  assert.equal(requests.length, initialRequests + 5);
+  assert.equal(requests.length, initialRequests + 6);
+});
+
+test('Command Center reads paper book counts from the real scoreboard contract and excludes research lanes', () => {
+  const board = buildScoreboard({ pumpfunCopy: { history: [], status: 'WAITING_FOR_WALLET_EVIDENCE', lastRunAt: Date.now() }, lab: {} });
+  assert.equal(board.paperSummary.books, 1);
+  assert.equal(board.rows.length, 4, 'one paper source and three Lab research rows');
+  const card = platformHarness({ scoreboard: board }).commandGlance(0);
+  assert.equal(card.stats[1].value, '1');
+  assert.equal(card.stats[2].value, '1 need more data');
+  const missing = platformHarness({ scoreboard: { paperSummary: { books: null, notEnoughData: null }, rows: [] } }).commandGlance(0);
+  assert.deepEqual(Array.from(missing.stats, s => s.value), ['5', 'Unknown', 'Unknown']);
+  const empty = platformHarness({ scoreboard: buildScoreboard({}) }).commandGlance(0);
+  assert.deepEqual(Array.from(empty.stats, s => s.value), ['5', '0', '0 need more data'], 'a reported empty scoreboard is a known zero');
+});
+
+test('Command Center reports existing Kalshi models and copy state before baseline results exist', () => {
+  const data = { kalshi: { weather: { settings: { enabled: true } }, btc: { settings: { enabled: false } }, 'weather-nws': { settings: {} } }, mirror: { settings: { enabled: false } } };
+  const html = platformHarness({}, data).overviewModules();
+  assert.match(html, /Baseline results not reported/);
+  assert.match(html, /3 reported · 1 enabled · some states unknown/);
+  assert.match(html, /Copy mirror/);
+  assert.match(html, /PAPER · paused/);
+  assert.match(html, /data-overview-open="sportsbook">Open Polymarket/);
+  assert.doesNotMatch(html, /data-overview-open="predictionmarkets"/);
+  const missing = platformHarness().overviewModules();
+  assert.match(missing, /Paper models<\/b><small>Status not reported/);
+  assert.match(missing, /Copy mirror<\/b><small>Status not reported/);
+});
+
+test('Kalshi upcoming activity uses trading close time, labels expiration fallback and excludes closed markets', () => {
+  const now = Date.now(), hour = 3600000, closeAt = now + hour, expiresAt = now + 24 * hour;
+  const p = platformHarness({ snapshot: { at: now }, contracts: [
+    { id: 'closes', provider: 'kalshi', data: { title: 'CLOSE FIRST', category: 'Weather', status: 'ACTIVE', closeAt, expiresAt } },
+    { id: 'expired', provider: 'kalshi', data: { title: 'TRADING ENDED', status: 'ACTIVE', closeAt: now - hour, expiresAt } },
+    { id: 'closed', provider: 'kalshi', data: { title: 'ALREADY CLOSED', status: 'CLOSED', closeAt } },
+    { id: 'expiration', provider: 'kalshi', data: { title: 'EXPIRATION ONLY', category: 'Crypto', expiresAt: now + 2 * hour } },
+    { id: 'next', provider: 'kalshi', data: { title: 'NEXT CLOSE', status: 'OPEN', closeAt: now + 3 * hour } },
+  ], diag: { sources: [{ id: 'nws', status: 'ERROR', lastError: 'Forecast unavailable' }] } });
+  const html = p.kalshiOverview();
+  assert.ok(html.includes('Weather · closes ' + new Date(closeAt).toLocaleString()));
+  assert.ok(html.includes('Crypto · expires ' + new Date(now + 2 * hour).toLocaleString()));
+  for (const title of ['CLOSE FIRST', 'EXPIRATION ONLY', 'NEXT CLOSE']) assert.ok(html.includes(title));
+  assert.doesNotMatch(html, /TRADING ENDED|ALREADY CLOSED/);
+  assert.match(html, /nws/); assert.match(html, /Forecast unavailable/);
 });
