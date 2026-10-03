@@ -392,7 +392,7 @@ test('the mirror matches a Kalshi game by date and both teams when the board has
   assert.deepEqual(leaders.map(l => [l.wallet, l.since]), [['0x' + 'a'.repeat(40), 123]]);
 });
 
-test('the mirror watches sports-leaderboard wallets and queues only their buys made after it started watching', async () => {
+test('the mirror watches sports-leaderboard wallets and queues buys and exits after it started watching', async () => {
   const { KalshiMirrorPaper } = await import('../src/kalshiMirror.js');
   const dir = tmp(); let now = Date.UTC(2026, 9, 4, 15); const w = '0x' + 'c'.repeat(40); let calls = 0;
   const trades = [{ side: 'BUY', timestamp: (now - 3600e3) / 1000, transactionHash: 'old', asset: 'a1', title: 'Broncos vs. 49ers', outcome: 'Broncos', price: 0.5 }];
@@ -400,8 +400,8 @@ test('the mirror watches sports-leaderboard wallets and queues only their buys m
   const m = new KalshiMirrorPaper({ dataDir: dir, fetchImpl, kalshi: () => null, now: () => now });
   assert.equal(await m.pollSportsLeaders(), 0, 'a buy from before we watched is never copied');
   trades.push({ side: 'BUY', timestamp: (now + 60e3) / 1000, transactionHash: 'new', asset: 'a2', title: 'Broncos vs. 49ers', outcome: 'Broncos', price: 0.52 }, { side: 'SELL', timestamp: (now + 61e3) / 1000, transactionHash: 's', asset: 'a2', title: 'x', outcome: 'y', price: 0.6 });
-  now += 2 * 60e3; assert.equal(await m.pollSportsLeaders(), 0, 'paced: at most every 5 minutes');
-  now += 5 * 60e3; assert.equal(await m.pollSportsLeaders(), 1);
+  now += 30e3; assert.equal(await m.pollSportsLeaders(), 0, 'paced: at most every minute');
+  now += 2 * 60e3; assert.equal(await m.pollSportsLeaders(), 2);
   assert.equal(m.state.queue[0].leader, 'Sharp'); assert.equal(m.snapshot().sportsLeaders.watching, 1);
   assert.ok(calls <= 5);
   assert.equal(await new KalshiMirrorPaper({ dataDir: tmp(), kalshi: () => null }).pollSportsLeaders(), 0, 'no fetch, no polling (offline tests)');
