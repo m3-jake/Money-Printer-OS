@@ -153,6 +153,7 @@ export class BotFarm {
 
   async run(kind) {
     if (this.recoveryError) throw new Error(this.recoveryError);
+    try{assertPaperPrimaryAvailable(this.file);}catch(e){this.recoveryError=`RECOVERY_REQUIRED: ${e.message}`;throw e;}
     if (this.busy.has(kind)) return this.snapshot(); this.busy.add(kind);
     const last = this.last[kind] = { at: this.now(), error: null, entered: 0 };
     try {

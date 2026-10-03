@@ -195,6 +195,8 @@ export class KalshiPaperBots {
 
   async run(id) {
     if (this.recoveryError) throw new Error(this.recoveryError);
+    try{assertPaperPrimaryAvailable(this.file);}catch(e){this.recoveryError=`RECOVERY_REQUIRED: ${e.message}`;throw e;}
+    if(this.bot(id).recoveryRequired)throw new Error('RECOVERY_REQUIRED: this bot has unknown archived capital; explicitly reset only this bot');
     if (this.busy.has(id)) return this.snapshot(id);
     const b = this.bot(id), k = this.kalshi(); this.busy.add(id);
     try {
@@ -341,7 +343,7 @@ export class KalshiPaperBots {
   }
 
   snapshot(id) {
-    if(this.recoveryError)return {id,mode:'PAPER',status:'RECOVERY_REQUIRED',recoveryRequired:true,cashUsd:null,equityUsd:null,startUsd:null,open:[],history:[],decisions:[],stats:{settled:0,pnlUsd:null},lastError:this.recoveryError};
+    if(this.recoveryError||this.bot(id).recoveryRequired)return {id,mode:'PAPER',status:'RECOVERY_REQUIRED',recoveryRequired:true,cashUsd:null,equityUsd:null,startUsd:null,open:[],history:[],decisions:[],stats:{settled:0,pnlUsd:null},lastError:this.recoveryError||'Archived capital unknown; this bot requires explicit reset'};
     const b = this.bot(id), h = b.history, n = h.length, wins = h.filter(x => x.won).length, pnl = h.reduce((s, x) => s + x.pnlUsd, 0);
     const openValue = b.open.reduce((s, p) => s + (p.markUsd ?? p.costUsd), 0), equity = b.cashUsd + openValue;
     const brier = k => n ? round(h.reduce((s, x) => s + x[k], 0) / n, 4) : null;
