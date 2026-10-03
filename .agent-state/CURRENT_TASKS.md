@@ -3,7 +3,9 @@
 Read `MONEY_PRINTER_STATUS.md` first: it is the ledger of record (current entry point, the latest batches, the
 architecture and the open issues). Older history is in `docs/history/`.
 
-- The improvement run briefed in `docs/prompts/NEXT-RUN-2026-10-03.md` is being finished by Claude: phases A, B and C
-  are done; D1 (this docs diet), D2 (HUD script split) and the final release remain.
+- The paper-potential build and final paired installation are complete. Read
+  `reports/paper-potential-2026-10-03/INSTALL-VERIFICATION.md` before making release claims.
+- The earlier improvement run has D2 (remaining shared HUD script extraction) open; two windows are already
+  extracted. Evidence/credential waits in BUILD-RECORD.md and operator choices in the ledger remain open.
 - Codex and Claude both work in this tree and the Lab's. Check `git log` and the ledger before starting; never
   revert the other agent's commits.

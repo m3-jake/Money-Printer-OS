@@ -1,0 +1,63 @@
+
+> money-printer-os@0.5.0-alpha.89 test:wiring
+> node --test tests/test-wiring.test.mjs tests/doc-drift.test.mjs tests/src-reachability.test.mjs
+
+✔ the engine line states the export surface and the guard src/index.js actually has (2.0196ms)
+✔ the counts the documents of record quote are the counts on disk (0.662ms)
+✔ the enter() open item is closed and the suite that closed it is reached by test:all (2.0602ms)
+✔ the disproven import premise survives only as a labelled correction (2297.017ms)
+✔ the agent-state entry points are not older than the record they describe (2.4154ms)
+✔ the open list routes its install item to the release status record (0.4504ms)
+✔ every file in src/ is reachable from a runtime entry point (2101.9455ms)
+✔ the reachability walk sees every import form the app uses (0.3327ms)
+✔ runtime code never imports from tools/ (263.8694ms)
+test coverage map (158 suites across 37 targets):
+  test:accounting: 1 file
+  test:combos: 2 files
+  test:discovery: 1 file
+  test:edge-robustness: 1 file
+  test:evidence: 7 files
+  test:evolution: 3 files
+  test:executable-replay: 1 file
+  test:execution: 2 files
+  test:experiments: 1 file
+  test:fitness: 3 files
+  test:lab-link: 5 files
+  test:lane-contracts: 16 files
+  test:latency: 2 files
+  test:paired-safety: 4 files
+  test:paper-bots: 5 files
+  test:paper-completion: 20 files
+  test:paper-potential: 7 files
+  test:poly-research-eval: 1 file
+  test:polymarket-us: 2 files
+  test:pump-profit: 3 files
+  test:recovery: 7 files
+  test:release-gate: 2 files
+  test:replay: 1 file
+  test:research: 7 files
+  test:robinhood: 17 files
+  test:robinhood-equities: 2 files
+  test:settlement: 1 file
+  test:solana: 4 files
+  test:turnover: 2 files
+  test:unattended: 5 files
+  test:unit-economics: 2 files
+  test:updater: 4 files
+  test:upgrade: 6 files
+  test:visual: 9 files
+  test:wallet-crowd: 2 files
+  test:web-demo: 1 file
+  test:wiring: 3 files
+✔ every suite on disk is reachable from npm run test:all (2.4873ms)
+✔ every test path a script names exists, and no file is named twice in one target (20.108ms)
+✔ the coverage map is complete and printed (telemetry, not a guess) (1.5207ms)
+✔ no embedded Robinhood panel copy is left to drift (0.5811ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2490.7929

@@ -1,0 +1,21 @@
+{
+  "schema": "mpo.paired-release.v1",
+  "installedAt": "2026-10-03T18:30:34.3938594Z",
+  "machine": "WITCHDOCTOR",
+  "moneyPrinterOS": {
+    "version": "0.5.0-alpha.89",
+    "commit": "3fa7d3b0eb1a69b90f9ef9790783c1a7aefbe6dd",
+    "sha256": "cf0bb5dc0a1e0e592235ef8a5be2df14dc2ca4dcaa5b1f57a5b7e12ffaf0ece3"
+  },
+  "evolutionLab": {
+    "version": "0.1.0-alpha.25",
+    "commit": "258286ff589a2d1e7e8e06511918ef3a637a8fcb",
+    "sha256": "a4d592d7e6736340ee9cb89699429f46d28a95e7ad08b9c13d660b0dd6e35afa"
+  },
+  "safety": {
+    "paperOnlyBuild": true,
+    "realEnabled": false,
+    "liveActivationAllowed": false,
+    "paidModelsEnabled": false
+  }
+}

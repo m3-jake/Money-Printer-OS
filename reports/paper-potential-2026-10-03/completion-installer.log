@@ -1,0 +1,27 @@
+Money Printer local update  20261003-142927
+Build folder: C:\Users\jakem\Desktop\Money Printer OS\update-20261003-142927
+
+== Fetching latest Money Printer OS source
+Evolution Lab has no origin remote; using the clean local commit on master.
+
+== Building Money Printer OS
+
+== Boot-testing the new Money Printer OS build
+
+== Building Evolution Lab
+
+== Boot-testing the new Evolution Lab archive
+Release pair: MPO 0.5.0-alpha.89 @ 3fa7d3b + Lab 0.1.0-alpha.25 @ 258286f
+
+== Stopping the running apps
+Paper data backup: C:\Users\jakem\Desktop\Money Printer OS\update-20261003-142927\paper-data-backup
+
+== Installing paired release
+Money Printer OS installed (sha256 CF0BB5DC0A1E...). Backup: C:\Users\jakem\AppData\Local\Programs\money-printer-os\resources\app.asar.backup-20261003-142927
+Evolution Lab installed (sha256 A4D592D7E673...). Backup: C:\Users\jakem\AppData\Local\Programs\money-printer-evolution-lab\resources\app.asar.backup-20261003-142927
+
+== Starting and verifying paired release
+
+Done. Verified pair: MPO 0.5.0-alpha.89 + Lab 0.1.0-alpha.25.
+Both live health endpoints passed; paired receipt written to both installs.
+To undo: quit both, then restore BOTH resources\app.asar.backup-20261003-142927 files as a pair.

@@ -1,0 +1,25 @@
+{
+  "at": "2026-10-03T18:33:09.774Z",
+  "metrics": {
+    "cpuPct": 11.2,
+    "memoryPct": 23.3,
+    "memoryUsedGB": 14.91,
+    "memoryTotalGB": 63.92,
+    "cpuThreads": 32
+  },
+  "resources": {
+    "autoCoordinate": true,
+    "cpuPercent": 65,
+    "memoryGB": 8,
+    "diskGB": 5,
+    "updatedAt": 1790550920005,
+    "source": "hive",
+    "testLane": "EXIT_TIMING",
+    "maxWorkerSlots": 16
+  },
+  "engine": {
+    "lastCycle": 1791052371196,
+    "ageMs": 18569,
+    "stalled": false
+  }
+}
