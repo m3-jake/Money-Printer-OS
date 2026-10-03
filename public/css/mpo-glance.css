@@ -276,3 +276,11 @@
   .g-hero-val { font-size: 34px; }
   .g-hero-sub { display: none; }
 }
+
+/* Program strip (every tabbed window's Simple view): pick a program, its Simple card fills the window. */
+.window.glance .glancepane.has-programs { display: flex; flex-direction: column; }
+.glance-programs { display: flex; flex: none; gap: 4px; padding: 6px 8px 0; overflow-x: auto; scrollbar-width: none; }
+.glance-programs::-webkit-scrollbar { display: none; }
+.gp-chip { flex: none; padding: 3px 10px; border: 1px solid #0002; border-radius: 999px; background: #ffffff55; color: inherit; font: 600 11px var(--mpo-font-chrome); cursor: pointer; white-space: nowrap; }
+.gp-chip.on { background: #fff; border-color: #fff; box-shadow: 0 1px 3px #0002; }
+.glance-body { flex: 1; min-height: 0; overflow: hidden; }

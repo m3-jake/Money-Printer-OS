@@ -51,7 +51,7 @@
   // Every glance pane re-renders by replacing its children; observing childList only (not the subtree)
   // means the wheels this script inserts never re-trigger it.
   const observer = new MutationObserver(list => { const seen = new Set(); for (const m of list) if (!seen.has(m.target)) { seen.add(m.target); apply(m.target); } });
-  function watch() { document.querySelectorAll('.glancepane').forEach(p => { if (!p.dataset.rollWatch) { p.dataset.rollWatch = '1'; observer.observe(p, { childList: true }); apply(p); } }); }
+  function watch() { document.querySelectorAll('.glancepane:not(.has-programs), .glance-body').forEach(p => { if (!p.dataset.rollWatch) { p.dataset.rollWatch = '1'; observer.observe(p, { childList: true }); apply(p); } }); }
   window.MPORoll = { watch, apply };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watch); else watch();
 })();

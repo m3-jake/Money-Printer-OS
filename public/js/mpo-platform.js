@@ -16,7 +16,7 @@ window.MPOSPlatform = (() => {
   const hostOf=id=>id==='predictionmarkets'?'sportsbook':id==='arbitrage'?'command':id;
   function paneVisible(id){
     const host=hostOf(id),w=document.querySelector(`.window[data-app="${host}"]`);if(!w||w.classList.contains('hidden'))return false;
-    if(w.classList.contains('glance'))return id===host;
+    if(w.classList.contains('glance'))return id===host&&!window.MPOProgramActive?.(host);
     const pane=document.getElementById('body-'+id);return !!pane&&(!pane.classList.contains('tabpane')||pane.classList.contains('on'));
   }
   function platformGlance(id){

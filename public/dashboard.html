@@ -639,13 +639,13 @@ function appShell(id,title){
  const body=tabbed?`<div class="body tabbed">${tabs.map(t=>`<div class="tabpane ${t===act?'on':''}" id="body-${t}" data-scroll="pane-${t}"></div>`).join('')}</div>`:`<div class="body" id="body-${id}" data-scroll="body-${id}"></div>`;
  return `<section class="window ${L.max?'max':''} ${shown?'':'hidden'} ${detail?'':'glance'}" data-app="${id}" style="left:${L.x}px;top:${L.y}px;width:${L.w}px;height:${L.h}px">
  <div class="titlebar"><div class="title">${title}</div><span class="fit-pct"></span><div class="win-buttons"><button data-act="detail" class="detail-btn" title="${detail?'Simple view for this window':'Advanced view for this window'}">${detail?'Simple':'Advanced'}</button><button data-act="fit" class="fit-btn ${fitOff.has(id)?'':'on'}" title="Fit to window">⤢</button><button data-act="min" aria-label="Minimize ${title}">_</button><button data-act="max" aria-label="Maximize or restore ${title}">□</button><button data-act="close" aria-label="Close ${title}">×</button></div></div>
- <div class="hud-data-status" role="status" hidden></div>${strip}${body}<div class="glancepane" id="glance-${id}"></div><div class="resize"></div></section>`;
+ <div class="hud-data-status" role="status" hidden></div>${strip}${body}${tabbed?`<div class="glancepane has-programs"><div class="glance-programs" role="tablist" aria-label="${title} programs">${tabs.map(t=>`<button type="button" role="tab" class="gp-chip ${t===act?'on':''}" data-host="${id}" data-tab="${t}" aria-selected="${t===act}">${TAB_LABEL[t]||appMeta(t)?.[1]||t}</button>`).join('')}</div><div class="glance-body" id="glance-${id}"></div></div>`:`<div class="glancepane" id="glance-${id}"></div>`}<div class="resize"></div></section>`;
 }
 function buildWindows(){
  $('#windows').innerHTML=HOSTS.map(id=>appShell(id,appMeta(id)[1])).join('');
  $$('.window').forEach(initWindow);
  $$('.window').forEach(w=>{fitResize?.observe(w);fitMutations.observe(w,{childList:true,subtree:true})});
- $$('.win-tabs .tab98').forEach(b=>b.onclick=e=>{e.stopPropagation();setTab(b.dataset.host,b.dataset.tab)});
+ $$('.win-tabs .tab98, .glance-programs .gp-chip').forEach(b=>b.onclick=e=>{e.stopPropagation();setTab(b.dataset.host,b.dataset.tab)});
  reflowAll(); renderTasks();
  const first=$(`.window[data-app="${bootFocus}"]`);if(first&&!first.classList.contains('hidden'))focus(first);
 }
@@ -672,6 +672,8 @@ function setTab(host,id){
  activeTab[host]=id;
  w.querySelectorAll('.win-tabs .tab98').forEach(b=>b.classList.toggle('on',b.dataset.tab===id));
  w.querySelectorAll('.tabpane').forEach(p=>p.classList.toggle('on',p.id==='body-'+id));
+ w.querySelectorAll('.glance-programs .gp-chip').forEach(b=>{const on=b.dataset.tab===id;b.classList.toggle('on',on);b.setAttribute('aria-selected',String(on))});
+ renderSig.delete('g:'+host);renderSig.delete('p:'+id);const gb=document.getElementById('glance-'+host);if(gb)gb._mpoHTML=null;
  persist(); window.dispatchEvent(new CustomEvent('mpo:tab-change',{detail:{host,id}})); renderSig.delete(id); renderAll(); scheduleFit(w);
 }
 // Windows stay fully inside the desktop (above the taskbar); shrink them if the desktop got smaller.
@@ -786,7 +788,6 @@ function focus(w){$$('.window').forEach(x=>x.classList.add('inactive'));w.classL
 function openApp(id){
  const host=hostOf(id),w=$(`.window[data-app="${host}"]`);if(!w)return;
  // Asking for a specific tab (Start menu, a Settings shortcut) means the full workstation.
- if(hasTabs(host)&&id!==host&&!isDetail(host))setDetail(host,true);
  w.classList.remove('hidden');openSet.add(host);clampWin(w);focus(w);
  if(hasTabs(host)&&id!==host){setTab(host,id);return}
  if(hasTabs(host))setTab(host,activeTab[host]||host);
@@ -1619,7 +1620,7 @@ function renderBackgroundSettings(){
 function renderChanged(id,sig,fn){if(!windowVisible(id))return;const key=JSON.stringify(sig);if(renderSig.get(id)===key)return;renderSig.set(id,key);fn()}
 // Glance views: one card per window — hero number, three supporting numbers, one status pill, one
 // visual, a quiet footer. Numbers are formatted here; any feed text goes through polyEscape.
-function setGlance(host,html){const el=document.getElementById('glance-'+host);if(el)el.innerHTML=html}
+function setGlance(host,html){if(programActive(host))return;const el=document.getElementById('glance-'+host);if(el)el.innerHTML=html}
 const gTone=v=>Number(v)>0?'g-pos':Number(v)<0?'g-neg':'';
 const gSigned=(v,d,unit='')=>{const n=Number(v);return Number.isFinite(n)?`${n>0?'+':n<0?'−':''}${Math.abs(n).toFixed(d)}${unit}`:'—'};
 const gPct=v=>v==null||!Number.isFinite(Number(v))?'—':Math.round(Number(v)*100)+'%';
@@ -1743,7 +1744,23 @@ const GLANCE={
  journal:{render:glanceJournal,sig:()=>[projectJournal?.rows?.length,projectJournal?.rows?.[0]?.at,journal.length,journal.at(-1)?.ts]},
  money:{render:glanceMoney,sig:()=>[state?.build?.version,state?.system?.health,state?.mode,state?.portfolio?.equitySol,state?.dailyPnlSol,state?.system?.paused,state?.system?.killSwitch,(state?.positions||[]).length,state?.evolutionLoop?.status,state?.evolutionLoop?.generation,polyUSComboState?.autopilot?.enabled,polyUSAccount?.balance,rhState?.loop?.running,rhState?.paper?.equityUsd]}
 };
-function renderGlances(){for(const h of HOSTS){const g=GLANCE[h];if(!g||!glanceVisible(h))continue;const key=JSON.stringify(g.sig());if(renderSig.get('g:'+h)===key)continue;renderSig.set('g:'+h,key);g.render()}}
+// Program Simple views. Each program (a tab) registers {render, sig} through window.MPOProgramGlance; the selected
+// program's card replaces the window's overview card. Cards follow the Pump.fun pattern: one hero number, three
+// readouts, a live visual, a short footer.
+const PROGRAM_GLANCE={};
+window.MPOProgramGlance={register(id,def){PROGRAM_GLANCE[id]=def;renderSig.delete('p:'+id)}};
+function programActive(host){const t=activeTab[host];return hasTabs(host)&&t&&t!==host&&tabsOf(host).includes(t)?t:null}
+window.MPOProgramActive=programActive;
+window.MPOProgramVisible=id=>{const h=hostOf(id);return h!==id&&glanceVisible(h)&&programActive(h)===id};
+function programFallback(id){const a=appMeta(id);return glance({title:a?.[1]||id,pill:{label:'Simple view',tone:''},hero:null,visual:`<div class="g-empty">${polyEscape(a?.[1]||id)} shows its full workstation in Advanced.</div>`,action:'<button class="g-action" data-open-advanced>Open Advanced</button>'})}
+function renderPrograms(){
+ for(const h of HOSTS){const id=programActive(h);if(!id||!glanceVisible(h))continue;const def=PROGRAM_GLANCE[id],el=document.getElementById('glance-'+h);if(!el)continue;
+  const key=JSON.stringify(def?.sig?def.sig():null);if(renderSig.get('p:'+id)===key&&el.dataset.program===id)continue;renderSig.set('p:'+id,key);
+  if(el.contains(document.activeElement)&&document.activeElement.matches('input,select,textarea'))continue;
+  el.innerHTML=def?def.render():programFallback(id);el.dataset.program=id;el._mpoHTML=null;def?.after?.(el);
+  el.querySelector('[data-open-advanced]')?.addEventListener('click',()=>setDetail(h,true));}
+}
+function renderGlances(){for(const h of HOSTS){const g=GLANCE[h];if(!g||!glanceVisible(h)||programActive(h))continue;const el=document.getElementById('glance-'+h);if(el&&el.dataset.program){delete el.dataset.program;renderSig.delete('g:'+h)}const key=JSON.stringify(g.sig());if(renderSig.get('g:'+h)===key)continue;renderSig.set('g:'+h,key);g.render()}}
 function renderAll(force=false){
  const t0=performance.now();
  window.MPOSPlatform?.render();
@@ -1758,7 +1775,7 @@ function renderAll(force=false){
  window.MPOWhales?.render();
  window.MPOBots?.render();
  if(force)renderSig.clear(); const s=state||{},m=s.system?.metrics||{},e=s.evolutionLoop||{},p=s.portfolio||{};
- sampleSystem();renderGlances();
+ sampleSystem();renderGlances();renderPrograms();
  renderChanged('trade',[p.equitySol,p.cashSol,s.dailyPnlSol,s.system?.health,s.system?.paused,s.system?.killSwitch,s.watchlist,s.positions,s.solanaBook],renderTrade);
  renderChanged('sportsbook',polyUSComboState,renderSportsbook);
  renderChanged('robinhood',rhState,renderRobinhood);
