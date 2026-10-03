@@ -16,7 +16,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { writeFileAtomicSync } from './atomicRename.js';
 import { takerFee } from './core/fees.js';
-import { KALSHI_DEFAULTS, pickWeather, pickBtc, paced } from './kalshiBots.js';
+import { KALSHI_DEFAULTS, pickWeather, pickBtc, paced, modelGuard, observedBet, settleObserved } from './kalshiBots.js';
 
 const SCHEMA = 'mpo.bot-farm.v1';
 export const FARM_START_USD = KALSHI_DEFAULTS.weather.startUsd; // same bankroll as the live bots
@@ -33,14 +33,19 @@ export const FARM_VARIANTS = Object.freeze([
   { id: 'wx-nws-e04', kind: 'weather', label: 'Weather · NWS only · edge ≥ 4¢', over: { useCalibration: false, minEdge: 0.04 } },
   { id: 'wx-nws-e10', kind: 'weather', label: 'Weather · NWS only · edge ≥ 10¢', over: { useCalibration: false, minEdge: 0.10 } },
   { id: 'btc-v100', kind: 'btc', label: 'BTC · vol × 1.0', over: { volMultiple: 1.0 } },
-  { id: 'btc-v125-e04', kind: 'btc', label: 'BTC · vol × 1.25 · edge ≥ 4¢', over: { minEdge: 0.04 } },
+  { id: 'btc-v125-e04', kind: 'btc', label: 'BTC · vol × 1.25 · edge ≥ 4¢', over: { volMultiple: 1.25, minEdge: 0.04 } },
   { id: 'btc-v150', kind: 'btc', label: 'BTC · vol × 1.5', over: { volMultiple: 1.5 } },
   { id: 'btc-v200', kind: 'btc', label: 'BTC · vol × 2.0', over: { volMultiple: 2.0 } },
+  // The live BTC bot's model since revision 2 (run A2), forward-tested beside the variants it replaced.
+  { id: 'btc-live-r2', kind: 'btc', label: 'BTC · live model r2 (vol × 1.0, no longshots under 15¢)', over: { volMultiple: 1.0, longshotPrice: 0.15, longshotMinEdge: 0.15 } },
 ]);
+// The BTC variants above were started on the revision-1 model (vol × 1.25, no longshot guard). They keep it, so a
+// change to the live defaults never changes an experiment that is already running.
+const BTC_R1 = Object.freeze({ volMultiple: 1.25, longshotPrice: 0, longshotMinEdge: 0 });
 // The Evolution Lab's Research Workbench may propose up to four extra variants (lab-link/farm-proposals.json),
 // only from calibrations that beat the current settings on held-out data. Each is checked here: a known kind,
 // an id 'lab-…', and only these settings, inside these bounds. Anything else is ignored.
-const LAB_OVER = { volMultiple: [0.5, 4], minEdge: [0.02, 0.3], calibrationSafety: [0.8, 3], maxDisagreement: [0.05, 0.5], sigmaBaseF: [0.5, 8], sigmaPerDayF: [0, 5], biasF: [-10, 10] };
+const LAB_OVER = { longshotPrice: [0, 0.5], longshotMinEdge: [0, 0.5], volMultiple: [0.5, 4], minEdge: [0.02, 0.3], calibrationSafety: [0.8, 3], maxDisagreement: [0.05, 0.5], sigmaBaseF: [0.5, 8], sigmaPerDayF: [0, 5], biasF: [-10, 10] };
 export function labVariants(doc, now = Date.now()) {
   const out = [];
   const fresh = at => Number.isFinite(at) && at <= now && now - at <= 48 * 3600e3;
@@ -63,8 +68,8 @@ export function labVariants(doc, now = Date.now()) {
 const round = (v, d = 4) => Math.round(v * 10 ** d) / 10 ** d;
 const localDay = t => new Date(t).toLocaleDateString('en-CA');
 
-function emptyBook(v) { return { id: v.id, kind: v.kind, label: v.label, startUsd: FARM_START_USD, cashUsd: FARM_START_USD, open: [], history: [], entered: 0, skippedSlippage: 0 }; }
-export function variantSettings(v) { return { ...(v.kind === 'weather' ? KALSHI_DEFAULTS.weather : KALSHI_DEFAULTS.btc), ...v.over, enabled: true }; }
+function emptyBook(v) { return { id: v.id, kind: v.kind, label: v.label, startUsd: FARM_START_USD, cashUsd: FARM_START_USD, open: [], history: [], entered: 0, skippedSlippage: 0, observedOpen: [], observedHistory: [] }; }
+export function variantSettings(v) { return { ...(v.kind === 'weather' ? KALSHI_DEFAULTS.weather : { ...KALSHI_DEFAULTS.btc, ...BTC_R1 }), ...v.over, enabled: true }; }
 
 // Per-bet P/L t-statistic and a plain verdict.
 export function verdict(pnls) {
@@ -90,6 +95,7 @@ export class BotFarm {
       s = { schema: SCHEMA, startedAt: this.now(), books: {} };
     }
     for (const v of FARM_VARIANTS) s.books[v.id] ||= emptyBook(v);
+    for (const b of Object.values(s.books)) { b.observedOpen ||= []; b.observedHistory ||= []; }
     return s;
   }
   // The fixed variants plus the Lab's current proposals. A proposal that the Lab withdraws keeps its book (history
@@ -117,11 +123,15 @@ export class BotFarm {
       await this.settle(books.map(([, b]) => b), k, now);
       const marks = markIndex(kind, frame);
       for (const [v, b] of books) {
-        const s = variantSettings(v), held = new Set(b.open.map(p => p.eventTicker));
+        const s = variantSettings(v), held = new Set([...b.open, ...b.observedOpen].map(p => p.eventTicker));
+        // The same model-vs-market guard as the live bots: a variant whose model is worse than the market's prices
+        // records its bets observe-only until it earns its way back.
+        b.standDown = modelGuard([...b.history, ...b.observedHistory]);
         if (v.withdrawn) continue; // settled above; no new bets
         const { cands } = kind === 'weather' ? pickWeather(frame, s, held, now) : pickBtc(frame, s, held, now);
         for (const x of cands) {
           if (x.edge < s.minEdge) continue;
+          if (b.standDown.active) { if (b.observedOpen.length >= s.maxOpen) break; b.observedOpen.push(observedBet(x, now)); last.observed = (last.observed || 0) + 1; continue; }
           if (b.open.length >= s.maxOpen) break;
           if (this.enter(b, s, x, now)) last.entered++;
         }
@@ -137,7 +147,7 @@ export class BotFarm {
     if (qty < 1) return false;
     const fee = takerFee(x.feeModel, [{ price, quantity: qty }]); if (fee == null) return false;
     const pModel = x.pModel, edge = pModel - price - fee / qty;
-    if (edge < s.minEdge) { b.skippedSlippage++; return false; }
+    if (edge < Math.max(s.minEdge, price < (s.longshotPrice || 0) ? (s.longshotMinEdge || 0) : 0)) { b.skippedSlippage++; return false; }
     const cost = price * qty; if (cost + fee > b.cashUsd) return false;
     b.cashUsd = round(b.cashUsd - cost - fee, 6); b.entered++;
     b.open.push({ ticker: x.ticker, eventTicker: x.eventTicker, label: x.label, side: x.side, qty, price, costUsd: round(cost, 4), feeUsd: round(fee, 4), pModel: round(pModel, 4), marketPrice: x.ask, openedAt: now, closeAt: x.closeAt, markUsd: round(cost, 4) });
@@ -145,7 +155,7 @@ export class BotFarm {
   }
   // Settle positions whose market has closed, asking Kalshi once per ticker across all variants.
   async settle(books, k, now) {
-    const due = new Set(books.flatMap(b => b.open.filter(p => p.closeAt <= now).map(p => p.ticker))), results = new Map();
+    const due = new Set(books.flatMap(b => [...b.open, ...(b.observedOpen || [])].filter(p => p.closeAt <= now).map(p => p.ticker))), results = new Map();
     for (const t of due) { try { const m = await paced(() => k.market(t)); results.set(t, m.data); } catch {} }
     for (const b of books) {
       const keep = [];
@@ -158,6 +168,13 @@ export class BotFarm {
         b.history.unshift({ ...p, outcome, won, payoutUsd: payout, pnlUsd: round(payout - p.costUsd - p.feeUsd, 4), settledAt: now, brierModel: round((p.pModel - (won ? 1 : 0)) ** 2, 4), brierMarket: round((p.marketPrice - (won ? 1 : 0)) ** 2, 4) });
       }
       b.open = keep; b.history.length = Math.min(b.history.length, 2000);
+      const still = [];
+      for (const p of b.observedOpen || []) {
+        const d = results.get(p.ticker), outcome = d?.settlementOutcome;
+        if (outcome !== 'YES' && outcome !== 'NO') { still.push(p); continue; }
+        (b.observedHistory ||= []).unshift(settleObserved(p, outcome, now));
+      }
+      b.observedOpen = still; if (b.observedHistory) b.observedHistory.length = Math.min(b.observedHistory.length, 500);
     }
   }
 
@@ -169,7 +186,8 @@ export class BotFarm {
       const mean = k => n ? round(h.reduce((a, x) => a + x[k], 0) / n, 4) : null;
       return { id: v.id, kind: v.kind, label: v.label, over: v.over, lab: !!v.lab, withdrawn: !!v.withdrawn, equityUsd: round(equity, 2), returnPct: round((equity - b.startUsd) / b.startUsd * 100, 2), open: b.open.length, entered: b.entered, skippedSlippage: b.skippedSlippage,
         settled: n, wins: h.filter(x => x.won).length, hitRate: n ? round(h.filter(x => x.won).length / n, 3) : null, pnlUsd: round(h.reduce((a, x) => a + x.pnlUsd, 0), 2), feesUsd: round(h.reduce((a, x) => a + x.feeUsd, 0), 2),
-        today: byDay[today], week: round(Object.values(byDay).reduce((a, x) => a + x, 0), 2), byDay, brierModel: mean('brierModel'), brierMarket: mean('brierMarket'), verdict: verdict(h.map(x => x.pnlUsd)) };
+        today: byDay[today], week: round(Object.values(byDay).reduce((a, x) => a + x, 0), 2), byDay, brierModel: mean('brierModel'), brierMarket: mean('brierMarket'), verdict: verdict(h.map(x => x.pnlUsd)),
+        standDown: modelGuard([...h, ...(b.observedHistory || [])]), observed: { open: (b.observedOpen || []).length, settled: (b.observedHistory || []).length, wins: (b.observedHistory || []).filter(x => x.won).length } };
     });
     return { mode: 'PAPER', startedAt: this.state.startedAt, startUsd: FARM_START_USD, slippage: FARM_SLIPPAGE, minSettled: MIN_SETTLED, days, variants, last: this.last, error: this.recoveryError, running: [...this.busy] };
   }

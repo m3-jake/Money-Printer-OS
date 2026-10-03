@@ -11,7 +11,7 @@
   const SETTINGS = {
     'weather-nws': [['stakeUsd', 'USD per bet'], ['maxOpen', 'Max open'], ['minEdge', 'Min edge'], ['maxDisagreement', 'Max model–market gap'], ['sigmaBaseF', 'Sigma °F'], ['sigmaPerDayF', 'Sigma per day °F']],
     weather: [['stakeUsd', 'USD per bet'], ['maxOpen', 'Max open'], ['minEdge', 'Min edge'], ['maxDisagreement', 'Max model–market gap'], ['biasF', 'Forecast bias °F'], ['sigmaBaseF', 'Sigma °F'], ['sigmaPerDayF', 'Sigma per day °F']],
-    btc: [['stakeUsd', 'USD per bet'], ['maxOpen', 'Max open'], ['minEdge', 'Min edge'], ['maxDisagreement', 'Max model–market gap'], ['volMultiple', 'Vol multiple'], ['maxHoursToClose', 'Max hours to close']],
+    btc: [['stakeUsd', 'USD per bet'], ['maxOpen', 'Max open'], ['minEdge', 'Min edge'], ['maxDisagreement', 'Max model–market gap'], ['volMultiple', 'Vol multiple'], ['longshotPrice', 'Longshot under'], ['longshotMinEdge', 'Longshot min edge'], ['maxHoursToClose', 'Max hours to close']],
     polycopy: [['stakeUsd', 'USD per copy'], ['maxOpen', 'Max open'], ['follows', 'Leaders followed'], ['minLeaderTradeUsd', 'Min leader trade $'], ['maxChase', 'Max chase'], ['refollowDays', 'Refollow after days']],
   };
   async function load(force = false) {
@@ -39,7 +39,13 @@
     const st = b.stats || {};
     return `<div class="core-heading"><h2>${escape(b.label.toUpperCase())}</h2><span class="mpo-badge">PAPER ONLY</span><span class="mpo-badge">${b.settings.enabled ? 'ON' : 'OFF'}</span></div>
       <div class="core-lcd"><span>Paper equity ${usd(b.equityUsd)} (${pct(b.returnPct)})</span><span>Cash ${usd(b.cashUsd)}</span><span>Open ${b.open.length}</span><span>Settled ${st.settled ?? st.closed ?? 0} · wins ${st.wins ?? 0}</span><span>P/L ${usd(st.pnlUsd)} · fees ${usd(st.feesUsd)}</span>${st.brierModel != null ? `<span title="Lower is better. Brier score of the bot's probability vs the price it paid, over settled bets.">Brier model ${st.brierModel} vs market ${st.brierMarket}</span>` : ''}</div>
-      <p class="core-muted">Last run ${ago(b.lastRunAt)}${b.lastNote ? ' · ' + escape(b.lastNote) : ''}</p>${b.lastError ? `<p class="core-error">${escape(b.lastError)}</p>` : ''}`;
+      <p class="core-muted">Last run ${ago(b.lastRunAt)}${b.lastNote ? ' · ' + escape(b.lastNote) : ''}</p>${b.lastError ? `<p class="core-error">${escape(b.lastError)}</p>` : ''}${standDownNote(b)}`;
+  }
+  // The model-vs-market guard in plain words: why the bot is observing instead of betting, and how it gets back.
+  function standDownNote(b) {
+    const g = b.standDown; if (!g?.active) return '';
+    const o = b.observed || {};
+    return `<p class="core-notice" role="status"><b>Observe-only.</b> Over its last ${g.n} settled bets this bot's probabilities were less accurate than the market's own prices (Brier ${g.brierModel} vs ${g.brierMarket}, lower is better), so it has stopped spending paper cash. It still records every bet it would make; those settle on the real result (${o.settled ?? 0} settled, ${o.wins ?? 0} won, ${o.open ?? 0} waiting), and it bets again once the model is at least as accurate as the market.</p>`;
   }
   function controls(id, b) {
     const s = b.settings, f = SETTINGS[id];
@@ -51,6 +57,7 @@
   function kalshiBot(id, b) {
     return `<section class="bot-card">${header(b)}${toolbar(id, b)}${window.MPOViz ? MPOViz.canvas('bot-' + id, 110, 'paper equity after each settled bet') : ''}
       <h3>Open bets</h3>${table(['Market', 'Side', 'Contracts', 'Paid', 'Model p', 'Mark', 'Closes'], b.open.map(p => `<tr><td>${escape(p.label)}</td><td>${p.side}</td><td>${p.qty}</td><td>${usd(p.costUsd + p.feeUsd)} @ ${p.avgPrice}</td><td>${(p.pModel * 100).toFixed(0)}%</td><td>${usd(p.markUsd)}</td><td>${when(p.closeAt)}</td></tr>`).join(''), 'No open bets.')}
+      ${(b.observed?.open || b.observed?.settled) ? `<h3>Observed (no cash)</h3>${table(['Market', 'Side', 'Result', 'Would-be P/L', 'Model p', 'Price'], [...(b.observed.openBets || []).map(p => `<tr><td>${escape(p.label)}</td><td>${p.side}</td><td>waiting · closes ${when(p.closeAt)}</td><td>—</td><td>${(p.pModel * 100).toFixed(0)}%</td><td>${p.price}</td></tr>`), ...(b.observed.recent || []).slice(0, 10).map(p => `<tr><td>${escape(p.label)}</td><td>${p.side}</td><td>${p.won ? 'WON' : 'LOST'} (${p.outcome})</td><td class="${p.pnlUsd >= 0 ? 'pm-up' : 'pm-down'}">${usd(p.pnlUsd)}</td><td>${(p.pModel * 100).toFixed(0)}%</td><td>${p.price}</td></tr>`)].join(''), 'None yet.')}` : ''}
       <h3>Settled</h3>${table(['Market', 'Side', 'Result', 'P/L', 'Model p', 'Price'], b.history.slice(0, 15).map(p => `<tr><td>${escape(p.label)}</td><td>${p.side}</td><td>${p.won ? 'WON' : 'LOST'} (${p.outcome})</td><td class="${p.pnlUsd >= 0 ? 'pm-up' : 'pm-down'}">${usd(p.pnlUsd)}</td><td>${(p.pModel * 100).toFixed(0)}%</td><td>${p.marketPrice}</td></tr>`).join(''), 'Nothing settled yet. Weather bets settle the morning after; BTC bets at their hour.')}
       <details><summary>Recent decisions (why it bet or skipped)</summary>${table(['When', 'Market', 'Action', 'Model p', 'Price', 'Edge', 'Why'], b.decisions.map(d => `<tr><td>${when(d.at)}</td><td>${escape(d.label || d.event || '')}</td><td>${escape(d.action)} ${escape(d.side || '')}</td><td>${d.pModel != null ? (d.pModel * 100).toFixed(0) + '%' : ''}</td><td>${d.price ?? ''}</td><td>${d.edge ?? ''}</td><td>${escape(d.reason || '')}</td></tr>`).join(''), 'No decisions yet.')}</details>
       ${controls(id, b)}</section>`;
@@ -78,7 +85,7 @@
     const money = v => `<span class="${v > 0 ? 'pm-up' : v < 0 ? 'pm-down' : ''}">${usd(v)}</span>`;
     // Best all-time P/L first; ties keep the farm's own order (weather, then BTC).
     const order = new Map(f.variants.map((v, i) => [v.id, i]));
-    const rows = f.variants.slice().sort((a, b) => b.pnlUsd - a.pnlUsd || order.get(a.id) - order.get(b.id)).map(v => `<tr title="${escape(v.brierModel == null ? 'No settled bets yet' : `Brier (lower is better): model ${v.brierModel} vs market ${v.brierMarket}`)}"><td style="white-space:nowrap">${escape(v.label)}${v.lab ? ` <span class="mpo-badge" title="${escape(v.withdrawn ? 'Proposed by the Evolution Lab, since withdrawn: no new bets' : 'Proposed by the Evolution Lab Workbench from a held-out calibration')}">${v.withdrawn ? 'Lab · withdrawn' : 'Lab'}</span>` : ''}</td><td>${v.open}</td><td>${v.settled}${v.settled ? ` · ${Math.round(v.hitRate * 100)}%` : ''}</td><td>${money(v.today)}</td><td>${money(v.week)}</td><td>${money(v.pnlUsd)}</td><td>${escape(v.settled < f.minSettled ? `${v.settled}/${f.minSettled} settled` : v.verdict.text)}</td></tr>`).join('');
+    const rows = f.variants.slice().sort((a, b) => b.pnlUsd - a.pnlUsd || order.get(a.id) - order.get(b.id)).map(v => `<tr title="${escape(v.brierModel == null ? 'No settled bets yet' : `Brier (lower is better): model ${v.brierModel} vs market ${v.brierMarket}`)}"><td style="white-space:nowrap">${escape(v.label)}${v.lab ? ` <span class="mpo-badge" title="${escape(v.withdrawn ? 'Proposed by the Evolution Lab, since withdrawn: no new bets' : 'Proposed by the Evolution Lab Workbench from a held-out calibration')}">${v.withdrawn ? 'Lab · withdrawn' : 'Lab'}</span>` : ''}</td><td>${v.open}</td><td>${v.settled}${v.settled ? ` · ${Math.round(v.hitRate * 100)}%` : ''}</td><td>${money(v.today)}</td><td>${money(v.week)}</td><td>${money(v.pnlUsd)}</td><td>${escape(v.standDown?.active ? `observe-only: model trails the market (Brier ${v.standDown.brierModel} vs ${v.standDown.brierMarket}) · ${v.observed?.settled ?? 0} observed settled` : v.settled < f.minSettled ? `${v.settled}/${f.minSettled} settled` : v.verdict.text)}</td></tr>`).join('');
     const last = k => f.last?.[k] ? `${k} ${ago(f.last[k].at)}${f.last[k].error ? ' (error: ' + escape(f.last[k].error) + ')' : ''}` : `${k} not run yet`;
     const days = tape ? Math.max(0, ...Object.values(tape.streams).map(s => s.days)) : 0;
     const tapeLine = tape ? `Tape (what the bots saw, for replay): ${days} day${days === 1 ? '' : 's'} · ${(tape.bytes / 1e6).toFixed(1)} MB · kept ${tape.keepDays} days${tape.errors ? ` · ${tape.errors} write errors (${escape(tape.lastError)})` : ''}` : '';
@@ -155,7 +162,7 @@
   }
   setInterval(() => { if (needsData()) load(); }, 15000);
   // Simple views: every Kalshi paper bot (and the farm's leader), and the copy bot with its leaders.
-  const miniRow = (name, b) => gRow(name, `${b.settings.enabled ? 'on' : 'paused'} · ${b.open.length} open · ${b.stats.settled ?? b.stats.closed ?? 0} settled${b.stats.brierModel != null ? ` · model ${b.stats.brierModel < b.stats.brierMarket ? 'beats' : 'trails'} market` : ''}`, `${usd(b.equityUsd)} <span class="${b.returnPct > 0 ? 'g-pos' : b.returnPct < 0 ? 'g-neg' : ''}">${pct(b.returnPct)}</span>`, b.lastError ? 'bad' : b.settings.enabled ? 'ok' : 'warn');
+  const miniRow = (name, b) => gRow(name, `${b.settings.enabled ? b.standDown?.active ? 'observe-only (model trails market)' : 'on' : 'paused'} · ${b.open.length} open · ${b.stats.settled ?? b.stats.closed ?? 0} settled${b.stats.brierModel != null ? ` · model ${b.stats.brierModel < b.stats.brierMarket ? 'beats' : 'trails'} market` : ''}`, `${usd(b.equityUsd)} <span class="${b.returnPct > 0 ? 'g-pos' : b.returnPct < 0 ? 'g-neg' : ''}">${pct(b.returnPct)}</span>`, b.lastError ? 'bad' : b.settings.enabled && !b.standDown?.active ? 'ok' : 'warn');
   function botsCard() {
     if (!data) return glance({ title: 'Kalshi · paper bots', pill: { label: error ? 'Unavailable' : 'Loading', tone: error ? 'bad' : 'warn' }, hero: null, visual: `<div class="g-empty">${escape(error || 'Loading paper bots…')}</div>` });
     const k = data.kalshi, w = k.weather, c = k['weather-nws'], b = k.btc, f = data.farm, lead = f?.variants?.slice().sort((x, y) => y.pnlUsd - x.pnlUsd)[0], settled = (f?.variants || []).reduce((t, v) => t + v.settled, 0);

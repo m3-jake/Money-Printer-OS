@@ -1,0 +1,90 @@
+{
+  "at": "2026-10-03T13:59:28.655Z",
+  "frames": 144,
+  "settledEvents": 16,
+  "horizons": [
+    {
+      "hours": 0.5,
+      "overlappingSamples": 85,
+      "meanZ": 0.2632803984734489,
+      "sdZ": 0.8037091613389027
+    },
+    {
+      "hours": 1,
+      "overlappingSamples": 75,
+      "meanZ": 0.29890208345231417,
+      "sdZ": 0.6846226253406028
+    },
+    {
+      "hours": 2,
+      "overlappingSamples": 91,
+      "meanZ": 0.6304211331580151,
+      "sdZ": 0.8569074204922478
+    },
+    {
+      "hours": 6,
+      "overlappingSamples": 28,
+      "meanZ": 0.7346562925325263,
+      "sdZ": 0.43012745588017776
+    }
+  ],
+  "previous": {
+    "settings": {
+      "enabled": true,
+      "startUsd": 12.5,
+      "stakeUsd": 1,
+      "maxOpen": 4,
+      "minEdge": 0.06,
+      "maxDisagreement": 0.2,
+      "minPrice": 0.05,
+      "maxPrice": 0.92,
+      "volMultiple": 1.25,
+      "minHoursToClose": 0.5,
+      "maxHoursToClose": 30,
+      "longshotPrice": 0,
+      "longshotMinEdge": 0
+    },
+    "n": 12,
+    "pnlUsd": -4.31,
+    "meanUsd": -0.35916666666666663,
+    "below15c": 7,
+    "below15cPnlUsd": -6.699999999999999,
+    "missingNextQuote": 0
+  },
+  "proposed": {
+    "settings": {
+      "enabled": true,
+      "startUsd": 12.5,
+      "stakeUsd": 1,
+      "maxOpen": 4,
+      "minEdge": 0.06,
+      "maxDisagreement": 0.2,
+      "minPrice": 0.05,
+      "maxPrice": 0.92,
+      "volMultiple": 1,
+      "minHoursToClose": 0.5,
+      "maxHoursToClose": 30,
+      "longshotPrice": 0.15,
+      "longshotMinEdge": 0.15
+    },
+    "n": 4,
+    "pnlUsd": 2.73,
+    "meanUsd": 0.6825,
+    "below15c": 0,
+    "below15cPnlUsd": 0,
+    "missingNextQuote": 0
+  },
+  "forwardGuard": {
+    "active": true,
+    "n": 13,
+    "observed": 0,
+    "brierModel": 0.1219,
+    "brierMarket": 0.0797,
+    "reason": "observe-only: over the last 13 settled bets the model's probabilities (Brier 0.1219) were worse than the market's own prices (0.0797); it records what it would bet until it beats the market"
+  },
+  "limitations": [
+    "Overlapping horizon samples are diagnostic, not independent trials.",
+    "Replay uses modeled next-frame top-of-book fills; no execution qualification.",
+    "Small settled-event corpus cannot prove profitability."
+  ]
+}

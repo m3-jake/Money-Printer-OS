@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { normCdf, bucketProbability, probAbove, btcContractProbability, realizedVol, scoreSides, walkAsks, KalshiPaperBots } from '../src/kalshiBots.js';
+import { normCdf, bucketProbability, probAbove, btcContractProbability, realizedVol, scoreSides, walkAsks, KalshiPaperBots, modelGuard, MODEL_GUARD, KALSHI_DEFAULTS, BTC_MODEL_REV } from '../src/kalshiBots.js';
 import { PolymarketCopyPaper, pickLeaders, walkBuy } from '../src/polymarketCopy.js';
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'mpo-bots-'));
@@ -238,4 +238,100 @@ test('the Kalshi mirror copies a leader\'s game-winner buy onto Kalshi at Kalshi
   s = await m.run(); assert.equal(s.open.length, 1); assert.match(s.decisions[0].reason, /not a game-winner/);
   result = 'YES'; now += 3600e3; s = await m.run();
   assert.equal(s.open.length, 0); assert.equal(s.stats.settled, 1); assert.ok(s.stats.pnlUsd > 0);
+});
+
+// ---- run A2: the model must beat the market; longshot guard; BTC model revision 2 ------------------------------
+const settledBet = (i, { model, market, won = false, observed = false, t0 = Date.UTC(2026, 9, 3) } = {}) => ({ ticker: 'T' + i, eventTicker: 'E' + i, side: 'YES', qty: 5, pModel: model, marketPrice: market, won, observed, pnlUsd: won ? 0.5 : -1, feeUsd: 0.01, settledAt: t0 + i * 60e3, brierModel: (model - (won ? 1 : 0)) ** 2, brierMarket: (market - (won ? 1 : 0)) ** 2 });
+
+test('model guard: no verdict under 10 settled bets; stands down when the model is worse than the market; window is the latest 20', () => {
+  assert.equal(MODEL_GUARD.minSettled, 10);
+  const worse = [...Array(12)].map((_, i) => settledBet(i, { model: 0.25, market: 0.1 }));
+  assert.equal(modelGuard(worse.slice(0, 9)).active, false);
+  assert.match(modelGuard(worse.slice(0, 9)).reason, /9 of 10/);
+  const g = modelGuard(worse);
+  assert.equal(g.active, true); assert.equal(g.n, 12); assert.ok(g.brierModel > g.brierMarket);
+  assert.match(g.reason, /observe-only/); assert.match(g.reason, /worse than the market/);
+  // 20 newer observed bets where the model beats the market push the old ones out of the window.
+  const better = [...Array(20)].map((_, i) => settledBet(100 + i, { model: 0.1, market: 0.3, observed: true }));
+  const back = modelGuard([...worse, ...better]);
+  assert.equal(back.active, false); assert.equal(back.n, 20); assert.equal(back.observed, 20);
+});
+
+test('model guard compares unrounded scores even when the displayed scores tie', () => {
+  const rows = Array.from({length:10}, (_,i)=>({...settledBet(i,{model:0.2,market:0.1}), brierModel:0.10001,brierMarket:0.1}));
+  const g = modelGuard(rows);
+  assert.equal(g.brierModel,g.brierMarket);
+  assert.equal(g.active,true);
+});
+
+test('longshot guard: a side under 15 cents needs a 15-cent edge; dearer sides are unaffected', () => {
+  const base = { feeModel: fee, stakeUsd: 1, minPrice: 0.05, maxPrice: 0.92 };
+  const cheap = scoreSides({ ...base, pYes: 0.22, yesAsk: 0.1, noAsk: 0.92, longshotPrice: 0.15, longshotMinEdge: 0.15 });
+  assert.notEqual(cheap?.side, 'YES', 'a 10-cent YES with about an 11-cent edge is refused');
+  assert.equal(scoreSides({ ...base, pYes: 0.22, yesAsk: 0.1, noAsk: 0.92 }).side, 'YES', 'without the guard it would be bought');
+  assert.equal(scoreSides({ ...base, pYes: 0.32, yesAsk: 0.1, noAsk: 0.92, longshotPrice: 0.15, longshotMinEdge: 0.15 }).side, 'YES', 'a large edge still passes');
+  assert.equal(scoreSides({ ...base, pYes: 0.45, yesAsk: 0.3, noAsk: 0.72, longshotPrice: 0.15, longshotMinEdge: 0.15 }).side, 'YES');
+  assert.equal(KALSHI_DEFAULTS.btc.volMultiple, 1.0); assert.equal(KALSHI_DEFAULTS.btc.longshotPrice, 0.15);
+});
+
+test('a saved BTC book moves to model revision 2 once: settings change, history stays, the change is logged', () => {
+  const dir = tmp(), file = path.join(dir, 'kalshi-paper-bots.json');
+  const btc = { id: 'btc', startUsd: 12.5, cashUsd: 1.07, open: [], history: [settledBet(1, { model: 0.2, market: 0.1 })], decisions: [], settings: { ...KALSHI_DEFAULTS.btc, volMultiple: 1.25, longshotPrice: undefined, longshotMinEdge: undefined }, epoch: 2 };
+  delete btc.settings.longshotPrice; delete btc.settings.longshotMinEdge;
+  fs.writeFileSync(file, JSON.stringify({ schema: 'mpo.kalshi-paper-bots.v1', wallet25: true, bots: { btc } }));
+  const bots = new KalshiPaperBots({ dataDir: dir, kalshi: () => null, weather: async () => null });
+  const s = bots.snapshot('btc');
+  assert.equal(s.settings.volMultiple, 1.0); assert.equal(s.settings.longshotPrice, 0.15); assert.equal(s.cashUsd, 1.07);
+  assert.equal(s.stats.settled, 1, 'history is never touched');
+  assert.equal(bots.state.bots.btc.modelRev, BTC_MODEL_REV);
+  assert.match(s.decisions[0].reason, /vol × 1.25 → × 1/);
+  bots.save();
+  const again = new KalshiPaperBots({ dataDir: dir, kalshi: () => null, weather: async () => null });
+  assert.equal(again.snapshot('btc').decisions.filter(d => d.action === 'SETTINGS').length, 1, 'migrates once');
+});
+
+test('a bot whose model is worse than the market stands down: no cash is used, bets are observed and settle, and it can earn its way back', async () => {
+  const dir = tmp(), result = { value: null }; let now = Date.UTC(2026, 9, 3, 12); const closeAt = now + 10 * 3600e3;
+  const bots = new KalshiPaperBots({ dataDir: dir, kalshi: () => fakeKalshi(result), weather: async () => weatherDesk(closeAt), now: () => now });
+  bots.configure('weather', { maxDisagreement: 0.5, minEdge: 0.03 });
+  bots.state.bots.weather.history = [...Array(12)].map((_, i) => settledBet(i, { model: 0.4, market: 0.1, t0: now - 86400e3 }));
+  const cash = bots.state.bots.weather.cashUsd;
+  let s = await bots.run('weather');
+  assert.equal(s.standDown.active, true); assert.equal(s.open.length, 0); assert.equal(s.cashUsd, cash, 'observe-only uses no paper cash');
+  assert.equal(s.observed.open, 1);
+  assert.ok(s.decisions.some(d => d.action === 'STAND DOWN')); assert.ok(s.decisions.some(d => d.action === 'OBSERVE'));
+  assert.match(s.lastNote, /OBSERVE-ONLY/);
+  s = await bots.run('weather'); assert.equal(s.observed.open, 1, 'one observed bet per event');
+  result.value = 'YES'; now += 11 * 3600e3; s = await bots.run('weather');
+  assert.equal(s.observed.settled, 1); assert.equal(s.observed.recent[0].won, true); assert.equal(s.stats.settled, 12, 'observed bets never enter the real book');
+  // Enough observed winners where the model beat the market: the bot trades again.
+  bots.state.bots.weather.observedHistory.push(...[...Array(20)].map((_, i) => settledBet(200 + i, { model: 0.3, market: 0.2, won: true, observed: true, t0: now })));
+  result.value = null; s = await bots.run('weather');
+  assert.equal(s.standDown.active, false); assert.ok(s.decisions.some(d => d.action === 'RESUME'));
+});
+
+test('farm variants started on the revision-1 BTC model keep it; the live r2 model runs as its own variant', async () => {
+  const { FARM_VARIANTS, variantSettings } = await import('../src/botFarm.js');
+  const by = Object.fromEntries(FARM_VARIANTS.map(v => [v.id, variantSettings(v)]));
+  assert.equal(by['btc-v125-e04'].volMultiple, 1.25); assert.equal(by['btc-v125-e04'].longshotPrice, 0);
+  assert.equal(by['btc-v150'].longshotPrice, 0);
+  assert.equal(by['btc-live-r2'].volMultiple, 1.0); assert.equal(by['btc-live-r2'].longshotPrice, 0.15);
+  assert.equal(by['wx-cal-e07'].minEdge, KALSHI_DEFAULTS.weather.minEdge);
+});
+
+test('a farm variant whose model is worse than the market records observe-only bets, without cash, until it earns its way back', async () => {
+  const { BotFarm } = await import('../src/botFarm.js');
+  const dir = tmp(), result = { value: null }; let now = Date.UTC(2026, 9, 3, 12); const closeAt = now + 10 * 3600e3, desk = weatherDesk(closeAt); desk.cities[0].id = 'NYC';
+  const calibration = { model: async () => ({ mu: 71, sigma: 1.6, forecast: 71, lead: 1, source: 'open-meteo + calibration' }) };
+  const bots = new KalshiPaperBots({ dataDir: dir, calibration, kalshi: () => fakeKalshi(result), weather: async () => desk, now: () => now });
+  const farm = new BotFarm({ dataDir: dir, bots, now: () => now });
+  farm.state.books['wx-cal-e04'].history = [...Array(12)].map((_, i) => settledBet(i, { model: 0.4, market: 0.1, t0: now - 86400e3 }));
+  const cash = farm.state.books['wx-cal-e04'].cashUsd;
+  let f = await farm.run('weather');
+  const v = id => f.variants.find(x => x.id === id);
+  assert.equal(v('wx-cal-e04').standDown.active, true); assert.equal(v('wx-cal-e04').open, 0); assert.equal(v('wx-cal-e04').observed.open, 1);
+  assert.equal(farm.state.books['wx-cal-e04'].cashUsd, cash, 'no paper cash');
+  assert.equal(v('wx-cal-e07').open, 1, 'other variants trade as before');
+  result.value = 'YES'; now += 11 * 3600e3; f = await farm.run('weather');
+  assert.equal(v('wx-cal-e04').observed.settled, 1); assert.equal(v('wx-cal-e04').settled, 12, 'observed bets never enter the real book');
 });

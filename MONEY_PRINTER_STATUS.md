@@ -62,6 +62,31 @@ Architecture, active work and release evidence live in `.agent-state/PROJECT_STA
 ledger remains `AUDIT.md` and `PROGRESS.md`. Later sections below are historical unless dated
 as the current release. Last updated: 2026-10-03.
 
+## Batch PF-10 (2026-10-03, Codex): model-vs-market stand-down (run item A2)
+
+The interrupted A2 changes are completed in source. Every Kalshi bot and farm variant checks the latest 20
+settled real/observed decisions after 10 outcomes. A worse model Brier score stops cash entries; separate
+observe-only decisions continue settling and can restore trading. Book history and bankrolls stay intact.
+BTC revision 2 uses volMultiple 1.0 and requires a 0.15 after-fee edge for asks below 0.15. Existing BTC settings
+migrate once with a decision receipt. The floor is checked again after actual book walking and farm slippage.
+The Lab BTC replay now applies that floor at decision and modeled fill; its live reference matches revision 2.
+
+Read-only diagnosis: `node scripts/diagnose-kalshi-btc.mjs`; recorded result:
+`reports/KALSHI-BTC-A2-2026-10-03.json`. At 09:59 EDT, 144 frames and 16 settled events yielded 12 old-setting
+modeled bets, -$4.31 (7 fills below 15 cents lost $6.70), versus 4 revision-2 bets, +$2.73, none below 15 cents.
+This small, inspectable top-of-book sample is diagnostic, not qualification. Overlapping 0.5/1/2-hour
+standardized move deviations were 0.804/0.685/0.857: widening current vol by 1.25 is not supported by this sample.
+The disagreement filter compares model YES probability with the YES midpoint; gaps within 0.20 can still buy
+cheap tails. The live path walks asks within 2 cents, recomputes fees/edge and refuses inadequate cash.
+Replay uses a 1-cent slip and modeled fees, with no recorded depth, so its P/L cannot establish executable edge.
+Forward BTC book: 13 settled, model Brier 0.1219 vs market 0.0797: observe-only under the new guard.
+
+Verification: both full suites passed (trader 1,248 pass, 20 intentional skips; Lab 395 pass, no failures).
+Source only; installed pair remains alpha.86 / Lab alpha.22 until the Phase A release.
+
+Run checkpoint: A1 complete; A2 source completed; A3 next; A3–D3 still open. The unrelated paperBookStore draft,
+launch configuration and upload zip remain untouched.
+
 ## Batch PF-9 (2026-10-03, Claude): the scoreboard shows every paper book (run item A1)
 
 **Why.** `/api/scoreboard` had no rows for the books bing watches most (Kalshi weather, NWS-control and BTC bots, the

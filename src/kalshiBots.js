@@ -26,9 +26,38 @@ const SCHEMA = 'mpo.kalshi-paper-bots.v1';
 export const KALSHI_DEFAULTS = Object.freeze({
   weather: { enabled: true, useCalibration: true, calibrationSafety: 1.1, startUsd: 12.5, stakeUsd: 1, maxOpen: 10, minEdge: 0.07, maxDisagreement: 0.2, minPrice: 0.05, maxPrice: 0.92, biasF: 0, sigmaBaseF: 1.6, sigmaPerDayF: 1.0, minHoursToClose: 1 },
   'weather-nws': { enabled: true, useCalibration: false, calibrationSafety: 1.1, startUsd: 12.5, stakeUsd: 1, maxOpen: 10, minEdge: 0.07, maxDisagreement: 0.2, minPrice: 0.05, maxPrice: 0.92, biasF: 0, sigmaBaseF: 1.6, sigmaPerDayF: 1.0, minHoursToClose: 1 },
-  btc: { enabled: true, startUsd: 12.5, stakeUsd: 1, maxOpen: 4, minEdge: 0.06, maxDisagreement: 0.2, minPrice: 0.05, maxPrice: 0.92, volMultiple: 1.25, minHoursToClose: 0.5, maxHoursToClose: 30 },
+  // BTC model revision 2 (2026-10-03, run A2): avoid widening already conservative current-regime vol.
+  // See reports/KALSHI-BTC-A2-2026-10-03.json: a small, overlapping diagnostic sample, not qualification.
+  // Longshot guard: a side under 15¢ needs a 15¢ edge; the model-vs-market guard controls forward use.
+  btc: { enabled: true, startUsd: 12.5, stakeUsd: 1, maxOpen: 4, minEdge: 0.06, maxDisagreement: 0.2, minPrice: 0.05, maxPrice: 0.92, volMultiple: 1.0, minHoursToClose: 0.5, maxHoursToClose: 30, longshotPrice: 0.15, longshotMinEdge: 0.15 },
 });
-const LIMITS = { calibrationSafety: [1, 3], maxDisagreement: [0.02, 1], stakeUsd: [1, 250], maxOpen: [1, 50], minEdge: [0.01, 0.5], minPrice: [0.01, 0.5], maxPrice: [0.5, 0.99], biasF: [-10, 10], sigmaBaseF: [0.5, 8], sigmaPerDayF: [0, 5], volMultiple: [0.5, 4], startUsd: [1, 100000], minHoursToClose: [0, 48], maxHoursToClose: [1, 240] };
+const LIMITS = { calibrationSafety: [1, 3], maxDisagreement: [0.02, 1], stakeUsd: [1, 250], maxOpen: [1, 50], minEdge: [0.01, 0.5], minPrice: [0.01, 0.5], maxPrice: [0.5, 0.99], biasF: [-10, 10], sigmaBaseF: [0.5, 8], sigmaPerDayF: [0, 5], volMultiple: [0.5, 4], startUsd: [1, 100000], minHoursToClose: [0, 48], maxHoursToClose: [1, 240], longshotPrice: [0, 0.5], longshotMinEdge: [0, 0.5] };
+// The BTC bot's model revision. A saved book from an older revision is moved to the current BTC model once, and
+// the change is written to its decision log (history is never touched).
+export const BTC_MODEL_REV = 2;
+
+// "The model must beat the market" (run A2). Over the latest MODEL_GUARD.window settled bets (real and observed),
+// once at least MODEL_GUARD.minSettled exist: when the model's Brier score is worse than the market price's, the
+// bot stands down. It keeps recording the bets it would have made (observe-only, no cash), and those settle like
+// real ones, so a model that becomes better than the market earns its way back.
+export const MODEL_GUARD = Object.freeze({ minSettled: 10, window: 20 });
+export function modelGuard(settled = [], { minSettled = MODEL_GUARD.minSettled, window = MODEL_GUARD.window } = {}) {
+  const rows = (Array.isArray(settled) ? settled : []).filter(x => Number.isFinite(x?.brierModel) && Number.isFinite(x?.brierMarket))
+    .sort((a, b) => (b.settledAt ?? 0) - (a.settledAt ?? 0)).slice(0, window);
+  const n = rows.length, mean = k => n ? round(rows.reduce((s, x) => s + x[k], 0) / n, 4) : null;
+  const brierModel = mean('brierModel'), brierMarket = mean('brierMarket'), observed = rows.filter(x => x.observed).length;
+  if (n < minSettled) return { active: false, n, observed, brierModel, brierMarket, reason: `${n} of ${minSettled} settled bets before the model-vs-market check` };
+  if (rows.reduce((s, x) => s + x.brierModel - x.brierMarket, 0) > 0) return { active: true, n, observed, brierModel, brierMarket, reason: `observe-only: over the last ${n} settled bets the model's probabilities (Brier ${brierModel}) were worse than the market's own prices (${brierMarket}); it records what it would bet until it beats the market` };
+  return { active: false, n, observed, brierModel, brierMarket, reason: `trading: over the last ${n} settled bets the model (Brier ${brierModel}) is at least as good as the market (${brierMarket})` };
+}
+// An observe-only bet: the quoted ask, no cash, settled on the market's own result like a real bet.
+export function observedBet(x, now, extra = {}) {
+  return { ticker: x.ticker, eventTicker: x.eventTicker, label: x.label, side: x.side, qty: x.qty, price: x.ask, pModel: round(x.pModel, 4), marketPrice: x.ask, openedAt: now, closeAt: x.closeAt, observed: true, ...extra };
+}
+export function settleObserved(p, outcome, now) {
+  const won = outcome === p.side, cost = p.price * p.qty;
+  return { ...p, outcome, won, settledAt: now, pnlUsd: round((won ? p.qty : 0) - cost, 4), brierModel: round((p.pModel - (won ? 1 : 0)) ** 2, 4), brierMarket: round((p.marketPrice - (won ? 1 : 0)) ** 2, 4) };
+}
 const BTC_SERIES = ['KXBTCD', 'KXBTC'];
 // One market snapshot (a frame) is shared by every bot and farm variant priced within its lifetime, and is
 // written to the tape once. Weather bots run 70 s apart; the BTC farm runs 20 s after the BTC bot.
@@ -75,7 +104,8 @@ export function realizedVol(candles, granularitySec = 300) {
 // Best side of one contract: YES at the YES ask, or NO at the NO ask, after the taker fee for `qty` contracts.
 // A side whose model probability differs from the market's by more than maxDisagreement is dropped: a gap that
 // large is more often a model error (wrong vol, wrong settlement source) than an edge, so it is logged, not bet.
-export function scoreSides({ pYes, yesAsk, noAsk, yesBid = null, feeModel, stakeUsd, minPrice, maxPrice, maxDisagreement = 1 }) {
+// Longshot guard: a side priced under longshotPrice is taken only with an edge of at least longshotMinEdge.
+export function scoreSides({ pYes, yesAsk, noAsk, yesBid = null, feeModel, stakeUsd, minPrice, maxPrice, maxDisagreement = 1, longshotPrice = 0, longshotMinEdge = 0 }) {
   const marketYes = yesBid != null && yesAsk != null ? (yesBid + yesAsk) / 2 : yesAsk != null ? yesAsk : noAsk != null ? 1 - noAsk : null;
   if (marketYes != null && Math.abs(pYes - marketYes) > maxDisagreement) return { disagree: true, pModel: pYes, marketYes, edge: -Infinity };
   const out = [];
@@ -83,7 +113,9 @@ export function scoreSides({ pYes, yesAsk, noAsk, yesBid = null, feeModel, stake
     if (!(ask >= minPrice && ask <= maxPrice)) continue;
     const qty = Math.floor(stakeUsd / ask); if (qty < 1) continue;
     const fee = feeModel ? takerFee(feeModel, [{ price: ask, quantity: qty }]) : null; if (fee === null) continue;
-    out.push({ side, pModel: p, ask, qty, fee, edge: p - ask - fee / qty });
+    const edge = p - ask - fee / qty;
+    if (ask < (longshotPrice || 0) && edge < (longshotMinEdge || 0)) continue;
+    out.push({ side, pModel: p, ask, qty, fee, edge });
   }
   return out.sort((a, b) => b.edge - a.edge)[0] || null;
 }
@@ -110,7 +142,7 @@ export function pickWeather(frame, s, held, now) {
     let best = null;
     for (const bk of m.buckets || []) {
       if (bk.yesAsk == null || bk.noAsk == null) continue;
-      const sc = scoreSides({ pYes: bucketProbability(bk.lo, bk.hi, mu, sigma), yesAsk: bk.yesAsk, noAsk: bk.noAsk, yesBid: bk.yesBid, feeModel: bk.feeModel, stakeUsd: s.stakeUsd, minPrice: s.minPrice, maxPrice: s.maxPrice, maxDisagreement: s.maxDisagreement });
+      const sc = scoreSides({ pYes: bucketProbability(bk.lo, bk.hi, mu, sigma), yesAsk: bk.yesAsk, noAsk: bk.noAsk, yesBid: bk.yesBid, feeModel: bk.feeModel, stakeUsd: s.stakeUsd, minPrice: s.minPrice, maxPrice: s.maxPrice, maxDisagreement: s.maxDisagreement, longshotPrice: s.longshotPrice, longshotMinEdge: s.longshotMinEdge });
       if (sc?.disagree) { disagreements++; continue; }
       if (sc && (!best || sc.edge > best.edge)) best = { ...sc, bk };
     }
@@ -130,7 +162,7 @@ export function pickBtc(frame, s, held, now) {
       const d = m.data, hours = (d.closeAt - now) / 3600e3;
       if (!(hours >= s.minHoursToClose && hours <= s.maxHoursToClose) || d.status !== 'ACTIVE' && d.status !== 'OPEN') continue;
       const p = btcContractProbability(d, frame.spot, (d.closeAt - now) / 1000, sigmaFor(hours)); if (p === null || d.yesAsk == null || d.noAsk == null) continue;
-      const sc = scoreSides({ pYes: p, yesAsk: d.yesAsk, noAsk: d.noAsk, yesBid: d.yesBid, feeModel: d.feeModel, stakeUsd: s.stakeUsd, minPrice: s.minPrice, maxPrice: s.maxPrice, maxDisagreement: s.maxDisagreement });
+      const sc = scoreSides({ pYes: p, yesAsk: d.yesAsk, noAsk: d.noAsk, yesBid: d.yesBid, feeModel: d.feeModel, stakeUsd: s.stakeUsd, minPrice: s.minPrice, maxPrice: s.maxPrice, maxDisagreement: s.maxDisagreement, longshotPrice: s.longshotPrice, longshotMinEdge: s.longshotMinEdge });
       if (sc?.disagree) { disagreements++; continue; }
       if (sc && (!best || sc.edge > best.edge)) best = { ...sc, m, e };
     }
@@ -143,7 +175,7 @@ export function pickBtc(frame, s, held, now) {
   return { cands: cands.sort((a, c) => c.edge - a.edge), disagreements, sigmaNow: frame.volNow * s.volMultiple, sigmaDay: frame.volDay * s.volMultiple };
 }
 
-function emptyBot(id, startUsd) { return { id, startUsd, cashUsd: startUsd, open: [], history: [], decisions: [], settings: { ...KALSHI_DEFAULTS[id], startUsd }, lastRunAt: null, lastError: null, lastNote: null, epoch: 1 }; }
+function emptyBot(id, startUsd) { return { id, startUsd, cashUsd: startUsd, open: [], history: [], decisions: [], observedOpen: [], observedHistory: [], settings: { ...KALSHI_DEFAULTS[id], startUsd }, modelRev: id === 'btc' ? BTC_MODEL_REV : undefined, lastRunAt: null, lastError: null, lastNote: null, epoch: 1 }; }
 function sanitize(id, patch = {}) {
   const out = {};
   for (const [k, v] of Object.entries(patch)) {
@@ -172,7 +204,15 @@ export class KalshiPaperBots {
         for (const id of KALSHI_BOT_IDS) if (s.bots[id]?.startUsd === 500 && s.bots[id]?.settings?.stakeUsd === 10) { const fresh = emptyBot(id, KALSHI_DEFAULTS[id].startUsd); fresh.epoch = (s.bots[id].epoch || 1) + 1; fresh.settings.enabled = s.bots[id].settings.enabled !== false; s.bots[id] = fresh; }
       }
       s.wallet25 = true;
-      for (const id of KALSHI_BOT_IDS) { s.bots[id] ||= emptyBot(id, KALSHI_DEFAULTS[id].startUsd); s.bots[id].settings = { ...KALSHI_DEFAULTS[id], ...s.bots[id].settings }; }
+      for (const id of KALSHI_BOT_IDS) { s.bots[id] ||= emptyBot(id, KALSHI_DEFAULTS[id].startUsd); s.bots[id].settings = { ...KALSHI_DEFAULTS[id], ...s.bots[id].settings }; s.bots[id].observedOpen ||= []; s.bots[id].observedHistory ||= []; }
+      const btc = s.bots.btc;
+      if ((btc.modelRev || 1) < BTC_MODEL_REV) {
+        // Model revision 2: the saved book keeps its history; only the model settings move (run A2, see KALSHI_DEFAULTS).
+        const was = btc.settings.volMultiple;
+        if (was === 1.25) btc.settings.volMultiple = KALSHI_DEFAULTS.btc.volMultiple;
+        btc.modelRev = BTC_MODEL_REV;
+        btc.decisions.unshift({ at: this.now(), action: 'SETTINGS', reason: `BTC model revision ${BTC_MODEL_REV}: vol × ${was} → × ${btc.settings.volMultiple} (1-minute realized vol already matched later BTC moves); sides under ${btc.settings.longshotPrice * 100}¢ need a ${btc.settings.longshotMinEdge * 100}¢ edge` });
+      }
       return s;
     } catch (e) {
       // Never overwrite a book we cannot read: trading stops until a reset, and the file is left in place.
@@ -198,11 +238,40 @@ export class KalshiPaperBots {
     try {
       if (!k) throw new Error('Kalshi provider unavailable');
       await this.settle(b, k);
+      this.guard(b);
       if (b.settings.enabled) { if (id.startsWith('weather')) await this.runWeather(b, k); else await this.runBtc(b, k); }
       b.lastError = null;
     } catch (e) { b.lastError = String(e.message || e).slice(0, 300); }
     finally { b.lastRunAt = this.now(); this.busy.delete(id); this.save(); }
     return this.snapshot(id);
+  }
+
+  // The model-vs-market guard over real and observed settled bets; a change of state goes to the decision log.
+  guard(b) {
+    const was = b.standDown?.active === true, g = modelGuard([...b.history, ...(b.observedHistory || [])]);
+    b.standDown = { ...g, since: g.active ? (was ? b.standDown.since : this.now()) : null };
+    if (g.active !== was) this.decide(b, { action: g.active ? 'STAND DOWN' : 'RESUME', reason: g.reason });
+    return b.standDown;
+  }
+  // Events already held, really or observe-only, are not scored again.
+  held(b) { return new Set([...b.open, ...(b.observedOpen || [])].map(p => p.eventTicker)); }
+  // Enter candidates best first; while the bot stands down, record them observe-only instead (no cash, no book walk).
+  async place(b, k, cands, enterArgs) {
+    const s = b.settings, observing = b.standDown?.active === true, held = this.held(b);
+    let entered = 0, observed = 0;
+    for (const x of cands) {
+      if (x.edge < s.minEdge) { this.decide(b, { event: x.eventTicker, label: x.label, side: x.side, action: 'SKIP', pModel: round(x.pModel, 3), price: x.ask, edge: round(x.edge, 3), reason: `best edge ${round(x.edge, 3)} < ${s.minEdge}` }); continue; }
+      if (observing) {
+        if (held.has(x.eventTicker)) continue;
+        if (b.observedOpen.length >= s.maxOpen) { this.decide(b, { event: x.eventTicker, label: x.label, action: 'SKIP', reason: 'max observed bets' }); break; }
+        b.observedOpen.push(observedBet(x, this.now())); held.add(x.eventTicker); observed++;
+        this.decide(b, { event: x.eventTicker, ticker: x.ticker, label: x.label, side: x.side, action: 'OBSERVE', pModel: round(x.pModel, 3), price: x.ask, edge: round(x.edge, 3), reason: 'observe-only: recorded, no paper cash used' });
+        continue;
+      }
+      if (b.open.length >= s.maxOpen) { this.decide(b, { event: x.eventTicker, label: x.label, action: 'SKIP', reason: 'max open bets' }); break; }
+      if (await this.enter(b, k, enterArgs(x))) entered++;
+    }
+    return { entered, observed, note: observing ? `OBSERVE-ONLY (${b.standDown.reason.replace(/^observe-only: /, '')}) · ${observed} recorded` : `${entered} entered` };
   }
 
   // Fill one chosen side against the live book, then book it.
@@ -213,7 +282,8 @@ export class KalshiPaperBots {
     const cost = fills.reduce((s, f) => s + f.price * f.quantity, 0), fee = takerFee(feeModel, fills);
     if (fee === null) { this.decide(b, { event: eventTicker, ticker, side, action: 'SKIP', reason: 'fee model unavailable' }); return false; }
     const avg = cost / filled, edge = pModel - avg - fee / filled;
-    if (edge < b.settings.minEdge) { this.decide(b, { event: eventTicker, ticker, side, action: 'SKIP', reason: `edge ${round(edge, 3)} after walking the book` }); return false; }
+    const requiredEdge = Math.max(b.settings.minEdge, avg < (b.settings.longshotPrice || 0) ? (b.settings.longshotMinEdge || 0) : 0);
+    if (edge < requiredEdge) { this.decide(b, { event: eventTicker, ticker, side, action: 'SKIP', reason: `edge ${round(edge, 3)} after walking the book < ${requiredEdge}` }); return false; }
     if (cost + fee > b.cashUsd) { this.decide(b, { event: eventTicker, ticker, side, action: 'SKIP', reason: 'not enough paper cash' }); return false; }
     b.cashUsd = round(b.cashUsd - cost - fee, 6);
     b.open.push({ id: `${b.id}-${this.now()}-${ticker}`, ticker, eventTicker, title, label, side, qty: filled, avgPrice: round(avg, 4), costUsd: round(cost, 4), feeUsd: round(fee, 4), pModel: round(pModel, 4), marketPrice: round(avg, 4), openedAt: this.now(), closeAt, markUsd: round(cost, 4), context });
@@ -258,26 +328,16 @@ export class KalshiPaperBots {
 
   async runWeather(b, k) {
     const s = b.settings, frame = await this.weatherFrame(), now = this.now();
-    const { cands, priced, calibrated, disagreements } = pickWeather(frame, s, new Set(b.open.map(p => p.eventTicker)), now);
-    let entered = 0;
-    for (const x of cands) {
-      if (x.edge < s.minEdge) { this.decide(b, { event: x.eventTicker, label: x.label, side: x.side, action: 'SKIP', pModel: round(x.pModel, 3), price: x.ask, edge: round(x.edge, 3), reason: `best edge ${round(x.edge, 3)} < ${s.minEdge}` }); continue; }
-      if (b.open.length >= s.maxOpen) { this.decide(b, { event: x.eventTicker, label: x.label, action: 'SKIP', reason: 'max open bets' }); break; }
-      if (await this.enter(b, k, { ticker: x.ticker, eventTicker: x.eventTicker, title: x.m.title, label: x.label, side: x.side, pModel: x.pModel, qty: x.qty, closeAt: x.closeAt, feeModel: x.feeModel, marketAsk: x.ask, context: { nwsHigh: x.m.nwsHigh, model: x.cm ? x.cm.source : 'nws + default', forecast: x.cm?.forecast ?? x.m.nwsHigh, lead: x.cm?.lead ?? null, mu: round(x.mu, 2), sigma: round(x.sigma, 2), marketExpected: x.m.expectedHigh } })) entered++;
-    }
-    b.lastNote = `${priced} events priced (${calibrated} on the calibrated model), ${cands.length} with a buyable side, ${entered} entered, ${disagreements} buckets skipped (model vs market gap > ${s.maxDisagreement})`;
+    const { cands, priced, calibrated, disagreements } = pickWeather(frame, s, this.held(b), now);
+    const r = await this.place(b, k, cands, x => ({ ticker: x.ticker, eventTicker: x.eventTicker, title: x.m.title, label: x.label, side: x.side, pModel: x.pModel, qty: x.qty, closeAt: x.closeAt, feeModel: x.feeModel, marketAsk: x.ask, context: { nwsHigh: x.m.nwsHigh, model: x.cm ? x.cm.source : 'nws + default', forecast: x.cm?.forecast ?? x.m.nwsHigh, lead: x.cm?.lead ?? null, mu: round(x.mu, 2), sigma: round(x.sigma, 2), marketExpected: x.m.expectedHigh } }));
+    b.lastNote = `${priced} events priced (${calibrated} on the calibrated model), ${cands.length} with a buyable side, ${r.note}, ${disagreements} buckets skipped (model vs market gap > ${s.maxDisagreement})`;
   }
 
   async runBtc(b, k) {
     const s = b.settings, frame = await this.btcFrame(k), now = this.now();
-    const { cands, disagreements, sigmaNow, sigmaDay } = pickBtc(frame, s, new Set(b.open.map(p => p.eventTicker)), now);
-    let entered = 0;
-    for (const x of cands) {
-      if (x.edge < s.minEdge) { this.decide(b, { event: x.eventTicker, label: x.label, side: x.side, action: 'SKIP', pModel: round(x.pModel, 3), price: x.ask, edge: round(x.edge, 3), reason: `best edge ${round(x.edge, 3)} < ${s.minEdge}` }); continue; }
-      if (b.open.length >= s.maxOpen) { this.decide(b, { event: x.eventTicker, label: x.label, action: 'SKIP', reason: 'max open bets' }); break; }
-      if (await this.enter(b, k, { ticker: x.ticker, eventTicker: x.eventTicker, title: x.e.title, label: x.label, side: x.side, pModel: x.pModel, qty: x.qty, closeAt: x.closeAt, feeModel: x.feeModel, marketAsk: x.ask, context: { spot: round(frame.spot, 2), volPerHour: x.volPerHour } })) entered++;
-    }
-    b.lastNote = `BTC ${round(frame.spot, 0)} · hourly vol ${(sigmaNow * 60 * 100).toFixed(2)}% now / ${(sigmaDay * 60 * 100).toFixed(2)}% 24h · ${cands.length} events scored, ${entered} entered, ${disagreements} contracts skipped (model vs market gap > ${s.maxDisagreement})`;
+    const { cands, disagreements, sigmaNow, sigmaDay } = pickBtc(frame, s, this.held(b), now);
+    const r = await this.place(b, k, cands, x => ({ ticker: x.ticker, eventTicker: x.eventTicker, title: x.e.title, label: x.label, side: x.side, pModel: x.pModel, qty: x.qty, closeAt: x.closeAt, feeModel: x.feeModel, marketAsk: x.ask, context: { spot: round(frame.spot, 2), volPerHour: x.volPerHour } }));
+    b.lastNote = `BTC ${round(frame.spot, 0)} · hourly vol ${(sigmaNow * 60 * 100).toFixed(2)}% now / ${(sigmaDay * 60 * 100).toFixed(2)}% 24h · ${cands.length} events scored, ${r.note}, ${disagreements} contracts skipped (model vs market gap > ${s.maxDisagreement})`;
   }
 
   // A market's result, taped once per ticker (the farm calls this too).
@@ -303,6 +363,17 @@ export class KalshiPaperBots {
       keep.push(p);
     }
     b.open = keep; b.history.length = Math.min(b.history.length, 500);
+    // Observe-only bets settle on the same result once their market has closed.
+    const still = [];
+    for (const p of b.observedOpen || []) {
+      if (p.closeAt > now) { still.push(p); continue; }
+      let d = null; try { d = (await paced(() => k.market(p.ticker))).data; } catch { still.push(p); continue; }
+      const outcome = d?.settlementOutcome;
+      if (outcome !== 'YES' && outcome !== 'NO') { still.push(p); continue; }
+      this.tapeSettlement(p.ticker, p.eventTicker, d);
+      (b.observedHistory ||= []).unshift(settleObserved(p, outcome, now));
+    }
+    b.observedOpen = still; if (b.observedHistory) b.observedHistory.length = Math.min(b.observedHistory.length, 200);
   }
 
   snapshot(id) {
@@ -314,6 +385,8 @@ export class KalshiPaperBots {
     return { id, label: id === 'weather' ? 'Kalshi weather bot' : id === 'weather-nws' ? 'Kalshi weather bot · control (NWS only, no calibration)' : 'Kalshi BTC range bot', mode: 'PAPER', epoch: b.epoch, settings: b.settings, startUsd: b.startUsd, cashUsd: round(b.cashUsd, 2), equityUsd: round(equity, 2), returnPct: round((equity - b.startUsd) / b.startUsd * 100, 2),
       open: b.open, history: h.slice(0, 50), decisions: b.decisions.slice(0, 30), curve: curve.slice(-200),
       stats: { settled: n, wins, hitRate: n ? round(wins / n, 3) : null, pnlUsd: round(pnl, 2), feesUsd: round(h.reduce((s, x) => s + x.feeUsd, 0), 2), brierModel: brier('brierModel'), brierMarket: brier('brierMarket'), maxDrawdownUsd: round(dd, 2) },
+      standDown: b.standDown || modelGuard([...h, ...(b.observedHistory || [])]),
+      observed: { open: (b.observedOpen || []).length, settled: (b.observedHistory || []).length, wins: (b.observedHistory || []).filter(x => x.won).length, pnlUsd: round((b.observedHistory || []).reduce((s, x) => s + x.pnlUsd, 0), 2), recent: (b.observedHistory || []).slice(0, 20), openBets: b.observedOpen || [] },
       lastRunAt: b.lastRunAt, lastError: this.recoveryError || b.lastError, lastNote: b.lastNote, running: this.busy.has(id) };
   }
   snapshots() { return Object.fromEntries(KALSHI_BOT_IDS.map(id => [id, this.snapshot(id)])); }
