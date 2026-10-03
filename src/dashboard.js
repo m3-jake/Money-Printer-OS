@@ -1,4 +1,5 @@
 import {readBarStore} from './robinhoodEquitiesData.js';
+import {dispatchHudRoute} from './hudRoutes.js';
 import {observedUSMarkets} from './polymarketUS.js';
 import { crowdRuntimeView,setCrowdControl } from './crowdRuntime.js';
 import { pumpProfitView } from './pumpProfitRuntime.js';
@@ -563,6 +564,7 @@ export function startDashboard() {
       if(u.pathname.startsWith('/api/platform/'))return await handlePlatformRequest(req,res,u,{json,body});
       if(u.pathname==='/api/robinhood'||u.pathname.startsWith('/api/robinhood/'))return await handleRobinhoodRequest(req,res,u,{json,body});
       if(u.pathname==='/api/robinhood-equities'||u.pathname.startsWith('/api/robinhood-equities/'))return await handleRobinhoodEquitiesRequest(req,res,u,{json});
+      if(u.pathname.startsWith('/api/')&&await dispatchHudRoute(req,res,u,{dataDir:DATA_DIR,json,readOnly:false,live:{marketPlatform,loadStateCached,paperBots:()=>paperBots,labConnection,venueLoops}}))return;
       if (req.method === 'GET' && u.pathname === '/') {
         res.writeHead(200, {
           'content-type': 'text/html; charset=utf-8',
