@@ -104,5 +104,16 @@
     }
     act(async () => { result = (await api('/lab/run', { ...query(), strategy: form.strategy, params: { lookback: form.lookback, thresholdBps: form.thresholdBps }, stepMs: form.stepMs, feeBps: form.feeBps, cash: form.cash })).result; runs = (await api('/lab/runs')).runs; });
   });
-  window.MPOMarketLab = { render() { if (!visible()) return; if (!sources && !busy && Date.now() >= loadAfter) { busy = true; load().finally(() => { busy = false; stamp++; draw(true); }); } draw(); } };
+  // Simple view: what the replay lab holds (recorded tapes and books) and how recent strategy runs did vs buy-and-hold.
+  function glanceCard() {
+    if (!sources) return glance({ title: 'Market Lab · replay', pill: { label: error ? 'Unavailable' : 'Loading', tone: error ? 'bad' : 'warn' }, hero: null, visual: `<div class="g-empty">${escape(error || 'Loading data sources…')}</div>` });
+    const last = runs[0], pct = v => v == null ? '—' : `${v > 0 ? '+' : ''}${Number(v).toFixed(2)}%`;
+    return glance({ title: 'Market Lab · replay', pill: { label: 'Research only', tone: '' },
+      hero: last ? pct(last.result?.returnPct) : String(runs.length), heroUnit: last ? '' : 'runs', heroSub: last ? `last run: ${escape(last.strategy)} on ${escape(last.key)} · buy and hold ${pct(last.result?.buyHoldPct)}` : 'No runs yet: replay a recorded tape in Advanced',
+      stats: [{ label: 'Recorded tapes', value: String((sources.tape || []).length) }, { label: 'Order books', value: String((sources.books || []).length) }, { label: 'Strategies', value: String(strategies.length) }],
+      visual: `<div class="g-rows g-scroll">${runs.slice(0, 10).map(r => gRow(`${r.strategy} · ${r.key}`, `${r.records} records · buy and hold ${pct(r.result?.buyHoldPct)}`, `<span class="${r.result?.returnPct > 0 ? 'g-pos' : r.result?.returnPct < 0 ? 'g-neg' : ''}">${pct(r.result?.returnPct)}</span>`, r.result?.returnPct > (r.result?.buyHoldPct ?? 0) ? 'ok' : 'warn')).join('') || '<div class="g-empty">No strategy runs yet.</div>'}</div>`,
+      foot: gFoot(['replays recorded data only', 'past runs are not forward results']) });
+  }
+  addEventListener('DOMContentLoaded', () => window.MPOProgramGlance?.register('marketlab', { render: glanceCard, sig: () => [stamp, error, runs.length] }));
+  window.MPOMarketLab = { render() { if (!visible() && window.MPOProgramVisible?.('marketlab') && !sources && !busy && Date.now() >= loadAfter) { busy = true; load().finally(() => { busy = false; stamp++; }); } if (!visible()) return; if (!sources && !busy && Date.now() >= loadAfter) { busy = true; load().finally(() => { busy = false; stamp++; draw(true); }); } draw(); } };
 })();

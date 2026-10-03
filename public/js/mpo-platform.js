@@ -206,7 +206,21 @@ window.MPOSPlatform = (() => {
     const html=simple?platformGlance(id):`<div class="core-app" data-core-id="${id}">${error?`<p class="core-error" role="alert">${escape(error)}</p>`:''}${busy?'<p role="status">Working…</p>':''}${id==='command'?command():id==='arbitrage'?arbitrage():marketProgram(id)}</div>`;
     if(root._mpoHTML===html)return;root._mpoHTML=html;root.innerHTML=html;root.scrollTop=top;
   }
-  function render(){ids.forEach(draw);}
+  // Simple view for Arbitrage: candidate Kalshi–Polymarket pairs among the loaded contracts (scanned at most every 10 minutes while shown).
+  let arbScanAt=0;
+  function arbGlance(){
+    const k=contracts.filter(c=>c.provider==='kalshi').length,p=contracts.filter(c=>c.provider==='polymarket').length,pairs=candidates?.pairs||[];
+    return glance({title:'Arbitrage · research',pill:{label:'No auto execution',tone:''},
+      hero:String(pairs.length),heroUnit:'candidate pairs',heroSub:candidates?`scanned ${candidates.scanned.kalshi} Kalshi and ${candidates.scanned.polymarket} Polymarket contracts · matches are heuristics, not arbitrage`:'Scanning loaded contracts…',
+      stats:[{label:'Kalshi contracts',value:String(k)},{label:'Polymarket contracts',value:String(p)},{label:'Inverted pairs',value:String(pairs.filter(x=>x.orientation==='INVERTED').length)}],
+      visual:`<div class="g-rows g-scroll">${pairs.slice(0,12).map(x=>gRow(`${x.aTitle} ↔ ${x.bTitle}`,`${x.classification}${x.orientation?' · '+x.orientation.toLowerCase():''}`,'',/EQUIVALENT|MATCH/i.test(x.classification)?'ok':'warn')).join('')||`<div class="g-empty">${escape(error||'No candidate pairs among the loaded contracts.')}</div>`}</div>`,
+      foot:gFoot(['settlement terms are checked separately','Advanced: compare rules and depth'])});
+  }
+  addEventListener('DOMContentLoaded',()=>window.MPOProgramGlance?.register('arbitrage',{render:arbGlance,sig:()=>[contracts.length,candidates?.pairs?.length,error]}));
+  function render(){
+    ids.forEach(draw);
+    if(window.MPOProgramVisible?.('arbitrage')&&!busy&&Date.now()-arbScanAt>600000){arbScanAt=Date.now();request('/arbitrage/candidates').then(v=>{candidates=v;}).catch(e=>{error=e.message;});}
+  }
   async function refreshScoreboard(){try{const r=await fetch('/api/scoreboard',{cache:'no-store'});const v=await r.json();if(!r.ok||!Array.isArray(v.rows))throw new Error(v.error||'Scoreboard unavailable');scoreboard=v;scoreboardError='';}catch(e){scoreboardError=e.message;}}
   let diag=null;
   function diagnosticsCard(){

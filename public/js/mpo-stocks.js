@@ -68,7 +68,7 @@
     r.scrollTop = top;
   }
   async function refresh(force = false) {
-    if (busy || !visible() || (!force && Date.now() - lastFetch < 15000)) return;
+    if (busy || !(visible() || window.MPOProgramVisible?.('stocks')) || (!force && Date.now() - lastFetch < 15000)) return;
     lastFetch = Date.now();
     // Load errors are kept apart from action errors, so a refresh never hides why an order was refused.
     try { status = await api('/stocks/status?symbols=' + encodeURIComponent(watch.join(','))); loadError = ''; } catch (e) { loadError = e.message; }
@@ -97,5 +97,17 @@
     });
   });
   setInterval(() => { if (!document.hidden) refresh(); }, 5000);
+  // Simple view: the paper stock account, the session, and the watchlist's moves today.
+  function glanceCard() {
+    if (!status) return glance({ title: 'Stocks · paper', pill: { label: loadError ? 'Unavailable' : 'Loading', tone: loadError ? 'bad' : 'warn' }, hero: null, visual: `<div class="g-empty">${escape(loadError || 'Loading stocks…')}</div>` });
+    const a = status.account || {}, se = status.session || {}, q = status.quotes || {}, ds = status.dataSource || {}, pos = status.positions || [];
+    const open = String(se.state || '').toUpperCase() === 'OPEN';
+    return glance({ title: 'Stocks · paper', pill: { label: `NYSE ${String(se.state || '—').replace('_', ' ').toLowerCase()}`, tone: open ? 'ok' : '' },
+      hero: usd(a.equity), heroSub: `paper equity · quotes ${escape(String(ds.status || '—').toLowerCase())}${ds.feed ? ' (' + escape(ds.feed) + ')' : ''} · not a real broker`,
+      stats: [{ label: 'Cash', value: usd(a.cash) }, { label: 'Positions', value: String(pos.length) }, { label: 'Realized P/L', value: usd(a.realized), tone: a.realized > 0 ? 'g-pos' : a.realized < 0 ? 'g-neg' : '' }],
+      visual: `<div class="g-rows g-scroll">${watch.map(sym => { const x = q[sym] || {}, chg = x.last && x.prevClose ? (x.last / x.prevClose - 1) * 100 : null, held = pos.find(p => p.symbol === sym); return gRow(sym, held ? `holding ${held.qty} · ${usd(held.marketValue)}` : 'watching', `${x.last ? usd(x.last) : '—'}${chg === null ? '' : ` <span class="${chg > 0 ? 'g-pos' : chg < 0 ? 'g-neg' : ''}">${chg > 0 ? '+' : ''}${chg.toFixed(2)}%</span>`}`, chg === null ? null : chg >= 0 ? 'ok' : 'bad'); }).join('')}</div>`,
+      foot: gFoot([se.date && 'session ' + se.date, 'paper fills', 'Advanced: orders, charts, funding']) });
+  }
+  addEventListener('DOMContentLoaded', () => window.MPOProgramGlance?.register('stocks', { render: glanceCard, sig: () => [stamp, loadError, status?.account?.equity] }));
   window.MPOStocks = { render() { draw(); refresh(); } };
 })();

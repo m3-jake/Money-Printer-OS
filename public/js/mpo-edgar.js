@@ -46,5 +46,23 @@
     if (b.dataset.edgar === 'form4') act(async () => { form4[b.dataset.acc] = (await api('/edgar/form4?url=' + encodeURIComponent(b.dataset.url))).facts; });
   });
   document.addEventListener('submit', e => { const f = e.target.closest('[data-edgar-company]'); if (!f || !root()?.contains(f)) return; e.preventDefault(); ticker = String(new FormData(f).get('ticker') || '').trim().toUpperCase(); act(async () => { mode = 'company'; company = await api('/edgar/company?ticker=' + encodeURIComponent(ticker)); }); });
-  window.MPOEdgar = { render() { if (visible() && !status && !busy) act(async () => {}); draw(); } };
+  // Simple view: SEC EDGAR status and the latest filings of the selected form type.
+  let cardAt = 0;
+  function glanceCard() {
+    const st = status?.status || (status ? 'UNKNOWN' : 'LOADING'), ok = /OK|CONNECTED|LIVE/.test(st), rows = Array.isArray(list?.filings) ? list.filings : Array.isArray(list?.items) ? list.items : Array.isArray(list) ? list : [];
+    return glance({ title: 'EDGAR · SEC filings', pill: { label: ok ? 'Connected' : st.replace(/_/g, ' ').toLowerCase(), tone: ok ? 'ok' : 'warn' },
+      hero: ok ? String(rows.length) : st === 'NOT CONFIGURED' ? 'Not set up' : '—', heroUnit: ok ? form + ' filings' : '', heroText: !ok, heroSub: ok ? 'latest from the SEC, newest first' : escape(status?.note || 'EDGAR needs a declared contact (SEC fair-access policy).'),
+      stats: [{ label: 'Form', value: escape(form) }, { label: 'Last success', value: status?.lastSuccess ? new Date(status.lastSuccess).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '—' }, { label: 'Mode', value: escape(mode) }],
+      visual: ok ? `<div class="g-rows g-scroll">${rows.slice(0, 12).map(f => gRow(f.company || f.title || f.name || '—', `${f.form || form}${f.ticker ? ' · ' + f.ticker : ''}${f.filedAt || f.date ? ' · ' + new Date(f.filedAt || f.date).toLocaleDateString() : ''}`, '', 'ok')).join('') || '<div class="g-empty">No filings loaded yet.</div>'}</div>`
+        : `<div class="g-empty">${escape(status?.note || 'Set SEC_USER_AGENT="Your Name you@example.com" to read EDGAR.')}</div>`,
+      foot: gFoot(['SEC EDGAR', 'Advanced: company search, Form 4 insider facts']) });
+  }
+  addEventListener('DOMContentLoaded', () => window.MPOProgramGlance?.register('edgar', { render: glanceCard, sig: () => [stamp, error, status?.status, form] }));
+  window.MPOEdgar = { render() {
+    const card = window.MPOProgramVisible?.('edgar');
+    if ((visible() || card) && !status && !busy) act(async () => {});
+    // While the card shows and EDGAR is connected, keep the latest filings at most 10 minutes old.
+    else if (card && /OK|CONNECTED|LIVE/.test(status?.status || '') && !busy && Date.now() - cardAt > 600000) { cardAt = Date.now(); act(async () => { mode = 'latest'; list = await api('/edgar/latest?form=' + encodeURIComponent(form)); }); }
+    draw();
+  } };
 })();
