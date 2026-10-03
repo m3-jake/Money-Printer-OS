@@ -7,7 +7,7 @@
   const pct = v => v == null ? '—' : (v > 0 ? '+' : '') + Number(v).toFixed(2) + '%';
   const ago = t => { if (!t) return 'never'; const s = Math.round((Date.now() - t) / 1000); return s < 90 ? s + 's ago' : s < 5400 ? Math.round(s / 60) + 'm ago' : Math.round(s / 3600) + 'h ago'; };
   const when = t => t ? new Date(t).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
-  let data = null, error = '', busy = false, lastFetch = 0, msg = '';
+  let data = null, error = '', busy = false, lastFetch = 0, msg = '', loading = null;
   const SETTINGS = {
     'weather-nws': [['stakeUsd', 'USD per bet'], ['maxOpen', 'Max open'], ['minEdge', 'Min edge'], ['maxDisagreement', 'Max model–market gap'], ['sigmaBaseF', 'Sigma °F'], ['sigmaPerDayF', 'Sigma per day °F']],
     weather: [['stakeUsd', 'USD per bet'], ['maxOpen', 'Max open'], ['minEdge', 'Min edge'], ['maxDisagreement', 'Max model–market gap'], ['biasF', 'Forecast bias °F'], ['sigmaBaseF', 'Sigma °F'], ['sigmaPerDayF', 'Sigma per day °F']],
@@ -15,14 +15,24 @@
     polycopy: [['stakeUsd', 'USD per copy'], ['maxOpen', 'Max open'], ['follows', 'Leaders followed'], ['minLeaderTradeUsd', 'Min leader trade $'], ['maxChase', 'Max chase'], ['refollowDays', 'Refollow after days']],
   };
   async function load(force = false) {
+    if (loading) return loading;
     if (busy || (!force && Date.now() - lastFetch < 15000)) return; lastFetch = Date.now();
-    try { const r = await fetch('/api/bots', { cache: 'no-store' }); const j = await r.json(); if (!r.ok || !j.ok) throw new Error(j.error || 'HTTP ' + r.status); data = j; error = ''; } catch (e) { error = e.message; }
-    draw(true); window.MPOSPlatform?.render?.();
+    loading = (async () => {
+      try { const r = await fetch('/api/bots', { cache: 'no-store' }); const j = await r.json(); if (!r.ok || !j.ok) throw new Error(j.error || 'HTTP ' + r.status); data = j; error = ''; } catch (e) { error = e.message; }
+      draw(true); window.MPOSPlatform?.render?.();
+      if (typeof globalThis.CustomEvent === 'function') globalThis.dispatchEvent?.(new CustomEvent('mpo:overview-data'));
+    })().finally(() => { loading = null; });
+    return loading;
   }
   async function act(action, body, note) {
     if (busy) return; busy = true; msg = 'Working…'; draw(true);
     try { const r = await fetch('/api/bots/' + action, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }); const j = await r.json(); if (!r.ok || !j.ok) throw new Error(j.error || 'HTTP ' + r.status); msg = note || 'Done.'; }
-    catch (e) { msg = e.message; } finally { busy = false; lastFetch = 0; await load(true); }
+    catch (e) { msg = e.message; } finally {
+      // A snapshot started before the action may still be returning. Finish it before the forced
+      // read so the overview reflects the completed mutation rather than that earlier snapshot.
+      if (loading) await loading;
+      busy = false; lastFetch = 0; await load(true);
+    }
   }
   const curvePts = b => (b.curve || []).map(x => x.equityUsd);
   function header(b) {
@@ -131,7 +141,19 @@
     if (f.dataset.botForm === 'config') act('config', { bot, settings: input }, 'Settings saved.');
     else act('reset', { bot, startUsd: Number(input.startUsd), confirmation: input.confirmation }, 'Paper book reset.');
   });
-  setInterval(() => { if (!document.hidden && (Object.keys(PANES).some(visible) || document.querySelector('.window[data-app="kalshi"]:not(.hidden)') || document.querySelector('.window[data-app="sportsbook"]:not(.hidden)'))) load(); }, 15000);
+  // Host overviews consume the same cached snapshot as the detail panes. One shared request budget
+  // serves all open consumers; painting cards never starts a second request while one is pending.
+  function needsData() {
+    if (document.hidden) return false;
+    const shown = host => {
+      const w = document.querySelector(`.window[data-app="${host}"]`);
+      return !!w && !w.classList.contains('hidden');
+    };
+    return ['command', 'money', 'kalshi', 'sportsbook'].some(shown)
+      || (shown('trade') && (window.MPOProgramActive?.('trade') === 'evolution'
+        || document.getElementById('body-evolution')?.classList.contains('on')));
+  }
+  setInterval(() => { if (needsData()) load(); }, 15000);
   // Simple views: every Kalshi paper bot (and the farm's leader), and the copy bot with its leaders.
   const miniRow = (name, b) => gRow(name, `${b.settings.enabled ? 'on' : 'paused'} · ${b.open.length} open · ${b.stats.settled ?? b.stats.closed ?? 0} settled${b.stats.brierModel != null ? ` · model ${b.stats.brierModel < b.stats.brierMarket ? 'beats' : 'trails'} market` : ''}`, `${usd(b.equityUsd)} <span class="${b.returnPct > 0 ? 'g-pos' : b.returnPct < 0 ? 'g-neg' : ''}">${pct(b.returnPct)}</span>`, b.lastError ? 'bad' : b.settings.enabled ? 'ok' : 'warn');
   function botsCard() {
@@ -155,5 +177,5 @@
       foot: gFoot([data.mirror ? `Kalshi mirror ${usd(data.mirror.equityUsd)} · ${data.mirror.open.length} open` : null, 'only trades made after following', 'Advanced: copies, mirror, settings']) });
   }
   globalThis.addEventListener?.('DOMContentLoaded', () => { window.MPOProgramGlance?.register('kalshibots', { render: botsCard, sig: () => [data?.at, error] }); window.MPOProgramGlance?.register('pmcopy', { render: copyCard, sig: () => [data?.at, error] }); });
-  window.MPOBots = { render() { draw(); load(); }, get data() { return data; }, load };
+  window.MPOBots = { render() { draw(); if (needsData()) load(); }, get data() { return data; }, load };
 })();
