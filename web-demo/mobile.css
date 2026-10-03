@@ -1,0 +1,183 @@
+/* Browser demo only: keep the desktop HUD intact while giving phones a usable shell. */
+@media (max-width: 600px) {
+  :root { --mpo-task: 58px; --task: var(--mpo-task); --mpo-titlebar-h: 34px; --mpo-tabs-h: 38px; }
+  html, body { width: 100%; height: 100dvh; overflow: hidden; }
+  .desktop { width: 100%; height: 100dvh; overflow: clip; }
+
+  #mpoDemoRibbon {
+    left: auto !important;
+    right: 5px !important;
+    top: 4px !important;
+    transform: none !important;
+    width: 184px;
+    padding: 2px 4px !important;
+    text-align: center;
+    font-size: 8px !important;
+    white-space: normal !important;
+    line-height: 1.1 !important;
+  }
+
+  .logon { width: min(440px, calc(100vw - 24px)); max-width: calc(100vw - 24px); }
+  .logon-banner { min-height: 82px; padding: 10px; gap: 9px; }
+  .logon-banner .bootmark { width: 46px; height: 46px; flex: 0 0 46px; }
+  .logon-banner .bootlogo { font-size: clamp(17px, 5vw, 23px); line-height: 1; }
+  .logon-tagline { max-width: 190px; font-size: 10px; }
+  .logon-mode { top: 4px; right: 4px; font-size: 7px; }
+  .logon-body { padding: 12px; }
+  .logon-row { grid-template-columns: 78px minmax(0, 1fr); }
+  .logon-field { min-width: 0; overflow: hidden; }
+  .logon-buttons .btn { min-height: 34px; }
+  .logon-hint { max-width: 140px; line-height: 1.25; }
+
+  .mac-menubar { height: 33px; gap: 4px; padding: 0 7px; }
+  .mac-menubar .start { max-width: 175px; font-size: 11px; }
+  .mac-menubar .tray { margin-left: auto; }
+  .mac-menubar #feedLed, .mac-menubar #trayMode, .mac-menubar #paperQualificationBadge, .mac-menubar #hudReadStatus, .mac-menubar #clock { display: none; }
+  .mac-menu-title { display: none; }
+
+  .brand { top: 37px; left: 9px; right: auto; align-items: flex-start; }
+  .brand-logo { width: 85px; }
+  .brand #runningVersion { display: none; }
+  .icons {
+    top: 32px;
+    bottom: auto;
+    left: 101px;
+    right: 7px;
+    height: 77px;
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    gap: 4px;
+    padding: 4px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    scroll-snap-type: x proximity;
+    background: linear-gradient(180deg, #ffffffd9, #e8f3f8b8);
+    backdrop-filter: blur(18px) saturate(1.5);
+    -webkit-backdrop-filter: blur(18px) saturate(1.5);
+    border: 1px solid #ffffffb8;
+    border-radius: 10px;
+    box-shadow: 0 6px 16px #37314533;
+  }
+  .icons::-webkit-scrollbar { display: none; }
+  .icon {
+    flex: 0 0 63px;
+    width: 63px;
+    min-height: 66px;
+    padding: 3px 1px;
+    font-size: 10px;
+    line-height: 11px;
+    scroll-snap-align: start;
+  }
+  .icon .ico { width: 33px; height: 33px; margin-bottom: 2px; font-size: 17px; }
+  .icon:hover, .icon:focus-visible { background: #ffffff33; }
+  .icon-scroll-cue {
+    position: absolute;
+    z-index: 7;
+    top: 39px;
+    right: 7px;
+    width: 49px;
+    height: 69px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 2px;
+    padding-right: 5px;
+    border-radius: 0 9px 9px 0;
+    background: linear-gradient(90deg, #f7f5fa00, #f7f5fa 58%);
+    color: #46335f;
+    font: 800 8px var(--mpo-font-chrome);
+    letter-spacing: .4px;
+    pointer-events: none;
+  }
+  .icon-scroll-cue b { font-size: 27px; line-height: 1; }
+  .icon-scroll-cue.is-end { justify-content: flex-start; right: auto; left: 101px; padding-left: 5px; border-radius: 9px 0 0 9px; background: linear-gradient(90deg, #f7f5fa 42%, #f7f5fa00); }
+  .icon-scroll-cue.is-hidden { display: none; }
+  .desktop.camera-sky .icon-scroll-cue { opacity: 0; }
+  .mobile-home {
+    position: absolute;
+    z-index: 4;
+    top: 35%;
+    left: 50%;
+    width: min(310px, calc(100vw - 40px));
+    padding: 22px 18px;
+    transform: translate(-50%, -20%);
+    border: 1px solid #ffffffb8;
+    border-radius: 16px;
+    background: #f6fafbe0;
+    backdrop-filter: blur(20px) saturate(1.3);
+    -webkit-backdrop-filter: blur(20px) saturate(1.3);
+    box-shadow: 0 13px 32px #30284230, inset 0 1px #fff;
+    color: #322a3d;
+    text-align: center;
+  }
+  .desktop.mobile-empty .mobile-home { display: block; }
+  .desktop.camera-sky .mobile-home { display: none; }
+  .mobile-home-mark { margin-bottom: 8px; color: #725c98; font: 34px/1 Georgia, serif; }
+  .mobile-home h1 { margin: 0 0 6px; font-size: 19px; }
+  .mobile-home p { margin: 0; color: #615b67; font-size: 12px; line-height: 1.45; }
+
+  .window, .window.max {
+    left: 6px !important;
+    top: 118px !important;
+    width: calc(100vw - 12px) !important;
+    height: calc(100dvh - 118px - var(--task) - 7px) !important;
+    min-width: 0;
+    min-height: 0;
+    max-width: none !important;
+  }
+  .window .titlebar { padding-left: 7px; font-size: 12px; cursor: default; }
+  .win-buttons { gap: 4px; }
+  .win-buttons button { min-width: 30px; width: 30px; height: 28px; font-size: 15px; line-height: 22px; }
+  .win-buttons button.detail-btn { min-width: 66px; margin-right: 0; padding: 0 4px; font-size: 11px; }
+  .window [data-act="max"], .window [data-act="fit"], .window .fit-pct, .window .resize { display: none; }
+  .window:not(.glance) > .body { zoom: 1 !important; width: 100% !important; height: calc(100% - var(--mpo-titlebar-h)) !important; overflow: auto !important; }
+  .window:not(.glance) > .body.tabbed { height: calc(100% - var(--mpo-titlebar-h) - var(--mpo-tabs-h)) !important; }
+  .window:not(.glance) .tabpane.on { zoom: 1 !important; width: 100% !important; height: 100% !important; overflow: auto !important; }
+  .win-tabs { align-items: center; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
+  .win-tabs::-webkit-scrollbar { display: none; }
+  .win-tabs .tab98 { min-height: 27px; }
+  .glance { padding: 8px; gap: 8px; }
+  .core-app .mpo-module, .mpo-surface-dark .mpo-module { background: #14251f; color: #e5f7ea; border: 1px solid #688878; }
+  .core-app .mpo-module-body, .mpo-surface-dark .mpo-module-body { background: #14251f; }
+  #body-trade .toolbar { flex-wrap: wrap; }
+  #body-trade .chart-readout { display: none; }
+  #body-trade .pf-viz-row { grid-template-columns: minmax(0, 1fr); }
+  #body-trade .mpo-table-wrap { max-width: 100%; overflow-x: auto; }
+  .money-event-feed { display: none; }
+
+  .taskbar {
+    left: 6px;
+    right: 6px;
+    bottom: calc(6px + env(safe-area-inset-bottom));
+    width: auto;
+    max-width: none;
+    min-width: 0;
+    height: var(--task);
+    gap: 5px;
+    justify-content: space-between;
+    padding: 4px 6px calc(4px + env(safe-area-inset-bottom));
+    transform: none;
+    border-radius: 11px;
+  }
+  .taskbar .tasks { display: flex; flex: 1; min-width: 0; overflow-x: auto; }
+  .taskbar .task { flex: 0 0 43px; min-width: 43px; max-width: 43px; height: 44px; }
+  .taskbar .task span { display: none; }
+  .taskbar .task .tico { width: 28px; height: 28px; }
+  .taskbar .dock-divider, #tileBtn { display: none; }
+  .taskbar .mode-switch { flex: 0 0 auto; margin: 0; }
+  .taskbar .mode-switch .task-tool { height: 36px; padding: 0 6px; font-size: 10px; }
+  .desktop.mobile-no-apps .taskbar { opacity: 0; pointer-events: none; transform: translateY(100%); }
+  #trayMode { background: #e9e3f2; color: #38284b; border: 1px solid #8b7da0; padding: 4px 6px; font-weight: bold; }
+  .startmenu { top: 34px; bottom: auto; left: 6px; width: min(340px, calc(100vw - 12px)); max-height: calc(100dvh - 145px); overflow-y: auto; }
+  .dialog { width: calc(100vw - 24px); max-height: calc(100dvh - 90px); overflow-y: auto; }
+}
+
+@media (max-width: 600px) and (max-height: 600px) {
+  .brand { top: 30px; }
+  .icons { top: 28px; height: 66px; }
+  .icon { min-height: 56px; }
+  .icon .ico { width: 26px; height: 26px; }
+  .window, .window.max { top: 101px !important; height: calc(100dvh - 101px - var(--task) - 5px) !important; }
+}

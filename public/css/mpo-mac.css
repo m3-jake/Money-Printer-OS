@@ -1,0 +1,251 @@
+/* Glass Macintosh chrome over the original Money Printer desktop scenery. */
+:root {
+  --mpo-chrome: #eeece7;
+  --mpo-chrome-mid: #f7f6f2;
+  --mpo-chrome-dark: #8d8c94;
+  --mpo-chrome-shadow: #474650;
+  --mpo-navy: #373145;
+  --mpo-blue: #74639d;
+  --mpo-title-inactive: #dedce0;
+  --mpo-task: 70px;
+  --mpo-titlebar-h: 30px;
+  --mpo-tabs-h: 30px;
+  --mpo-font-chrome: "Trebuchet MS", Tahoma, Arial, sans-serif;
+  --mpo-border-outset: 1px solid #85818b;
+  --mpo-border-inset: 1px solid #85818b;
+}
+
+/* The concealed dock extends offscreen; it must not make the desktop scroll when focused. */
+.desktop { overflow: clip; }
+
+.mac-menubar {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 130;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 0 13px 0 9px;
+  background: linear-gradient(180deg, #ffffffd9, #edf5f8b8);
+  backdrop-filter: blur(18px) saturate(1.5);
+  -webkit-backdrop-filter: blur(18px) saturate(1.5);
+  color: #23212a;
+  border-bottom: 1px solid #ffffffbd;
+  box-shadow: 0 2px 12px #17334d3b;
+  font-size: 12px;
+}
+.mac-menubar .start {
+  height: 26px;
+  padding: 0 8px 0 4px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #24212c;
+  font-weight: 800;
+  font-size: 13px;
+  cursor: pointer;
+}
+.mac-menubar .start:hover, .mac-menubar .start:focus-visible { background: #d7d1e2; }
+.mac-menubar .start .tico { width: 18px; height: 18px; }
+.mac-menu-title { font-weight: 600; color: #605a68; }
+.mac-menu-spacer { flex: 1; min-width: 3px; }
+.mac-menubar .tray {
+  height: 27px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  gap: 9px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  white-space: nowrap;
+  font-size: 10px;
+}
+.mac-menubar #trayMode { border-radius: 3px; padding: 3px 6px; }
+.mac-menubar #clock { color: #494451; font: 600 11px var(--mpo-font-chrome); }
+
+.brand { top: 49px; right: 22px; }
+.brand #runningVersion { color: #fff; text-shadow: 1px 1px 3px #10283d; }
+.icons {
+  top: 43px;
+  bottom: 70px;
+  max-height: 560px;
+  grid-template-rows: repeat(8, minmax(0, 1fr));
+  grid-auto-columns: 74px;
+  gap: 2px 4px;
+}
+.icon { width: 72px; min-height: 0; padding: 1px; font-size: 10px; line-height: 11px; font-weight: 700; }
+.icon .ico { width: 36px; height: 36px; margin-bottom: 1px; }
+.icon:hover { background: #ffffff55; border-radius: 9px; }
+.icon-scroll-cue, .mobile-home { display: none; }
+.ico, .ico.dark, .ico.money, .ico.png {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  filter: drop-shadow(0 3px 2px #37334a55);
+}
+
+.window, .dialog, .bootbox {
+  border: 1px solid #57525f;
+  border-radius: 8px;
+  background: #f5f8faec;
+  backdrop-filter: blur(20px) saturate(1.25);
+  -webkit-backdrop-filter: blur(20px) saturate(1.25);
+  box-shadow: 0 1px 0 #fff inset, 0 16px 40px #17334d48, 0 2px 4px #17334d33;
+}
+.window.max { left: 4px !important; top: 38px !important; width: calc(100% - 8px) !important; height: calc(100% - 110px) !important; }
+.window:after { border-radius: 8px; box-shadow: inset 0 0 0 1px #ffffff7d; }
+.titlebar {
+  height: var(--mpo-titlebar-h);
+  padding: 2px 8px;
+  border-bottom: 1px solid #89838e;
+  border-radius: 7px 7px 0 0;
+  color: #28232f;
+  background: linear-gradient(180deg, #ffffffeb, #e9f2f5d9);
+  font-size: 12px;
+  text-shadow: 0 1px #fff;
+}
+.window.inactive .titlebar { background: #dfdce0; color: #66616b; }
+.title { text-align: center; padding-left: 4px; }
+.win-buttons { gap: 5px; }
+.win-buttons button {
+  width: 15px;
+  height: 15px;
+  border: 1px solid #756e75;
+  border-radius: 50%;
+  background: #d7d4d2;
+  box-shadow: inset 0 1px #ffffffcc, 0 1px 1px #3332;
+  color: #4e4751;
+  font-size: 10px;
+  line-height: 12px;
+  cursor: pointer;
+}
+.win-buttons button:hover { filter: brightness(1.09); }
+.win-buttons [data-act="close"], .win-buttons #dialogX, .win-buttons #polyConfirmX { background: #d78b87; }
+.win-buttons [data-act="min"] { background: #e2c47a; }
+.win-buttons [data-act="max"] { background: #9fbe92; }
+.win-buttons button.detail-btn, .win-buttons button.fit-btn {
+  width: auto;
+  min-width: 30px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: #f4f1ec;
+  font-size: 10px;
+  line-height: 17px;
+}
+.win-tabs, .menu { background: #e4e1df; border-bottom-color: #aaa5ac; }
+.win-tabs .tab98, .mpo-tabs .mpo-tab { border-radius: 5px 5px 0 0; }
+.resize:before { background: repeating-linear-gradient(135deg, transparent 0 3px, #777181 3px 4px, transparent 4px 7px); }
+
+.dock-trigger { position: absolute; z-index: 99; inset: auto 0 0; height: 18px; }
+.taskbar {
+  position: absolute;
+  z-index: 100;
+  left: 50%; right: auto; bottom: 8px;
+  width: max-content;
+  min-width: min(450px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
+  height: 62px;
+  padding: 5px 7px;
+  gap: 7px;
+  border: 1px solid #ffffffb8;
+  border-radius: 13px;
+  background: linear-gradient(180deg, #ffffffd9, #e8f3f8b8);
+  backdrop-filter: blur(24px) saturate(1.5);
+  -webkit-backdrop-filter: blur(24px) saturate(1.5);
+  box-shadow: 0 0 0 1px #65839899, 0 14px 30px #18354d55, inset 0 1px #fff;
+  transform: translate(-50%, calc(100% + 10px));
+  transition: transform .24s cubic-bezier(.2,.8,.2,1), opacity .24s ease;
+  opacity: .96;
+}
+.dock-trigger:hover + .taskbar, .taskbar:hover, .taskbar:focus-within { transform: translate(-50%, 0); opacity: 1; }
+.desktop.camera-sky .dock-trigger { pointer-events: none; }
+.taskbar .tasks { flex: 0 1 auto; gap: 3px; overflow-x: auto; scrollbar-width: none; }
+.taskbar .tasks::-webkit-scrollbar { display: none; }
+.taskbar .task {
+  position: relative;
+  flex: 0 0 64px;
+  min-width: 64px;
+  max-width: 64px;
+  height: 50px;
+  padding: 3px 2px 5px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: #282333;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  text-align: center;
+  cursor: pointer;
+}
+.taskbar .task:hover, .taskbar .task.on { border-color: #a8a1b4; background: #ffffffae; }
+.taskbar .task.on::after { content: ''; position: absolute; bottom: 2px; left: calc(50% - 2px); width: 4px; height: 4px; border-radius: 50%; background: #6e5b98; }
+.taskbar .task .tico { width: 25px; height: 25px; }
+.taskbar .task span { display: block; width: 100%; overflow: hidden; text-overflow: ellipsis; font-size: 9px; font-weight: 700; }
+.dock-divider { height: 35px; border-left: 1px solid #a9a3b1; border-right: 1px solid #fff; }
+.taskbar .task-tool {
+  height: 37px;
+  padding: 0 10px;
+  border: 1px solid #a6a0ae;
+  border-radius: 6px;
+  background: #f7f5f2;
+  color: #292430;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.taskbar .task-tool:hover { background: #fff; }
+.taskbar .mode-switch { gap: 3px; margin: 0; }
+.taskbar .mode-switch .task-tool + .task-tool { margin: 0; }
+.taskbar .mode-switch .task-tool.on { border: 1px solid #6f5c9a; background: #e1daee; color: #392c58; }
+
+.startmenu {
+  top: 36px; bottom: auto; left: 9px;
+  width: 260px;
+  display: block;
+  padding: 5px;
+  border: 1px solid #65606b;
+  border-radius: 7px;
+  background: #f6fafbe0;
+  backdrop-filter: blur(18px) saturate(1.3);
+  -webkit-backdrop-filter: blur(18px) saturate(1.3);
+  box-shadow: 0 13px 24px #24203455;
+}
+.startmenu .rail { display: none; }
+.startmenu .menuitem { border-radius: 4px; color: #2b2632; font-size: 12px; cursor: pointer; }
+.startmenu .menuitem:hover, .startmenu .menuitem:focus-visible { background: #6d5b92; color: #fff; }
+.startmenu .menuitem.sub { color: #675f6b; }
+.startmenu .menuitem.sub:hover, .startmenu .menuitem.sub:focus-visible { color: #fff; }
+
+.logon { width: min(460px, calc(100vw - 24px)); }
+.logon .titlebar { justify-content: center; }
+.logon-banner { min-height: 90px; background: linear-gradient(125deg, #ebe6f3, #d4d3e5 58%, #c1c9dc); border-bottom-color: #8d8894; }
+.logon-banner::after { background: repeating-linear-gradient(0deg, transparent 0 6px, #ffffff25 6px 7px); }
+.logon-banner .bootlogo { color: #332840; text-shadow: 0 1px #fff; }
+.logon-banner .bootlogo span { color: #5d4380; }
+.logon-tagline { color: #51485d; }
+.logon-mode { color: #3b3151; background: #ffffffa8; border-color: #827496; }
+.logon-body { background: #f2f0ed; }
+.logon-heading { color: #30283a; }
+.logon-field { border: 1px solid #9c97a1; border-radius: 3px; box-shadow: inset 0 1px 2px #2222; }
+.logon .bootprog { border: 1px solid #99939e; border-radius: 5px; overflow: hidden; }
+.logon .bootprog i { background: linear-gradient(90deg, #745a9f, #9d88ba); }
+.logon-status-light { background: #679565; box-shadow: 0 0 0 2px #bdd6b5; }
+.logon-buttons .btn { border: 1px solid #5d4d7c; border-radius: 5px; background: #e3dcf0; color: #302842; box-shadow: 0 2px 0 #fff inset; }
+.logon-buttons .btn:disabled { border-color: #aaa5ae; color: #78717c; background: #e7e5e3; }
+
+@media (max-width: 900px) {
+  .mac-menu-title, .mac-menubar #paperQualificationBadge, .mac-menubar #hudReadStatus { display: none; }
+  .taskbar { min-width: 0; }
+}
+@media (hover: none), (pointer: coarse) {
+  .taskbar { transform: translate(-50%, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .taskbar { transition: none; }
+}
+.mpo-low-motion .taskbar { transition: none; }

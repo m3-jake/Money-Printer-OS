@@ -21,6 +21,25 @@ https://money-printer-ad1.pages.dev).
 
 ## Build and publish
 
+### Automatic production deployment
+
+The workflow in `.github/workflows/deploy-web-demo.yml` tests, builds, and publishes the demo to
+Cloudflare Pages project `money-printer` when browser demo files are pushed to `main`. The custom domain
+`moneyprinter.bangbowbing.net` follows that project's production deployment. A deployment can also
+be started manually from **Actions → Deploy web demo → Run workflow** on GitHub.
+
+Add two repository secrets under **Settings → Secrets and variables → Actions**:
+
+- `CLOUDFLARE_ACCOUNT_ID`: the ID of the Cloudflare account that owns `money-printer`.
+- `CLOUDFLARE_API_TOKEN`: a token scoped to that account with **Account → Cloudflare Pages → Edit**.
+
+Keep the token in GitHub Secrets. Changes become live after they are pushed to `main`; local edits
+alone do not deploy. `fixtures.json` is a snapshot, so record and commit new fixtures to refresh the
+demo session data. This is a Direct Upload Pages project, and the workflow uses Wrangler to publish
+to the existing project.
+
+### Manual deployment
+
 ```bash
 npm run web-demo:build
 npx wrangler@4 pages deploy web-demo/dist --project-name money-printer --branch main --commit-dirty=true

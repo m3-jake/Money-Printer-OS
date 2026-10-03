@@ -6,6 +6,7 @@
 // and loads web-demo/demo-shim.js first, which answers /api/* from web-demo/fixtures.json (recorded by
 // record.mjs). Fixtures are scrubbed of local paths, and the project journal (git history) is left out.
 import fs from 'node:fs';
+import { createHash } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -21,6 +22,12 @@ for (const dir of ['assets', 'js', 'css']) fs.cpSync(path.join(PUBLIC, dir), pat
 const source = ['dashboard.html', 'quant-research.html'].map(f => path.join(PUBLIC, f))
   .concat(...['js', 'css'].map(d => fs.readdirSync(path.join(PUBLIC, d)).map(f => path.join(PUBLIC, d, f))))
   .map(f => fs.readFileSync(f, 'utf8')).join('\n');
+// Pages serves static CSS/JS with a browser cache. Change their URLs whenever the demo changes.
+const assetVersion = createHash('sha256').update(source)
+  .update(fs.readFileSync(path.join(ROOT, 'web-demo', 'mobile.css')))
+  .update(fs.readFileSync(path.join(ROOT, 'web-demo', 'mobile.js')))
+  .update(fs.readFileSync(path.join(ROOT, 'web-demo', 'demo-shim.js')))
+  .update(JSON.stringify(fixtures)).digest('hex').slice(0, 12);
 for (const e of fs.readdirSync(path.join(OUT, 'assets'), { withFileTypes: true }))
   if (e.isFile() && !source.includes(e.name)) fs.rmSync(path.join(OUT, 'assets', e.name));
 
@@ -30,7 +37,13 @@ const shimTags = '<script src="demo-data.js"></script>\n<script src="demo-shim.j
 const page = (file, edit) => {
   let html = relative(fs.readFileSync(path.join(PUBLIC, file), 'utf8'), '');
   html = edit(html).replace('<title>', shimTags + '<title>');
+  if (file === 'dashboard.html') {
+    html = html.replace('</head>', '<link rel="stylesheet" href="mobile.css">\n</head>');
+    html = html.replace('</body>', '<script src="mobile.js"></script>\n</body>');
+  }
   if (!html.includes(shimTags)) throw new Error(`${file}: no <title> to inject the demo shim before`);
+  html = html.replace(/\b(href|src)="((?:css|js)\/[^"?]+|(?:mobile|demo-data|demo-shim)\.(?:css|js))"/g,
+    (_, attr, url) => `${attr}="${url}?v=${assetVersion}"`);
   return html;
 };
 fs.writeFileSync(path.join(OUT, 'index.html'), page('dashboard.html', h => h.split('href="/quant-research"').join('href="quant-research.html"')));
@@ -44,6 +57,8 @@ for (const file of fs.readdirSync(path.join(OUT, 'css'))) {
   fs.writeFileSync(f, relative(fs.readFileSync(f, 'utf8'), '../'));
 }
 fs.copyFileSync(path.join(ROOT, 'web-demo', 'demo-shim.js'), path.join(OUT, 'demo-shim.js'));
+fs.copyFileSync(path.join(ROOT, 'web-demo', 'mobile.css'), path.join(OUT, 'mobile.css'));
+fs.copyFileSync(path.join(ROOT, 'web-demo', 'mobile.js'), path.join(OUT, 'mobile.js'));
 
 // Scrub machine paths and the user name out of every recorded body.
 const secrets = [ROOT, os.homedir(), os.tmpdir(), os.userInfo().username]

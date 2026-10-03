@@ -14,6 +14,7 @@
 <script src="/js/mpo-roll.js"></script>
 <script src="/js/mpo-bots.js"></script>
 <link rel="stylesheet" href="/css/mpo-platform.css">
+<link rel="stylesheet" href="/css/mpo-mac.css">
 <script src="/js/wallet-crowd.js"></script>
 <script src="/js/mpo-platform.js"></script>
 <script src="/js/mpo-polymarket.js"></script>
@@ -28,6 +29,7 @@
 </head>
 <body>
 <div class="desktop camera-sky" id="desktop">
+  <div class="mac-menubar"><button class="start" id="startBtn" type="button" aria-label="Open applications"><img class="tico" src="/assets/icons/money.png" alt=""> Money Printer OS</button><span class="mac-menu-title">Research Desktop</span><span class="mac-menu-spacer"></span><div class="tray"><span class="led" id="feedLed"></span><span class="mpo-badge mpo-badge--paper" id="trayMode">PAPER</span><span class="mpo-badge" id="paperQualificationBadge" title="Read-only paper research status. This never unlocks or starts live trading.">PAPER QUALIFICATION · LOADING</span><span id="hudReadStatus" role="status">Connecting…</span><span id="clock"></span></div></div>
   <div class="wallpaper"></div>
   <div class="sky-clouds" aria-hidden="true">
     <img class="sky-cloud" src="/assets/clouds/09.webp" alt="" style="width:30vw;top:3%;animation-duration:420s;animation-delay:-300s">
@@ -52,13 +54,14 @@
   <div class="money-layer market-fx" id="moneyRain"></div>
   <div class="money-layer market-fx money-pile" id="moneyPile"></div>
   <div class="brand"><div class="mpo-logo" role="img" aria-label="Money Printer OS"><div class="logo-body"><div class="logo-skin"><img class="brand-logo" src="/assets/mpo-logo-3d.webp" alt="" aria-hidden="true" width="960" height="591" draggable="false"><span class="shine" aria-hidden="true"></span></div></div></div><small id="runningVersion"></small></div>
-  <div class="icons" id="icons"></div>
+  <div class="icons" id="icons" role="group" aria-label="Applications. Swipe horizontally to see more."></div><div class="icon-scroll-cue" id="iconScrollCue" aria-hidden="true">SWIPE <b>›</b></div>
+  <div class="mobile-home" id="mobileHome"><div class="mobile-home-mark" aria-hidden="true">⌘</div><h1>Desktop ready.</h1><p>Tap an app above to begin. Swipe the app strip sideways to see the rest.</p></div>
   <div class="money-event-feed" id="moneyEventFeed" aria-live="polite"></div>
   <div id="windows"></div>
   <div class="startmenu" id="startMenu"><div class="rail">MONEY PRINTER OS</div><div class="menuitems" id="startItems"></div></div>
-  <div class="taskbar"><button class="start" id="startBtn"><img class="tico" src="/assets/icons/money.png" alt=""> Start</button><div class="tasks" id="tasks"></div><button class="task-tool" id="tileBtn" title="Tile: arrange every open window to fill the desktop, no overlap">▦ Tile</button><div class="mode-switch" role="group" aria-label="Window mode"><button class="task-tool" id="modeSimple" title="Simple mode: every window shows its clean glance">Simple</button><button class="task-tool" id="modeAdvanced" title="Advanced mode: every window shows its full workstation">Advanced</button></div><div class="tray"><span class="led" id="feedLed"></span><span class="mpo-badge mpo-badge--paper" id="trayMode">PAPER</span><span class="mpo-badge" id="paperQualificationBadge" title="Read-only paper research status. This never unlocks or starts live trading.">PAPER QUALIFICATION · LOADING</span><span id="hudReadStatus" role="status">Connecting…</span><span id="clock"></span></div></div>
+  <div class="dock-trigger" aria-hidden="true"></div><div class="taskbar" id="appDock" aria-label="Open applications"><div class="tasks" id="tasks"></div><span class="dock-divider" aria-hidden="true"></span><button class="task-tool" id="tileBtn" title="Arrange every open window without overlap">▦ Arrange</button><div class="mode-switch" role="group" aria-label="Window mode"><button class="task-tool" id="modeSimple" title="Simple mode: every window shows its clean glance">Simple</button><button class="task-tool" id="modeAdvanced" title="Advanced mode: every window shows its full workstation">Advanced</button></div></div>
   <div class="dialog-layer" id="dialogLayer"><div class="dialog hidden" id="dialog" role="dialog" aria-modal="true" aria-labelledby="dialogTitle"><div class="titlebar"><div class="title" id="dialogTitle">Money Printer OS</div><div class="win-buttons"><button type="button" id="dialogX">×</button></div></div><div class="msg"><div class="mpo-dialog-ico" aria-hidden="true">!</div><div><b id="dialogHead"></b><p id="dialogText"></p><button class="btn" id="dialogOk">OK</button></div></div></div><div class="dialog mpo-dialog hidden" id="polyConfirm" role="dialog" aria-modal="true" aria-labelledby="polyConfirmTitle"><div class="titlebar"><div class="title" id="polyConfirmTitle">Confirm</div><div class="win-buttons"><button type="button" id="polyConfirmX">×</button></div></div><div class="msg"><span class="mpo-dialog-ico" aria-hidden="true">!</span><div><b id="polyConfirmHead"></b><div id="polyConfirmBody"></div><p id="polyConfirmCountdown"></p><input class="field" id="polyConfirmPhrase" autocomplete="off" spellcheck="false"><div class="toolbar"><button class="btn" id="polyConfirmRequote" hidden>Re-quote</button><button class="btn" id="polyConfirmCancel">Cancel</button><button class="btn" id="polyConfirmOk" disabled>Confirm</button></div></div></div></div></div>
-  <div class="boot" id="boot"><div class="bootbox logon" role="dialog" aria-labelledby="bootTitle"><div class="titlebar"><div class="title" id="bootTitle">Log On to Money Printer OS</div></div><div class="logon-banner"><img class="bootmark" src="/assets/money-printer-logo-512.png" alt="" width="64" height="64"><div class="bootlogo">MONEY <span>PRINTER</span> OS</div></div><div class="logon-body"><p>Type a user name and password to log on to Money Printer OS.</p><div class="logon-row"><span>User name:</span><span class="logon-field">Trader</span></div><div class="logon-row"><span>Password:</span><span class="logon-field" aria-label="Password (not needed)">••••••••••</span></div><div class="bootline" id="bootText">Loading desktop…</div><div class="progress bootprog"><i id="bootBar"></i></div><div class="logon-buttons"><button type="button" class="btn" id="bootOk" disabled>OK</button></div></div></div></div>
+  <div class="boot" id="boot"><div class="bootbox logon" role="dialog" aria-labelledby="bootTitle"><div class="titlebar"><div class="title" id="bootTitle">Welcome to Money Printer OS</div></div><div class="logon-banner"><img class="bootmark" src="/assets/money-printer-logo-512.png" alt="" width="64" height="64"><div class="logon-brand"><div class="bootlogo">MONEY <span>PRINTER</span> OS</div><div class="logon-tagline">Your research desktop is waking up</div></div><span class="logon-mode">PAPER MODE</span></div><div class="logon-body"><p class="logon-heading">Welcome back, Trader.</p><p class="logon-description">Your workspace is ready to explore. No password is needed for this preview.</p><div class="logon-row"><span>User name:</span><span class="logon-field">Trader</span></div><div class="logon-row"><span>Session:</span><span class="logon-field">Research desktop</span></div><div class="logon-status"><span class="logon-status-light" aria-hidden="true"></span><span class="bootline" id="bootText" role="status" aria-live="polite">Loading desktop…</span></div><div class="progress bootprog" role="progressbar" aria-label="Desktop loading"><i id="bootBar"></i></div><div class="logon-buttons"><span class="logon-hint">Press Enter or continue when ready</span><button type="button" class="btn" id="bootOk" disabled>Enter desktop</button></div></div></div></div>
 </div>
 <script>
 const fetch=window.MPOHud.fetch;
@@ -490,29 +493,28 @@ robinhood:{x:200,y:90,w:880,h:720},stocks:{x:170,y:60,w:900,h:680},marketlab:{x:
 trade:{x:120,y:70,w:790,h:690},sportsbook:{x:250,y:140,w:880,h:600},
 system:{x:660,y:80,w:520,h:470},journal:{x:90,y:56,w:740,h:540},money:{x:320,y:120,w:620,h:520}
 };
-const DEFAULT_OPEN=['trade'];
+const DEFAULT_OPEN=[];
 const LAYOUT_VERSION='2026-09-26-glance';
 const readPref=(k,d)=>window.MPOHud.preferences.read(k,d);
 const writePref=(k,v)=>window.MPOHud.preferences.write(k,v);
 const removePref=k=>window.MPOHud.preferences.remove(k);
 let saved=window.MPOHud.sanitizeLayout(readPref('mpo-layout',{}),HOSTS,id=>defaultLayout[id]||{x:40,y:40,w:640,h:500});
-let openSet=new Set(readPref('mpo-open',DEFAULT_OPEN));
+const compactHome=!!window.__MPO_DEMO__&&matchMedia('(max-width: 600px)').matches;
+let openSet=new Set();
 // Layout changes must migrate, never wipe: a version bump only records the new version and keeps the
 // saved spots and open windows. #setResetLayout is the only thing allowed to clear mpo-layout.
 if(readPref('mpo-layout-version','')!==LAYOUT_VERSION)writePref('mpo-layout-version',LAYOUT_VERSION);
 // Windows only exist for hosts now; drop anything left over from a pre-consolidation layout.
 saved=Object.fromEntries(Object.entries(saved||{}).filter(([k])=>HOSTS.includes(k)));
-openSet=new Set([...openSet].filter(id=>HOSTS.includes(id)));
-if(!openSet.size)openSet=new Set(DEFAULT_OPEN);
 let activeTab=readPref('mpo-tabs',{});
 for(const h of HOSTS)if(!tabsOf(h).includes(activeTab[h]))activeTab[h]=h;
 // Display: text size is the fit-zoom ceiling; windows open in Simple mode (the glance) unless the taskbar
-// Simple | Advanced switch or a window's own button says Advanced; only the last-used window opens at launch.
+// Simple | Advanced switch or a window's own button says Advanced. Launch starts with an empty desktop.
 const TEXT_SCALES={S:.9,M:1.1,L:1.3};
-let displayPrefs={textSize:'M',fullDetail:false,restoreAll:true,...readPref('mpo-display',{})};
-displayPrefs={textSize:Object.hasOwn(TEXT_SCALES,displayPrefs.textSize)?displayPrefs.textSize:'M',fullDetail:displayPrefs.fullDetail===true,restoreAll:displayPrefs.restoreAll!==false,lowMotion:displayPrefs.lowMotion===true};
-// Older builds saved restoreAll:false inside mpo-display; flip it once so every open window reopens.
-if(!readPref('mpo-restore-migrated',false)){displayPrefs.restoreAll=true;writePref('mpo-display',displayPrefs);writePref('mpo-restore-migrated',true)}
+let displayPrefs={textSize:'M',fullDetail:false,restoreOnLaunch:false,...readPref('mpo-display',{})};
+displayPrefs={textSize:Object.hasOwn(TEXT_SCALES,displayPrefs.textSize)?displayPrefs.textSize:'M',fullDetail:displayPrefs.fullDetail===true,restoreOnLaunch:displayPrefs.restoreOnLaunch===true,lowMotion:displayPrefs.lowMotion===true};
+// Old restoreAll preferences keep their saved geometry, but do not opt into opening apps at launch.
+if(displayPrefs.restoreOnLaunch&&!compactHome)openSet=new Set(readPref('mpo-open',DEFAULT_OPEN).filter(id=>HOSTS.includes(id)));
 // One-time 12% shrink of saved window sizes (Simple mode got smaller); positions are kept.
 if(!readPref('mpo-size-migrated-0927',false)){for(const L of Object.values(saved)){if(!L||typeof L!=='object')continue;if(Number.isFinite(L.w))L.w=Math.max(260,Math.round(L.w*.88));if(Number.isFinite(L.h))L.h=Math.max(150,Math.round(L.h*.88))}writePref('mpo-layout',saved);writePref('mpo-size-migrated-0927',true)}
 // The user's intended spot for each window. Clamping to a small viewport is visual only and never
@@ -536,10 +538,10 @@ function paintEnvironmentWind(now=performance.now()){
 function applyMotion(){document.documentElement.classList.toggle('mpo-low-motion',motionReduced());paintEnvironmentWind()}
 applyMotion();matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change',()=>{applyMotion();updateDesktopEffects()});
 setInterval(()=>{if(!document.hidden&&!motionReduced()&&!document.body.classList.contains('desk-covered'))paintEnvironmentWind()},1800);
-const bootFocus=(()=>{const f=readPref('mpo-last-focus','trade');const id=openSet.has(f)?f:[...openSet][0]||'trade';openSet.add(id);return id})();
+const bootFocus=(()=>{const f=readPref('mpo-last-focus',null);return openSet.has(f)?f:[...openSet][0]||null})();
 // A window without a saved spot opens centred and large: one clear thing on the desktop.
 const HERO_MAX_H={money:500,journal:600};
-function heroLayout(id){const W=window.innerWidth||1280,H=(window.innerHeight||800)-36,w=Math.round(Math.min(880,Math.max(520,W*.7))),h=Math.round(Math.min(HERO_MAX_H[id]||700,Math.max(420,H*.9)));return{x:Math.max(0,Math.round((W-w)/2)),y:Math.max(8,Math.round((H-h)/2)),w,h}}
+function heroLayout(id){const W=window.innerWidth||1280,H=(window.innerHeight||800)-76,w=Math.round(Math.min(880,Math.max(520,W*.7))),h=Math.round(Math.min(HERO_MAX_H[id]||700,Math.max(420,H*.9)));return{x:Math.max(0,Math.round((W-w)/2)),y:Math.max(38,Math.round((H-h)/2)+34),w,h}}
 let layoutResetting=false,tileSnapshot=null;
 function persist(){
  // Never persist a transient layout (boot overlay, pane still opening) and never record a hidden
@@ -567,15 +569,12 @@ function buildIcons(){
  const pulse=el=>{if(!el)return;$$('.icon').forEach(x=>x.classList.remove('sel','press'));selectedIcon=el.dataset.app;el.classList.add('press');setTimeout(()=>el.classList.remove('press'),180)};
  $$('.icon').forEach(el=>{el.onclick=()=>pulse(el);el.ondblclick=()=>{pulse(el);openApp(el.dataset.app)};el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();pulse(el);openApp(el.dataset.app)}}});
 }
-// The corner logo is a toy. Drag it and it stretches toward the pointer like a rubber band (pull past
-// the band's reach and it gets towed along). Let go and the stored stretch plus the flick slingshot it
-// that way with a squash-and-stretch boing; it glides across the desktop, bounces off the edges and
-// slides to a halt, ready to be flicked again. Left alone away from its corner, it fades out and fades
-// back in at home. The shine sits inside the same skin, so it stretches and travels with the logo.
+// Pull the corner logo like a slingshot: its position stays fixed while the skin stretches toward
+// the pointer. Release sends it opposite the pull; it bounces, settles, then returns home after idle.
 function initLogoStretch(){
  const logo=$('.mpo-logo'),body=logo?.querySelector('.logo-body'),skin=logo?.querySelector('.logo-skin');if(!logo||!body||!skin)return;
  const clamp=(n,a,b)=>Math.max(a,Math.min(b,n)),set=(k,v)=>logo.style.setProperty(k,v);
- const REACH=150,FRICTION=2.6,MAX_V=2600,IDLE_MS=3500;
+ const REACH=170,FRICTION=2.6,MAX_V=2600,IDLE_MS=3500,LAUNCH=8;
  const S={x:0,y:0,vx:0,vy:0,boing:0,boingV:0,axis:0,drag:null,raf:0,last:0};let idleTimer=0;
  const skinVars=(stretch,squash,angle,tilt)=>{set('--logo-stretch',stretch.toFixed(3));set('--logo-squash',squash.toFixed(3));set('--logo-angle',angle.toFixed(2)+'deg');set('--logo-tilt',tilt.toFixed(2)+'deg')};
  const place=()=>{set('--logo-x',S.x.toFixed(1)+'px');set('--logo-y',S.y.toFixed(1)+'px');logo.classList.toggle('away',Math.hypot(S.x,S.y)>1)};
@@ -603,27 +602,25 @@ function initLogoStretch(){
  body.addEventListener('pointerdown',e=>{
   if(motionReduced()||e.button!==0)return;e.preventDefault();clearTimeout(idleTimer);
   if(S.raf){cancelAnimationFrame(S.raf);S.raf=0}S.vx=S.vy=S.boing=S.boingV=0;logo.classList.remove('is-flying');body.classList.remove('is-gone');
-  const r=skin.getBoundingClientRect(),gx=clamp((e.clientX-r.left)/Math.max(1,r.width),0,1),gy=clamp((e.clientY-r.top)/Math.max(1,r.height),0,1);
-  S.drag={id:e.pointerId,sx:e.clientX,sy:e.clientY,bx:S.x,by:S.y,dx:0,dy:0,stretch:1,angle:0,pts:[{t:performance.now(),x:e.clientX,y:e.clientY}]};
+  S.drag={id:e.pointerId,sx:e.clientX,sy:e.clientY,dx:0,dy:0,stretch:1,angle:0};
   logo.classList.add('is-stretching');body.setPointerCapture?.(e.pointerId);
-  origin(((1-gx)*100).toFixed(1)+'%',((1-gy)*100).toFixed(1)+'%');
+  origin('50%','50%');
  });
  body.addEventListener('pointermove',e=>{
-  const d=S.drag;if(!d||e.pointerId!==d.id)return;const now=performance.now();
+  const d=S.drag;if(!d||e.pointerId!==d.id)return;
   let dx=e.clientX-d.sx,dy=e.clientY-d.sy,dist=Math.hypot(dx,dy);
-  if(dist>REACH){const k=1-REACH/dist,mx=dx*k,my=dy*k;d.sx+=mx;d.sy+=my;d.bx+=mx;d.by+=my;dx-=mx;dy-=my;dist=REACH} // towed
-  const b=bounds();d.dx=dx;d.dy=dy;d.angle=Math.atan2(dy,dx)*180/Math.PI;d.stretch=clamp(1+dist/185,1,1.9);
-  S.x=clamp(d.bx+dx*.46,b.minX,b.maxX);S.y=clamp(d.by+dy*.46,b.minY,b.maxY);place();
+  if(dist>REACH){const k=REACH/dist;dx*=k;dy*=k;dist=REACH}
+  d.dx=dx;d.dy=dy;d.angle=dist>1?Math.atan2(dy,dx)*180/Math.PI:0;d.stretch=clamp(1+dist/185,1,1.92);
+  // Anchor the edge behind the pull. Only the skin deforms; the logo body's position does not move.
+  origin((50-dx/REACH*38).toFixed(1)+'%',(50-dy/REACH*38).toFixed(1)+'%');
   skinVars(d.stretch,clamp(1-dist/780,.78,1),d.angle,clamp(dx/90,-2.4,2.4));
-  d.pts.push({t:now,x:e.clientX,y:e.clientY});while(d.pts.length>2&&now-d.pts[0].t>90)d.pts.shift();
  });
  const release=e=>{
   const d=S.drag;if(!d||(e.pointerId!=null&&e.pointerId!==d.id))return;S.drag=null;logo.classList.remove('is-stretching');
-  const now=performance.now(),p0=d.pts[0],p1=d.pts.at(-1),span=Math.max(.016,(p1.t-p0.t)/1000),fresh=now-p1.t<=120;
-  // Slingshot: the flick plus the stretch still stored in the band, both pointing where you pulled.
-  S.vx=clamp((fresh?(p1.x-p0.x)/span:0)*.9+d.dx*6,-MAX_V,MAX_V);S.vy=clamp((fresh?(p1.y-p0.y)/span:0)*.9+d.dy*6,-MAX_V,MAX_V);
+  // A held pull launches just as reliably as a quick flick, always away from the pointer.
+  S.vx=clamp(-d.dx*LAUNCH,-MAX_V,MAX_V);S.vy=clamp(-d.dy*LAUNCH,-MAX_V,MAX_V);
   const speed=Math.hypot(S.vx,S.vy);S.axis=speed>1?Math.atan2(S.vy,S.vx)*180/Math.PI:d.angle;
-  S.boing=clamp(d.stretch-1,0,.9);S.boingV=-Math.min(6,speed/500);
+  S.boing=clamp(d.stretch-1,0,.9);S.boingV=-Math.min(6,speed/500);origin('50%','50%');
   if(speed<1&&S.boing<.01){skinVars(1,1,0,0);return goHomeLater()}
   launch();
  };
@@ -633,8 +630,8 @@ function initLogoStretch(){
 function appShell(id,title){
  const L=saved[id]||heroLayout(id);
  intended[id]||={x:L.x,y:L.y,w:L.w,h:L.h};
- // Launch shows only the last-used window; the rest wait in the taskbar (Settings can reopen all).
- const shown=openSet.has(id)&&(displayPrefs.restoreAll?!L.min:id===bootFocus);
+ // Apps stay hidden until opened, unless the user explicitly enabled restoring their session.
+ const shown=openSet.has(id)&&!L.min;
  const tabs=tabsOf(id),tabbed=tabs.length>1,act=activeTab[id]||id,detail=isDetail(id);
  const strip=tabbed?`<div class="tabs win-tabs" data-host="${id}">${tabs.map(t=>`<button class="tab98 ${t===act?'on':''}" data-host="${id}" data-tab="${t}">${TAB_LABEL[t]||appMeta(t)?.[1]||t}</button>`).join('')}</div>`:'';
  const body=tabbed?`<div class="body tabbed">${tabs.map(t=>`<div class="tabpane ${t===act?'on':''}" id="body-${t}" data-scroll="pane-${t}"></div>`).join('')}</div>`:`<div class="body" id="body-${id}" data-scroll="body-${id}"></div>`;
@@ -682,14 +679,14 @@ function clampWin(w){
  // A desktop smaller than this is a transient layout state (boot overlay, pane opening, minimized
  // browser); clamping against it would shrink every window to a sliver and persist that.
  if(d.clientWidth<480||d.clientHeight<320)return;
- const maxW=d.clientWidth,maxH=Math.max(160,d.clientHeight-36);
+ const topInset=36,maxW=d.clientWidth,maxH=Math.max(160,d.clientHeight-72);
  const ww=Math.min(w.offsetWidth,Math.max(260,maxW)),wh=Math.min(w.offsetHeight,Math.max(150,maxH)),resized=ww!==w.offsetWidth||wh!==w.offsetHeight;
  if(ww!==w.offsetWidth)w.style.width=ww+'px';
  if(wh!==w.offsetHeight)w.style.height=wh+'px';
  let x=parseInt(w.style.left),y=parseInt(w.style.top);
  if(!Number.isFinite(x))x=40;if(!Number.isFinite(y))y=40;
  x=Math.min(Math.max(x,0),Math.max(0,maxW-ww));
- y=Math.min(Math.max(y,0),Math.max(0,maxH-wh));
+ y=Math.min(Math.max(y,topInset),Math.max(topInset,d.clientHeight-36-wh));
  w.style.left=Math.round(x)+'px';w.style.top=Math.round(y)+'px';
  if(resized&&typeof scheduleFit==='function')scheduleFit(w);
 }
@@ -755,10 +752,10 @@ function tileWindows(reflow=false){
  if(!tileSnapshot){persist();tileSnapshot=Object.fromEntries(Object.entries(saved).map(([id,L])=>[id,{...L}]))}
  const d=$('#desktop'),bar=$('.taskbar');if(!d)return;
  const ws=$$('.window').filter(w=>!w.classList.contains('hidden')).sort((a,b)=>(Number(b.style.zIndex)||0)-(Number(a.style.zIndex)||0));if(!ws.length)return;
- const W=d.clientWidth,H=d.clientHeight-(bar?bar.offsetHeight:36),gap=4;
+ const W=d.clientWidth,H=d.clientHeight-(bar?bar.offsetHeight:64)-36,gap=4;
  const main=ws.filter(w=>TILE_PRIMARY.includes(w.dataset.app)),rest=ws.filter(w=>!TILE_PRIMARY.includes(w.dataset.app));
- if(main.length&&rest.length){const top=Math.round(H*.64);tileGrid(main,0,0,W,top,gap);tileGrid(rest,0,top-gap,W,H-top+gap,gap)}
- else tileGrid(ws,0,0,W,H,gap);
+ if(main.length&&rest.length){const top=Math.round(H*.64);tileGrid(main,0,36,W,top,gap);tileGrid(rest,0,36+top-gap,W,H-top+gap,gap)}
+ else tileGrid(ws,0,36,W,H,gap);
  $('#tileBtn').textContent='▦ Restore';$('#tileBtn').setAttribute('aria-pressed','true');$('#tileBtn').title='Restore the previous free-window layout';persist();fitAll();
 }
 // Collapsible sections that survive innerHTML re-renders: templates call keepOpen('key') inside
@@ -795,7 +792,9 @@ function openApp(id){
  if(host==='journal')refreshProjectJournal();
 }
 function renderTasks(){
- $('#tasks').innerHTML=[...openSet].filter(id=>HOSTS.includes(id)).map(id=>{const a=appMeta(id);return a?`<button class="task" data-app="${id}" title="${a[1]}">${taskIcon(id)}<span>${a[1]}</span></button>`:''}).join('');
+ $('#tasks').innerHTML=[...openSet].filter(id=>HOSTS.includes(id)).map(id=>{const a=appMeta(id);return a?`<button class="task" data-app="${id}" title="${a[1]}" aria-label="Show ${a[1]}">${taskIcon(id)}<span>${a[1]}</span></button>`:''}).join('');
+ $('#desktop').classList.toggle('mobile-empty',!$$('.window:not(.hidden)').length);
+ $('#desktop').classList.toggle('mobile-no-apps',openSet.size===0);
  $$('.task').forEach(b=>{const w=$(`.window[data-app="${b.dataset.app}"]`);b.classList.toggle('on',!!w&&!w.classList.contains('hidden'));
   b.onclick=()=>{const t=$(`.window[data-app="${b.dataset.app}"]`);if(!t)return;if(t.classList.contains('hidden')){t.classList.remove('hidden');clampWin(t);focus(t)}else if(Number(t.style.zIndex)===z)t.classList.add('hidden');else focus(t);persist();renderTasks()}});
 }
@@ -1562,13 +1561,13 @@ function renderSimple(id){
  }
  if(id==='settings'){
   const mode=String(s.mode||'paper').toUpperCase(),health=s.system?.health||'Starting';
-  setBody('settings',`<div class="mpo-surface-light" style="padding:12px;color:#111;min-height:100%"><div class="mpo-status"><b>SETTINGS</b><b class="mpo-badge ${mode==='LIVE'?'mpo-badge--armed':'mpo-badge--paper'}">${polyEscape(mode)}</b><b class="mpo-badge ${health==='DEGRADED'?'mpo-badge--degraded':'mpo-badge--live'}">${polyEscape(health)}</b></div><fieldset class="mpo-fieldset"><legend>Machine</legend><p>CPU / RAM / disk limits live in System → Monitor.</p><button class="btn" id="setGoMonitor">Open Monitor</button></fieldset><fieldset class="mpo-fieldset"><legend>Trading runtime</legend><p>Profile, aggression and paper testing live in Pump.fun → Controls.</p><button class="btn" id="setGoControls">Open Controls</button></fieldset><fieldset class="mpo-fieldset"><legend>Display</legend><div class="toolbar"><span>Text size:</span>${Object.entries({S:'Small',M:'Medium',L:'Large'}).map(([k,v])=>`<button class="btn ${displayPrefs.textSize===k?'on':''}" data-textsize="${k}">${v}</button>`).join('')}</div><label><input type="checkbox" id="setFullDetail" ${displayPrefs.fullDetail?'checked':''}> Advanced mode in every window (same as the taskbar Simple | Advanced switch; each window's own button still flips just that window)</label><br><label><input type="checkbox" id="setRestoreAll" ${displayPrefs.restoreAll?'checked':''}> Reopen every window at launch (otherwise only the last one you used)</label><br><label><input type="checkbox" id="setLowMotion" ${displayPrefs.lowMotion?'checked':''}> Reduce animation and visual effects</label></fieldset><fieldset class="mpo-fieldset"><legend>Desktop</legend><button class="btn" id="setResetLayout">Reset window layout</button><p class="muted" title="Reset restores the default desktop layout and tabs, then reloads the interface.">Restores default layout, then reloads.</p></fieldset></div>`);
+  setBody('settings',`<div class="mpo-surface-light" style="padding:12px;color:#111;min-height:100%"><div class="mpo-status"><b>SETTINGS</b><b class="mpo-badge ${mode==='LIVE'?'mpo-badge--armed':'mpo-badge--paper'}">${polyEscape(mode)}</b><b class="mpo-badge ${health==='DEGRADED'?'mpo-badge--degraded':'mpo-badge--live'}">${polyEscape(health)}</b></div><fieldset class="mpo-fieldset"><legend>Machine</legend><p>CPU / RAM / disk limits live in System → Monitor.</p><button class="btn" id="setGoMonitor">Open Monitor</button></fieldset><fieldset class="mpo-fieldset"><legend>Trading runtime</legend><p>Profile, aggression and paper testing live in Pump.fun → Controls.</p><button class="btn" id="setGoControls">Open Controls</button></fieldset><fieldset class="mpo-fieldset"><legend>Display</legend><div class="toolbar"><span>Text size:</span>${Object.entries({S:'Small',M:'Medium',L:'Large'}).map(([k,v])=>`<button class="btn ${displayPrefs.textSize===k?'on':''}" data-textsize="${k}">${v}</button>`).join('')}</div><label><input type="checkbox" id="setFullDetail" ${displayPrefs.fullDetail?'checked':''}> Advanced mode in every window (same as the taskbar Simple | Advanced switch; each window's own button still flips just that window)</label><br><label><input type="checkbox" id="setRestoreOnLaunch" ${displayPrefs.restoreOnLaunch?'checked':''}> Reopen previous apps at launch</label><br><label><input type="checkbox" id="setLowMotion" ${displayPrefs.lowMotion?'checked':''}> Reduce animation and visual effects</label></fieldset><fieldset class="mpo-fieldset"><legend>Desktop</legend><button class="btn" id="setResetLayout">Reset window layout</button><p class="muted" title="Reset restores the default desktop layout and tabs, then reloads the interface.">Restores default layout, then reloads.</p></fieldset></div>`);
   $('#setGoMonitor')?.addEventListener('click',()=>{openApp('system');setTab('system','system')});
   $('#setGoControls')?.addEventListener('click',()=>openApp('control'));
   const saveDisplay=()=>{writePref('mpo-display',displayPrefs);FIT_MAX=textScale();$$('.window').forEach(applyMode);renderSig.clear();renderAll();fitAll()};
   $$('[data-textsize]').forEach(b=>b.onclick=()=>{displayPrefs.textSize=b.dataset.textsize;saveDisplay()});
   $('#setFullDetail')?.addEventListener('change',e=>setGlobalMode(e.target.checked));
-  $('#setRestoreAll')?.addEventListener('change',e=>{displayPrefs.restoreAll=e.target.checked;saveDisplay()});
+  $('#setRestoreOnLaunch')?.addEventListener('change',e=>{displayPrefs.restoreOnLaunch=e.target.checked;saveDisplay()});
   $('#setLowMotion')?.addEventListener('change',e=>{displayPrefs.lowMotion=e.target.checked;writePref('mpo-display',displayPrefs);applyMotion();updateDesktopEffects()});
   $('#setResetLayout')?.addEventListener('click',()=>{layoutResetting=true;removePref('mpo-layout');removePref('mpo-last-focus');removePref('mpo-tabs');writePref('mpo-open',DEFAULT_OPEN);location.reload()});
   renderBackgroundSettings();
@@ -1980,9 +1979,11 @@ async function refreshResearchMonitor(){
 // mpo:logon fires at log-on; LOGON_CAMERA_MS later the camera has settled and the desktop is in.
 const LOGON_AUTO_MS=6000,LOGON_CAMERA_MS=2700;let loggedOn=false,logonTimer=0;
 function boot(){
- const ok=$('#bootOk');$('#bootText').textContent='Loading desktop…';
- requestAnimationFrame(()=>$('#bootBar').style.width='100%');
- setTimeout(()=>{$('#bootText').textContent='Desktop ready. Press OK to log on.';if(!ok)return logOn();ok.disabled=false;ok.onclick=logOn;ok.focus({preventScroll:true});
+ const ok=$('#bootOk'),bar=$('#bootBar'),status=$('#bootText');
+ const stage=(label,width)=>{status.textContent=label;bar.style.width=width};
+ stage('Waking up your workspace…','12%');
+ setTimeout(()=>stage('Preparing your desktop…','62%'),motionReduced()?0:360);
+ setTimeout(()=>{stage('Desktop ready. Enter when you like.','100%');if(!ok)return logOn();ok.disabled=false;ok.onclick=logOn;ok.focus({preventScroll:true});
   const wait=()=>{clearTimeout(logonTimer);logonTimer=setTimeout(logOn,LOGON_AUTO_MS)};wait();
   $('#boot').addEventListener('pointermove',wait);document.addEventListener('keydown',e=>{if(!loggedOn&&e.key==='Enter'){e.preventDefault();logOn()}})},motionReduced()?0:900);
 }
@@ -1999,7 +2000,7 @@ function welcomeShower(){
  const rain=$('#moneyRain');if(!rain||motionReduced())return;
  fxRainHost(rain);rain.insertAdjacentHTML('beforeend',makeBurstBills(22,1,'welcome')+makeBurstBills(14,.1,'welcome'));rain.style.opacity='1';
 }
-addEventListener('mpo:logon',()=>setTimeout(welcomeShower,motionReduced()?0:LOGON_CAMERA_MS));
+ addEventListener('mpo:logon',()=>{if(!compactHome)setTimeout(welcomeShower,motionReduced()?0:LOGON_CAMERA_MS)});
 // One refresh includes fetching, parsing and applying the result. A slow request cannot queue
 // multiple renders of the same payload behind the transport's single in-flight read.
 // Lag pass (2026-10-02): while a maximized window covers the desktop, the sky, cloud-shadow and grass

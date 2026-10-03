@@ -214,13 +214,13 @@ test('desktop keeps only platform-scale launchers; Command Center owns the suppo
   assert.match(desktop, /['"]command['"]/);
 });
 
-test('desktop event feed is roomier, importance-aware, and money shares the environment breeze', () => {
+test('desktop event feed is compact, importance-aware, and money shares the environment breeze', () => {
   assert.match(html, /const MONEY_EVENT_META=/);
   assert.match(html, /'major-win':\{ttl:120000/);
   assert.match(html, /ambient:\{ttl:50000/);
   assert.match(html, /moneyEvents\.slice\(-14\)/);
   assert.match(html, /x\.count=\(x\.count\|\|1\)\+1/);
-  assert.match(css, /max-height:\s*300px/);
+  assert.match(css, /max-height:\s*220px/);
   assert.match(css, /@keyframes moneyEventLife/);
   assert.match(css, /animation-duration:\s*var\(--event-life,75s\)/);
   assert.match(html, /function fxWind\(t\)\{return environmentWindAt\(t\)\.pxs\}/);
@@ -362,18 +362,45 @@ test('live visuals: one animation engine, served read-only from /js, used by Pol
   for (const key of ['pm-lanes', 'pm-hist', 'pm-pulse', 'pm-shadow', 'pm-cal', 'rh-edge', 'rh-ticker', 'rh-pulse', 'pf-map', 'pf-meme', 'pf-funnel', 'pf-ticker', 'pf-pulse']) assert.ok(html.includes(`MPOViz.set('${key}'`), key);
 });
 
-test('layout persistence: no wipes, every window reopens, saved spots are authoritative', () => {
+test('layout persistence: saved spots are authoritative and launch restoration is opt-in', () => {
   const resetAt = html.indexOf("$('#setResetLayout')?.addEventListener");
   assert.ok(resetAt > 0, 'reset handler exists');
   const outside = html.slice(0, resetAt) + html.slice(html.indexOf('\n', resetAt));
   assert.doesNotMatch(outside, /removeItem\('mpo-layout'\)/, 'only the reset handler may wipe mpo-layout');
-  assert.match(html, /restoreAll:true/);
-  assert.match(html, /mpo-restore-migrated/);
+  assert.match(html, /restoreOnLaunch:false/);
+  assert.doesNotMatch(html, /mpo-restore-migrated/);
   assert.match(html, /mpo-size-migrated-0927/);
   assert.match(html, /window\.__mpoPersist=/);
   assert.match(html, /addEventListener\('pagehide',persist\)/);
   assert.match(html, /mpo-chart-view/);
   assert.match(html, /window\.addEventListener\('resize',\(\)=>\{reflowAll\(\)\}\)/, 'resize reflows windows back to their saved spot');
+});
+
+test('startup stays empty for fresh and existing preferences; explicit restoration preserves saved apps', () => {
+  const startup = html.slice(html.indexOf('const DEFAULT_OPEN='), html.indexOf('// One-time 12% shrink'));
+  const focus = html.match(/^const bootFocus=.*$/m)[0];
+  const launch = (prefs = {}, phone = false) => {
+    const context = {
+      window: { __MPO_DEMO__: phone, MPOHud: {
+        preferences: { read: (key, fallback) => prefs[key] ?? fallback, write() {}, remove() {} },
+        sanitizeLayout: layout => layout,
+      } },
+      HOSTS: ['trade', 'journal'], defaultLayout: {}, tabsOf: id => [id],
+      matchMedia: () => ({ matches: phone }),
+    };
+    vm.runInNewContext(`${startup}\n${focus}\nresult={open:[...openSet],focus:bootFocus,saved};`, context);
+    return JSON.parse(JSON.stringify(context.result));
+  };
+  assert.deepEqual(launch().open, []);
+  const legacy = { 'mpo-open': ['trade'], 'mpo-last-focus': 'trade', 'mpo-display': { restoreAll: true }, 'mpo-layout': { trade: { x: 80, y: 60, w: 620, h: 480 } } };
+  const empty = launch(legacy);
+  assert.deepEqual(empty.open, [], 'old saved open apps do not reopen automatically');
+  assert.equal(empty.focus, null, 'last focus cannot force Pump.fun back open');
+  assert.deepEqual(empty.saved, legacy['mpo-layout'], 'window positions remain available when an app is opened');
+  const optedIn = { ...legacy, 'mpo-open': ['trade', 'journal', 'obsolete'], 'mpo-display': { restoreOnLaunch: true } };
+  assert.deepEqual(launch(optedIn).open, ['trade', 'journal']);
+  assert.deepEqual(launch(optedIn, true).open, [], 'phone home remains empty');
+  assert.deepEqual(launch({ ...optedIn, 'mpo-open': [] }).open, [], 'an empty restored session stays empty');
 });
 
 test('desktop window state: bounds restored, shown late, storage flushed on quit', () => {
@@ -389,15 +416,15 @@ test('desktop window state: bounds restored, shown late, storage flushed on quit
 test('glance design: every window opens as one calm card, full detail is an option, text size sets the fit ceiling', () => {
   const glanceCss = read('public/css/mpo-glance.css');
   assert.match(html, /<link rel="stylesheet" href="\/css\/mpo-glance\.css">/);
-  assert.match(html, /DEFAULT_OPEN=\['trade'\]/, 'fresh install opens one window');
-  assert.match(html, /const shown=openSet\.has\(id\)&&\(displayPrefs\.restoreAll\?!L\.min:id===bootFocus\)/, 'only the last-used window is shown unless Reopen all is on');
+  assert.match(html, /DEFAULT_OPEN=\[\]/, 'fresh install starts with an empty desktop');
+  assert.match(html, /const shown=openSet\.has\(id\)&&!L\.min/, 'only explicitly restored apps are shown at launch');
   for (const host of ['trade', 'sportsbook', 'robinhood', 'system', 'journal', 'money']) assert.match(html, new RegExp(`\\n ${host}:\\{render:glance`), `${host} has a glance`);
   assert.match(html, /data-act="detail" class="detail-btn"/, 'every title bar has its own Simple / Advanced button');
   assert.match(html, /<div class="mode-switch" role="group" aria-label="Window mode"><button class="task-tool" id="modeSimple"[^>]*>Simple<\/button><button class="task-tool" id="modeAdvanced"[^>]*>Advanced<\/button><\/div>/, 'taskbar switch flips every window');
   assert.match(html, /\$\('#modeSimple'\)\.onclick=\(\)=>setGlobalMode\(false\);\$\('#modeAdvanced'\)\.onclick=\(\)=>setGlobalMode\(true\);/);
   assert.match(html, /const TEXT_SCALES=\{S:\.9,M:1\.1,L:1\.3\}/);
   assert.match(html, /const FIT_MIN=\.5;let FIT_MAX=textScale\(\);/, 'text size is the fit-zoom ceiling');
-  assert.match(html, /id="setFullDetail"/);assert.match(html, /id="setRestoreAll"/);assert.match(html, /data-textsize=/);
+  assert.match(html, /id="setFullDetail"/);assert.match(html, /id="setRestoreOnLaunch"/);assert.match(html, /data-textsize=/);
   assert.match(html, /if\(!w\|\|w\.classList\.contains\('hidden'\)\|\|w\.classList\.contains\('glance'\)\)return false;/, 'detail renderers skip glance windows');
   for (const id of ['sportsbook', 'journal', 'robinhood']) assert.match(html, new RegExp(`windowShown\\('${id}'\\)\\)refresh`), `${id} data keeps flowing for its glance`);
   assert.match(html, /gRow\('Stocks & ETFs',[^\n]*gRow\('Practice',/, 'Robinhood glance carries the stocks & ETFs and practice lines');
