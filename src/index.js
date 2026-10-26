@@ -171,12 +171,23 @@ async function liveSell(s, p, fraction, reason) {
   return true;
 }
 
+function noteEntryReject(s, reason, details = {}) {
+  if (cfg.mode !== 'paper') return;
+  // Diagnostics only: existing skip counters, decisions, gates and journal events retain their semantics.
+  s.stats.entryRejectReasons ||= {};
+  s.stats.entryRejectReasons[reason] = Number(s.stats.entryRejectReasons[reason] || 0) + 1;
+  s.stats.lastEntryReject = { ...details, at: Date.now(), reason, mode: 'PAPER' };
+}
+
 async function enter(s, pick, manual = false) {
-  if(pick?.routeDecision?.decision==='BLOCK'){appendJournal({type:'entry-skip',mode:cfg.mode.toUpperCase(),reason:'strategy-regime-route',mint:pick.mint,symbol:pick.symbol,routeDecision:pick.routeDecision});s.stats.skipped++;return;}
+  if(pick?.routeDecision?.decision==='BLOCK'){noteEntryReject(s,'strategy-regime-route',{mint:pick.mint,symbol:pick.symbol,detail:pick.routeDecision.reason});appendJournal({type:'entry-skip',mode:cfg.mode.toUpperCase(),reason:'strategy-regime-route',mint:pick.mint,symbol:pick.symbol,routeDecision:pick.routeDecision});s.stats.skipped++;return;}
   const copySignal=cfg.mode==='paper'?copySignalForMint(pick?.mint):null;
   if(copySignal){pick={...pick,signalSource:copySignal.source,dominantSignal:'copy-trade'};}
-  if (!pick || s.runtime.blacklist.includes(pick.mint) || s.positions.some(p => p.mint === pick.mint)) return;
+  if (!pick || s.runtime.blacklist.includes(pick.mint) || s.positions.some(p => p.mint === pick.mint)) {
+    noteEntryReject(s,!pick?'missing-pick':s.runtime.blacklist.includes(pick.mint)?'blacklist':'already-open',{mint:pick?.mint,symbol:pick?.symbol});return;
+  }
   if(!(Number(pick.priceUsd)>0)||!Number.isFinite(Number(pick.priceUsd))||Date.now()-Number(pick.priceObservedAt||0)>30000){
+    noteEntryReject(s,'price-stale-or-invalid',{mint:pick.mint,symbol:pick.symbol,priceUsd:pick.priceUsd,priceObservedAt:pick.priceObservedAt});
     s.stats.skipped++;return;
   }
   const ap = aggressionParams(s.runtime.aggression);
@@ -205,9 +216,9 @@ async function enter(s, pick, manual = false) {
       if(decision){decision.kelly=kelly;decision.sizeSol=size;}
     }else appendJournal({type:'sizing-decision',mode:'PAPER',profile:'AGGRESSIVE_PAPER',sampleCount:returns.length,expectancy:avg,variance,kelly:null,cap,finalSize:size,fallback:'existing-paper-budget-until-two-closed-samples'});
   }
-  if (size < 0.005) { if(decision) decision.rejected='uneconomic-or-sizing-budget'; return; }
+  if (size < 0.005) { if(decision) decision.rejected='uneconomic-or-sizing-budget'; noteEntryReject(s,'size-too-small',{mint:pick.mint,symbol:pick.symbol,sizeSol:size,detail:decision?.rejected}); return; }
   const portfolioRisk=assessPortfolioRisk(s,pick);
-  if(portfolioRisk.enabled&&!portfolioRisk.allowed){appendJournal({type:'entry-skip',mode:'PAPER',reason:'portfolio-risk',mint:pick.mint,symbol:pick.symbol,portfolioRisk});return;}
+  if(portfolioRisk.enabled&&!portfolioRisk.allowed){noteEntryReject(s,'portfolio-risk',{mint:pick.mint,symbol:pick.symbol,details:portfolioRisk.reasons});appendJournal({type:'entry-skip',mode:'PAPER',reason:'portfolio-risk',mint:pick.mint,symbol:pick.symbol,portfolioRisk});return;}
   if(portfolioRisk.enabled&&portfolioRisk.sizeMultiplier<1)size*=portfolioRisk.sizeMultiplier;
 
   // Cost gate: in paper mode a fresh Jupiter round-trip quote may only make the simulator stricter.
@@ -216,6 +227,7 @@ async function enter(s, pick, manual = false) {
   const gate = solanaCostGate({ pick, sizeSol: size, solUsd: Number(s.market?.solUsd || 0), tp1: exitPolicy(s).tp1, config: cfg, venueRoundTripPct: venueQuote?.roundTripPct });
   if (decision) { decision.estimatedRoundTripPct=gate.roundTripPct; decision.costSource=gate.costSource; }
   if (!gate.ok) {
+    noteEntryReject(s,'cost-gate',{mint:pick.mint,symbol:pick.symbol,tp1:gate.tp1,roundTripPct:gate.roundTripPct,costSource:gate.costSource,requiredTp1Pct:gate.requiredTp1Pct});
     if(decision) decision.rejected='costGate';
     s.stats.skipped++;
     s.stats.skipReasons = { ...(s.stats.skipReasons || {}), costGate: Number(s.stats.skipReasons?.costGate || 0) + 1 };
@@ -231,12 +243,14 @@ async function enter(s, pick, manual = false) {
     const liq = Number(pick.liq || pick.liquidity?.usd || 0);
     const execution = Number(pick.executionScore || 0);
     if (liq < 15_000 || execution < 40) {
+      noteEntryReject(s,liq<15_000?'sprint-liquidity':'sprint-execution',{mint:pick.mint,symbol:pick.symbol,liquidityUsd:liq,executionScore:execution});
       s.stats.skipped++;
       appendJournal({type:'sprint-entry-reject',mint:pick.mint,symbol:pick.symbol,reason:liq<15_000?'liquidity':'execution',liquidityUsd:liq,executionScore:execution});
       return;
     }
     sprintPreview = estimatePaperExecution(pick, size, Number(s.market?.solUsd || 0), cfg.simulatedSlippageBps, cfg.simulatedFeeBps);
     if (Number(sprintPreview.slippageBps || 0) > 250 || Number(sprintPreview.failurePct || 0) > 40) {
+      noteEntryReject(s,'sprint-friction',{mint:pick.mint,symbol:pick.symbol,slippageBps:sprintPreview.slippageBps,failurePct:sprintPreview.failurePct});
       s.stats.skipped++;
       appendJournal({type:'sprint-entry-reject',mint:pick.mint,symbol:pick.symbol,reason:'friction',slippageBps:sprintPreview.slippageBps,failurePct:sprintPreview.failurePct});
       return;
@@ -251,7 +265,7 @@ async function enter(s, pick, manual = false) {
   if(paperProposal){paperProposal.signalSource=pick.signalSource||copySignal?.source||'scanner';paperProposal.routeDecision=pick.routeDecision||null;}
   if(paperProposal) {
     const routed=routePaperProposal({state:s,existingProposal:paperProposal,pick,assetClass:pick.assetClass||'memecoin',sizeSol:size,mode:cfg.mode});
-    if(!routed.proposal){paperProposal.status='REJECTED';return;}
+    if(!routed.proposal){noteEntryReject(s,'paper-routing',{mint:pick.mint,symbol:pick.symbol,detail:routed.decision?.reason});paperProposal.status='REJECTED';return;}
   }
   const resolvePaperProposal=status=>{if(paperProposal){paperProposal.status=status;paperProposal.resolvedAt=Date.now();}};
 
@@ -261,6 +275,7 @@ async function enter(s, pick, manual = false) {
     // pairAddress from the first accepted tick, which can latch onto the wrong pool for good.
     const entryReject = paperEntryRejection(pick);
     if (entryReject) {
+      noteEntryReject(s,'paper-integrity',{mint:pick.mint,symbol:pick.symbol,detail:entryReject});
       if(decision) decision.rejected=entryReject;
       resolvePaperProposal('REJECTED');
       s.stats.skipped++;
@@ -271,6 +286,7 @@ async function enter(s, pick, manual = false) {
     const routedExecution=estimateRoutedPaperExecution(pick,initialSize,Number(s.market?.solUsd||0),s.runtime,cfg.mode,(c,z,usd)=>estimatePaperExecution(c,z,usd,cfg.simulatedSlippageBps,cfg.simulatedFeeBps)),execModel=routedExecution.selected;
     const sim=isAggressivePaper(s.runtime)?simulateAggressivePaperExecution(pick,initialSize,Number(s.market?.solUsd||0),{side:'BUY',now,seed:`pump-entry:${pick.mint}:${Math.floor(now/8000)}`}):simulatePumpPaperExecution(pick,initialSize,Number(s.market?.solUsd||0),cfg.simulatedSlippageBps,cfg.simulatedFeeBps,{side:'BUY',now,seed:`pump-entry:${pick.mint}:${Math.floor(now/8000)}`});
     if(sim.status==='REJECTED'||!(Number(sim.gross)>0)){
+      noteEntryReject(s,'simulated-fill-failure',{mint:pick.mint,symbol:pick.symbol,detail:sim.reason||'modeled-no-fill',requestedSizeSol:size,simulatedFailurePct:sim.failurePct,slippageBps:sim.slippageBps??null,latencyMs:sim.latencyMs??null});
       if(decision) { decision.rejected=sim.reason||'modeled-no-fill'; decision.failedTransactionCostEvidence='UNKNOWN_NOT_CHARGED_AS_A_REAL_TRANSACTION'; }
       resolvePaperProposal('REJECTED');
       s.stats.skipped++;
@@ -278,7 +294,10 @@ async function enter(s, pick, manual = false) {
       return;
     }
     const filledBasis=Math.max(0,Number(sim.gross||0)),entryFee=Math.max(0,Number(sim.feeSol||0)),debit=filledBasis+entryFee;
-    if(!(debit>0)||s.cashSol-decision.reserveSol+1e-9<debit||filledBasis>decision.allowedSol+1e-9){decision.rejected='execution-budget-or-reserve';resolvePaperProposal('REJECTED');return;}
+    if(!(debit>0)||s.cashSol-decision.reserveSol+1e-9<debit||filledBasis>decision.allowedSol+1e-9){
+      noteEntryReject(s,s.cashSol+1e-9<debit?'insufficient-paper-cash':'execution-budget-or-reserve',{mint:pick.mint,symbol:pick.symbol,debitSol:debit,filledBasisSol:filledBasis,cashSol:s.cashSol,reserveSol:decision.reserveSol,allowedSol:decision.allowedSol});
+      decision.rejected='execution-budget-or-reserve';resolvePaperProposal('REJECTED');return;
+    }
     decision.filledSol=filledBasis;decision.actualEntryFeeSol=entryFee;decision.executionModel=sim.executionModel;
     const cashReceipt=paperCashReceipt({positionId:`${now}-${pick.mint.slice(0,6)}`,sequence:0,side:'BUY',postedAt:now,modeledFillAt:sim.fillAt,basisSol:filledBasis,grossSol:filledBasis,feeSol:entryFee,cashBeforeSol:s.cashSol,cashAfterSol:s.cashSol-debit});
     s.cashSol-=debit;
@@ -843,7 +862,7 @@ async function cycle(budget = null) {
   const picks = ranked.filter(x => x.eligible && x.routeDecision?.decision!=='BLOCK' && Number(x.executionScore||0) >= 15 && !cooldownActive(s, x.mint) && !s.positions.some(p => p.mint === x.mint) && !s.runtime.blacklist.includes(x.mint));
   const sprintPaper=cfg.mode==='paper'&&s.runtime.profile==='SPRINT';
   const entryBurst=sprintPaper?5:(cfg.mode==='paper'&&s.runtime.entryFrequency==='max'?2:1);
-  const signalsBefore=Number(s.stats.signals||0);let approved=0;
+  const signalsBefore=Number(s.stats.signals||0),entryRejectBefore={...(s.stats.entryRejectReasons||{})},lastEntryRejectBefore=s.stats.lastEntryReject;let approved=0;
   // Rejected top candidates must not starve the fillable candidates below them.
   const attemptLimit=sprintPaper?Math.min(30,picks.length):entryBurst;
   if(!block.blocked){for(const pick of picks.slice(0,attemptLimit)){
@@ -852,10 +871,12 @@ async function cycle(budget = null) {
   }}
   updatePortfolio(s);
   const postBlock=blockStatus(s),eqNow=Math.max(.000001,equity(s));
+  const entryRejectionReasons=Object.fromEntries(Object.entries(s.stats.entryRejectReasons||{}).map(([reason,n])=>[reason,Number(n)-Number(entryRejectBefore[reason]||0)]).filter(([,n])=>n>0));
   const funnel={ts:Date.now(),discovered:pairs.length,parsed:ranked.length,riskSampled:ranked.filter(x=>x.riskVerification!=='UNSAMPLED').length,
     scorePassed:ranked.filter(x=>Number(x.fastEdgeScore||0)>=Number(x.entryThreshold||0)).length,eligible:ranked.filter(x=>x.eligible).length,
     executionPassed:ranked.filter(x=>x.eligible&&Number(x.executionScore||0)>=15).length,approved,
-    opened:Number(s.stats.signals||0)-signalsBefore,blocked:postBlock.blocked,blockReasons:postBlock.reasons,rejectionReasons,
+    opened:Number(s.stats.signals||0)-signalsBefore,blocked:postBlock.blocked,blockReasons:postBlock.reasons,rejectionReasons,entryRejectionReasons,
+    lastEntryReject:s.stats.lastEntryReject!==lastEntryRejectBefore?s.stats.lastEntryReject:null,
     openPositions:s.positions.length,openLimit:postBlock.openLimit,capitalDeploymentPct:exposure(s)/eqNow*100,cashPct:Number(s.cashSol||0)/eqNow*100,
     // P1.5: position price reviews (accepted/rejected per reason). `bandRejects` with
     // `bandMedianRatioMin/Max` shows how often and how far the one-sided tick band fired (V8).

@@ -145,6 +145,58 @@ test('a duplicate entry for the same mint is refused by the brain, not only by t
   await engine.enter(s, pick());
   assert.equal(s.positions.length, 1, 'one position per mint');
   assert.equal(s.cashSol, cash, 'a refused entry moves no cash');
+  assert.deepEqual(s.stats.entryRejectReasons,{'already-open':1});
+});
+
+// Exercise the actual downstream entry gates rather than merely searching for reason strings.
+const rejectionCases = [
+  ['strategy-regime-route', (s,p) => { p.routeDecision={decision:'BLOCK',reason:'strategy-regime-mismatch'}; }],
+  ['blacklist', (s,p) => { s.runtime.blacklist.push(p.mint); }],
+  ['price-stale-or-invalid', (s,p) => { p.priceObservedAt=Date.now()-31000; }],
+  ['size-too-small', s => { s.cashSol=0; }],
+  ['cost-gate', s => { Object.assign(s.runtime,runtime.operatingProfiles.SPRINT,{profile:'SPRINT'}); }],
+  ['portfolio-risk', s => { s.runtime.profile='AGGRESSIVE_PAPER';s.portfolio={equitySol:1};s.portfolioPeakSol=2; }],
+  // Custom exits allow the original cost gate to pass so the later SPRINT gates are reached.
+  ['sprint-liquidity', (s,p) => { s.runtime.profile='SPRINT';s.runtime.exitPreset='custom';s.runtime.customExit={tp1:100};p.liq=14000; }],
+  ['sprint-execution', (s,p) => { s.runtime.profile='SPRINT';s.runtime.exitPreset='custom';s.runtime.customExit={tp1:100};p.executionScore=39; }],
+  ['sprint-friction', (s,p) => { s.runtime.profile='SPRINT';s.runtime.exitPreset='custom';s.runtime.customExit={tp1:100};p.micro={p10:100}; }],
+  ['paper-routing', (s,p) => { p.assetClass='unknown-asset'; }],
+  ['paper-integrity', (s,p) => { delete p.pairAddress; }],
+];
+for (const [reason,prepare] of rejectionCases) test(`entry diagnostic: ${reason} is recorded once without a fill or cash movement`,async () => {
+  openPool();const s=freshState(),p=pick();prepare(s,p);
+  const cash=s.cashSol,positions=structuredClone(s.positions),signals=s.stats.signals;
+  await engine.enter(s,p);
+  assert.deepEqual(s.stats.entryRejectReasons,{[reason]:1});
+  assert.equal(s.stats.lastEntryReject.reason,reason);assert.equal(s.stats.lastEntryReject.mint,p.mint);
+  assert.equal(s.stats.lastEntryReject.mode,'PAPER');
+  assert.equal(s.cashSol,cash);assert.equal(s.stats.signals,signals);assert.deepEqual(s.positions,positions);
+  if(reason==='cost-gate'){
+    assert.equal(s.stats.skipReasons.costGate,1,'legacy cost counter is not double-counted');
+    assert.equal(s.stats.skipped,1,'legacy skipped count retained');
+    assert.ok(s.stats.lastEntryReject.requiredTp1Pct>s.stats.lastEntryReject.tp1);
+  }
+  if(reason==='paper-integrity')assert.equal(s.stats.lastEntryReject.detail,'missing-pair-address');
+  if(reason==='portfolio-risk')assert.deepEqual(s.stats.lastEntryReject.details,['drawdown-flatten']);
+});
+
+test('simulator no-fill retains the precise cause, and a subsequent success creates no rejection',async () => {
+  openPool();const s=freshState(),cash=s.cashSol;
+  const saved=process.env.MPO_PAPER_PUMPFUN_REJECT_PROBABILITY;
+  try {
+    process.env.MPO_PAPER_PUMPFUN_REJECT_PROBABILITY='1';
+    await engine.enter(s,pick());
+    assert.deepEqual(s.stats.entryRejectReasons,{'simulated-fill-failure':1});
+    assert.equal(s.stats.lastEntryReject.detail,'simulated-no-fill');
+    assert.equal(s.cashSol,cash);assert.equal(s.positions.length,0);
+    assert.equal(s.proposals[0].status,'REJECTED');
+    const last=s.stats.lastEntryReject;
+    process.env.MPO_PAPER_PUMPFUN_REJECT_PROBABILITY='0';
+    await engine.enter(s,pick());
+    assert.equal(s.positions.length,1);assert.equal(s.stats.signals,1);
+    assert.equal(s.stats.lastEntryReject,last,'last historical rejection remains explicitly historical');
+    assert.deepEqual(s.stats.entryRejectReasons,{'simulated-fill-failure':1});
+  } finally { if(saved===undefined)delete process.env.MPO_PAPER_PUMPFUN_REJECT_PROBABILITY;else process.env.MPO_PAPER_PUMPFUN_REJECT_PROBABILITY=saved; }
 });
 
 test('the exit ladder reaches stale-purge through the real close path: position gone, cash up, cooldown set', async () => {
@@ -202,6 +254,8 @@ test('a stop-loss fires when the mark collapses but the tick did not jump, and t
 test('one full cycle runs in-process against the stubbed market and persists its counters', async () => {
   openPool();
   const s = freshState();
+  s.stats.entryRejectReasons={'cost-gate':7};
+  s.stats.lastEntryReject={at:Date.now()-60000,reason:'cost-gate',mode:'PAPER'};
   store.saveState(s);
   assert.equal(store.loadState().stats.cycles, 0, 'fixture precondition');
 
@@ -210,6 +264,10 @@ test('one full cycle runs in-process against the stubbed market and persists its
   const after = store.loadState();
   assert.equal(after.stats.cycles, 1, 'cycle() runs the engine mutex and persists');
   assert.equal(after.system.lastError, null, 'a clean cycle leaves no error behind');
+  assert.deepEqual(after.system.opportunityFunnel.entryRejectionReasons,{},'counts belong to this cycle, not cumulative history');
+  assert.equal(after.system.opportunityFunnel.lastEntryReject,null,'old rejection must not be attributed to a new cycle');
+  assert.deepEqual(after.stats.entryRejectReasons,{'cost-gate':7});
+  assert.equal(after.stats.lastEntryReject.reason,'cost-gate');
 });
 
 test('the trade path reaches only the hosts this stub knows about (coupling is measured, not assumed)', () => {
