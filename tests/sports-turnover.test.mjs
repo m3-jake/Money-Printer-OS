@@ -54,7 +54,7 @@ test('autopilot requires calibrated positive EV before filling earned combo slot
  const read=()=>JSON.parse(fs.readFileSync(file,'utf8'));
  const calibration=(pnl=.05)=>Array.from({length:20},(_,i)=>({id:'cal'+i,kind:'single',status:'WON',stakeUsd:1,pnlUsd:pnl,createdAt:Date.now()-100000-i*1000,settledAt:Date.now()-50000-i*1000,settlementSource:'gamma-market',potentialPayoutUsd:1.1,legs:[{result:'won',price:.9,fillPrice:.9,feesEnabled:false}]}));
  try{
-  api.resetPolymarketPaper(25);api.setAutopilot({mode:'combos'});
+  api.resetPolymarketPaper(25);api.setAutopilot({mode:'combos',bootstrapExploration:false});
   let r=await api.runAutopilotOnce();assert.equal(r.placed,0);assert.ok(r.skipped.some(x=>x.reason==='ev-uncalibrated'));
   let s=read();s.createdAt=Date.now()-300000;s.history=calibration(.15);s.cashUsd=25;fs.writeFileSync(file,JSON.stringify(s));
   r=await api.runAutopilotOnce();assert.equal(r.placed,1);

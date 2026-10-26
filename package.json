@@ -29,7 +29,7 @@
     "test:discovery": "node --test tests/discovery-budget.test.mjs",
     "test:turnover": "node --test tests/sports-turnover.test.mjs tests/update-auth.test.cjs",
     "test:updater": "node --test tests/update-channel.test.cjs tests/update-fetch.test.cjs tests/sign-manifest.test.mjs tests/release-tools.test.mjs",
-    "test:settlement": "node --test tests/polymarket-settlement.test.mjs",
+    "test:settlement": "node --test tests/polymarket-settlement.test.mjs tests/polymarket-bootstrap.test.mjs",
     "test:polymarket-us": "node --test tests/polymarket-us-safety.test.mjs tests/polymarket-us-evidence.test.mjs",
     "test:combos": "node --test tests/polymarket-us-combos.test.mjs tests/polymarket-us-paper.test.mjs",
     "replay": "node tools/replayLab.js",

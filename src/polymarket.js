@@ -68,6 +68,7 @@ const envNum=(key,fallback)=>{const v=Number(process.env[key]);return Number.isF
 function defaultAutopilot(){
  const mode=String(process.env.POLYMARKET_AUTOPILOT_MODE||'both').toLowerCase();
  return {enabled:String(process.env.POLYMARKET_AUTOPILOT||'').toLowerCase()!=='false',mode:AUTOPILOT_MODES.includes(mode)?mode:'both',
+  bootstrapExploration:String(process.env.POLYMARKET_BOOTSTRAP_EXPLORATION??'true').toLowerCase()!=='false',
   stakeSingleUsd:clamp(envNum('POLYMARKET_STAKE_SINGLE_USD',1),.01,1000),stakeComboUsd:clamp(envNum('POLYMARKET_STAKE_COMBO_USD',2.5),.01,1000),
   maxOpenPct:clamp(envNum('POLYMARKET_MAX_OPEN_PCT',65),1,100),lastRunAt:0,lastAction:null,placedCount:0,skipped:[]};
 }
@@ -75,6 +76,7 @@ function autopilotSettings(s={}){
  const d=defaultAutopilot(),a=s.autopilot&&typeof s.autopilot==='object'?s.autopilot:{};
  const mode=String(a.mode||d.mode).toLowerCase();
  return {enabled:a.enabled===undefined?d.enabled:!!a.enabled,mode:AUTOPILOT_MODES.includes(mode)?mode:'both',
+  bootstrapExploration:a.bootstrapExploration===undefined?d.bootstrapExploration:!!a.bootstrapExploration,
   stakeSingleUsd:clamp(num(a.stakeSingleUsd)||d.stakeSingleUsd,.01,1000),stakeComboUsd:clamp(num(a.stakeComboUsd)||d.stakeComboUsd,.01,1000),
   maxOpenPct:clamp(num(a.maxOpenPct)||d.maxOpenPct,1,100),lastRunAt:num(a.lastRunAt),lastAction:a.lastAction||null,
   placedCount:num(a.placedCount),skipped:Array.isArray(a.skipped)?a.skipped.slice(0,20):[]};
@@ -428,7 +430,7 @@ function enrichCandidate(raw,now,ctx){
  const candidate={...base,liveState:{gameId:live.gameId,league:live.leagueAbbreviation||null,homeTeam:live.homeTeam||null,awayTeam:live.awayTeam||null,
    score:live.score??null,period:live.period??null,elapsed:live.elapsed??null,startTime:live.startTime||null,source:live.source||'ws',lastUpdate:live.lastUpdate},
   freshnessSec,nearEndScore:late.nearEndScore,etaMinutes:eta,lateReason:late.reason,spreadLimit,rank,fee,netPrice,bucket,
-  fairProbability,edgeAfterFriction,expectedRoi,calibrationSamples,executionMode,makerPrice};
+  fairProbability,edgeAfterFriction,expectedRoi,calibrationSamples,evEvidence:calibrationSamples>0?'PAPER_CALIBRATION':'QUOTE_PRIOR',executionMode,makerPrice};
  candidate.suggestedStakeUsd=suggestStake(candidate,ctx.paper,ctx.research).stakeUsd;
  return candidate;
 }
@@ -449,14 +451,38 @@ export function candidateEvGate(c,{combo=false}={}){
  if(edge<minEdge||roi<=0)return {ok:false,reason:'negative-or-thin-ev',samples,minEdge,edge,roi};
  return {ok:true,reason:'positive-ev',samples,minEdge,edge,roi};
 }
-export function comboExpectedValue(legs=[]){
- const xs=(legs||[]).filter(Boolean);if(xs.length<2)return {ok:false,fairProbability:0,effectiveProbability:0,expectedRoi:-1};
+export function candidateAutopilotGate(c,{combo=false,bootstrapExploration=false,mode='PAPER'}={}){
+ const gate=candidateEvGate(c,{combo});
+ if(gate.ok)return {...gate,lane:'BASELINE',evidenceQuality:'CALIBRATED'};
+ // With zero outcomes the model uses the executable quote itself as a prior. Its fee drag is
+ // not a measured probability edge. Only that explicitly identified prior can be explored
+ // without positive EV; an arbitrary negative estimate must never masquerade as missing evidence.
+ if(mode==='PAPER'&&bootstrapExploration===true&&gate.reason==='ev-uncalibrated'){
+  const valid=[c?.edgeAfterFriction,c?.expectedRoi,c?.fairProbability,c?.netPrice,c?.fillPrice].every(v=>v!=null&&Number.isFinite(Number(v)))
+   && Number(c.fillPrice)>0&&Number(c.fillPrice)<1&&Number(c.netPrice)>0&&Number(c.netPrice)<1&&Number(c.fairProbability)>0&&Number(c.fairProbability)<1;
+  const quotePrior=gate.samples===0&&c?.evEvidence==='QUOTE_PRIOR'&&valid
+   && Math.abs(Number(c.fairProbability)-Number(c.fillPrice))<1e-9
+   && Math.abs(gate.edge-(Number(c.fairProbability)-Number(c.netPrice)))<1e-9
+   && Math.abs(gate.roi-(Number(c.fairProbability)/Number(c.netPrice)-1))<1e-9;
+  if(!valid)return {...gate,reason:'ev-unknown',lane:'BASELINE',evidenceQuality:'UNCALIBRATED'};
+  if(!quotePrior&&(gate.edge<gate.minEdge||gate.roi<=0))return {...gate,reason:'negative-or-thin-ev',lane:'BASELINE',evidenceQuality:'UNCALIBRATED'};
+  return {...gate,ok:true,reason:'bootstrap-exploration',lane:'EXPLORATION',evidenceQuality:'UNCALIBRATED',quotePrior};
+ }
+ return {...gate,lane:'BASELINE',evidenceQuality:gate.reason==='ev-uncalibrated'?'UNCALIBRATED':'CALIBRATED'};
+}
+export function comboExpectedValue(legs=[],{bootstrapExploration=false,mode='PAPER'}={}){
+ const xs=(legs||[]).filter(Boolean);if(xs.length<2)return {ok:false,fairProbability:0,effectiveProbability:0,expectedRoi:-1,lane:'BASELINE',gates:[]};
  const fair=xs.reduce((a,c)=>a*clamp(num(c.fairProbability),0.001,.999),1);
  const effective=xs.reduce((a,c)=>a*clamp(num(c.netPrice)||num(c.fillPrice)||num(c.price),0.001,.999),1);
  const roi=effective>0?fair/effective-1:-1;
- return {ok:xs.every(c=>candidateEvGate(c,{combo:true}).ok)&&roi>=.025,fairProbability:fair,effectiveProbability:effective,expectedRoi:roi};
+ const gates=xs.map(c=>candidateAutopilotGate(c,{combo:true,bootstrapExploration,mode}));
+ const exploring=gates.some(g=>g.lane==='EXPLORATION');
+ // A partially calibrated leg is not permission to waive measured joint EV. A combo has
+ // unknown joint EV only when at least one admitted leg still has the zero-outcome quote prior.
+ const quotePrior=gates.some(g=>g.ok&&g.quotePrior);
+ return {ok:gates.every(g=>g.ok)&&(quotePrior||roi>=.025),fairProbability:fair,effectiveProbability:effective,expectedRoi:roi,lane:exploring?'EXPLORATION':'BASELINE',gates};
 }
-function chooseCombo(candidates,maxLegs=6){const out=[],events=new Set();const ranked=[...candidates].filter(c=>candidateEvGate(c,{combo:true}).ok).sort((a,b)=>(num(b.expectedRoi)-num(a.expectedRoi))||b.rank-a.rank);for(const c of ranked){const key=String(c.gameId||c.eventId||c.slug||c.event);if(events.has(key))continue;events.add(key);out.push(c);if(out.length>=maxLegs)break}return out}
+function chooseCombo(candidates,maxLegs=6,{bootstrapExploration=false}={}){const out=[],events=new Set();const ranked=[...candidates].filter(c=>candidateAutopilotGate(c,{combo:true,bootstrapExploration}).ok).sort((a,b)=>(num(b.expectedRoi)-num(a.expectedRoi))||b.rank-a.rank);for(const c of ranked){const key=String(c.gameId||c.eventId||c.slug||c.event);if(events.has(key))continue;events.add(key);out.push(c);if(out.length>=maxLegs)break}return out}
 
 // ------------------------------------------------------------------- research
 function summarizeGroup(closed,open){
@@ -618,7 +644,12 @@ function cleanLeg(x){
   fairProbability:x.fairProbability!=null&&Number.isFinite(Number(x.fairProbability))?Number(x.fairProbability):null,
   netPrice:x.netPrice!=null&&Number.isFinite(Number(x.netPrice))?Number(x.netPrice):null,edgeAfterFriction:x.edgeAfterFriction!=null&&Number.isFinite(Number(x.edgeAfterFriction))?Number(x.edgeAfterFriction):null,
   expectedRoi:x.expectedRoi!=null&&Number.isFinite(Number(x.expectedRoi))?Number(x.expectedRoi):null,calibrationSamples:num(x.calibrationSamples),
+  autopilotLane:x.autopilotLane||null,evidenceQuality:x.evidenceQuality||'UNCALIBRATED',evEvidence:x.evEvidence||null,
   askDepthUsd:num(x.askDepthUsd),bookAt:num(x.bookAt),freshnessSec:num(x.freshnessSec)};
+}
+function paperEntryEvidence(legs){
+ return {lane:legs.some(l=>l.autopilotLane==='EXPLORATION')?'EXPLORATION':legs.every(l=>l.autopilotLane==='BASELINE')?'BASELINE':'MANUAL',
+  evidenceQuality:legs.every(l=>l.evidenceQuality==='CALIBRATED')?'CALIBRATED':'UNCALIBRATED'};
 }
 function newPositionId(){return `poly_${Date.now()}_${Math.random().toString(36).slice(2,7)}`}
 function simulatePaperLeg(leg,budgetUsd,seed){
@@ -646,7 +677,7 @@ export function placePaperSingle({leg,stakeUsd,placedBy}={}){
  const pos={id:newPositionId(),createdAt:nowMs(),status:'OPEN',kind:'single',mode:'PAPER',stakeUsd:cashDebit,requestedStakeUsd:stake,shares,
   fillPrice:sim.fillPrice,feeUsd:round5(sim.feeUsd),decimalOdds:quote.decimalOdds,potentialPayoutUsd:shares,
   execution:{mode:'PAPER',status:sim.status,latencyMs:sim.latencyMs,fillRatio:sim.fillRatio,slippageBps:sim.slippageBps,fillAt:sim.fillAt},
-  placedBy:placedBy||'manual',research:{expectedRoi:clean.expectedRoi,expectedValueUsd:Number.isFinite(clean.expectedRoi)?round5(cashDebit*clean.expectedRoi):null,edgeAfterFriction:clean.edgeAfterFriction,calibrationSamples:clean.calibrationSamples},legs:[clean]};
+  placedBy:placedBy||'manual',research:{...paperEntryEvidence([clean]),expectedRoi:clean.expectedRoi,expectedValueUsd:Number.isFinite(clean.expectedRoi)?round5(cashDebit*clean.expectedRoi):null,edgeAfterFriction:clean.edgeAfterFriction,calibrationSamples:clean.calibrationSamples},legs:[clean]};
  s.cashUsd=round5(num(s.cashUsd)-cashDebit);s.positions.unshift(pos);savePaper(s);
  return {ok:true,position:pos,paper:s};
 }
@@ -671,7 +702,7 @@ export function placePaperCombo({legs,stakeUsd,placedBy}={}){
  const pos={id:newPositionId(),createdAt:nowMs(),status:'OPEN',kind:'combo',mode:'PAPER',stakeUsd:effectiveStake,requestedStakeUsd:stake,shares:priced.shares,
   fillPrice:null,feeUsd,decimalOdds:quote.decimalOdds,potentialPayoutUsd:quote.payout,
   execution:{mode:'PAPER',status:ratio<.999999?'PARTIAL':'FILLED',fillRatio:ratio,latencyMs:Math.max(...sims.map(x=>x.latencyMs||0))},
-  placedBy:placedBy||'manual',research:{expectedRoi:ev.expectedRoi,expectedValueUsd:round5(effectiveStake*ev.expectedRoi),fairProbability:ev.fairProbability,effectiveProbability:ev.effectiveProbability},legs:clean};
+  placedBy:placedBy||'manual',research:{...paperEntryEvidence(clean),expectedRoi:ev.expectedRoi,expectedValueUsd:round5(effectiveStake*ev.expectedRoi),fairProbability:ev.fairProbability,effectiveProbability:ev.effectiveProbability},legs:clean};
  s.cashUsd=round5(num(s.cashUsd)-effectiveStake);s.positions.unshift(pos);savePaper(s);
  return {ok:true,position:pos,paper:s};
 }
@@ -679,6 +710,7 @@ export function setAutopilot(patch={}){
  const s=loadPaper(),ap=autopilotSettings(s);
  if(patch&&typeof patch==='object'){
   if(patch.enabled!==undefined)ap.enabled=!!patch.enabled;
+  if(patch.bootstrapExploration!==undefined){if(typeof patch.bootstrapExploration!=='boolean')throw new Error('bootstrapExploration must be a boolean');ap.bootstrapExploration=patch.bootstrapExploration}
   if(patch.mode!==undefined){const m=String(patch.mode).toLowerCase();if(!AUTOPILOT_MODES.includes(m))throw new Error('mode must be both, singles or combos');ap.mode=m}
   if(patch.stakeSingleUsd!==undefined){const v=Number(patch.stakeSingleUsd);if(!Number.isFinite(v)||v<.01||v>1000)throw new Error('stakeSingleUsd must be between 0.01 and 1000');ap.stakeSingleUsd=round2(v)}
   if(patch.stakeComboUsd!==undefined){const v=Number(patch.stakeComboUsd);if(!Number.isFinite(v)||v<.01||v>1000)throw new Error('stakeComboUsd must be between 0.01 and 1000');ap.stakeComboUsd=round2(v)}
@@ -741,8 +773,8 @@ export async function runAutopilotOnce(){
     if(c.priceSource==='mid'){reason('price-source-mid');continue}
     if(c.fillPrice==null){reason('no-fill-price');continue}
     if(c.freshnessSec>AUTOPILOT_MAX_FRESHNESS_SEC){reason('stale');continue}
-    const evGate=candidateEvGate(c);if(!evGate.ok){reason(evGate.reason);continue}
-    qualified.push(c);
+    const evGate=candidateAutopilotGate(c,{bootstrapExploration:ap.bootstrapExploration});if(!evGate.ok){reason(evGate.reason);continue}
+    qualified.push({...c,autopilotLane:evGate.lane,evidenceQuality:evGate.evidenceQuality});
    }
    if(!qualified.length)skipped.push({marketId:null,reason:candidates.length?'no-fillable-candidates':'no-live-candidates'});
    if(ap.mode==='both'||ap.mode==='combos'){
@@ -750,9 +782,9 @@ export async function runAutopilotOnce(){
     if(capacity.openCombos>=capacity.comboLimit)skipped.push({marketId:null,reason:'combo-growth-limit'});
     for(let slot=capacity.openCombos;slot<capacity.comboLimit;slot++){
      const stake=round2(ap.stakeComboUsd);
-     const legs=chooseCombo(qualified.filter(c=>!openKeys.has('m:'+c.marketId)&&!(c.gameId!=null&&openKeys.has('g:'+c.gameId))&&num(c.askDepthUsd)>=2*stake),2);
-     if(legs.length<2){skipped.push({marketId:null,reason:'combo-needs-2-positive-ev-games'});break}
-     const comboEv=comboExpectedValue(legs);if(!comboEv.ok){skipped.push({marketId:null,reason:'combo-joint-ev-too-thin'});break}
+     const legs=chooseCombo(qualified.filter(c=>!openKeys.has('m:'+c.marketId)&&!(c.gameId!=null&&openKeys.has('g:'+c.gameId))&&num(c.askDepthUsd)>=2*stake),2,{bootstrapExploration:ap.bootstrapExploration});
+     if(legs.length<2){skipped.push({marketId:null,reason:ap.bootstrapExploration?'combo-needs-2-research-eligible-games':'combo-needs-2-positive-ev-games'});break}
+     const comboEv=comboExpectedValue(legs,{bootstrapExploration:ap.bootstrapExploration});if(!comboEv.ok){skipped.push({marketId:null,reason:'combo-joint-ev-too-thin'});break}
      if(exposure+stake>capUsd+1e-9){skipped.push({marketId:null,reason:'combo-exposure-cap'});break}
      if(stake>num(paper.cashUsd)){skipped.push({marketId:null,reason:'combo-insufficient-cash'});break}
      try{
